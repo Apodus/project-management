@@ -86,14 +86,27 @@ export class TypedEventBus {
   /**
    * Register a listener for all events matching a pattern.
    * The pattern is a prefix, e.g. "task." matches all task events.
+   * Returns a cleanup function that removes all the per-event wrappers.
    */
-  onAll(listener: (event: EventName, payload: EventPayload) => void): void {
-    // Store the wrapped listener so we can remove it later
+  onAll(listener: (event: EventName, payload: EventPayload) => void): () => void {
+    // Create per-event wrappers and store them so we can remove individually
+    const wrappers = new Map<EventName, (payload: EventPayload) => void>();
+
     for (const eventName of Object.values(EVENT_NAMES)) {
-      this.emitter.on(eventName, (payload: EventPayload) => {
+      const wrapper = (payload: EventPayload) => {
         listener(eventName, payload);
-      });
+      };
+      wrappers.set(eventName, wrapper);
+      this.emitter.on(eventName, wrapper);
     }
+
+    // Return a cleanup function
+    return () => {
+      for (const [eventName, wrapper] of wrappers) {
+        this.emitter.removeListener(eventName, wrapper);
+      }
+      wrappers.clear();
+    };
   }
 
   /**
