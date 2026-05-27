@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { activityKeys } from "./use-activity";
 import { projectKeys } from "./use-projects";
 import { proposalKeys } from "./use-proposals";
 import { taskKeys } from "./use-tasks";
@@ -24,16 +25,16 @@ function getInvalidationKeys(eventType: string): readonly (readonly unknown[])[]
   const prefix = eventType.split(".")[0];
   switch (prefix) {
     case "project":
-      return [projectKeys.all];
+      return [projectKeys.all, activityKeys.all];
     case "proposal":
-      return [proposalKeys.all];
+      return [proposalKeys.all, activityKeys.all];
     case "task":
-      return [taskKeys.all];
+      return [taskKeys.all, activityKeys.all];
     case "epic":
-      return [epicKeys.all];
+      return [epicKeys.all, activityKeys.all];
     case "comment":
       // Comments affect both task and proposal detail queries
-      return [taskKeys.all, proposalKeys.all];
+      return [taskKeys.all, proposalKeys.all, activityKeys.all];
     default:
       return [];
   }

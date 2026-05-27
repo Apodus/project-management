@@ -7,6 +7,8 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppLayout } from "@/components/layout/app-layout";
+import { ActivityPage } from "@/pages/activity-page";
+import { DashboardPage } from "@/pages/dashboard-page";
 import { EpicListPage } from "@/pages/epic-list-page";
 import { LoginPage } from "@/pages/login-page";
 import { ProjectListPage } from "@/pages/project-list-page";
@@ -92,19 +94,11 @@ const projectRoute = createRoute({
   path: "/projects/$projectId",
 });
 
-// /projects/$projectId/ — redirect to proposals
+// /projects/$projectId/ — dashboard
 const projectIndexRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/",
-  component: () => {
-    const { projectId } = projectIndexRoute.useParams();
-    return (
-      <Navigate
-        to="/projects/$projectId/proposals"
-        params={{ projectId }}
-      />
-    );
-  },
+  component: DashboardPage,
 });
 
 // /projects/$projectId/proposals — proposal list
@@ -126,6 +120,13 @@ const projectEpicListRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/epics",
   component: EpicListPage,
+});
+
+// /projects/$projectId/activity — activity feed
+const projectActivityRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/activity",
+  component: ActivityPage,
 });
 
 // /proposals/$proposalId — proposal detail
@@ -161,6 +162,7 @@ const routeTree = rootRoute.addChildren([
       projectProposalListRoute,
       projectTaskListRoute,
       projectEpicListRoute,
+      projectActivityRoute,
     ]),
     proposalDetailRoute,
     taskDetailRoute,

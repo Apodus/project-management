@@ -37,23 +37,24 @@ interface NavItem {
   href: string;
   matchPath: string;
   disabled?: boolean;
+  exactMatch?: boolean;
 }
 
 function getNavItems(projectId: string | null): NavItem[] {
   const base = projectId ? `/projects/${projectId}` : "/projects";
   return [
     {
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      href: projectId ? base : "/projects",
+      matchPath: "/projects/$projectId/",
+      exactMatch: true,
+    },
+    {
       label: "Proposals",
       icon: FileText,
       href: projectId ? `${base}/proposals` : "/projects",
       matchPath: "/proposals",
-    },
-    {
-      label: "Dashboard",
-      icon: LayoutDashboard,
-      href: base,
-      matchPath: "/dashboard",
-      disabled: true,
     },
     {
       label: "Board",
@@ -77,9 +78,8 @@ function getNavItems(projectId: string | null): NavItem[] {
     {
       label: "Activity",
       icon: Activity,
-      href: base,
+      href: projectId ? `${base}/activity` : "/projects",
       matchPath: "/activity",
-      disabled: true,
     },
   ];
 }
@@ -93,7 +93,9 @@ function NavLink({
 }) {
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.fullPath ?? "";
-  const isActive = currentPath.includes(item.matchPath);
+  const isActive = item.exactMatch
+    ? currentPath === item.matchPath
+    : currentPath.includes(item.matchPath);
 
   const content = (
     <Link
@@ -136,7 +138,7 @@ export function Sidebar() {
 
   function handleProjectSelect(projectId: string, projectName: string) {
     setCurrentProject(projectId, projectName);
-    navigate({ to: "/projects/$projectId/proposals", params: { projectId } });
+    navigate({ to: "/projects/$projectId", params: { projectId } });
   }
 
   function handleViewAllProjects() {

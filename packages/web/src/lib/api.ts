@@ -210,6 +210,7 @@ export interface TaskFilters {
   assignee?: string;
   epic?: string;
   search?: string;
+  is_blocked?: "true" | "false";
   sortBy?: string;
   order?: "asc" | "desc";
   page?: number;
@@ -237,6 +238,7 @@ export async function getTasks(
   if (filters?.assignee) params.set("assignee", filters.assignee);
   if (filters?.epic) params.set("epic", filters.epic);
   if (filters?.search) params.set("search", filters.search);
+  if (filters?.is_blocked) params.set("is_blocked", filters.is_blocked);
   if (filters?.sortBy) params.set("sortBy", filters.sortBy);
   if (filters?.order) params.set("order", filters.order);
   if (filters?.page) params.set("page", String(filters.page));
@@ -285,6 +287,58 @@ export async function addTaskComment(
 
 export async function getTaskSubtasks(taskId: string): Promise<Task[]> {
   return apiFetch<Task[]>(`/tasks/${taskId}/subtasks`);
+}
+
+// ---- Activity API ----
+
+export type ActivityLogEntry = components["schemas"]["ActivityLogEntry"];
+
+export interface ActivityFilters {
+  entity_type?: string;
+  actor_id?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export interface PaginatedActivity {
+  data: ActivityLogEntry[];
+  pagination: {
+    page: number;
+    perPage: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export async function getProjectActivity(
+  projectId: string,
+  filters?: ActivityFilters,
+): Promise<PaginatedActivity> {
+  const params = new URLSearchParams();
+  if (filters?.entity_type) params.set("entity_type", filters.entity_type);
+  if (filters?.actor_id) params.set("actor_id", filters.actor_id);
+  if (filters?.page) params.set("page", String(filters.page));
+  if (filters?.per_page) params.set("per_page", String(filters.per_page));
+  const query = params.toString();
+  return apiFetch<PaginatedActivity>(
+    `/projects/${projectId}/activity${query ? `?${query}` : ""}`,
+    { rawResponse: true },
+  );
+}
+
+export async function getTaskActivity(
+  taskId: string,
+  page?: number,
+  perPage?: number,
+): Promise<PaginatedActivity> {
+  const params = new URLSearchParams();
+  if (page) params.set("page", String(page));
+  if (perPage) params.set("per_page", String(perPage));
+  const query = params.toString();
+  return apiFetch<PaginatedActivity>(
+    `/tasks/${taskId}/activity${query ? `?${query}` : ""}`,
+    { rawResponse: true },
+  );
 }
 
 // ---- Epic API ----
