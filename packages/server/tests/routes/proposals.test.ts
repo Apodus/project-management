@@ -4,6 +4,7 @@ import {
   createTestUser,
   createTestProject,
   createTestProposal,
+  createTestAiAgent,
   authRequest,
   type TestApp,
 } from "../utils.js";
@@ -301,10 +302,9 @@ describe("Proposals API", () => {
   describe("POST /api/v1/proposals/:id/transitions", () => {
     // ── Valid transitions ────────────────────────────────────────
     it("should transition open → discussing (human)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "open",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -312,7 +312,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "discussing", actorId: humanUser.id },
+          body: { toStatus: "discussing" },
         },
       );
       expect(res.status).toBe(200);
@@ -322,11 +322,10 @@ describe("Proposals API", () => {
     });
 
     it("should transition open → discussing (AI agent)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "open",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -334,7 +333,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "discussing", actorId: aiUser.id },
+          token: aiAgent.token,
+          body: { toStatus: "discussing" },
         },
       );
       expect(res.status).toBe(200);
@@ -344,10 +344,9 @@ describe("Proposals API", () => {
     });
 
     it("should transition discussing → accepted (human only)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -355,22 +354,21 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "accepted", actorId: humanUser.id },
+          body: { toStatus: "accepted" },
         },
       );
       expect(res.status).toBe(200);
 
       const body = await res.json();
       expect(body.data.status).toBe("accepted");
-      expect(body.data.resolvedBy).toBe(humanUser.id);
+      expect(body.data.resolvedBy).toBe(testApp.testUser.id);
       expect(body.data.resolvedAt).toBeDefined();
     });
 
     it("should transition discussing → rejected (human only)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -378,22 +376,21 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "rejected", actorId: humanUser.id },
+          body: { toStatus: "rejected" },
         },
       );
       expect(res.status).toBe(200);
 
       const body = await res.json();
       expect(body.data.status).toBe("rejected");
-      expect(body.data.resolvedBy).toBe(humanUser.id);
+      expect(body.data.resolvedBy).toBe(testApp.testUser.id);
       expect(body.data.resolvedAt).toBeDefined();
     });
 
     it("should transition open → rejected (human only)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "open",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -401,23 +398,22 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "rejected", actorId: humanUser.id },
+          body: { toStatus: "rejected" },
         },
       );
       expect(res.status).toBe(200);
 
       const body = await res.json();
       expect(body.data.status).toBe("rejected");
-      expect(body.data.resolvedBy).toBe(humanUser.id);
+      expect(body.data.resolvedBy).toBe(testApp.testUser.id);
       expect(body.data.resolvedAt).toBeDefined();
     });
 
     // ── Invalid transitions ─────────────────────────────────────
     it("should reject open → accepted (invalid transition)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "open",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -425,7 +421,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "accepted", actorId: humanUser.id },
+          body: { toStatus: "accepted" },
         },
       );
       expect(res.status).toBe(400);
@@ -435,11 +431,10 @@ describe("Proposals API", () => {
     });
 
     it("should reject open → implemented (invalid transition)", async () => {
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
-      const humanUser = createTestUser(testApp.db, { type: "human" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "open",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -447,7 +442,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "implemented", actorId: aiUser.id },
+          token: aiAgent.token,
+          body: { toStatus: "implemented" },
         },
       );
       expect(res.status).toBe(400);
@@ -457,11 +453,10 @@ describe("Proposals API", () => {
     });
 
     it("should reject discussing → implemented (invalid transition)", async () => {
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
-      const humanUser = createTestUser(testApp.db, { type: "human" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -469,7 +464,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "implemented", actorId: aiUser.id },
+          token: aiAgent.token,
+          body: { toStatus: "implemented" },
         },
       );
       expect(res.status).toBe(400);
@@ -479,10 +475,9 @@ describe("Proposals API", () => {
     });
 
     it("should reject rejected → open (invalid transition)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "rejected",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -490,7 +485,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "open", actorId: humanUser.id },
+          body: { toStatus: "open" },
         },
       );
       expect(res.status).toBe(400);
@@ -500,10 +495,9 @@ describe("Proposals API", () => {
     });
 
     it("should reject implemented → open (invalid transition)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "implemented",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -511,7 +505,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "open", actorId: humanUser.id },
+          body: { toStatus: "open" },
         },
       );
       expect(res.status).toBe(400);
@@ -521,10 +515,9 @@ describe("Proposals API", () => {
     });
 
     it("should reject accepted → open (invalid transition)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -532,7 +525,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "open", actorId: humanUser.id },
+          body: { toStatus: "open" },
         },
       );
       expect(res.status).toBe(400);
@@ -543,11 +536,10 @@ describe("Proposals API", () => {
 
     // ── Role enforcement ────────────────────────────────────────
     it("should reject AI trying to accept a proposal (403)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -555,7 +547,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "accepted", actorId: aiUser.id },
+          token: aiAgent.token,
+          body: { toStatus: "accepted" },
         },
       );
       expect(res.status).toBe(403);
@@ -565,11 +558,10 @@ describe("Proposals API", () => {
     });
 
     it("should reject AI trying to reject a proposal (403)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -577,7 +569,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "rejected", actorId: aiUser.id },
+          token: aiAgent.token,
+          body: { toStatus: "rejected" },
         },
       );
       expect(res.status).toBe(403);
@@ -587,10 +580,9 @@ describe("Proposals API", () => {
     });
 
     it("should reject human trying to implement a proposal (403)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -598,7 +590,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "implemented", actorId: humanUser.id },
+          body: { toStatus: "implemented" },
         },
       );
       expect(res.status).toBe(403);
@@ -608,11 +600,10 @@ describe("Proposals API", () => {
     });
 
     it("should reject AI trying to reject from open (403)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "open",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -620,7 +611,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "rejected", actorId: aiUser.id },
+          token: aiAgent.token,
+          body: { toStatus: "rejected" },
         },
       );
       expect(res.status).toBe(403);
@@ -630,7 +622,6 @@ describe("Proposals API", () => {
     });
 
     it("should return 404 for non-existent proposal", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const fakeId = createId();
 
       const res = await authRequest(
@@ -638,26 +629,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${fakeId}/transitions`,
         {
-          body: { toStatus: "discussing", actorId: humanUser.id },
-        },
-      );
-      expect(res.status).toBe(404);
-    });
-
-    it("should return 404 for non-existent actor", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const proposal = createTestProposal(testApp.db, {
-        status: "open",
-        createdBy: humanUser.id,
-      });
-      const fakeActorId = createId();
-
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/transitions`,
-        {
-          body: { toStatus: "discussing", actorId: fakeActorId },
+          body: { toStatus: "discussing" },
         },
       );
       expect(res.status).toBe(404);
@@ -667,9 +639,8 @@ describe("Proposals API", () => {
   // ── POST /api/v1/proposals/:id/comments ──────────────────────────
   describe("POST /api/v1/proposals/:id/comments", () => {
     it("should add a comment to a proposal", async () => {
-      const user = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
-        createdBy: user.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -678,7 +649,6 @@ describe("Proposals API", () => {
         `/api/v1/proposals/${proposal.id}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "This is a great idea!",
           },
         },
@@ -687,17 +657,16 @@ describe("Proposals API", () => {
 
       const body = await res.json();
       expect(body.data.body).toBe("This is a great idea!");
-      expect(body.data.authorId).toBe(user.id);
+      expect(body.data.authorId).toBe(testApp.testUser.id);
       expect(body.data.proposalId).toBe(proposal.id);
       expect(body.data.commentType).toBe("comment");
     });
 
     it("should auto-transition open → discussing when AI agent comments", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "open",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       // AI agent comments
@@ -706,8 +675,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/comments`,
         {
+          token: aiAgent.token,
           body: {
-            authorId: aiUser.id,
             body: "I have some questions about this...",
           },
         },
@@ -724,20 +693,18 @@ describe("Proposals API", () => {
     });
 
     it("should NOT auto-transition when human comments on open proposal", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
         status: "open",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
-      // Human comments
+      // Human comments (default token is human)
       await authRequest(
         testApp.app,
         "POST",
         `/api/v1/proposals/${proposal.id}/comments`,
         {
           body: {
-            authorId: humanUser.id,
             body: "Adding more context...",
           },
         },
@@ -754,11 +721,10 @@ describe("Proposals API", () => {
     });
 
     it("should NOT auto-transition when AI comments on non-open proposal", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       // AI comments on a proposal already in "discussing"
@@ -767,8 +733,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/comments`,
         {
+          token: aiAgent.token,
           body: {
-            authorId: aiUser.id,
             body: "Here is my analysis...",
           },
         },
@@ -785,7 +751,6 @@ describe("Proposals API", () => {
     });
 
     it("should return 404 for non-existent proposal", async () => {
-      const user = createTestUser(testApp.db);
       const fakeId = createId();
 
       const res = await authRequest(
@@ -794,7 +759,6 @@ describe("Proposals API", () => {
         `/api/v1/proposals/${fakeId}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "Comment on nothing",
           },
         },
@@ -821,9 +785,8 @@ describe("Proposals API", () => {
     });
 
     it("should return comments for a proposal", async () => {
-      const user = createTestUser(testApp.db);
       const proposal = createTestProposal(testApp.db, {
-        createdBy: user.id,
+        createdBy: testApp.testUser.id,
       });
 
       // Add comments
@@ -832,7 +795,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/comments`,
         {
-          body: { authorId: user.id, body: "First comment" },
+          body: { body: "First comment" },
         },
       );
       await authRequest(
@@ -840,7 +803,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/comments`,
         {
-          body: { authorId: user.id, body: "Second comment" },
+          body: { body: "Second comment" },
         },
       );
 
@@ -898,11 +861,10 @@ describe("Proposals API", () => {
   // ── POST /api/v1/proposals/:id/implement ─────────────────────────
   describe("POST /api/v1/proposals/:id/implement", () => {
     it("should implement an accepted proposal with epics and tasks", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -910,8 +872,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [
               {
                 name: "Epic 1: Authentication",
@@ -943,11 +905,10 @@ describe("Proposals API", () => {
     });
 
     it("should create epics with proposalId set", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       await authRequest(
@@ -955,8 +916,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [{ name: "Epic A" }],
             tasks: [],
           },
@@ -976,11 +937,10 @@ describe("Proposals API", () => {
     });
 
     it("should create tasks with proposalId set", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       await authRequest(
@@ -988,8 +948,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [],
             tasks: [{ title: "Standalone Task" }],
           },
@@ -1009,11 +969,10 @@ describe("Proposals API", () => {
     });
 
     it("should transition to implemented", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       await authRequest(
@@ -1021,8 +980,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [],
             tasks: [{ title: "Task 1" }],
           },
@@ -1040,11 +999,10 @@ describe("Proposals API", () => {
     });
 
     it("should add a summary comment after implementation", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       await authRequest(
@@ -1052,8 +1010,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [{ name: "Epic 1" }],
             tasks: [{ title: "Task 1" }, { title: "Task 2" }],
           },
@@ -1076,11 +1034,10 @@ describe("Proposals API", () => {
     });
 
     it("should fail if proposal is not in accepted status (open)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "open",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -1088,8 +1045,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [],
             tasks: [{ title: "Task" }],
           },
@@ -1102,11 +1059,10 @@ describe("Proposals API", () => {
     });
 
     it("should fail if proposal is not in accepted status (discussing)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -1114,8 +1070,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [],
             tasks: [{ title: "Task" }],
           },
@@ -1128,11 +1084,10 @@ describe("Proposals API", () => {
     });
 
     it("should fail if proposal is not in accepted status (rejected)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "rejected",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -1140,8 +1095,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [],
             tasks: [{ title: "Task" }],
           },
@@ -1154,11 +1109,10 @@ describe("Proposals API", () => {
     });
 
     it("should fail if proposal is not in accepted status (implemented)", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "implemented",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       const res = await authRequest(
@@ -1166,8 +1120,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [],
             tasks: [{ title: "Task" }],
           },
@@ -1180,7 +1134,7 @@ describe("Proposals API", () => {
     });
 
     it("should return 404 for non-existent proposal", async () => {
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const fakeId = createId();
 
       const res = await authRequest(
@@ -1188,8 +1142,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${fakeId}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [],
             tasks: [{ title: "Task" }],
           },
@@ -1199,11 +1153,10 @@ describe("Proposals API", () => {
     });
 
     it("should link tasks to created epics via epicIndex", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       await authRequest(
@@ -1211,8 +1164,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [{ name: "Epic A" }, { name: "Epic B" }],
             tasks: [
               { title: "Task under Epic A", epicIndex: 0 },
@@ -1262,9 +1215,8 @@ describe("Proposals API", () => {
   // ── Comments appear on proposal detail ───────────────────────────
   describe("Comments on proposal detail", () => {
     it("should include comments in proposal detail response", async () => {
-      const user = createTestUser(testApp.db, { type: "human" });
       const proposal = createTestProposal(testApp.db, {
-        createdBy: user.id,
+        createdBy: testApp.testUser.id,
       });
 
       // Add comments
@@ -1273,7 +1225,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/comments`,
         {
-          body: { authorId: user.id, body: "Great idea!" },
+          body: { body: "Great idea!" },
         },
       );
       await authRequest(
@@ -1281,7 +1233,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/comments`,
         {
-          body: { authorId: user.id, body: "Let's proceed" },
+          body: { body: "Let's proceed" },
         },
       );
 
@@ -1302,11 +1254,10 @@ describe("Proposals API", () => {
   // ── Work items appear after implementation ───────────────────────
   describe("Work items after implementation", () => {
     it("should show work items in proposal detail after implementation", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       // Implement
@@ -1315,8 +1266,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [{ name: "Auth Epic" }],
             tasks: [
               { title: "JWT Setup", epicIndex: 0 },
@@ -1343,10 +1294,9 @@ describe("Proposals API", () => {
   // ── Complete workflow integration test ───────────────────────────
   describe("Full proposal workflow", () => {
     it("should support the complete proposal lifecycle", async () => {
-      const humanUser = createTestUser(testApp.db, { type: "human" });
-      const aiUser = createTestUser(testApp.db, { type: "ai_agent" });
+      const aiAgent = createTestAiAgent(testApp.db);
       const project = createTestProject(testApp.db, {
-        createdBy: humanUser.id,
+        createdBy: testApp.testUser.id,
       });
 
       // 1. Human creates a proposal
@@ -1358,7 +1308,7 @@ describe("Proposals API", () => {
           body: {
             title: "Add dark mode",
             description: "Users want dark mode support",
-            createdBy: humanUser.id,
+            createdBy: testApp.testUser.id,
           },
         },
       );
@@ -1371,8 +1321,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposalId}/comments`,
         {
+          token: aiAgent.token,
           body: {
-            authorId: aiUser.id,
             body: "I can implement dark mode using CSS custom properties. Should we support system preference detection?",
           },
         },
@@ -1386,13 +1336,13 @@ describe("Proposals API", () => {
       );
       expect((await proposalRes.json()).data.status).toBe("discussing");
 
-      // 3. Human approves
+      // 3. Human approves (default token = human admin)
       const acceptRes = await authRequest(
         testApp.app,
         "POST",
         `/api/v1/proposals/${proposalId}/transitions`,
         {
-          body: { toStatus: "accepted", actorId: humanUser.id },
+          body: { toStatus: "accepted" },
         },
       );
       expect(acceptRes.status).toBe(200);
@@ -1404,8 +1354,8 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposalId}/implement`,
         {
+          token: aiAgent.token,
           body: {
-            actorId: aiUser.id,
             epics: [
               {
                 name: "Dark Mode Implementation",
