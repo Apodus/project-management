@@ -19,6 +19,7 @@ import { createGitRefRoutes } from "./routes/git-refs.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createUserRoutes } from "./routes/users.js";
 import { createEventStreamRoutes } from "./routes/events.js";
+import { createWebhookRoutes } from "./routes/webhooks.js";
 import { initializeEventListeners } from "./events/index.js";
 import type { AppVariables } from "./types.js";
 
@@ -88,6 +89,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
   app.route("/", createActivityRoutes());
   app.route("/", createMilestoneRoutes());
   app.route("/", createGitRefRoutes());
+  app.route("/", createWebhookRoutes());
 
   // ── Health endpoint ───────────────────────────────────────────────
   const healthRoute = createRoute({
