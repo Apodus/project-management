@@ -21,6 +21,7 @@ import { TaskDetailPage } from "@/pages/task-detail-page";
 import { TaskListPage } from "@/pages/task-list-page";
 import { BoardPage } from "@/pages/board-page";
 import { UsersPage } from "@/pages/settings/users-page";
+import { BackupPage } from "@/pages/settings/backup-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
 
 // ---- Root route (no layout — just an outlet) ----
@@ -200,6 +201,13 @@ const settingsUsersRoute = createRoute({
   component: UsersPage,
 });
 
+// /settings/backup — database backup
+const settingsBackupRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/settings/backup",
+  component: BackupPage,
+});
+
 // Build the route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -220,6 +228,7 @@ const routeTree = rootRoute.addChildren([
     taskDetailRoute,
     epicDetailRoute,
     settingsUsersRoute,
+    settingsBackupRoute,
   ]),
 ]);
 

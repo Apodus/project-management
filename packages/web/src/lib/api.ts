@@ -429,6 +429,47 @@ export async function deleteMilestone(id: string): Promise<Milestone> {
   });
 }
 
+// ---- Export/Import API ----
+
+export async function exportProject(
+  projectId: string,
+  includeActivity?: boolean,
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (includeActivity) params.set("include_activity", "true");
+  const query = params.toString();
+  const url = `${BASE_URL}/api/v1/projects/${projectId}/export${query ? `?${query}` : ""}`;
+
+  const response = await fetch(url, {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, "EXPORT_ERROR", "Failed to export project");
+  }
+
+  return response.blob();
+}
+
+export async function importProject(data: unknown): Promise<Project> {
+  return apiFetch<Project>("/projects/import", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export interface BackupResult {
+  path: string;
+  size: number;
+  timestamp: string;
+}
+
+export async function backupDatabase(): Promise<BackupResult> {
+  return apiFetch<BackupResult>("/backup", {
+    method: "POST",
+  });
+}
+
 // ---- Auth API ----
 
 export interface SetupStatus {

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { FolderOpen, Plus } from "lucide-react";
+import { Download, FolderOpen, Plus, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,7 @@ import { useProjects, useCreateProject } from "@/hooks/use-projects";
 import { useProjectStore } from "@/stores/project-store";
 import { formatRelativeTime, formatStatus, getStatusColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { exportProject, importProject } from "@/lib/api";
 
 export function ProjectListPage() {
   const navigate = useNavigate();
@@ -36,10 +37,60 @@ export function ProjectListPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleProjectClick(project: { id: string; name: string }) {
     setCurrentProject(project.id, project.name);
     navigate({ to: "/projects/$projectId/proposals", params: { projectId: project.id } });
+  }
+
+  async function handleExportProject(e: React.MouseEvent, projectId: string, projectName: string) {
+    e.stopPropagation();
+    try {
+      const blob = await exportProject(projectId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projectName.replace(/[^a-z0-9]/gi, "-").toLowerCase()}-export.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Export error — silently fail for now
+    }
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportError(null);
+
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const project = await importProject(data);
+      refetch();
+      handleProjectClick(project);
+    } catch (err) {
+      setImportError(
+        err instanceof SyntaxError
+          ? "Invalid JSON file"
+          : err instanceof Error
+            ? err.message
+            : "Import failed",
+      );
+    } finally {
+      setImporting(false);
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   }
 
   async function handleCreateProject(e: React.FormEvent) {
@@ -69,7 +120,24 @@ export function ProjectListPage() {
           <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
         </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="size-4" />
+            {importing ? "Importing..." : "Import Project"}
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="size-4" />
@@ -135,7 +203,24 @@ export function ProjectListPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
+
+      {/* Import error */}
+      {importError && (
+        <Card className="border-destructive/50 bg-destructive/10">
+          <CardContent className="flex flex-col items-center gap-3 py-4">
+            <p className="text-sm text-destructive">{importError}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportError(null)}
+            >
+              Dismiss
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Error state */}
       {error && (
@@ -223,9 +308,20 @@ export function ProjectListPage() {
                     No description
                   </p>
                 )}
-                <p className="mt-3 text-xs text-muted-foreground/70">
-                  Created {formatRelativeTime(project.createdAt)}
-                </p>
+                <div className="mt-3 flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground/70">
+                    Created {formatRelativeTime(project.createdAt)}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-7 text-muted-foreground/50 hover:text-foreground"
+                    onClick={(e) => handleExportProject(e, project.id, project.name)}
+                    title="Export project"
+                  >
+                    <Download className="size-3.5" />
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
