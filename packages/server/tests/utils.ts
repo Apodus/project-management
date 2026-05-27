@@ -446,7 +446,7 @@ export function createTestAiAgent(
     displayName: string;
     email: string;
     role: string;
-    poolMember: boolean;
+    poolId: string | null;
   }> = {},
 ): { user: TestUser; token: string } {
   const ts = new Date().toISOString();
@@ -455,7 +455,6 @@ export function createTestAiAgent(
   const displayName = overrides.displayName ?? `AI Agent ${id.slice(-6)}`;
   const token = `ai-token-${id}`;
   const tokenHash = bcrypt.hashSync(token, 10);
-  const poolMember = overrides.poolMember ?? true;
 
   db.insert(users)
     .values({
@@ -466,7 +465,7 @@ export function createTestAiAgent(
       role: overrides.role ?? "member",
       type: "ai_agent",
       apiTokenHash: tokenHash,
-      poolMember,
+      poolId: overrides.poolId ?? null,
       createdAt: ts,
       updatedAt: ts,
     })

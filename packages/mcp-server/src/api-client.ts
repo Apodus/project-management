@@ -442,7 +442,6 @@ export async function addTaskComment(
     "POST",
     `/tasks/${encodeURIComponent(taskId)}/comments`,
     {
-      authorId: "mcp-agent",
       body,
       ...(commentType ? { commentType } : {}),
       ...(metadata !== undefined ? { metadata } : {}),
@@ -637,10 +636,10 @@ export interface AgentClaimResponse {
 }
 
 /**
- * Claim an agent from the pool using the pool secret.
+ * Claim an agent from a named pool using the pool secret.
  * This is an unauthenticated call (authenticated by pool secret in body).
  */
-export async function claimAgent(poolSecret: string): Promise<AgentClaimResponse> {
+export async function claimAgent(poolName: string, poolSecret: string): Promise<AgentClaimResponse> {
   const url = `${getBaseUrl()}/api/v1/auth/agent-claim`;
 
   const res = await fetch(url, {
@@ -649,7 +648,7 @@ export async function claimAgent(poolSecret: string): Promise<AgentClaimResponse
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ poolSecret }),
+    body: JSON.stringify({ poolName, poolSecret }),
   });
 
   const json = await res.json();

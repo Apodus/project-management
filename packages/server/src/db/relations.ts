@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
   workspaces,
+  agentPools,
   users,
   projects,
   milestones,
@@ -24,9 +25,25 @@ export const workspacesRelations = relations(workspaces, ({ many }) => ({
   projects: many(projects),
 }));
 
+// ─── agent_pools ──────────────────────────────────────────────────
+export const agentPoolsRelations = relations(agentPools, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [agentPools.createdBy],
+    references: [users.id],
+    relationName: "poolCreator",
+  }),
+  agents: many(users, { relationName: "poolAgents" }),
+}));
+
 // ─── users ─────────────────────────────────────────────────────────
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
+  pool: one(agentPools, {
+    fields: [users.poolId],
+    references: [agentPools.id],
+    relationName: "poolAgents",
+  }),
   createdProjects: many(projects),
+  createdPools: many(agentPools, { relationName: "poolCreator" }),
   createdProposals: many(proposals, { relationName: "proposalCreator" }),
   resolvedProposals: many(proposals, { relationName: "proposalResolver" }),
   createdEpics: many(epics, { relationName: "epicCreator" }),

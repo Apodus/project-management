@@ -13,10 +13,25 @@ export const workspaces = sqliteTable("workspaces", {
   name: text("name").notNull(),
   description: text("description"),
   settings: text("settings", { mode: "json" }),
-  poolSecretHash: text("pool_secret_hash"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+// ─── agent_pools ──────────────────────────────────────────────────
+export const agentPools = sqliteTable(
+  "agent_pools",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    secretHash: text("secret_hash"),
+    description: text("description"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    // FK to users.id — not declared with .references() to avoid circular TS ref
+    createdBy: text("created_by"),
+  },
+  (table) => [uniqueIndex("idx_agent_pools_name").on(table.name)],
+);
 
 // ─── users ─────────────────────────────────────────────────────────
 export const users = sqliteTable(
@@ -31,7 +46,7 @@ export const users = sqliteTable(
     avatarUrl: text("avatar_url"),
     passwordHash: text("password_hash"),
     apiTokenHash: text("api_token_hash"),
-    poolMember: integer("pool_member", { mode: "boolean" }).notNull().default(false),
+    poolId: text("pool_id").references(() => agentPools.id),
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),

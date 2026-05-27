@@ -1,7 +1,7 @@
-import { eq, and, lt, isNull, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createId } from "@pm/shared";
-import { getDb, getRawDb, agentClaims, users, tasks, workspaces } from "../db/index.js";
+import { getDb, getRawDb, agentClaims, users, tasks, agentPools } from "../db/index.js";
 import * as authService from "./auth.service.js";
 import { AppError } from "../types.js";
 
@@ -17,6 +17,21 @@ const GREEK_NAMES = [
 
 // ─── Types ──────────────────────────────────────────────────────────
 
+export interface PoolInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+}
+
+export interface PoolSummary extends PoolInfo {
+  agentCount: number;
+  claimedCount: number;
+  availableCount: number;
+}
+
 export interface PoolAgentStatus {
   user: {
     id: string;
@@ -24,7 +39,7 @@ export interface PoolAgentStatus {
     displayName: string;
     type: string;
     isActive: boolean;
-    poolMember: boolean;
+    poolId: string | null;
   };
   claimed: boolean;
   claimedAt: string | null;
@@ -43,82 +58,217 @@ export interface ClaimResult {
   token: string;
 }
 
-// ─── Pool secret management ─────────────────────────────────────────
+// ─── Pool CRUD ──────────────────────────────────────────────────────
 
 /**
- * Get the first workspace (there's always exactly one).
+ * Create a named agent pool with a hashed secret.
  */
-function getDefaultWorkspace() {
+export async function createPool(
+  name: string,
+  secret: string,
+  description?: string,
+  createdBy?: string,
+): Promise<PoolInfo> {
   const db = getDb();
-  return db.select().from(workspaces).limit(1).get();
+
+  // Check for duplicate name
+  const existing = db
+    .select()
+    .from(agentPools)
+    .where(eq(agentPools.name, name))
+    .get();
+  if (existing) {
+    throw new AppError(409, "POOL_NAME_EXISTS", `A pool named "${name}" already exists`);
+  }
+
+  const id = createId();
+  const ts = new Date().toISOString();
+  const secretHash = await bcrypt.hash(secret, BCRYPT_ROUNDS);
+
+  db.insert(agentPools)
+    .values({
+      id,
+      name,
+      secretHash,
+      description: description ?? null,
+      createdAt: ts,
+      updatedAt: ts,
+      createdBy: createdBy ?? null,
+    })
+    .run();
+
+  return { id, name, description: description ?? null, createdAt: ts, updatedAt: ts, createdBy: createdBy ?? null };
 }
 
 /**
- * Set the pool secret (hashes and stores in workspace).
+ * Delete a pool and deactivate all its agents.
  */
-export async function setPoolSecret(secret: string): Promise<void> {
+export function deletePool(poolId: string): void {
   const db = getDb();
-  const ws = getDefaultWorkspace();
-  if (!ws) {
-    throw new AppError(500, "NO_WORKSPACE", "No workspace found");
+
+  const pool = db.select().from(agentPools).where(eq(agentPools.id, poolId)).get();
+  if (!pool) {
+    throw new AppError(404, "POOL_NOT_FOUND", "Pool not found");
   }
 
-  const hash = await bcrypt.hash(secret, BCRYPT_ROUNDS);
-  db.update(workspaces)
-    .set({ poolSecretHash: hash, updatedAt: new Date().toISOString() })
-    .where(eq(workspaces.id, ws.id))
+  // Deactivate all agents in this pool and clear pool_id FK
+  db.update(users)
+    .set({ isActive: false, poolId: null, updatedAt: new Date().toISOString() })
+    .where(eq(users.poolId, poolId))
+    .run();
+
+  // Delete all claims for agents in this pool
+  const rawDb = getRawDb();
+  rawDb.prepare(
+    `DELETE FROM agent_claims WHERE user_id IN (SELECT id FROM users WHERE pool_id = ?)`,
+  ).run(poolId);
+
+  // Delete the pool
+  db.delete(agentPools).where(eq(agentPools.id, poolId)).run();
+}
+
+/**
+ * Update a pool's secret hash.
+ */
+export async function updatePoolSecret(poolId: string, newSecret: string): Promise<void> {
+  const db = getDb();
+
+  const pool = db.select().from(agentPools).where(eq(agentPools.id, poolId)).get();
+  if (!pool) {
+    throw new AppError(404, "POOL_NOT_FOUND", "Pool not found");
+  }
+
+  const secretHash = await bcrypt.hash(newSecret, BCRYPT_ROUNDS);
+  db.update(agentPools)
+    .set({ secretHash, updatedAt: new Date().toISOString() })
+    .where(eq(agentPools.id, poolId))
     .run();
 }
 
 /**
- * Check if a pool secret is configured (DB or env var).
+ * Update a pool's name and/or description.
  */
-export function getPoolSecretStatus(): { isSet: boolean } {
-  const ws = getDefaultWorkspace();
-  const dbHasSecret = !!(ws?.poolSecretHash);
-  const envHasSecret = !!process.env.PM_POOL_SECRET;
-  return { isSet: dbHasSecret || envHasSecret };
+export function updatePool(
+  poolId: string,
+  updates: { name?: string; description?: string },
+): PoolInfo {
+  const db = getDb();
+
+  const pool = db.select().from(agentPools).where(eq(agentPools.id, poolId)).get();
+  if (!pool) {
+    throw new AppError(404, "POOL_NOT_FOUND", "Pool not found");
+  }
+
+  if (updates.name && updates.name !== pool.name) {
+    const existing = db.select().from(agentPools).where(eq(agentPools.name, updates.name)).get();
+    if (existing) {
+      throw new AppError(409, "POOL_NAME_EXISTS", `A pool named "${updates.name}" already exists`);
+    }
+  }
+
+  const ts = new Date().toISOString();
+  const setValues: Record<string, unknown> = { updatedAt: ts };
+  if (updates.name !== undefined) setValues.name = updates.name;
+  if (updates.description !== undefined) setValues.description = updates.description;
+
+  db.update(agentPools)
+    .set(setValues as any)
+    .where(eq(agentPools.id, poolId))
+    .run();
+
+  return {
+    id: pool.id,
+    name: updates.name ?? pool.name,
+    description: updates.description ?? pool.description,
+    createdAt: pool.createdAt,
+    updatedAt: ts,
+    createdBy: pool.createdBy,
+  };
 }
 
 /**
- * Validate the pool secret against the DB hash, falling back to PM_POOL_SECRET env var.
+ * Get pool details by ID.
  */
-async function validatePoolSecret(poolSecret: string): Promise<void> {
-  // First try DB-stored secret
-  const ws = getDefaultWorkspace();
-  if (ws?.poolSecretHash) {
-    const valid = await bcrypt.compare(poolSecret, ws.poolSecretHash);
-    if (valid) return;
-    throw new AppError(401, "INVALID_POOL_SECRET", "Invalid pool secret");
-  }
+export function getPool(poolId: string): PoolInfo | null {
+  const db = getDb();
+  const pool = db.select().from(agentPools).where(eq(agentPools.id, poolId)).get();
+  if (!pool) return null;
 
-  // Fall back to env var
-  const expected = process.env.PM_POOL_SECRET;
-  if (!expected) {
-    throw new AppError(
-      503,
-      "POOL_NOT_CONFIGURED",
-      "Agent pool is not configured. Set the pool secret via the UI or PM_POOL_SECRET environment variable.",
-    );
-  }
-  if (poolSecret !== expected) {
-    throw new AppError(401, "INVALID_POOL_SECRET", "Invalid pool secret");
-  }
+  return {
+    id: pool.id,
+    name: pool.name,
+    description: pool.description,
+    createdAt: pool.createdAt,
+    updatedAt: pool.updatedAt,
+    createdBy: pool.createdBy,
+  };
 }
 
-// ─── Batch agent creation ───────────────────────────────────────────
+/**
+ * List all pools with agent counts and claim status.
+ */
+export function listPools(): PoolSummary[] {
+  const rawDb = getRawDb();
+  const now = new Date().toISOString();
+
+  const rows = rawDb
+    .prepare(
+      `SELECT
+         p.id, p.name, p.description, p.created_at, p.updated_at, p.created_by,
+         COUNT(u.id) AS agent_count,
+         COUNT(CASE WHEN ac.id IS NOT NULL AND ac.expires_at >= ? THEN 1 END) AS claimed_count,
+         COUNT(CASE WHEN u.is_active = 1 AND (ac.id IS NULL OR ac.expires_at < ?) THEN 1 END) AS available_count
+       FROM agent_pools p
+       LEFT JOIN users u ON u.pool_id = p.id AND u.type = 'ai_agent'
+       LEFT JOIN agent_claims ac ON ac.user_id = u.id
+       GROUP BY p.id
+       ORDER BY p.name ASC`,
+    )
+    .all(now, now) as Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      created_at: string;
+      updated_at: string;
+      created_by: string | null;
+      agent_count: number;
+      claimed_count: number;
+      available_count: number;
+    }>;
+
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    createdBy: r.created_by,
+    agentCount: r.agent_count,
+    claimedCount: r.claimed_count,
+    availableCount: r.available_count,
+  }));
+}
+
+// ─── Agent creation ─────────────────────────────────────────────────
 
 /**
- * Create N AI agent users as pool members.
+ * Create N AI agent users in a specific pool.
  * Uses Greek alphabet names by default, or "{prefix} N" for custom prefixes.
  */
 export async function createAgentPool(
+  poolId: string,
   count: number,
   namePrefix?: string,
-): Promise<Array<{ id: string; username: string; displayName: string; role: string; type: string; poolMember: boolean }>> {
+): Promise<Array<{ id: string; username: string; displayName: string; role: string; type: string; poolId: string }>> {
   const db = getDb();
   const ts = new Date().toISOString();
-  const created: Array<{ id: string; username: string; displayName: string; role: string; type: string; poolMember: boolean }> = [];
+
+  const pool = db.select().from(agentPools).where(eq(agentPools.id, poolId)).get();
+  if (!pool) {
+    throw new AppError(404, "POOL_NOT_FOUND", "Pool not found");
+  }
+
+  const created: Array<{ id: string; username: string; displayName: string; role: string; type: string; poolId: string }> = [];
 
   for (let i = 0; i < count; i++) {
     const id = createId();
@@ -130,12 +280,10 @@ export async function createAgentPool(
       username = `${namePrefix.toLowerCase().replace(/\s+/g, "-")}-${i + 1}`;
     } else {
       const greekName = i < GREEK_NAMES.length ? GREEK_NAMES[i] : `Agent ${i + 1}`;
-      displayName = i < GREEK_NAMES.length ? `Agent ${greekName}` : greekName;
-      username = `agent-${greekName.toLowerCase()}`;
-      // If the name is "Agent 11", "Agent 12" etc
-      if (i >= GREEK_NAMES.length) {
-        username = `agent-${i + 1}`;
-      }
+      displayName = i < GREEK_NAMES.length ? `${pool.name}-${greekName}` : greekName;
+      username = i < GREEK_NAMES.length
+        ? `${pool.name}-${greekName.toLowerCase()}`
+        : `${pool.name}-agent-${i + 1}`;
     }
 
     // Check for duplicate username and append a suffix if needed
@@ -156,7 +304,7 @@ export async function createAgentPool(
         displayName,
         role: "member",
         type: "ai_agent",
-        poolMember: true,
+        poolId,
         createdAt: ts,
         updatedAt: ts,
       })
@@ -168,25 +316,55 @@ export async function createAgentPool(
       displayName,
       role: "member",
       type: "ai_agent",
-      poolMember: true,
+      poolId,
     });
   }
 
   return created;
 }
 
-// ─── Service functions ──────────────────────────────────────────────
+// ─── Claim / Release / Heartbeat ────────────────────────────────────
 
 /**
- * Claim an available AI agent from the pool.
- *
- * - Validates the pool secret
- * - Finds the first active AI agent user that is a pool member with no active (non-expired) claim
- * - Atomically creates a claim and generates a fresh API token
- * - Returns the user info and raw token, or null if no agents available
+ * Auto-create a "default" pool from PM_POOL_SECRET env var if no pools exist.
+ * This is for backward compatibility.
  */
-export async function claimAgent(poolSecret: string): Promise<ClaimResult | null> {
-  await validatePoolSecret(poolSecret);
+async function ensureDefaultPoolFromEnv(): Promise<void> {
+  const envSecret = process.env.PM_POOL_SECRET;
+  if (!envSecret) return;
+
+  const db = getDb();
+  const poolCount = db.select().from(agentPools).all().length;
+  if (poolCount > 0) return;
+
+  // Auto-create a default pool
+  await createPool("default", envSecret, "Auto-created from PM_POOL_SECRET environment variable");
+}
+
+/**
+ * Claim an available AI agent from a named pool.
+ */
+export async function claimAgent(poolName: string, poolSecret: string): Promise<ClaimResult | null> {
+  // Backward compat: auto-create default pool from env var
+  await ensureDefaultPoolFromEnv();
+
+  const db = getDb();
+
+  // Find pool by name
+  const pool = db.select().from(agentPools).where(eq(agentPools.name, poolName)).get();
+  if (!pool) {
+    throw new AppError(404, "POOL_NOT_FOUND", `Pool "${poolName}" not found`);
+  }
+
+  if (!pool.secretHash) {
+    throw new AppError(503, "POOL_NOT_CONFIGURED", "Pool secret is not configured");
+  }
+
+  // Validate secret
+  const valid = await bcrypt.compare(poolSecret, pool.secretHash);
+  if (!valid) {
+    throw new AppError(401, "INVALID_POOL_SECRET", "Invalid pool secret");
+  }
 
   const rawDb = getRawDb();
   const now = new Date().toISOString();
@@ -199,13 +377,13 @@ export async function claimAgent(poolSecret: string): Promise<ClaimResult | null
       .prepare(`DELETE FROM agent_claims WHERE expires_at < ?`)
       .run(now);
 
-    // Find first active AI agent pool member with no active claim
+    // Find first active AI agent in THIS pool with no active claim
     const candidate = rawDb
       .prepare(
         `SELECT u.id, u.username, u.display_name, u.role, u.type
          FROM users u
          WHERE u.type = 'ai_agent'
-           AND u.pool_member = 1
+           AND u.pool_id = ?
            AND u.is_active = 1
            AND u.id NOT IN (
              SELECT ac.user_id FROM agent_claims ac
@@ -214,7 +392,7 @@ export async function claimAgent(poolSecret: string): Promise<ClaimResult | null
          ORDER BY u.username ASC
          LIMIT 1`,
       )
-      .get(now) as
+      .get(pool.id, now) as
       | { id: string; username: string; display_name: string; role: string; type: string }
       | undefined;
 
@@ -242,7 +420,6 @@ export async function claimAgent(poolSecret: string): Promise<ClaimResult | null
   const token = await authService.createApiToken(claimedUserId);
 
   // Fetch the user record
-  const db = getDb();
   const user = db
     .select()
     .from(users)
@@ -304,17 +481,17 @@ export function heartbeat(userId: string): void {
 }
 
 /**
- * Get the status of all AI agents in the pool (pool members only).
+ * Get the status of all AI agents in a specific pool.
  */
-export function getPoolStatus(): PoolAgentStatus[] {
+export function getPoolStatus(poolId: string): PoolAgentStatus[] {
   const db = getDb();
   const now = new Date().toISOString();
 
-  // Get all AI agent users that are pool members
+  // Get all AI agent users in this pool
   const agents = db
     .select()
     .from(users)
-    .where(and(eq(users.type, "ai_agent"), eq(users.poolMember, true)))
+    .where(and(eq(users.type, "ai_agent"), eq(users.poolId, poolId)))
     .all();
 
   // Get all active (non-expired) claims
@@ -339,7 +516,54 @@ export function getPoolStatus(): PoolAgentStatus[] {
         displayName: agent.displayName,
         type: agent.type,
         isActive: agent.isActive,
-        poolMember: agent.poolMember,
+        poolId: agent.poolId,
+      },
+      claimed: !!isClaimed,
+      claimedAt: isClaimed ? claim.claimedAt : null,
+      expiresAt: isClaimed ? claim.expiresAt : null,
+      heartbeatAt: isClaimed ? claim.heartbeatAt : null,
+    };
+  });
+}
+
+/**
+ * Get status of ALL pool agents across all pools (backward compat).
+ */
+export function getAllPoolStatus(): PoolAgentStatus[] {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  // Get all AI agent users that are in any pool
+  const agents = db
+    .select()
+    .from(users)
+    .where(eq(users.type, "ai_agent"))
+    .all()
+    .filter((u) => u.poolId != null);
+
+  // Get all claims
+  const activeClaims = db
+    .select()
+    .from(agentClaims)
+    .all();
+
+  const claimMap = new Map(
+    activeClaims.map((c) => [c.userId, c]),
+  );
+
+  return agents.map((agent) => {
+    const claim = claimMap.get(agent.id);
+    const isExpired = claim ? new Date(claim.expiresAt) < new Date(now) : false;
+    const isClaimed = claim && !isExpired;
+
+    return {
+      user: {
+        id: agent.id,
+        username: agent.username,
+        displayName: agent.displayName,
+        type: agent.type,
+        isActive: agent.isActive,
+        poolId: agent.poolId,
       },
       claimed: !!isClaimed,
       claimedAt: isClaimed ? claim.claimedAt : null,
@@ -374,11 +598,6 @@ export function reclaimStaleTasks(hoursThreshold: number): void {
   const cutoff = new Date(now.getTime() - hoursThreshold * 60 * 60 * 1000).toISOString();
   const currentTime = now.toISOString();
 
-  // Find and reset stale tasks:
-  // - status = in_progress
-  // - assigned to an AI agent user
-  // - the AI agent has no active (non-expired) claim
-  // - started_at is older than the threshold
   const result = rawDb
     .prepare(
       `UPDATE tasks

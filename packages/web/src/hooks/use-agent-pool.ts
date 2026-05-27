@@ -1,51 +1,90 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  getAgentPoolStatus,
-  getPoolSecretStatus,
-  setPoolSecret,
+  listAgentPools,
+  getAgentPool,
   createAgentPool,
+  updateAgentPool,
+  deleteAgentPool,
+  updateAgentPoolSecret,
+  createPoolAgents,
   forceReleaseAgent,
 } from "@/lib/api";
 import { userKeys } from "@/hooks/use-users";
 
 export const agentPoolKeys = {
   all: ["agent-pool"] as const,
-  status: () => [...agentPoolKeys.all, "status"] as const,
-  secretStatus: () => [...agentPoolKeys.all, "secret-status"] as const,
+  pools: () => [...agentPoolKeys.all, "pools"] as const,
+  pool: (id: string) => [...agentPoolKeys.all, "pool", id] as const,
 };
 
-export function useAgentPoolStatus() {
+export function useAgentPools() {
   return useQuery({
-    queryKey: agentPoolKeys.status(),
-    queryFn: getAgentPoolStatus,
-    refetchInterval: 30_000, // Refresh every 30 seconds
+    queryKey: agentPoolKeys.pools(),
+    queryFn: listAgentPools,
+    refetchInterval: 30_000,
   });
 }
 
-export function usePoolSecretStatus() {
+export function useAgentPool(poolId: string) {
   return useQuery({
-    queryKey: agentPoolKeys.secretStatus(),
-    queryFn: getPoolSecretStatus,
+    queryKey: agentPoolKeys.pool(poolId),
+    queryFn: () => getAgentPool(poolId),
+    refetchInterval: 30_000,
+    enabled: !!poolId,
   });
 }
 
-export function useSetPoolSecret() {
+export function useCreatePool() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (secret: string) => setPoolSecret(secret),
+    mutationFn: ({ name, secret, description }: { name: string; secret: string; description?: string }) =>
+      createAgentPool(name, secret, description),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentPoolKeys.secretStatus() });
+      queryClient.invalidateQueries({ queryKey: agentPoolKeys.pools() });
     },
   });
 }
 
-export function useCreateAgentPool() {
+export function useUpdatePool() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ count, namePrefix }: { count: number; namePrefix?: string }) =>
-      createAgentPool(count, namePrefix),
+    mutationFn: ({ poolId, data }: { poolId: string; data: { name?: string; description?: string } }) =>
+      updateAgentPool(poolId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentPoolKeys.status() });
+      queryClient.invalidateQueries({ queryKey: agentPoolKeys.all });
+    },
+  });
+}
+
+export function useDeletePool() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (poolId: string) => deleteAgentPool(poolId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: agentPoolKeys.pools() });
+      queryClient.invalidateQueries({ queryKey: userKeys.list() });
+    },
+  });
+}
+
+export function useUpdatePoolSecret() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ poolId, secret }: { poolId: string; secret: string }) =>
+      updateAgentPoolSecret(poolId, secret),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: agentPoolKeys.all });
+    },
+  });
+}
+
+export function useCreatePoolAgents() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ poolId, count, namePrefix }: { poolId: string; count: number; namePrefix?: string }) =>
+      createPoolAgents(poolId, count, namePrefix),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: agentPoolKeys.all });
       queryClient.invalidateQueries({ queryKey: userKeys.list() });
     },
   });
@@ -56,7 +95,7 @@ export function useForceReleaseAgent() {
   return useMutation({
     mutationFn: (userId: string) => forceReleaseAgent(userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentPoolKeys.status() });
+      queryClient.invalidateQueries({ queryKey: agentPoolKeys.all });
     },
   });
 }

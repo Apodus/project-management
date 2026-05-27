@@ -43,6 +43,13 @@
       "when": 1780185600000,
       "tag": "0005_pool_secret_and_pool_members",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1780272000000,
+      "tag": "0006_named_agent_pools",
+      "breakpoints": true
     }
   ]
 }

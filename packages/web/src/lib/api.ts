@@ -484,7 +484,7 @@ export interface AuthUser {
   role: string;
   type: string;
   avatarUrl: string | null;
-  poolMember: boolean;
+  poolId: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -691,14 +691,29 @@ export async function createTemplateFromTask(
 
 // ---- Agent Pool API ----
 
-export interface AgentPoolStatus {
+export interface AgentPoolInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+}
+
+export interface AgentPoolSummary extends AgentPoolInfo {
+  agentCount: number;
+  claimedCount: number;
+  availableCount: number;
+}
+
+export interface PoolAgentStatus {
   user: {
     id: string;
     username: string;
     displayName: string;
     type: string;
     isActive: boolean;
-    poolMember: boolean;
+    poolId: string | null;
   };
   claimed: boolean;
   claimedAt: string | null;
@@ -706,8 +721,9 @@ export interface AgentPoolStatus {
   heartbeatAt: string | null;
 }
 
-export interface PoolSecretStatus {
-  isSet: boolean;
+export interface PoolDetailResponse {
+  pool: AgentPoolInfo;
+  agents: PoolAgentStatus[];
 }
 
 export interface PoolAgent {
@@ -716,38 +732,69 @@ export interface PoolAgent {
   displayName: string;
   role: string;
   type: string;
-  poolMember: boolean;
+  poolId: string;
 }
 
-export async function getAgentPoolStatus(): Promise<AgentPoolStatus[]> {
-  return apiFetch<AgentPoolStatus[]>("/auth/agent-pool");
+export async function listAgentPools(): Promise<AgentPoolSummary[]> {
+  return apiFetch<AgentPoolSummary[]>("/auth/agent-pools");
+}
+
+export async function getAgentPool(poolId: string): Promise<PoolDetailResponse> {
+  return apiFetch<PoolDetailResponse>(`/auth/agent-pools/${poolId}`);
+}
+
+export async function createAgentPool(
+  name: string,
+  secret: string,
+  description?: string,
+): Promise<AgentPoolInfo> {
+  return apiFetch<AgentPoolInfo>("/auth/agent-pools", {
+    method: "POST",
+    body: JSON.stringify({ name, secret, ...(description ? { description } : {}) }),
+  });
+}
+
+export async function updateAgentPool(
+  poolId: string,
+  data: { name?: string; description?: string },
+): Promise<AgentPoolInfo> {
+  return apiFetch<AgentPoolInfo>(`/auth/agent-pools/${poolId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAgentPool(poolId: string): Promise<void> {
+  await apiFetch<{ message: string }>(`/auth/agent-pools/${poolId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function updateAgentPoolSecret(
+  poolId: string,
+  secret: string,
+): Promise<void> {
+  await apiFetch<{ message: string }>(`/auth/agent-pools/${poolId}/secret`, {
+    method: "POST",
+    body: JSON.stringify({ secret }),
+  });
+}
+
+export async function createPoolAgents(
+  poolId: string,
+  count: number,
+  namePrefix?: string,
+): Promise<PoolAgent[]> {
+  return apiFetch<PoolAgent[]>(`/auth/agent-pools/${poolId}/agents`, {
+    method: "POST",
+    body: JSON.stringify({ count, ...(namePrefix ? { namePrefix } : {}) }),
+  });
 }
 
 export async function forceReleaseAgent(userId: string): Promise<void> {
   await apiFetch<{ message: string }>(`/auth/agent-pool/force-release`, {
     method: "POST",
     body: JSON.stringify({ userId }),
-  });
-}
-
-export async function setPoolSecret(secret: string): Promise<void> {
-  await apiFetch<{ message: string }>("/auth/agent-pool/secret", {
-    method: "POST",
-    body: JSON.stringify({ secret }),
-  });
-}
-
-export async function getPoolSecretStatus(): Promise<PoolSecretStatus> {
-  return apiFetch<PoolSecretStatus>("/auth/agent-pool/secret/status");
-}
-
-export async function createAgentPool(
-  count: number,
-  namePrefix?: string,
-): Promise<PoolAgent[]> {
-  return apiFetch<PoolAgent[]>("/auth/agent-pool/create", {
-    method: "POST",
-    body: JSON.stringify({ count, ...(namePrefix ? { namePrefix } : {}) }),
   });
 }
 

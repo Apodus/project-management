@@ -74,10 +74,12 @@ import {
   useActivateUser,
 } from "@/hooks/use-users";
 import {
-  useAgentPoolStatus,
-  usePoolSecretStatus,
-  useSetPoolSecret,
-  useCreateAgentPool,
+  useAgentPools,
+  useAgentPool,
+  useCreatePool,
+  useDeletePool,
+  useUpdatePoolSecret,
+  useCreatePoolAgents,
   useForceReleaseAgent,
 } from "@/hooks/use-agent-pool";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -642,149 +644,54 @@ function EditUserDialog({
   );
 }
 
-// ---- Set Pool Secret Dialog ----
+// ---- Create Pool Dialog ----
 
-function SetPoolSecretDialog({
+function CreatePoolDialog({
   open,
   onOpenChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const setSecretMutation = useSetPoolSecret();
+  const createPoolMutation = useCreatePool();
+  const [name, setName] = useState("");
   const [secret, setSecret] = useState("");
-  const [error, setError] = useState("");
+  const [description, setDescription] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function resetForm() {
+    setName("");
+    setSecret("");
+    setDescription("");
+    setErrors({});
+    createPoolMutation.reset();
+  }
 
   function handleOpenChange(newOpen: boolean) {
-    if (!newOpen) {
-      setSecret("");
-      setError("");
-      setSecretMutation.reset();
-    }
+    if (!newOpen) resetForm();
     onOpenChange(newOpen);
+  }
+
+  function validate(): boolean {
+    const newErrors: Record<string, string> = {};
+    if (!name.trim()) newErrors.name = "Pool name is required";
+    if (!secret.trim()) newErrors.secret = "Secret is required";
+    if (secret.trim().length > 0 && secret.trim().length < 8) {
+      newErrors.secret = "Secret must be at least 8 characters";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!secret.trim()) {
-      setError("Secret is required");
-      return;
-    }
-    if (secret.trim().length < 8) {
-      setError("Secret must be at least 8 characters");
-      return;
-    }
-
-    try {
-      await setSecretMutation.mutateAsync(secret.trim());
-      handleOpenChange(false);
-    } catch {
-      // Error handled by mutation state
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Lock className="size-5" />
-              Set Pool Secret
-            </DialogTitle>
-            <DialogDescription>
-              Set a shared secret that pool agents use to authenticate when claiming
-              an identity. This replaces any previous secret.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="pool-secret">Pool Secret</Label>
-              <Input
-                id="pool-secret"
-                type="password"
-                placeholder="Enter a strong secret (min 8 characters)"
-                value={secret}
-                onChange={(e) => {
-                  setSecret(e.target.value);
-                  setError("");
-                }}
-                autoFocus
-                autoComplete="off"
-              />
-              {error && (
-                <p className="text-xs text-destructive">{error}</p>
-              )}
-            </div>
-
-            {setSecretMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {setSecretMutation.error instanceof ApiError
-                  ? setSecretMutation.error.message
-                  : "Failed to set secret. Please try again."}
-              </div>
-            )}
-          </div>
-          <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={setSecretMutation.isPending}>
-              {setSecretMutation.isPending ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Set Secret"
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ---- Create Agent Pool Dialog ----
-
-function CreateAgentPoolDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const createPoolMutation = useCreateAgentPool();
-  const [count, setCount] = useState(5);
-  const [namePrefix, setNamePrefix] = useState("");
-  const [error, setError] = useState("");
-
-  function handleOpenChange(newOpen: boolean) {
-    if (!newOpen) {
-      setCount(5);
-      setNamePrefix("");
-      setError("");
-      createPoolMutation.reset();
-    }
-    onOpenChange(newOpen);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (count < 1 || count > 20) {
-      setError("Count must be between 1 and 20");
-      return;
-    }
+    if (!validate()) return;
 
     try {
       await createPoolMutation.mutateAsync({
-        count,
-        namePrefix: namePrefix.trim() || undefined,
+        name: name.trim(),
+        secret: secret.trim(),
+        description: description.trim() || undefined,
       });
       handleOpenChange(false);
     } catch {
@@ -802,15 +709,269 @@ function CreateAgentPoolDialog({
               Create Agent Pool
             </DialogTitle>
             <DialogDescription>
-              Create multiple AI agent identities for the pool. Pool agents are claimed
-              dynamically via the pool secret — they do not have static API tokens.
+              Create a named pool with its own secret. Agents can be added after creation.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="pool-count">Number of Agents</Label>
+              <Label htmlFor="pool-name">Pool Name</Label>
               <Input
-                id="pool-count"
+                id="pool-name"
+                placeholder="e.g. game-team, default"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (errors.name) setErrors((p) => ({ ...p, name: "" }));
+                }}
+                autoFocus
+              />
+              {errors.name && (
+                <p className="text-xs text-destructive">{errors.name}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pool-secret">Pool Secret</Label>
+              <Input
+                id="pool-secret"
+                type="password"
+                placeholder="Enter a strong secret (min 8 characters)"
+                value={secret}
+                onChange={(e) => {
+                  setSecret(e.target.value);
+                  if (errors.secret) setErrors((p) => ({ ...p, secret: "" }));
+                }}
+                autoComplete="off"
+              />
+              {errors.secret && (
+                <p className="text-xs text-destructive">{errors.secret}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                This secret will not be shown again after creation. Store it securely.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pool-description">Description (optional)</Label>
+              <Input
+                id="pool-description"
+                placeholder="What is this pool for?"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+
+            {createPoolMutation.isError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {createPoolMutation.error instanceof ApiError
+                  ? createPoolMutation.error.message
+                  : "Failed to create pool. Please try again."}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createPoolMutation.isPending}>
+              {createPoolMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Pool"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Update Pool Secret Dialog ----
+
+function UpdatePoolSecretDialog({
+  open,
+  onOpenChange,
+  poolId,
+  poolName,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  poolId: string;
+  poolName: string;
+}) {
+  const updateSecretMutation = useUpdatePoolSecret();
+  const [secret, setSecret] = useState("");
+  const [error, setError] = useState("");
+
+  function handleOpenChange(newOpen: boolean) {
+    if (!newOpen) {
+      setSecret("");
+      setError("");
+      updateSecretMutation.reset();
+    }
+    onOpenChange(newOpen);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!secret.trim()) {
+      setError("Secret is required");
+      return;
+    }
+    if (secret.trim().length < 8) {
+      setError("Secret must be at least 8 characters");
+      return;
+    }
+
+    try {
+      await updateSecretMutation.mutateAsync({ poolId, secret: secret.trim() });
+      handleOpenChange(false);
+    } catch {
+      // Error handled by mutation state
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="size-5" />
+              Update Secret for "{poolName}"
+            </DialogTitle>
+            <DialogDescription>
+              Set a new shared secret for this pool. Existing agents will need
+              to use the new secret on their next claim.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="update-pool-secret">New Secret</Label>
+              <Input
+                id="update-pool-secret"
+                type="password"
+                placeholder="Enter a strong secret (min 8 characters)"
+                value={secret}
+                onChange={(e) => {
+                  setSecret(e.target.value);
+                  setError("");
+                }}
+                autoFocus
+                autoComplete="off"
+              />
+              {error && (
+                <p className="text-xs text-destructive">{error}</p>
+              )}
+            </div>
+
+            {updateSecretMutation.isError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {updateSecretMutation.error instanceof ApiError
+                  ? updateSecretMutation.error.message
+                  : "Failed to update secret. Please try again."}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updateSecretMutation.isPending}>
+              {updateSecretMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Update Secret"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Add Agents to Pool Dialog ----
+
+function AddPoolAgentsDialog({
+  open,
+  onOpenChange,
+  poolId,
+  poolName,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  poolId: string;
+  poolName: string;
+}) {
+  const createAgentsMutation = useCreatePoolAgents();
+  const [count, setCount] = useState(5);
+  const [namePrefix, setNamePrefix] = useState("");
+  const [error, setError] = useState("");
+
+  function handleOpenChange(newOpen: boolean) {
+    if (!newOpen) {
+      setCount(5);
+      setNamePrefix("");
+      setError("");
+      createAgentsMutation.reset();
+    }
+    onOpenChange(newOpen);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (count < 1 || count > 20) {
+      setError("Count must be between 1 and 20");
+      return;
+    }
+
+    try {
+      await createAgentsMutation.mutateAsync({
+        poolId,
+        count,
+        namePrefix: namePrefix.trim() || undefined,
+      });
+      handleOpenChange(false);
+    } catch {
+      // Error handled by mutation state
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="size-5" />
+              Add Agents to "{poolName}"
+            </DialogTitle>
+            <DialogDescription>
+              Create AI agent identities in this pool. They will be claimed
+              dynamically via the pool secret.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="add-agents-count">Number of Agents</Label>
+              <Input
+                id="add-agents-count"
                 type="number"
                 min={1}
                 max={20}
@@ -827,29 +988,24 @@ function CreateAgentPoolDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="pool-prefix">Name Prefix (optional)</Label>
+              <Label htmlFor="add-agents-prefix">Name Prefix (optional)</Label>
               <Input
-                id="pool-prefix"
-                placeholder='Leave empty for "Agent Alpha", "Agent Beta"...'
+                id="add-agents-prefix"
+                placeholder={`Leave empty for "${poolName}-Alpha", "${poolName}-Beta"...`}
                 value={namePrefix}
                 onChange={(e) => setNamePrefix(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                {namePrefix.trim()
-                  ? `Will create: "${namePrefix.trim()} 1", "${namePrefix.trim()} 2", ...`
-                  : 'Default: "Agent Alpha", "Agent Beta", "Agent Gamma", ...'}
-              </p>
             </div>
 
             {error && (
               <p className="text-xs text-destructive">{error}</p>
             )}
 
-            {createPoolMutation.isError && (
+            {createAgentsMutation.isError && (
               <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {createPoolMutation.error instanceof ApiError
-                  ? createPoolMutation.error.message
-                  : "Failed to create agent pool. Please try again."}
+                {createAgentsMutation.error instanceof ApiError
+                  ? createAgentsMutation.error.message
+                  : "Failed to add agents. Please try again."}
               </div>
             )}
           </div>
@@ -861,8 +1017,8 @@ function CreateAgentPoolDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={createPoolMutation.isPending}>
-              {createPoolMutation.isPending ? (
+            <Button type="submit" disabled={createAgentsMutation.isPending}>
+              {createAgentsMutation.isPending ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
                   Creating...
@@ -1155,7 +1311,7 @@ function PoolAgentRow({
   agent,
 }: {
   agent: {
-    user: { id: string; username: string; displayName: string; type: string; isActive: boolean; poolMember: boolean };
+    user: { id: string; username: string; displayName: string; type: string; isActive: boolean; poolId: string | null };
     claimed: boolean;
     claimedAt: string | null;
     expiresAt: string | null;
@@ -1420,7 +1576,7 @@ function HumanUsersSection({ users }: { users: AuthUser[] }) {
 function IndividualAgentsSection({ users }: { users: AuthUser[] }) {
   const [createOpen, setCreateOpen] = useState(false);
   const individualAgents = users.filter(
-    (u) => u.type === "ai_agent" && !u.poolMember,
+    (u) => u.type === "ai_agent" && !u.poolId,
   );
 
   return (
@@ -1488,15 +1644,199 @@ function IndividualAgentsSection({ users }: { users: AuthUser[] }) {
   );
 }
 
+// ---- Pool Card (individual pool within the section) ----
+
+function PoolCard({
+  pool,
+}: {
+  pool: {
+    id: string;
+    name: string;
+    description: string | null;
+    agentCount: number;
+    claimedCount: number;
+    availableCount: number;
+  };
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [secretOpen, setSecretOpen] = useState(false);
+  const [addAgentsOpen, setAddAgentsOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const deleteMutation = useDeletePool();
+
+  const { data: poolDetail } = useAgentPool(expanded ? pool.id : "");
+
+  async function handleDelete() {
+    try {
+      await deleteMutation.mutateAsync(pool.id);
+      setDeleteConfirmOpen(false);
+    } catch {
+      // Error handled by mutation state
+    }
+  }
+
+  return (
+    <div className="rounded-md border">
+      <div className="flex items-center justify-between px-4 py-3">
+        <button
+          className="flex flex-1 items-center gap-3 text-left"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <Server className="size-4 shrink-0 text-muted-foreground" />
+          <div>
+            <div className="font-medium">{pool.name}</div>
+            {pool.description && (
+              <div className="text-xs text-muted-foreground">{pool.description}</div>
+            )}
+          </div>
+          <div className="ml-4 flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">
+              {pool.agentCount} agent{pool.agentCount !== 1 ? "s" : ""}
+            </Badge>
+            {pool.claimedCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="border-blue-500/30 bg-blue-500/10 text-xs text-blue-700 dark:text-blue-400"
+              >
+                {pool.claimedCount} claimed
+              </Badge>
+            )}
+            <Badge
+              variant="secondary"
+              className="border-green-500/30 bg-green-500/10 text-xs text-green-700 dark:text-green-400"
+            >
+              {pool.availableCount} available
+            </Badge>
+          </div>
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm">
+              <MoreHorizontal className="size-4" />
+              <span className="sr-only">Actions for {pool.name}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setAddAgentsOpen(true)}>
+              <UserPlus className="mr-2 size-4" />
+              Add Agents
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSecretOpen(true)}>
+              <Lock className="mr-2 size-4" />
+              Update Secret
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => setDeleteConfirmOpen(true)}
+              className="text-destructive focus:text-destructive"
+            >
+              <X className="mr-2 size-4" />
+              Delete Pool
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {expanded && poolDetail && (
+        <div className="border-t px-4 py-3">
+          {poolDetail.agents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-sm text-muted-foreground">
+              <Bot className="mb-2 size-8 text-muted-foreground/50" />
+              No agents in this pool yet.
+              <Button
+                className="mt-2"
+                size="sm"
+                variant="outline"
+                onClick={() => setAddAgentsOpen(true)}
+              >
+                <Plus className="size-4" />
+                Add Agents
+              </Button>
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Agent</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Claimed Since</TableHead>
+                    <TableHead>Heartbeat</TableHead>
+                    <TableHead className="w-12 text-right">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {poolDetail.agents.map((agent) => (
+                    <PoolAgentRow key={agent.user.id} agent={agent} />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+      )}
+
+      <UpdatePoolSecretDialog
+        open={secretOpen}
+        onOpenChange={setSecretOpen}
+        poolId={pool.id}
+        poolName={pool.name}
+      />
+      <AddPoolAgentsDialog
+        open={addAgentsOpen}
+        onOpenChange={setAddAgentsOpen}
+        poolId={pool.id}
+        poolName={pool.name}
+      />
+
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Pool "{pool.name}"</DialogTitle>
+            <DialogDescription>
+              This will delete the pool and deactivate all {pool.agentCount} agent{pool.agentCount !== 1 ? "s" : ""} in it.
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteMutation.isError && (
+            <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {deleteMutation.error instanceof ApiError
+                ? deleteMutation.error.message
+                : "Failed to delete pool. Please try again."}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Pool"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ---- Agent Pool Section ----
 
 function AgentPoolSection() {
-  const { data: poolStatus, isLoading: poolLoading } = useAgentPoolStatus();
-  const { data: secretStatus, isLoading: secretLoading } = usePoolSecretStatus();
-  const [secretOpen, setSecretOpen] = useState(false);
+  const { data: pools, isLoading } = useAgentPools();
   const [createPoolOpen, setCreatePoolOpen] = useState(false);
-
-  const isLoading = poolLoading || secretLoading;
 
   if (isLoading) {
     return (
@@ -1515,10 +1855,7 @@ function AgentPoolSection() {
     );
   }
 
-  const agents = poolStatus ?? [];
-  const totalAgents = agents.length;
-  const claimedAgents = agents.filter((a) => a.claimed).length;
-  const availableAgents = agents.filter((a) => a.user.isActive && !a.claimed).length;
+  const poolList = pools ?? [];
 
   return (
     <Card>
@@ -1527,71 +1864,41 @@ function AgentPoolSection() {
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <Wifi className="size-4" />
-              Agent Pool
+              Agent Pools
             </CardTitle>
             <CardDescription>
-              {totalAgents === 0
-                ? "No pool agents. Create a pool to get started."
-                : `${totalAgents} agent${totalAgents !== 1 ? "s" : ""} total, ${claimedAgents} claimed, ${availableAgents} available`}
+              {poolList.length === 0
+                ? "No pools configured. Create a pool to get started."
+                : `${poolList.length} pool${poolList.length !== 1 ? "s" : ""}`}
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setSecretOpen(true)}>
-              <Lock className="size-4" />
-              {secretStatus?.isSet ? "Update Secret" : "Set Secret"}
-            </Button>
-            <Button size="sm" onClick={() => setCreatePoolOpen(true)}>
+          <Button size="sm" onClick={() => setCreatePoolOpen(true)}>
+            <Plus className="size-4" />
+            Create Pool
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {poolList.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8">
+            <Server className="mb-3 size-10 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">No pools yet.</p>
+            <Button
+              className="mt-3"
+              size="sm"
+              variant="outline"
+              onClick={() => setCreatePoolOpen(true)}
+            >
               <Plus className="size-4" />
               Create Pool
             </Button>
           </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Secret status */}
-        <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-          {secretStatus?.isSet ? (
-            <>
-              <Lock className="size-4 text-green-600 dark:text-green-400" />
-              <span className="text-green-700 dark:text-green-400">Pool secret is configured</span>
-            </>
-          ) : (
-            <>
-              <Unlock className="size-4 text-amber-600 dark:text-amber-400" />
-              <span className="text-amber-700 dark:text-amber-400">
-                Pool secret not set — agents cannot claim identities
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Pool agents table */}
-        {totalAgents > 0 && (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Claimed Since</TableHead>
-                  <TableHead>Heartbeat</TableHead>
-                  <TableHead className="w-12 text-right">
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {agents.map((agent) => (
-                  <PoolAgentRow key={agent.user.id} agent={agent} />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+        ) : (
+          poolList.map((pool) => <PoolCard key={pool.id} pool={pool} />)
         )}
       </CardContent>
 
-      <SetPoolSecretDialog open={secretOpen} onOpenChange={setSecretOpen} />
-      <CreateAgentPoolDialog open={createPoolOpen} onOpenChange={setCreatePoolOpen} />
+      <CreatePoolDialog open={createPoolOpen} onOpenChange={setCreatePoolOpen} />
     </Card>
   );
 }

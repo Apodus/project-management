@@ -45,8 +45,10 @@ async function autoClaimAgent(): Promise<boolean> {
     return false;
   }
 
+  const poolName = process.env.PM_POOL_NAME ?? "default";
+
   try {
-    const result = await claimAgent(poolSecret);
+    const result = await claimAgent(poolName, poolSecret);
     const identity = getAgentIdentity();
     process.stderr.write(
       `Agent claimed: ${identity?.displayName ?? result.user.username} (${result.user.id})\n`,
