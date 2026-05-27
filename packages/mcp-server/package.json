@@ -15,14 +15,17 @@
     "start": "node dist/index.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"No tests yet\""
+    "test": "vitest run"
   },
   "dependencies": {
-    "@pm/shared": "workspace:*"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@pm/shared": "workspace:*",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "typescript": "^5",
     "@types/node": "^22",
-    "tsx": "^4"
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.7"
   }
 }
