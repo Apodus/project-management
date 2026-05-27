@@ -5,6 +5,7 @@ import {
   closeDb,
   users,
   projects,
+  proposals,
   workspaces,
 } from "../src/db/index.js";
 import type { AppDatabase } from "../src/db/index.js";
@@ -163,6 +164,78 @@ export function createTestProject(
     name,
     slug,
     status,
+  };
+}
+
+export interface TestProposal {
+  id: string;
+  projectId: string;
+  title: string;
+  status: string;
+  createdBy: string;
+}
+
+/**
+ * Insert a proposal into the test database.
+ * Creates a project and user if not provided.
+ *
+ * @param db - The Drizzle database instance
+ * @param overrides - Optional field overrides
+ */
+export function createTestProposal(
+  db: AppDatabase,
+  overrides: Partial<{
+    id: string;
+    projectId: string;
+    title: string;
+    description: string;
+    status: string;
+    createdBy: string;
+    resolvedBy: string;
+    resolvedAt: string;
+  }> = {},
+): TestProposal {
+  const ts = new Date().toISOString();
+  const id = overrides.id ?? createId();
+
+  // Create project if not provided
+  let projectId = overrides.projectId;
+  if (!projectId) {
+    const project = createTestProject(db);
+    projectId = project.id;
+  }
+
+  // Create user if not provided
+  let createdBy = overrides.createdBy;
+  if (!createdBy) {
+    const user = createTestUser(db);
+    createdBy = user.id;
+  }
+
+  const title = overrides.title ?? `Test Proposal ${id.slice(-6)}`;
+  const status = overrides.status ?? "open";
+
+  db.insert(proposals)
+    .values({
+      id,
+      projectId,
+      title,
+      description: overrides.description ?? null,
+      status,
+      createdBy,
+      resolvedBy: overrides.resolvedBy ?? null,
+      resolvedAt: overrides.resolvedAt ?? null,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+    .run();
+
+  return {
+    id,
+    projectId,
+    title,
+    status,
+    createdBy,
   };
 }
 

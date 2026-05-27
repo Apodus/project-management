@@ -6,6 +6,7 @@ import { loggerMiddleware } from "./middleware/logger.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { createProjectRoutes } from "./routes/projects.js";
+import { createProposalRoutes } from "./routes/proposals.js";
 import type { AppVariables } from "./types.js";
 
 /**
@@ -54,6 +55,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
 
   // ── Resource routes ───────────────────────────────────────────────
   app.route("/", createProjectRoutes());
+  app.route("/", createProposalRoutes());
 
   // ── Health endpoint ───────────────────────────────────────────────
   const healthRoute = createRoute({
