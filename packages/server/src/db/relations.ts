@@ -1,0 +1,213 @@
+import { relations } from "drizzle-orm";
+import {
+  workspaces,
+  users,
+  projects,
+  milestones,
+  proposals,
+  epics,
+  tasks,
+  taskDependencies,
+  labels,
+  taskLabels,
+  comments,
+  activityLog,
+  gitRefs,
+} from "./schema.js";
+
+// ─── workspaces ────────────────────────────────────────────────────
+export const workspacesRelations = relations(workspaces, ({ many }) => ({
+  projects: many(projects),
+}));
+
+// ─── users ─────────────────────────────────────────────────────────
+export const usersRelations = relations(users, ({ many }) => ({
+  createdProjects: many(projects),
+  createdProposals: many(proposals, { relationName: "proposalCreator" }),
+  resolvedProposals: many(proposals, { relationName: "proposalResolver" }),
+  createdEpics: many(epics),
+  assignedTasks: many(tasks, { relationName: "taskAssignee" }),
+  reportedTasks: many(tasks, { relationName: "taskReporter" }),
+  comments: many(comments),
+  activityLogs: many(activityLog),
+}));
+
+// ─── projects ──────────────────────────────────────────────────────
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  workspace: one(workspaces, {
+    fields: [projects.workspaceId],
+    references: [workspaces.id],
+  }),
+  creator: one(users, {
+    fields: [projects.createdBy],
+    references: [users.id],
+  }),
+  proposals: many(proposals),
+  epics: many(epics),
+  tasks: many(tasks),
+  labels: many(labels),
+  milestones: many(milestones),
+  activityLogs: many(activityLog),
+}));
+
+// ─── milestones ────────────────────────────────────────────────────
+export const milestonesRelations = relations(milestones, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [milestones.projectId],
+    references: [projects.id],
+  }),
+  epics: many(epics),
+}));
+
+// ─── proposals ─────────────────────────────────────────────────────
+export const proposalsRelations = relations(proposals, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [proposals.projectId],
+    references: [projects.id],
+  }),
+  creator: one(users, {
+    fields: [proposals.createdBy],
+    references: [users.id],
+    relationName: "proposalCreator",
+  }),
+  resolver: one(users, {
+    fields: [proposals.resolvedBy],
+    references: [users.id],
+    relationName: "proposalResolver",
+  }),
+  epics: many(epics),
+  tasks: many(tasks),
+  comments: many(comments),
+}));
+
+// ─── epics ─────────────────────────────────────────────────────────
+export const epicsRelations = relations(epics, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [epics.projectId],
+    references: [projects.id],
+  }),
+  proposal: one(proposals, {
+    fields: [epics.proposalId],
+    references: [proposals.id],
+  }),
+  milestone: one(milestones, {
+    fields: [epics.milestoneId],
+    references: [milestones.id],
+  }),
+  creator: one(users, {
+    fields: [epics.createdBy],
+    references: [users.id],
+  }),
+  tasks: many(tasks),
+}));
+
+// ─── tasks ─────────────────────────────────────────────────────────
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [tasks.projectId],
+    references: [projects.id],
+  }),
+  proposal: one(proposals, {
+    fields: [tasks.proposalId],
+    references: [proposals.id],
+  }),
+  epic: one(epics, {
+    fields: [tasks.epicId],
+    references: [epics.id],
+  }),
+  parentTask: one(tasks, {
+    fields: [tasks.parentTaskId],
+    references: [tasks.id],
+    relationName: "subtasks",
+  }),
+  subtasks: many(tasks, { relationName: "subtasks" }),
+  assignee: one(users, {
+    fields: [tasks.assigneeId],
+    references: [users.id],
+    relationName: "taskAssignee",
+  }),
+  reporter: one(users, {
+    fields: [tasks.reporterId],
+    references: [users.id],
+    relationName: "taskReporter",
+  }),
+  dependencies: many(taskDependencies, { relationName: "taskDeps" }),
+  dependents: many(taskDependencies, { relationName: "taskDependents" }),
+  taskLabels: many(taskLabels),
+  comments: many(comments),
+  gitRefs: many(gitRefs),
+}));
+
+// ─── task_dependencies ─────────────────────────────────────────────
+export const taskDependenciesRelations = relations(
+  taskDependencies,
+  ({ one }) => ({
+    task: one(tasks, {
+      fields: [taskDependencies.taskId],
+      references: [tasks.id],
+      relationName: "taskDeps",
+    }),
+    dependsOnTask: one(tasks, {
+      fields: [taskDependencies.dependsOnTaskId],
+      references: [tasks.id],
+      relationName: "taskDependents",
+    }),
+  }),
+);
+
+// ─── labels ────────────────────────────────────────────────────────
+export const labelsRelations = relations(labels, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [labels.projectId],
+    references: [projects.id],
+  }),
+  taskLabels: many(taskLabels),
+}));
+
+// ─── task_labels ───────────────────────────────────────────────────
+export const taskLabelsRelations = relations(taskLabels, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskLabels.taskId],
+    references: [tasks.id],
+  }),
+  label: one(labels, {
+    fields: [taskLabels.labelId],
+    references: [labels.id],
+  }),
+}));
+
+// ─── comments ──────────────────────────────────────────────────────
+export const commentsRelations = relations(comments, ({ one }) => ({
+  task: one(tasks, {
+    fields: [comments.taskId],
+    references: [tasks.id],
+  }),
+  proposal: one(proposals, {
+    fields: [comments.proposalId],
+    references: [proposals.id],
+  }),
+  author: one(users, {
+    fields: [comments.authorId],
+    references: [users.id],
+  }),
+}));
+
+// ─── activity_log ──────────────────────────────────────────────────
+export const activityLogRelations = relations(activityLog, ({ one }) => ({
+  project: one(projects, {
+    fields: [activityLog.projectId],
+    references: [projects.id],
+  }),
+  actor: one(users, {
+    fields: [activityLog.actorId],
+    references: [users.id],
+  }),
+}));
+
+// ─── git_refs ──────────────────────────────────────────────────────
+export const gitRefsRelations = relations(gitRefs, ({ one }) => ({
+  task: one(tasks, {
+    fields: [gitRefs.taskId],
+    references: [tasks.id],
+  }),
+}));

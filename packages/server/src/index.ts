@@ -1,5 +1,9 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { initializeDatabase, closeDb } from "./db/index.js";
+
+// Initialize the database before starting the server
+initializeDatabase();
 
 const app = new Hono();
 
@@ -17,5 +21,15 @@ serve({
   port,
   hostname: host,
 });
+
+// Graceful shutdown
+function shutdown() {
+  console.log("Shutting down...");
+  closeDb();
+  process.exit(0);
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 export { app };
