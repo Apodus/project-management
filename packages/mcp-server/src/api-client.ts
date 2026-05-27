@@ -329,3 +329,120 @@ export async function search(query: string, options?: SearchOptions): Promise<Se
 
   return apiRequest<SearchResult[]>("GET", `/search${qs(params)}`);
 }
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Implement Proposal
+// ---------------------------------------------------------------------------
+
+export interface ImplementProposalData {
+  actorId: string;
+  epics?: Array<{
+    name: string;
+    description?: string | null;
+    priority?: string;
+    status?: string;
+  }>;
+  tasks?: Array<{
+    title: string;
+    description?: string | null;
+    priority?: string;
+    type?: string;
+    epicIndex?: number;
+  }>;
+}
+
+export async function implementProposal(
+  proposalId: string,
+  data: ImplementProposalData,
+): Promise<ProposalSummary> {
+  return apiRequest<ProposalSummary>(
+    "POST",
+    `/proposals/${encodeURIComponent(proposalId)}/implement`,
+    data,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Task Workflow
+// ---------------------------------------------------------------------------
+
+export async function transitionTask(
+  taskId: string,
+  toStatus: string,
+  comment?: string,
+): Promise<TaskSummary> {
+  return apiRequest<TaskSummary>(
+    "POST",
+    `/tasks/${encodeURIComponent(taskId)}/transitions`,
+    {
+      to_status: toStatus,
+      ...(comment ? { comment } : {}),
+    },
+  );
+}
+
+export interface PickNextOptions {
+  project_id?: string;
+  task_types?: string[];
+  max_effort?: string;
+}
+
+export async function pickNextTask(options?: PickNextOptions): Promise<TaskSummary | null> {
+  try {
+    return await apiRequest<TaskSummary>("POST", `/tasks/pick-next`, options ?? {});
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Task Comments
+// ---------------------------------------------------------------------------
+
+export async function addTaskComment(
+  taskId: string,
+  body: string,
+  commentType?: string,
+  metadata?: Record<string, unknown> | null,
+): Promise<CommentData> {
+  return apiRequest<CommentData>(
+    "POST",
+    `/tasks/${encodeURIComponent(taskId)}/comments`,
+    {
+      authorId: "mcp-agent",
+      body,
+      ...(commentType ? { commentType } : {}),
+      ...(metadata !== undefined ? { metadata } : {}),
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Task Dependencies
+// ---------------------------------------------------------------------------
+
+export interface DependencyData {
+  id: string;
+  taskId: string;
+  dependsOnTaskId: string;
+  dependencyType: string;
+  createdAt: string;
+}
+
+export async function addTaskDependency(
+  taskId: string,
+  dependsOnTaskId: string,
+  type?: string,
+): Promise<DependencyData> {
+  return apiRequest<DependencyData>(
+    "POST",
+    `/tasks/${encodeURIComponent(taskId)}/dependencies`,
+    {
+      dependsOnTaskId,
+      ...(type ? { type } : {}),
+    },
+  );
+}
