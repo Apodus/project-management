@@ -417,7 +417,7 @@ export function BoardPage() {
       ...(effectiveAssignee ? { assignee: effectiveAssignee } : {}),
       ...(effectiveEpic ? { epic: effectiveEpic } : {}),
       ...(debouncedSearch ? { search: debouncedSearch } : {}),
-      perPage: 500, // Get all tasks for board view
+      perPage: 100, // Max allowed by API
     }),
     [effectivePriority, effectiveType, effectiveAssignee, effectiveEpic, debouncedSearch],
   );

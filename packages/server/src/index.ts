@@ -77,10 +77,28 @@ if (isProduction) {
   console.log(`  Web UI:   http://${host}:${port}/`);
 }
 
-serve({
+const server = serve({
   fetch: app.fetch,
   port,
   hostname: host,
+});
+
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code === "EADDRINUSE") {
+    console.error("");
+    console.error(`  ERROR: Port ${port} is already in use.`);
+    console.error("");
+    console.error("  To fix this, either:");
+    console.error(`    1. Stop the other process using port ${port}`);
+    console.error(`    2. Use a different port:  set PM_PORT=3001  (then re-run)`);
+    console.error(`       Or on Linux/Mac:       PM_PORT=3001 ./run.sh`);
+    console.error(`       Or with run.bat:       .\\run.bat 3001`);
+    console.error("");
+  } else {
+    console.error("Server error:", err.message);
+  }
+  closeDb();
+  process.exit(1);
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────

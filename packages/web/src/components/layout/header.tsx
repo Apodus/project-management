@@ -10,11 +10,33 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { useThemeStore } from "@/stores/theme-store";
+import { useProjectStore } from "@/stores/project-store";
 import { useCurrentUser, useLogout } from "@/hooks/use-auth";
+
+const KNOWN_SECTIONS: Record<string, string> = {
+  projects: "Projects",
+  proposals: "Proposals",
+  tasks: "Tasks",
+  epics: "Epics",
+  board: "Board",
+  activity: "Activity",
+  milestones: "Milestones",
+  settings: "Settings",
+  users: "Users",
+  templates: "Templates",
+  automation: "Automation",
+  backup: "Backup",
+  help: "Help",
+};
+
+function isUlidOrId(segment: string): boolean {
+  return segment.length >= 20 && /^[0-9A-HJ-NP-TV-Za-hj-np-tv-z]+$/.test(segment);
+}
 
 function Breadcrumbs() {
   const router = useRouter();
   const pathname = router.state.location.pathname;
+  const { currentProjectName } = useProjectStore();
 
   const segments = pathname.split("/").filter(Boolean);
 
@@ -22,29 +44,45 @@ function Breadcrumbs() {
     return <span className="text-sm text-muted-foreground">Home</span>;
   }
 
+  const breadcrumbs: { label: string; isLast: boolean }[] = [];
+  let prevSegment = "";
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const isLast = i === segments.length - 1;
+
+    if (isUlidOrId(segment)) {
+      if (prevSegment === "projects" && currentProjectName) {
+        breadcrumbs.push({ label: currentProjectName, isLast });
+      }
+      // Skip IDs for proposals/tasks/epics — the detail page shows the title
+    } else {
+      breadcrumbs.push({
+        label: KNOWN_SECTIONS[segment] ?? segment.charAt(0).toUpperCase() + segment.slice(1),
+        isLast,
+      });
+    }
+    prevSegment = segment;
+  }
+
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm">
-      {segments.map((segment, index) => {
-        const isLast = index === segments.length - 1;
-        const label = segment.charAt(0).toUpperCase() + segment.slice(1);
-
-        return (
-          <span key={index} className="flex items-center gap-1.5">
-            {index > 0 && (
-              <span className="text-muted-foreground/50">/</span>
-            )}
-            <span
-              className={
-                isLast
-                  ? "font-medium text-foreground"
-                  : "text-muted-foreground"
-              }
-            >
-              {label}
-            </span>
+      {breadcrumbs.map((crumb, index) => (
+        <span key={index} className="flex items-center gap-1.5">
+          {index > 0 && (
+            <span className="text-muted-foreground/50">/</span>
+          )}
+          <span
+            className={
+              crumb.isLast
+                ? "font-medium text-foreground"
+                : "text-muted-foreground"
+            }
+          >
+            {crumb.label}
           </span>
-        );
-      })}
+        </span>
+      ))}
     </nav>
   );
 }

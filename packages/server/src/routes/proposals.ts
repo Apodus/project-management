@@ -1,9 +1,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { eq } from "drizzle-orm";
 import { PROPOSAL_STATUSES, COMMENT_TYPES } from "@pm/shared";
 import type { UserType } from "@pm/shared";
 import type { AppVariables } from "../types.js";
-import { getDb, users } from "../db/index.js";
 import * as proposalService from "../services/proposal.service.js";
 
 // ─── Response schemas ─────────────────────────────────────────────
@@ -150,13 +148,11 @@ const updateProposalBody = z
 const transitionBody = z
   .object({
     toStatus: z.enum(PROPOSAL_STATUSES),
-    actorId: z.string().min(1, "actorId is required"),
   })
   .openapi("ProposalTransition");
 
 const addCommentBody = z
   .object({
-    authorId: z.string().min(1, "authorId is required"),
     body: z.string().min(1, "Comment body is required"),
     commentType: z.enum(COMMENT_TYPES).optional(),
   })
@@ -164,7 +160,6 @@ const addCommentBody = z
 
 const implementProposalBody = z
   .object({
-    actorId: z.string().min(1, "actorId is required"),
     epics: z
       .array(
         z.object({
@@ -488,26 +483,12 @@ export function createProposalRoutes(): OpenAPIHono<{
   // POST /api/v1/proposals/:id/transitions
   router.openapi(transitionProposalRoute, (c) => {
     const { id } = c.req.valid("param");
-    const { toStatus, actorId } = c.req.valid("json");
-
-    // Look up the actor to get their type
-    const db = getDb();
-    const actor = db
-      .select()
-      .from(users)
-      .where(eq(users.id, actorId))
-      .get();
-
-    if (!actor) {
-      return c.json(
-        { error: { code: "NOT_FOUND", message: `User not found: ${actorId}` } },
-        404,
-      );
-    }
+    const { toStatus } = c.req.valid("json");
+    const user = c.get("currentUser");
 
     const proposal = proposalService.transition(id, toStatus, {
-      id: actor.id,
-      type: actor.type as UserType,
+      id: user!.id,
+      type: user!.type as UserType,
     });
 
     return c.json({ data: proposal }, 200);
@@ -531,7 +512,11 @@ export function createProposalRoutes(): OpenAPIHono<{
   router.openapi(addCommentRoute, (c) => {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const comment = proposalService.addComment(id, body);
+    const user = c.get("currentUser");
+    const comment = proposalService.addComment(id, {
+      ...body,
+      authorId: user!.id,
+    });
 
     return c.json({ data: comment }, 201);
   });
@@ -547,12 +532,13 @@ export function createProposalRoutes(): OpenAPIHono<{
   // POST /api/v1/proposals/:id/implement
   router.openapi(implementProposalRoute, (c) => {
     const { id } = c.req.valid("param");
-    const { actorId, epics, tasks } = c.req.valid("json");
+    const { epics, tasks } = c.req.valid("json");
+    const user = c.get("currentUser");
     const proposal = proposalService.implementProposal(
       id,
       epics,
       tasks,
-      actorId,
+      user!.id,
     );
 
     return c.json({ data: proposal }, 200);

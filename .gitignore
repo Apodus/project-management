@@ -11,3 +11,5 @@ data/
 !.env.example
 *.tsbuildinfo
 .claude/worktrees/
+playwright-report/
+test-results/
