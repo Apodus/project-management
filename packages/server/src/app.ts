@@ -17,6 +17,7 @@ import { createActivityRoutes } from "./routes/activity.js";
 import { createMilestoneRoutes } from "./routes/milestones.js";
 import { createGitRefRoutes } from "./routes/git-refs.js";
 import { createAuthRoutes } from "./routes/auth.js";
+import { createAgentPoolRoutes } from "./routes/agent-pool.js";
 import { createUserRoutes } from "./routes/users.js";
 import { createEventStreamRoutes } from "./routes/events.js";
 import { createWebhookRoutes } from "./routes/webhooks.js";
@@ -75,6 +76,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
 
   // ── Auth & user routes ────────────────────────────────────────────
   app.route("/", createAuthRoutes());
+  app.route("/", createAgentPoolRoutes());
   app.route("/", createUserRoutes());
 
   // ── SSE event stream ──────────────────────────────────────────────

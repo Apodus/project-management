@@ -13,14 +13,44 @@ function getBaseUrl(): string {
   return (process.env.PM_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
 }
 
+/**
+ * Mutable API token — set after claiming an agent from the pool.
+ * Falls back to PM_API_TOKEN env var for backward compatibility.
+ */
+let _claimedToken: string | null = null;
+let _claimedUserId: string | null = null;
+let _claimedUsername: string | null = null;
+let _claimedDisplayName: string | null = null;
+
 function getToken(): string {
+  if (_claimedToken) {
+    return _claimedToken;
+  }
   const token = process.env.PM_API_TOKEN;
   if (!token) {
     throw new Error(
-      "PM_API_TOKEN environment variable is required. Set it to a valid API token.",
+      "PM_API_TOKEN environment variable is required. Set it to a valid API token, or set PM_POOL_SECRET to auto-claim from the agent pool.",
     );
   }
   return token;
+}
+
+/**
+ * Get the current agent's identity (set after claim, or null if using static token).
+ */
+export function getAgentIdentity(): {
+  userId: string;
+  username: string;
+  displayName: string;
+} | null {
+  if (_claimedUserId && _claimedUsername && _claimedDisplayName) {
+    return {
+      userId: _claimedUserId,
+      username: _claimedUsername,
+      displayName: _claimedDisplayName,
+    };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +243,6 @@ export async function addProposalComment(
     "POST",
     `/proposals/${encodeURIComponent(proposalId)}/comments`,
     {
-      authorId: "mcp-agent",
       body,
       ...(commentType ? { commentType } : {}),
     },
@@ -383,6 +412,7 @@ export async function transitionTask(
 
 export interface PickNextOptions {
   project_id?: string;
+  epic_id?: string;
   task_types?: string[];
   max_effort?: string;
 }
@@ -585,6 +615,114 @@ export async function checkUpdates(
   }
 
   return (await res.json()) as UpdatesResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Project Tasks (for board resource)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Agent Pool
+// ---------------------------------------------------------------------------
+
+export interface AgentClaimResponse {
+  user: {
+    id: string;
+    username: string;
+    displayName: string;
+    role: string;
+    type: string;
+  };
+  token: string;
+}
+
+/**
+ * Claim an agent from the pool using the pool secret.
+ * This is an unauthenticated call (authenticated by pool secret in body).
+ */
+export async function claimAgent(poolSecret: string): Promise<AgentClaimResponse> {
+  const url = `${getBaseUrl()}/api/v1/auth/agent-claim`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ poolSecret }),
+  });
+
+  const json = await res.json();
+
+  if (!res.ok) {
+    const err = json?.error;
+    throw new ApiError(
+      res.status,
+      err?.code ?? "UNKNOWN_ERROR",
+      err?.message ?? `HTTP ${res.status}`,
+    );
+  }
+
+  const result = json.data as AgentClaimResponse;
+
+  // Store the claimed identity and token
+  _claimedToken = result.token;
+  _claimedUserId = result.user.id;
+  _claimedUsername = result.user.username;
+  _claimedDisplayName = result.user.displayName;
+
+  return result;
+}
+
+/**
+ * Release the current agent's claim.
+ */
+export async function releaseAgent(): Promise<void> {
+  await apiRequest<{ message: string }>("POST", "/auth/agent-release");
+  _claimedToken = null;
+  _claimedUserId = null;
+  _claimedUsername = null;
+  _claimedDisplayName = null;
+}
+
+/**
+ * Send a heartbeat to extend the current agent's claim TTL.
+ */
+export async function agentHeartbeat(): Promise<void> {
+  await apiRequest<{ message: string }>("POST", "/auth/agent-heartbeat");
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Epic Claim/Release
+// ---------------------------------------------------------------------------
+
+export interface EpicSummary {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  assigneeId: string | null;
+  taskSummary: {
+    total: number;
+    done: number;
+    byStatus: Record<string, number>;
+  };
+}
+
+export async function claimEpic(epicId: string): Promise<EpicSummary> {
+  return apiRequest<EpicSummary>(
+    "POST",
+    `/epics/${encodeURIComponent(epicId)}/claim`,
+  );
+}
+
+export async function releaseEpic(epicId: string): Promise<EpicSummary> {
+  return apiRequest<EpicSummary>(
+    "POST",
+    `/epics/${encodeURIComponent(epicId)}/release`,
+  );
 }
 
 // ---------------------------------------------------------------------------

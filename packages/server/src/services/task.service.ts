@@ -548,6 +548,7 @@ const EFFORT_ORDER: Record<string, number> = {
 
 export interface PickNextOptions {
   projectId?: string;
+  epicId?: string;
   taskTypes?: string[];
   maxEffort?: string;
 }
@@ -616,6 +617,12 @@ export function pickNextTask(actor: AuthUser, options?: PickNextOptions): Return
   if (options?.projectId) {
     conditions.push(`t.project_id = ?`);
     params.push(options.projectId);
+  }
+
+  // Optional epicId filter
+  if (options?.epicId) {
+    conditions.push(`t.epic_id = ?`);
+    params.push(options.epicId);
   }
 
   // Optional taskTypes filter

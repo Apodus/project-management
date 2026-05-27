@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { EPIC_STATUSES, PRIORITIES } from "@pm/shared";
-import type { AppVariables } from "../types.js";
+import type { AppVariables, AuthUser } from "../types.js";
 import * as epicService from "../services/epic.service.js";
 
 // ─── Response schemas ─────────────────────────────────────────────
@@ -17,6 +17,7 @@ const epicSchema = z
     projectId: z.string(),
     proposalId: z.string().nullable(),
     milestoneId: z.string().nullable(),
+    assigneeId: z.string().nullable(),
     name: z.string(),
     description: z.string().nullable(),
     status: z.string(),
@@ -201,6 +202,52 @@ const deleteEpicRoute = createRoute({
   },
 });
 
+const claimEpicRoute = createRoute({
+  method: "post",
+  path: "/api/v1/epics/{id}/claim",
+  tags: ["Epics"],
+  summary: "Claim epic",
+  description: "Assign the current user as the epic owner.",
+  request: {
+    params: z.object({ id: epicIdParam }),
+  },
+  responses: {
+    200: {
+      description: "Epic claimed",
+      content: { "application/json": { schema: epicDataEnvelope } },
+    },
+    404: {
+      description: "Epic not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Epic already claimed",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const releaseEpicRoute = createRoute({
+  method: "post",
+  path: "/api/v1/epics/{id}/release",
+  tags: ["Epics"],
+  summary: "Release epic",
+  description: "Clear the assignee from an epic.",
+  request: {
+    params: z.object({ id: epicIdParam }),
+  },
+  responses: {
+    200: {
+      description: "Epic released",
+      content: { "application/json": { schema: epicDataEnvelope } },
+    },
+    404: {
+      description: "Epic not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
@@ -254,6 +301,23 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   router.openapi(deleteEpicRoute, (c) => {
     const { id } = c.req.valid("param");
     const epic = epicService.archive(id);
+
+    return c.json({ data: epic }, 200);
+  });
+
+  // POST /api/v1/epics/:id/claim
+  router.openapi(claimEpicRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const actor = c.get("currentUser") as AuthUser;
+    const epic = epicService.claimEpic(id, actor.id);
+
+    return c.json({ data: epic }, 200);
+  });
+
+  // POST /api/v1/epics/:id/release
+  router.openapi(releaseEpicRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const epic = epicService.releaseEpic(id);
 
     return c.json({ data: epic }, 200);
   });

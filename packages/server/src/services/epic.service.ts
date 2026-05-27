@@ -211,6 +211,50 @@ export function update(id: string, data: UpdateEpicInput) {
 }
 
 /**
+ * Claim an epic — set assignee_id to the given user.
+ * Throws 404 if epic not found, 409 if already claimed by another user.
+ */
+export function claimEpic(epicId: string, userId: string) {
+  const existing = getRawById(epicId);
+
+  if (existing.assigneeId && existing.assigneeId !== userId) {
+    throw new AppError(
+      409,
+      "ALREADY_CLAIMED",
+      `Epic is already claimed by another user`,
+    );
+  }
+
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  db.update(epics)
+    .set({ assigneeId: userId, updatedAt: now })
+    .where(eq(epics.id, epicId))
+    .run();
+
+  return getById(epicId);
+}
+
+/**
+ * Release an epic — clear assignee_id.
+ * Throws 404 if epic not found.
+ */
+export function releaseEpic(epicId: string) {
+  getRawById(epicId);
+
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  db.update(epics)
+    .set({ assigneeId: null, updatedAt: now })
+    .where(eq(epics.id, epicId))
+    .run();
+
+  return getById(epicId);
+}
+
+/**
  * Archive an epic (set status to "cancelled"). Throws 404 if not found.
  */
 export function archive(id: string) {

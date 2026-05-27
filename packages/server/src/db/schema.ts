@@ -110,6 +110,7 @@ export const epics = sqliteTable("epics", {
     .references(() => projects.id),
   proposalId: text("proposal_id").references(() => proposals.id),
   milestoneId: text("milestone_id").references(() => milestones.id),
+  assigneeId: text("assignee_id").references(() => users.id),
   name: text("name").notNull(),
   description: text("description"),
   status: text("status").notNull().default("draft"),
@@ -119,6 +120,18 @@ export const epics = sqliteTable("epics", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   createdBy: text("created_by").references(() => users.id),
+});
+
+// ─── agent_claims ─────────────────────────────────────────────────
+export const agentClaims = sqliteTable("agent_claims", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  claimedAt: text("claimed_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  heartbeatAt: text("heartbeat_at").notNull(),
+  poolSecretHash: text("pool_secret_hash"),
 });
 
 // ─── tasks ─────────────────────────────────────────────────────────

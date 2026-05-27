@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Bot,
   Check,
+  CircleDot,
   Copy,
   KeyRound,
   Loader2,
@@ -15,6 +16,7 @@ import {
   UserMinus,
   UserPlus,
   Users,
+  Wifi,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,8 +70,9 @@ import {
   useDeactivateUser,
   useActivateUser,
 } from "@/hooks/use-users";
+import { useAgentPoolStatus } from "@/hooks/use-agent-pool";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { ApiError, type AuthUser, type CreateUserData, type UpdateUserData } from "@/lib/api";
+import { ApiError, type AuthUser, type CreateUserData, type UpdateUserData, type AgentPoolStatus } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SettingsNav } from "@/components/settings-nav";
 
@@ -705,6 +708,139 @@ function UserRow({ user }: { user: AuthUser }) {
   );
 }
 
+// ---- Agent Pool Card ----
+
+function AgentPoolCard() {
+  const { data: poolStatus, isLoading, error } = useAgentPoolStatus();
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-40" />
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return null; // Silently skip if pool status isn't accessible
+  }
+
+  if (!poolStatus || poolStatus.length === 0) {
+    return null; // No agents in pool, skip the section
+  }
+
+  const totalAgents = poolStatus.length;
+  const claimedAgents = poolStatus.filter((a) => a.claimed).length;
+  const availableAgents = totalAgents - claimedAgents;
+
+  function formatTime(iso: string | null): string {
+    if (!iso) return "-";
+    const date = new Date(iso);
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function formatRelative(iso: string | null): string {
+    if (!iso) return "-";
+    const date = new Date(iso);
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const diffMin = Math.round(diffMs / 60000);
+    if (diffMin < 0) return "expired";
+    if (diffMin < 1) return "< 1 min";
+    if (diffMin < 60) return `${diffMin} min`;
+    return `${Math.round(diffMin / 60)}h ${diffMin % 60}m`;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Wifi className="size-4" />
+              Agent Pool
+            </CardTitle>
+            <CardDescription>
+              {totalAgents} agent{totalAgents !== 1 ? "s" : ""} total,{" "}
+              {claimedAgents} claimed, {availableAgents} available
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Agent</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Claimed Since</TableHead>
+                <TableHead>Heartbeat</TableHead>
+                <TableHead>Expires In</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {poolStatus.map((agent) => (
+                <TableRow key={agent.user.id}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <Bot className="size-4 text-muted-foreground" />
+                      {agent.user.displayName}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {!agent.user.isActive ? (
+                      <Badge
+                        variant="secondary"
+                        className="border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-400"
+                      >
+                        Inactive
+                      </Badge>
+                    ) : agent.claimed ? (
+                      <Badge
+                        variant="secondary"
+                        className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                      >
+                        <CircleDot className="size-3" />
+                        Claimed
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        className="gap-1 border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"
+                      >
+                        Available
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatTime(agent.claimedAt)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatTime(agent.heartbeatAt)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatRelative(agent.expiresAt)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ---- Main Page ----
 
 export function UsersPage() {
@@ -784,6 +920,9 @@ export function UsersPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Agent Pool */}
+      <AgentPoolCard />
 
       {/* Users table */}
       {!isLoading && !error && users && (

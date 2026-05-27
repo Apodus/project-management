@@ -16,6 +16,7 @@ import {
   sessions,
   automationRules,
   templates,
+  agentClaims,
 } from "./schema.js";
 
 // ─── workspaces ────────────────────────────────────────────────────
@@ -28,12 +29,14 @@ export const usersRelations = relations(users, ({ many }) => ({
   createdProjects: many(projects),
   createdProposals: many(proposals, { relationName: "proposalCreator" }),
   resolvedProposals: many(proposals, { relationName: "proposalResolver" }),
-  createdEpics: many(epics),
+  createdEpics: many(epics, { relationName: "epicCreator" }),
+  assignedEpics: many(epics, { relationName: "epicAssignee" }),
   assignedTasks: many(tasks, { relationName: "taskAssignee" }),
   reportedTasks: many(tasks, { relationName: "taskReporter" }),
   comments: many(comments),
   activityLogs: many(activityLog),
   sessions: many(sessions),
+  agentClaims: many(agentClaims),
 }));
 
 // ─── sessions ─────────────────────────────────────────────────────
@@ -111,8 +114,22 @@ export const epicsRelations = relations(epics, ({ one, many }) => ({
   creator: one(users, {
     fields: [epics.createdBy],
     references: [users.id],
+    relationName: "epicCreator",
+  }),
+  assignee: one(users, {
+    fields: [epics.assigneeId],
+    references: [users.id],
+    relationName: "epicAssignee",
   }),
   tasks: many(tasks),
+}));
+
+// ─── agent_claims ─────────────────────────────────────────────────
+export const agentClaimsRelations = relations(agentClaims, ({ one }) => ({
+  user: one(users, {
+    fields: [agentClaims.userId],
+    references: [users.id],
+  }),
 }));
 
 // ─── tasks ─────────────────────────────────────────────────────────

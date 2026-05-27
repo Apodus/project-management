@@ -366,6 +366,7 @@ const transitionBody = z
 const pickNextBody = z
   .object({
     project_id: z.string().optional(),
+    epic_id: z.string().optional(),
     task_types: z.array(z.enum(TASK_TYPES)).optional(),
     max_effort: z.enum(EFFORT_SIZES).optional(),
   })
@@ -522,7 +523,7 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   // POST /api/v1/tasks/pick-next
   router.openapi(pickNextTaskRoute, (c) => {
     const actor = c.get("currentUser") as AuthUser;
-    let body: { project_id?: string; task_types?: string[]; max_effort?: string } = {};
+    let body: { project_id?: string; epic_id?: string; task_types?: string[]; max_effort?: string } = {};
     try {
       body = c.req.valid("json");
     } catch {
@@ -530,6 +531,7 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     }
     const task = taskService.pickNextTask(actor, {
       projectId: body.project_id,
+      epicId: body.epic_id,
       taskTypes: body.task_types,
       maxEffort: body.max_effort,
     });

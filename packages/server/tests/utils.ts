@@ -10,6 +10,7 @@ import {
   workspaces,
   epics,
   tasks,
+  agentClaims,
 } from "../src/db/index.js";
 import type { AppDatabase } from "../src/db/index.js";
 import type { OpenAPIHono } from "@hono/zod-openapi";

@@ -144,6 +144,7 @@ export function registerWorkflowTools(server: McpServer): void {
     "Find and self-assign the highest priority ready task. Atomically claims the task so no other agent can pick it simultaneously. Returns full task details or a message if nothing is available.",
     {
       project_id: z.string().optional().describe("Limit to tasks in a specific project"),
+      epic_id: z.string().optional().describe("Limit to tasks within a specific epic"),
       task_types: z
         .array(z.string())
         .optional()
@@ -153,9 +154,10 @@ export function registerWorkflowTools(server: McpServer): void {
         .optional()
         .describe("Maximum effort size to consider"),
     },
-    async ({ project_id, task_types, max_effort }) => {
+    async ({ project_id, epic_id, task_types, max_effort }) => {
       const task = await pickNextTask({
         project_id,
+        epic_id,
         task_types,
         max_effort,
       });

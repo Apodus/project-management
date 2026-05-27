@@ -688,6 +688,34 @@ export async function createTemplateFromTask(
   });
 }
 
+// ---- Agent Pool API ----
+
+export interface AgentPoolStatus {
+  user: {
+    id: string;
+    username: string;
+    displayName: string;
+    type: string;
+    isActive: boolean;
+  };
+  claimed: boolean;
+  claimedAt: string | null;
+  expiresAt: string | null;
+  heartbeatAt: string | null;
+}
+
+export async function getAgentPoolStatus(): Promise<AgentPoolStatus[]> {
+  return apiFetch<AgentPoolStatus[]>("/auth/agent-pool");
+}
+
+export async function forceReleaseAgent(userId: string): Promise<void> {
+  // Force-release is done by calling release on behalf of the agent
+  // For the admin UI, we call a DELETE on the claim by user
+  await apiFetch<{ message: string }>(`/auth/agent-release`, {
+    method: "POST",
+  });
+}
+
 // ---- Automation Rules API ----
 
 export interface AutomationCondition {
