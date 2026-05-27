@@ -590,3 +590,95 @@ export async function activateUser(id: string): Promise<AuthUser> {
     method: "POST",
   });
 }
+
+// ---- Automation Rules API ----
+
+export interface AutomationCondition {
+  field: string;
+  operator: "eq" | "neq" | "in" | "not_in" | "contains";
+  value: unknown;
+}
+
+export interface AutomationRule {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  triggerEvent: string;
+  conditions: AutomationCondition[] | null;
+  actionType: string;
+  actionConfig: Record<string, unknown> | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+}
+
+export interface CreateAutomationRuleData {
+  name: string;
+  description?: string | null;
+  triggerEvent: string;
+  conditions?: AutomationCondition[] | null;
+  actionType: string;
+  actionConfig?: Record<string, unknown> | null;
+  isActive?: boolean;
+}
+
+export interface UpdateAutomationRuleData {
+  name?: string;
+  description?: string | null;
+  triggerEvent?: string;
+  conditions?: AutomationCondition[] | null;
+  actionType?: string;
+  actionConfig?: Record<string, unknown> | null;
+  isActive?: boolean;
+}
+
+export async function getAutomationRules(
+  projectId: string,
+): Promise<AutomationRule[]> {
+  return apiFetch<AutomationRule[]>(
+    `/projects/${projectId}/automation-rules`,
+  );
+}
+
+export async function createAutomationRule(
+  projectId: string,
+  data: CreateAutomationRuleData,
+): Promise<AutomationRule> {
+  return apiFetch<AutomationRule>(
+    `/projects/${projectId}/automation-rules`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function updateAutomationRule(
+  id: string,
+  data: UpdateAutomationRuleData,
+): Promise<AutomationRule> {
+  return apiFetch<AutomationRule>(`/automation-rules/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAutomationRule(
+  id: string,
+): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/automation-rules/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function toggleAutomationRule(
+  id: string,
+  active: boolean,
+): Promise<AutomationRule> {
+  return apiFetch<AutomationRule>(`/automation-rules/${id}/toggle`, {
+    method: "POST",
+    body: JSON.stringify({ active }),
+  });
+}

@@ -12,6 +12,7 @@ import {
   ListTodo,
   Milestone,
   Settings,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -264,12 +265,24 @@ export function Sidebar() {
           collapsed && "px-2",
         )}
       >
+        {currentProjectId && (
+          <NavLink
+            item={{
+              label: "Automation",
+              icon: Zap,
+              href: `/projects/${currentProjectId}/settings/automation`,
+              matchPath: "/settings/automation",
+            }}
+            collapsed={collapsed}
+          />
+        )}
+
         <NavLink
           item={{
             label: "Settings",
             icon: Settings,
             href: "/settings/users",
-            matchPath: "/settings",
+            matchPath: "/settings/users",
           }}
           collapsed={collapsed}
         />

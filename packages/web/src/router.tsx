@@ -22,6 +22,7 @@ import { TaskListPage } from "@/pages/task-list-page";
 import { BoardPage } from "@/pages/board-page";
 import { UsersPage } from "@/pages/settings/users-page";
 import { BackupPage } from "@/pages/settings/backup-page";
+import { AutomationPage } from "@/pages/settings/automation-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
 
 // ---- Root route (no layout — just an outlet) ----
@@ -208,6 +209,13 @@ const settingsBackupRoute = createRoute({
   component: BackupPage,
 });
 
+// /projects/$projectId/settings/automation — automation rules
+const projectAutomationRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/settings/automation",
+  component: AutomationPage,
+});
+
 // Build the route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -223,6 +231,7 @@ const routeTree = rootRoute.addChildren([
       projectEpicListRoute,
       projectActivityRoute,
       projectMilestonesRoute,
+      projectAutomationRoute,
     ]),
     proposalDetailRoute,
     taskDetailRoute,
