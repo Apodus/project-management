@@ -18,6 +18,7 @@ import { createMilestoneRoutes } from "./routes/milestones.js";
 import { createGitRefRoutes } from "./routes/git-refs.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createUserRoutes } from "./routes/users.js";
+import { initializeEventListeners } from "./events/index.js";
 import type { AppVariables } from "./types.js";
 
 /**
@@ -27,6 +28,9 @@ import type { AppVariables } from "./types.js";
  * the app without starting an HTTP server.
  */
 export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
+  // Initialize event listeners (activity log, etc.)
+  initializeEventListeners();
+
   const app = new OpenAPIHono<{ Variables: AppVariables }>();
 
   // ── Global error & not-found handlers ─────────────────────────────
