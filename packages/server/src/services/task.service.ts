@@ -5,9 +5,10 @@ import { getDb, getRawDb, tasks, taskLabels, taskDependencies } from "../db/inde
 import { AppError } from "../types.js";
 import type { AuthUser } from "../types.js";
 import * as dependencyService from "./dependency.service.js";
-import * as activityService from "./activity.service.js";
+import { computeChanges } from "./activity.service.js";
 import * as commentService from "./comment.service.js";
 import * as autonomyService from "./autonomy.service.js";
+import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -293,12 +294,13 @@ export function create(data: CreateTaskInput, actor?: AuthUser) {
 
   const result = getById(id);
 
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.TASK_CREATED, {
+    entity: result,
     entityType: "task",
     entityId: id,
     projectId: data.projectId,
     actorId: data.reporterId,
-    action: "created",
+    timestamp: now,
   });
 
   return result;
@@ -365,24 +367,23 @@ export function update(id: string, data: UpdateTaskInput, actor?: AuthUser) {
 
   const result = getById(id);
 
-  // Determine the action based on what changed
-  let action = "updated";
-  if (data.assigneeId !== undefined && data.assigneeId !== existing.assigneeId) {
-    action = "assigned";
-  }
-
-  const changes = activityService.computeChanges(
+  const changes = computeChanges(
     existing as unknown as Record<string, unknown>,
     result as unknown as Record<string, unknown>,
     ["title", "description", "priority", "assigneeId", "epicId", "type"],
   );
 
-  activityService.logActivity({
+  // Determine the event based on what changed
+  const isAssignment = data.assigneeId !== undefined && data.assigneeId !== existing.assigneeId;
+  const eventName = isAssignment ? EVENT_NAMES.TASK_ASSIGNED : EVENT_NAMES.TASK_UPDATED;
+
+  getEventBus().emit(eventName, {
+    entity: result,
     entityType: "task",
     entityId: id,
     projectId: existing.projectId,
     actorId: actor?.id ?? null,
-    action,
+    timestamp: now,
     changes,
   });
 
@@ -404,13 +405,15 @@ export function archive(id: string) {
 
   const result = getById(id);
 
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.TASK_ARCHIVED, {
+    entity: result,
     entityType: "task",
     entityId: id,
     projectId: existing.projectId,
     actorId: null,
-    action: "archived",
+    timestamp: now,
     changes: { status: { from: existing.status, to: "cancelled" } },
+    previousStatus: existing.status,
   });
 
   return result;
@@ -516,14 +519,16 @@ export function transition(
     });
   }
 
-  // Log activity
-  activityService.logActivity({
+  // Log activity via event bus
+  getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
+    entity: result,
     entityType: "task",
     entityId: taskId,
     projectId: existing.projectId,
     actorId: actor.id,
-    action: "status_changed",
+    timestamp: now,
     changes: { status: { from: currentStatus, to: toStatus } },
+    previousStatus: currentStatus,
   });
 
   return result;
@@ -699,14 +704,16 @@ export function pickNextTask(actor: AuthUser, options?: PickNextOptions): Return
 
   const claimedTask = getById(claimedId);
 
-  // Log activity
-  activityService.logActivity({
+  // Log activity via event bus (after transaction committed)
+  getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
+    entity: claimedTask,
     entityType: "task",
     entityId: claimedId,
     projectId: claimedTask.projectId,
     actorId: actor.id,
-    action: "status_changed",
+    timestamp: new Date().toISOString(),
     changes: { status: { from: "ready", to: "in_progress" } },
+    previousStatus: "ready",
   });
 
   return claimedTask;

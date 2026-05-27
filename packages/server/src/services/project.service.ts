@@ -2,7 +2,8 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import { getDb, projects, tasks, epics, proposals, workspaces } from "../db/index.js";
 import { AppError } from "../types.js";
-import * as activityService from "./activity.service.js";
+import { computeChanges } from "./activity.service.js";
+import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -173,12 +174,13 @@ export function create(data: CreateProjectInput) {
 
   const result = getById(id);
 
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.PROJECT_CREATED, {
+    entity: result,
     entityType: "project",
     entityId: id,
     projectId: id,
     actorId: data.createdBy ?? null,
-    action: "created",
+    timestamp: now,
   });
 
   return result;
@@ -218,23 +220,21 @@ export function update(id: string, data: UpdateProjectInput) {
 
   const result = getById(id);
 
-  const changes = activityService.computeChanges(
+  const changes = computeChanges(
     existing as unknown as Record<string, unknown>,
     result as unknown as Record<string, unknown>,
     ["name", "description", "status", "gitRepoUrl"],
   );
 
-  const action = data.status !== undefined && data.status !== existing.status
-    ? "status_changed"
-    : "updated";
-
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.PROJECT_UPDATED, {
+    entity: result,
     entityType: "project",
     entityId: id,
     projectId: id,
     actorId: null,
-    action,
+    timestamp: now,
     changes,
+    previousStatus: existing.status !== result.status ? existing.status : undefined,
   });
 
   return result;
@@ -257,13 +257,15 @@ export function archive(id: string) {
 
   const result = getById(id);
 
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.PROJECT_ARCHIVED, {
+    entity: result,
     entityType: "project",
     entityId: id,
     projectId: id,
     actorId: null,
-    action: "archived",
+    timestamp: now,
     changes: { status: { from: existing.status, to: "archived" } },
+    previousStatus: existing.status,
   });
 
   return result;

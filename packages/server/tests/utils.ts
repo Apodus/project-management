@@ -14,6 +14,7 @@ import {
 import type { AppDatabase } from "../src/db/index.js";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { AppVariables } from "../src/types.js";
+import { resetEventBus } from "../src/events/event-bus.js";
 
 /**
  * The default test token used by authRequest().
@@ -89,6 +90,7 @@ export function createTestApp(): TestApp {
     app,
     db,
     cleanup: () => {
+      resetEventBus();
       closeDb();
     },
     testUser,

@@ -15,7 +15,7 @@ import {
   users,
 } from "../db/index.js";
 import { AppError } from "../types.js";
-import * as activityService from "./activity.service.js";
+import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -165,12 +165,13 @@ export function create(projectId: string, data: CreateProposalInput) {
     .where(eq(proposals.id, id))
     .get()!;
 
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.PROPOSAL_CREATED, {
+    entity: result,
     entityType: "proposal",
     entityId: id,
     projectId,
     actorId: data.createdBy,
-    action: "created",
+    timestamp: now,
   });
 
   return result;
@@ -282,13 +283,15 @@ export function transition(
     .where(eq(proposals.id, id))
     .get()!;
 
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.PROPOSAL_TRANSITIONED, {
+    entity: result,
     entityType: "proposal",
     entityId: id,
     projectId: proposal.projectId,
     actorId: actor.id,
-    action: "status_changed",
+    timestamp: now,
     changes: { status: { from: fromStatus, to: toStatus } },
+    previousStatus: fromStatus,
   });
 
   return result;

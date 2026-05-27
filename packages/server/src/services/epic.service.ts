@@ -2,7 +2,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import { getDb, epics, tasks } from "../db/index.js";
 import { AppError } from "../types.js";
-import * as activityService from "./activity.service.js";
+import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -159,12 +159,13 @@ export function create(data: CreateEpicInput) {
 
   const result = getById(id);
 
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.EPIC_CREATED, {
+    entity: result,
     entityType: "epic",
     entityId: id,
     projectId: data.projectId,
     actorId: data.createdBy ?? null,
-    action: "created",
+    timestamp: now,
   });
 
   return result;
@@ -197,12 +198,13 @@ export function update(id: string, data: UpdateEpicInput) {
 
   const result = getById(id);
 
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.EPIC_UPDATED, {
+    entity: result,
     entityType: "epic",
     entityId: id,
     projectId: result.projectId,
     actorId: null,
-    action: data.status !== undefined ? "status_changed" : "updated",
+    timestamp: now,
   });
 
   return result;
@@ -223,13 +225,15 @@ export function archive(id: string) {
 
   const result = getById(id);
 
-  activityService.logActivity({
+  getEventBus().emit(EVENT_NAMES.EPIC_ARCHIVED, {
+    entity: result,
     entityType: "epic",
     entityId: id,
     projectId: existing.projectId,
     actorId: null,
-    action: "archived",
+    timestamp: now,
     changes: { status: { from: existing.status, to: "cancelled" } },
+    previousStatus: existing.status,
   });
 
   return result;
