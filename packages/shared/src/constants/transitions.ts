@@ -78,6 +78,35 @@ export function getValidTaskTargets(from: TaskStatus): TaskStatus[] {
 }
 
 /**
+ * Find the shortest forward path from one task status to another.
+ * Returns the intermediate statuses (excluding `from`, including `to`),
+ * or null if no path exists. Only follows forward transitions
+ * (excludes cancelled and backwards moves like ready→backlog).
+ */
+export function findTaskTransitionPath(
+  from: TaskStatus,
+  to: TaskStatus,
+): TaskStatus[] | null {
+  if (from === to) return [];
+  if (isValidTaskTransition(from, to)) return [to];
+
+  const forwardOrder: TaskStatus[] = ["backlog", "ready", "in_progress", "in_review", "done"];
+  const fromIdx = forwardOrder.indexOf(from);
+  const toIdx = forwardOrder.indexOf(to);
+  if (fromIdx === -1 || toIdx === -1 || toIdx <= fromIdx) return null;
+
+  const path: TaskStatus[] = [];
+  let current = from;
+  for (let i = fromIdx + 1; i <= toIdx; i++) {
+    const next = forwardOrder[i];
+    if (!isValidTaskTransition(current, next)) return null;
+    path.push(next);
+    current = next;
+  }
+  return path;
+}
+
+/**
  * Get all valid target statuses from a given proposal status.
  */
 export function getValidProposalTargets(

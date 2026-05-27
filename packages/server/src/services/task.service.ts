@@ -1,5 +1,5 @@
 import { eq, and, like, isNull, desc, asc, count, sql, inArray } from "drizzle-orm";
-import { createId, isValidTaskTransition, getValidTaskTargets } from "@pm/shared";
+import { createId, isValidTaskTransition, getValidTaskTargets, findTaskTransitionPath } from "@pm/shared";
 import type { TaskStatus, EffortSize } from "@pm/shared";
 import { getDb, getRawDb, tasks, taskLabels, taskDependencies } from "../db/index.js";
 import { AppError } from "../types.js";
@@ -472,8 +472,12 @@ export function transition(
   const existing = getById(taskId);
   const currentStatus = existing.status as TaskStatus;
 
-  // Validate transition
-  if (!isValidTaskTransition(currentStatus, toStatus)) {
+  // Find transition path — auto-chain through intermediate statuses if needed
+  const path = isValidTaskTransition(currentStatus, toStatus)
+    ? [toStatus]
+    : findTaskTransitionPath(currentStatus, toStatus);
+
+  if (!path || path.length === 0) {
     const validTargets = getValidTaskTargets(currentStatus);
     const validList = validTargets.length > 0 ? validTargets.join(", ") : "none";
     throw new AppError(
@@ -486,26 +490,27 @@ export function transition(
   const db = getDb();
   const now = new Date().toISOString();
 
-  const values: Record<string, unknown> = {
-    status: toStatus,
-    updatedAt: now,
-  };
+  // Walk through each step in the path
+  for (const stepStatus of path) {
+    const values: Record<string, unknown> = {
+      status: stepStatus,
+      updatedAt: now,
+    };
 
-  // Set started_at when moving to in_progress (if not already set)
-  if (toStatus === "in_progress") {
-    if (!existing.startedAt) {
-      values.startedAt = now;
+    if (stepStatus === "in_progress") {
+      const current = getById(taskId);
+      if (!current.startedAt) {
+        values.startedAt = now;
+      }
+      values.assigneeId = actor.id;
     }
-    // Auto-assign to actor if not already assigned
-    values.assigneeId = actor.id;
-  }
 
-  // Set completed_at when moving to done
-  if (toStatus === "done") {
-    values.completedAt = now;
-  }
+    if (stepStatus === "done") {
+      values.completedAt = now;
+    }
 
-  db.update(tasks).set(values).where(eq(tasks.id, taskId)).run();
+    db.update(tasks).set(values).where(eq(tasks.id, taskId)).run();
+  }
 
   const result = getById(taskId);
 

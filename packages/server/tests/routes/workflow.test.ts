@@ -109,7 +109,7 @@ describe("Task Workflow API", () => {
       expect(body.data.status).toBe("done");
     });
 
-    it("should reject invalid transition backlog → done (skip)", async () => {
+    it("should auto-chain backlog → ready → in_progress → done", async () => {
       const project = createTestProject(testApp.db);
       const user = createTestUser(testApp.db);
       const task = createTestTask(testApp.db, {
@@ -124,12 +124,12 @@ describe("Task Workflow API", () => {
         `/api/v1/tasks/${task.id}/transitions`,
         { body: { to_status: "done" } },
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.error.code).toBe("INVALID_TRANSITION");
-      expect(body.error.message).toContain("backlog");
-      expect(body.error.message).toContain("done");
+      expect(body.data.status).toBe("done");
+      expect(body.data.startedAt).toBeTruthy();
+      expect(body.data.completedAt).toBeTruthy();
     });
 
     it("should reject invalid reverse transition done → backlog", async () => {
