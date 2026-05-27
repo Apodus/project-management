@@ -49,7 +49,7 @@ function Breadcrumbs() {
   );
 }
 
-export function Header() {
+export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
   const { theme, toggleTheme } = useThemeStore();
   const { data: currentUser } = useCurrentUser();
   const logoutMutation = useLogout();
@@ -72,9 +72,7 @@ export function Header() {
           variant="ghost"
           size="sm"
           className="gap-2 text-muted-foreground"
-          onClick={() => {
-            /* Cmd+K search placeholder */
-          }}
+          onClick={() => onSearchClick?.()}
         >
           <Search className="size-4" />
           <span className="hidden text-xs sm:inline">
