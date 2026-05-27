@@ -54,6 +54,8 @@ export interface EventPayload {
   changes?: Record<string, { from: unknown; to: unknown }> | null;
   /** Previous status for transitions */
   previousStatus?: string;
+  /** Tracks recursion depth for automation-triggered events */
+  _automationDepth?: number;
 }
 
 // ─── Typed event bus ─────────────────────────────────────────────

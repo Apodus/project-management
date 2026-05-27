@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
+    "start": "node packages/server/dist/index.js",
+    "start:prod": "cross-env NODE_ENV=production node packages/server/dist/index.js",
     "test": "turbo test",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
@@ -16,16 +18,17 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "turbo": "^2",
-    "typescript": "^5",
-    "eslint": "^9",
     "@eslint/js": "^9",
-    "typescript-eslint": "^8",
+    "cross-env": "^10.1.0",
+    "eslint": "^9",
     "eslint-config-prettier": "^10",
     "eslint-plugin-react-hooks": "^5",
     "eslint-plugin-react-refresh": "^0.4",
     "globals": "^16",
     "prettier": "^3",
-    "prettier-plugin-tailwindcss": "^0.6"
+    "prettier-plugin-tailwindcss": "^0.6",
+    "turbo": "^2",
+    "typescript": "^5",
+    "typescript-eslint": "^8"
   }
 }
