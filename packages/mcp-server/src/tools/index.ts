@@ -4,6 +4,7 @@ import { registerTaskTools } from "./tasks.js";
 import { registerProposalTools } from "./proposals.js";
 import { registerSearchTools } from "./search.js";
 import { registerWorkflowTools } from "./workflow.js";
+import { registerWriteTools } from "./write.js";
 
 /**
  * Register all MCP tools on the server.
@@ -14,4 +15,5 @@ export function registerAllTools(server: McpServer): void {
   registerProposalTools(server);
   registerSearchTools(server);
   registerWorkflowTools(server);
+  registerWriteTools(server);
 }

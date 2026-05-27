@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { listProjects, listProposals } from "../api-client.js";
+import { listProjects, listProposals, getProjectTasks } from "../api-client.js";
 
 /**
  * Register all MCP resources on the server.
@@ -83,6 +83,78 @@ export function registerAllResources(server: McpServer): void {
             uri: uri.href,
             mimeType: "text/plain",
             text: `Proposals for project ${projectId}\n${"=".repeat(40)}\n${countLine ? `\nStatus counts: ${countLine}\n` : ""}\n${text}`,
+          },
+        ],
+      };
+    },
+  );
+
+  // pm://project/{id}/board — Tasks grouped by status (kanban-style)
+  const boardTemplate = new ResourceTemplate(
+    "pm://project/{id}/board",
+    { list: undefined },
+  );
+
+  server.resource(
+    "project-board",
+    boardTemplate,
+    {
+      description: "Kanban-style board showing tasks grouped by status for a project",
+      mimeType: "text/plain",
+    },
+    async (uri: URL, params: Record<string, string | string[]>) => {
+      const rawId = params.id;
+      const projectId = Array.isArray(rawId) ? rawId[0] : rawId;
+      const tasks = await getProjectTasks(projectId);
+
+      // Define status columns in order
+      const statusOrder = ["backlog", "ready", "in_progress", "in_review", "done"];
+      const columns: Record<string, typeof tasks> = {};
+      for (const status of statusOrder) {
+        columns[status] = [];
+      }
+
+      // Group tasks by status
+      for (const task of tasks) {
+        if (columns[task.status]) {
+          columns[task.status].push(task);
+        } else {
+          // Handle any unexpected status
+          if (!columns[task.status]) {
+            columns[task.status] = [];
+          }
+          columns[task.status].push(task);
+        }
+      }
+
+      // Build formatted board output
+      const sections: string[] = [
+        `Board for project ${projectId}`,
+        "=".repeat(40),
+        "",
+        `Total tasks: ${tasks.length}`,
+        "",
+      ];
+
+      for (const status of statusOrder) {
+        const col = columns[status];
+        sections.push(`## ${status.toUpperCase()} (${col.length})`);
+        if (col.length === 0) {
+          sections.push("  (empty)", "");
+        } else {
+          for (const t of col) {
+            sections.push(`  - [${t.priority.toUpperCase()}] ${t.title} (${t.id})`);
+          }
+          sections.push("");
+        }
+      }
+
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "text/plain",
+            text: sections.join("\n"),
           },
         ],
       };

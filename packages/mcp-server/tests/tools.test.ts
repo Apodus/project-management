@@ -32,6 +32,10 @@ vi.mock("../src/api-client.js", () => ({
   pickNextTask: vi.fn(),
   addTaskComment: vi.fn(),
   addTaskDependency: vi.fn(),
+  createTask: vi.fn(),
+  updateTask: vi.fn(),
+  createGitRef: vi.fn(),
+  getProjectTasks: vi.fn(),
 }));
 
 // Import the mocked functions so we can configure them per test
@@ -49,6 +53,10 @@ const mockTransitionTask = vi.mocked(apiClient.transitionTask);
 const mockPickNextTask = vi.mocked(apiClient.pickNextTask);
 const mockAddTaskComment = vi.mocked(apiClient.addTaskComment);
 const mockAddTaskDependency = vi.mocked(apiClient.addTaskDependency);
+const mockCreateTask = vi.mocked(apiClient.createTask);
+const mockUpdateTask = vi.mocked(apiClient.updateTask);
+const mockCreateGitRef = vi.mocked(apiClient.createGitRef);
+const mockGetProjectTasks = vi.mocked(apiClient.getProjectTasks);
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -999,6 +1007,580 @@ describe("MCP Tools", () => {
       // Comment body should mention the blocking task
       const commentBody = mockAddTaskComment.mock.calls[0][1];
       expect(commentBody).toContain("task_002");
+    });
+  });
+
+  // ---- pm_create_task ----
+
+  describe("pm_create_task", () => {
+    it("creates a task with required fields", async () => {
+      mockCreateTask.mockResolvedValue({
+        ...sampleTask,
+        id: "task_new",
+        title: "New task",
+        status: "backlog",
+      });
+
+      const result = await client.callTool({
+        name: "pm_create_task",
+        arguments: {
+          project_id: "proj_001",
+          title: "New task",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Task created successfully");
+      expect(text).toContain("task_new");
+      expect(text).toContain("New task");
+
+      expect(mockCreateTask).toHaveBeenCalledWith("proj_001", {
+        title: "New task",
+        description: null,
+        epicId: null,
+        parentTaskId: null,
+        priority: undefined,
+        type: undefined,
+        estimatedEffort: null,
+        context: null,
+      });
+    });
+
+    it("creates a task with all optional fields", async () => {
+      mockCreateTask.mockResolvedValue({
+        ...sampleTask,
+        id: "task_full",
+        title: "Full task",
+        epicId: "epic_001",
+        parentTaskId: "task_parent",
+        priority: "high",
+        type: "bug",
+        estimatedEffort: "m",
+        context: { relevant_files: ["src/foo.ts"] },
+      });
+
+      const result = await client.callTool({
+        name: "pm_create_task",
+        arguments: {
+          project_id: "proj_001",
+          title: "Full task",
+          description: "A detailed description",
+          epic_id: "epic_001",
+          parent_task_id: "task_parent",
+          priority: "high",
+          type: "bug",
+          estimated_effort: "m",
+          context: { relevant_files: ["src/foo.ts"] },
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("task_full");
+      expect(text).toContain("**Epic:** epic_001");
+      expect(text).toContain("**Parent Task:** task_parent");
+      expect(text).toContain("**Estimated Effort:** m");
+
+      expect(mockCreateTask).toHaveBeenCalledWith("proj_001", {
+        title: "Full task",
+        description: "A detailed description",
+        epicId: "epic_001",
+        parentTaskId: "task_parent",
+        priority: "high",
+        type: "bug",
+        estimatedEffort: "m",
+        context: { relevant_files: ["src/foo.ts"] },
+      });
+    });
+
+    it("adds dependencies when depends_on is specified", async () => {
+      mockCreateTask.mockResolvedValue({
+        ...sampleTask,
+        id: "task_dep",
+        title: "Dependent task",
+      });
+      mockAddTaskDependency.mockResolvedValue({
+        id: "dep_001",
+        taskId: "task_dep",
+        dependsOnTaskId: "task_001",
+        dependencyType: "blocks",
+        createdAt: "2026-01-03T00:00:00Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_create_task",
+        arguments: {
+          project_id: "proj_001",
+          title: "Dependent task",
+          depends_on: ["task_001", "task_002"],
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("**Dependencies:** task_001, task_002");
+
+      expect(mockAddTaskDependency).toHaveBeenCalledTimes(2);
+      expect(mockAddTaskDependency).toHaveBeenCalledWith("task_dep", "task_001");
+      expect(mockAddTaskDependency).toHaveBeenCalledWith("task_dep", "task_002");
+    });
+  });
+
+  // ---- pm_update_task ----
+
+  describe("pm_update_task", () => {
+    it("updates task with simple fields", async () => {
+      mockUpdateTask.mockResolvedValue({
+        ...sampleTask,
+        title: "Updated title",
+        priority: "critical",
+      });
+
+      const result = await client.callTool({
+        name: "pm_update_task",
+        arguments: {
+          task_id: "task_001",
+          title: "Updated title",
+          priority: "critical",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Task updated successfully");
+      expect(text).toContain("Updated title");
+      expect(text).toContain("critical");
+
+      expect(mockUpdateTask).toHaveBeenCalledWith("task_001", {
+        title: "Updated title",
+        priority: "critical",
+      });
+    });
+
+    it("merges context with existing context", async () => {
+      mockGetTask.mockResolvedValue({
+        ...sampleTask,
+        context: { relevant_files: ["src/old.ts"], notes: "old notes" },
+      });
+      mockUpdateTask.mockResolvedValue({
+        ...sampleTask,
+        context: {
+          relevant_files: ["src/new.ts"],
+          notes: "old notes",
+        },
+      });
+
+      const result = await client.callTool({
+        name: "pm_update_task",
+        arguments: {
+          task_id: "task_001",
+          context: { relevant_files: ["src/new.ts"] },
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Task updated successfully");
+
+      // Should merge: new relevant_files + old notes
+      expect(mockUpdateTask).toHaveBeenCalledWith("task_001", {
+        context: {
+          relevant_files: ["src/new.ts"],
+          notes: "old notes",
+        },
+      });
+    });
+
+    it("updates due date", async () => {
+      mockUpdateTask.mockResolvedValue({
+        ...sampleTask,
+        dueDate: "2026-06-01",
+      });
+
+      const result = await client.callTool({
+        name: "pm_update_task",
+        arguments: {
+          task_id: "task_001",
+          due_date: "2026-06-01",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Task updated successfully");
+      expect(text).toContain("**Due Date:** 2026-06-01");
+
+      expect(mockUpdateTask).toHaveBeenCalledWith("task_001", {
+        dueDate: "2026-06-01",
+      });
+    });
+  });
+
+  // ---- pm_add_comment ----
+
+  describe("pm_add_comment", () => {
+    it("adds a comment with default type", async () => {
+      mockAddTaskComment.mockResolvedValue({
+        id: "comment_100",
+        body: "This is a comment.",
+        authorId: "mcp-agent",
+        commentType: "comment",
+        metadata: null,
+        createdAt: "2026-01-03T00:00:00Z",
+        updatedAt: "2026-01-03T00:00:00Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_add_comment",
+        arguments: {
+          task_id: "task_001",
+          body: "This is a comment.",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Comment added successfully");
+      expect(text).toContain("comment_100");
+      expect(text).toContain("comment");
+      expect(text).toContain("This is a comment.");
+
+      expect(mockAddTaskComment).toHaveBeenCalledWith(
+        "task_001",
+        "This is a comment.",
+        "comment",
+        null,
+      );
+    });
+
+    it("adds a comment with custom type and metadata", async () => {
+      mockAddTaskComment.mockResolvedValue({
+        id: "comment_101",
+        body: "A question comment.",
+        authorId: "mcp-agent",
+        commentType: "question",
+        metadata: { urgency: "high" },
+        createdAt: "2026-01-03T00:00:00Z",
+        updatedAt: "2026-01-03T00:00:00Z",
+      });
+
+      await client.callTool({
+        name: "pm_add_comment",
+        arguments: {
+          task_id: "task_001",
+          body: "A question comment.",
+          comment_type: "question",
+          metadata: { urgency: "high" },
+        },
+      });
+
+      expect(mockAddTaskComment).toHaveBeenCalledWith(
+        "task_001",
+        "A question comment.",
+        "question",
+        { urgency: "high" },
+      );
+    });
+  });
+
+  // ---- pm_log_decision ----
+
+  describe("pm_log_decision", () => {
+    it("creates a decision comment with rationale", async () => {
+      mockAddTaskComment.mockResolvedValue({
+        id: "comment_200",
+        body: "**Decision:** Use Redis",
+        authorId: "mcp-agent",
+        commentType: "decision",
+        metadata: { decision: "Use Redis", rationale: "Best performance" },
+        createdAt: "2026-01-03T00:00:00Z",
+        updatedAt: "2026-01-03T00:00:00Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_log_decision",
+        arguments: {
+          task_id: "task_001",
+          decision: "Use Redis",
+          rationale: "Best performance",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Decision logged successfully");
+      expect(text).toContain("comment_200");
+      expect(text).toContain("Use Redis");
+      expect(text).toContain("Best performance");
+
+      expect(mockAddTaskComment).toHaveBeenCalledWith(
+        "task_001",
+        expect.stringContaining("Use Redis"),
+        "decision",
+        { decision: "Use Redis", rationale: "Best performance" },
+      );
+    });
+
+    it("includes alternatives considered", async () => {
+      mockAddTaskComment.mockResolvedValue({
+        id: "comment_201",
+        body: "**Decision:** Use Redis",
+        authorId: "mcp-agent",
+        commentType: "decision",
+        metadata: {
+          decision: "Use Redis",
+          rationale: "Best performance",
+          alternatives_considered: ["Memcached", "In-memory cache"],
+        },
+        createdAt: "2026-01-03T00:00:00Z",
+        updatedAt: "2026-01-03T00:00:00Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_log_decision",
+        arguments: {
+          task_id: "task_001",
+          decision: "Use Redis",
+          rationale: "Best performance",
+          alternatives_considered: ["Memcached", "In-memory cache"],
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Alternatives considered");
+      expect(text).toContain("Memcached");
+      expect(text).toContain("In-memory cache");
+
+      expect(mockAddTaskComment).toHaveBeenCalledWith(
+        "task_001",
+        expect.stringContaining("Alternatives considered"),
+        "decision",
+        {
+          decision: "Use Redis",
+          rationale: "Best performance",
+          alternatives_considered: ["Memcached", "In-memory cache"],
+        },
+      );
+    });
+  });
+
+  // ---- pm_report_progress ----
+
+  describe("pm_report_progress", () => {
+    it("posts a progress update with summary only", async () => {
+      mockAddTaskComment.mockResolvedValue({
+        id: "comment_300",
+        body: "Making good progress.",
+        authorId: "mcp-agent",
+        commentType: "progress_update",
+        metadata: { summary: "Making good progress." },
+        createdAt: "2026-01-03T00:00:00Z",
+        updatedAt: "2026-01-03T00:00:00Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_report_progress",
+        arguments: {
+          task_id: "task_001",
+          summary: "Making good progress.",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Progress update posted");
+      expect(text).toContain("comment_300");
+      expect(text).toContain("Making good progress.");
+
+      expect(mockAddTaskComment).toHaveBeenCalledWith(
+        "task_001",
+        "Making good progress.",
+        "progress_update",
+        { summary: "Making good progress." },
+      );
+    });
+
+    it("includes completion percentage, files, and blockers", async () => {
+      mockAddTaskComment.mockResolvedValue({
+        id: "comment_301",
+        body: "Halfway done.",
+        authorId: "mcp-agent",
+        commentType: "progress_update",
+        metadata: {
+          summary: "Halfway done.",
+          completion_pct: 50,
+          files_changed: ["src/api.ts"],
+        },
+        createdAt: "2026-01-03T00:00:00Z",
+        updatedAt: "2026-01-03T00:00:00Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_report_progress",
+        arguments: {
+          task_id: "task_001",
+          summary: "Halfway done.",
+          completion_pct: 50,
+          files_changed: ["src/api.ts"],
+          blockers: ["Waiting for design review"],
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("**Completion:** 50%");
+      expect(text).toContain("src/api.ts");
+      expect(text).toContain("Waiting for design review");
+
+      expect(mockAddTaskComment).toHaveBeenCalledWith(
+        "task_001",
+        expect.stringContaining("50%"),
+        "progress_update",
+        {
+          summary: "Halfway done.",
+          completion_pct: 50,
+          files_changed: ["src/api.ts"],
+        },
+      );
+    });
+  });
+
+  // ---- pm_set_task_context ----
+
+  describe("pm_set_task_context", () => {
+    it("sets context fields on a task", async () => {
+      mockGetTask.mockResolvedValue({
+        ...sampleTask,
+        context: {},
+      });
+      mockUpdateTask.mockResolvedValue({
+        ...sampleTask,
+        context: {
+          relevant_files: ["src/main.ts"],
+          notes: "Important note",
+        },
+      });
+
+      const result = await client.callTool({
+        name: "pm_set_task_context",
+        arguments: {
+          task_id: "task_001",
+          relevant_files: ["src/main.ts"],
+          notes: "Important note",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Task context updated");
+      expect(text).toContain("task_001");
+      expect(text).toContain("src/main.ts");
+
+      expect(mockUpdateTask).toHaveBeenCalledWith("task_001", {
+        context: {
+          relevant_files: ["src/main.ts"],
+          notes: "Important note",
+        },
+      });
+    });
+
+    it("merges with existing context", async () => {
+      mockGetTask.mockResolvedValue({
+        ...sampleTask,
+        context: { relevant_files: ["src/old.ts"], notes: "existing" },
+      });
+      mockUpdateTask.mockResolvedValue({
+        ...sampleTask,
+        context: {
+          relevant_files: ["src/old.ts"],
+          notes: "existing",
+          acceptance_criteria: ["Must pass tests"],
+        },
+      });
+
+      await client.callTool({
+        name: "pm_set_task_context",
+        arguments: {
+          task_id: "task_001",
+          acceptance_criteria: ["Must pass tests"],
+        },
+      });
+
+      expect(mockUpdateTask).toHaveBeenCalledWith("task_001", {
+        context: {
+          relevant_files: ["src/old.ts"],
+          notes: "existing",
+          acceptance_criteria: ["Must pass tests"],
+        },
+      });
+    });
+  });
+
+  // ---- pm_link_git_ref ----
+
+  describe("pm_link_git_ref", () => {
+    it("links a branch to a task", async () => {
+      mockCreateGitRef.mockResolvedValue({
+        id: "ref_001",
+        taskId: "task_001",
+        refType: "branch",
+        refValue: "feature/my-branch",
+        url: null,
+        title: null,
+        status: null,
+        metadata: null,
+        createdAt: "2026-01-03T00:00:00Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_link_git_ref",
+        arguments: {
+          task_id: "task_001",
+          ref_type: "branch",
+          ref_value: "feature/my-branch",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Git reference linked successfully");
+      expect(text).toContain("ref_001");
+      expect(text).toContain("branch");
+      expect(text).toContain("feature/my-branch");
+
+      expect(mockCreateGitRef).toHaveBeenCalledWith("task_001", {
+        refType: "branch",
+        refValue: "feature/my-branch",
+        url: null,
+        title: null,
+      });
+    });
+
+    it("links a PR with url and title", async () => {
+      mockCreateGitRef.mockResolvedValue({
+        id: "ref_002",
+        taskId: "task_001",
+        refType: "pull_request",
+        refValue: "42",
+        url: "https://github.com/org/repo/pull/42",
+        title: "Add caching feature",
+        status: null,
+        metadata: null,
+        createdAt: "2026-01-03T00:00:00Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_link_git_ref",
+        arguments: {
+          task_id: "task_001",
+          ref_type: "pull_request",
+          ref_value: "42",
+          url: "https://github.com/org/repo/pull/42",
+          title: "Add caching feature",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("pull_request");
+      expect(text).toContain("42");
+      expect(text).toContain("https://github.com/org/repo/pull/42");
+      expect(text).toContain("Add caching feature");
+
+      expect(mockCreateGitRef).toHaveBeenCalledWith("task_001", {
+        refType: "pull_request",
+        refValue: "42",
+        url: "https://github.com/org/repo/pull/42",
+        title: "Add caching feature",
+      });
     });
   });
 
