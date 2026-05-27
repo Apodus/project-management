@@ -6,6 +6,8 @@ import {
   users,
   projects,
   workspaces,
+  epics,
+  tasks,
 } from "../src/db/index.js";
 import type { AppDatabase } from "../src/db/index.js";
 import type { OpenAPIHono } from "@hono/zod-openapi";
@@ -163,6 +165,185 @@ export function createTestProject(
     name,
     slug,
     status,
+  };
+}
+
+export interface TestEpic {
+  id: string;
+  projectId: string;
+  name: string;
+  status: string;
+  priority: string;
+}
+
+export interface TestTask {
+  id: string;
+  projectId: string;
+  title: string;
+  status: string;
+  priority: string;
+  type: string;
+  reporterId: string;
+  assigneeId: string | null;
+  epicId: string | null;
+  parentTaskId: string | null;
+}
+
+/**
+ * Insert an epic into the test database. Returns the created epic data.
+ * Automatically creates a project and user if not provided.
+ *
+ * @param db - The Drizzle database instance
+ * @param overrides - Optional field overrides
+ */
+export function createTestEpic(
+  db: AppDatabase,
+  overrides: Partial<{
+    id: string;
+    projectId: string;
+    name: string;
+    status: string;
+    priority: string;
+    proposalId: string | null;
+    milestoneId: string | null;
+    targetDate: string | null;
+    sortOrder: number;
+    createdBy: string;
+  }> = {},
+): TestEpic {
+  const ts = new Date().toISOString();
+  const id = overrides.id ?? createId();
+
+  // Get or create projectId
+  let projectId = overrides.projectId;
+  if (!projectId) {
+    const project = createTestProject(db);
+    projectId = project.id;
+  }
+
+  // Get or create createdBy
+  let createdBy = overrides.createdBy;
+  if (!createdBy) {
+    const user = createTestUser(db);
+    createdBy = user.id;
+  }
+
+  const name = overrides.name ?? `Test Epic ${id.slice(-6)}`;
+  const status = overrides.status ?? "draft";
+  const priority = overrides.priority ?? "medium";
+
+  db.insert(epics)
+    .values({
+      id,
+      projectId,
+      name,
+      status,
+      priority,
+      proposalId: overrides.proposalId ?? null,
+      milestoneId: overrides.milestoneId ?? null,
+      targetDate: overrides.targetDate ?? null,
+      sortOrder: overrides.sortOrder ?? 0,
+      createdAt: ts,
+      updatedAt: ts,
+      createdBy,
+    })
+    .run();
+
+  return {
+    id,
+    projectId,
+    name,
+    status,
+    priority,
+  };
+}
+
+/**
+ * Insert a task into the test database. Returns the created task data.
+ * Automatically creates a project and user if not provided.
+ *
+ * @param db - The Drizzle database instance
+ * @param overrides - Optional field overrides
+ */
+export function createTestTask(
+  db: AppDatabase,
+  overrides: Partial<{
+    id: string;
+    projectId: string;
+    title: string;
+    description: string | null;
+    status: string;
+    priority: string;
+    type: string;
+    assigneeId: string | null;
+    reporterId: string;
+    epicId: string | null;
+    parentTaskId: string | null;
+    proposalId: string | null;
+    estimatedEffort: string | null;
+    dueDate: string | null;
+    sortOrder: number;
+    context: Record<string, unknown> | null;
+    gitBranch: string | null;
+  }> = {},
+): TestTask {
+  const ts = new Date().toISOString();
+  const id = overrides.id ?? createId();
+
+  // Get or create projectId
+  let projectId = overrides.projectId;
+  if (!projectId) {
+    const project = createTestProject(db);
+    projectId = project.id;
+  }
+
+  // Get or create reporterId
+  let reporterId = overrides.reporterId;
+  if (!reporterId) {
+    const user = createTestUser(db);
+    reporterId = user.id;
+  }
+
+  const title = overrides.title ?? `Test Task ${id.slice(-6)}`;
+  const status = overrides.status ?? "backlog";
+  const priority = overrides.priority ?? "medium";
+  const type = overrides.type ?? "feature";
+
+  db.insert(tasks)
+    .values({
+      id,
+      projectId,
+      title,
+      description: overrides.description ?? null,
+      status,
+      priority,
+      type,
+      assigneeId: overrides.assigneeId ?? null,
+      reporterId,
+      epicId: overrides.epicId ?? null,
+      parentTaskId: overrides.parentTaskId ?? null,
+      proposalId: overrides.proposalId ?? null,
+      estimatedEffort: overrides.estimatedEffort ?? null,
+      dueDate: overrides.dueDate ?? null,
+      sortOrder: overrides.sortOrder ?? 0,
+      context: overrides.context ?? null,
+      gitBranch: overrides.gitBranch ?? null,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+    .run();
+
+  return {
+    id,
+    projectId,
+    title,
+    status,
+    priority,
+    type,
+    reporterId,
+    assigneeId: overrides.assigneeId ?? null,
+    epicId: overrides.epicId ?? null,
+    parentTaskId: overrides.parentTaskId ?? null,
   };
 }
 
