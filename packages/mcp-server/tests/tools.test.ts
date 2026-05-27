@@ -1679,6 +1679,132 @@ describe("MCP Tools", () => {
     });
   });
 
+  // ---- pm_list_templates ----
+
+  describe("pm_list_templates", () => {
+    it("returns formatted template list", async () => {
+      const mockApiRequest = vi.mocked(apiClient.apiRequest);
+      mockApiRequest.mockResolvedValue([
+        {
+          id: "tpl_001",
+          projectId: null,
+          name: "Bug Fix Template",
+          description: "Template for bug fixes",
+          templateType: "task",
+          templateData: { type: "bug", priority: "high" },
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          createdBy: null,
+        },
+      ]);
+
+      const result = await client.callTool({
+        name: "pm_list_templates",
+        arguments: {},
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Bug Fix Template");
+      expect(text).toContain("tpl_001");
+      expect(text).toContain("task");
+      expect(text).toContain("Workspace-level");
+    });
+
+    it("handles empty results", async () => {
+      const mockApiRequest = vi.mocked(apiClient.apiRequest);
+      mockApiRequest.mockResolvedValue([]);
+
+      const result = await client.callTool({
+        name: "pm_list_templates",
+        arguments: {},
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("No templates found");
+    });
+
+    it("passes filter params", async () => {
+      const mockApiRequest = vi.mocked(apiClient.apiRequest);
+      mockApiRequest.mockResolvedValue([]);
+
+      await client.callTool({
+        name: "pm_list_templates",
+        arguments: { project_id: "proj_001", template_type: "task" },
+      });
+
+      expect(mockApiRequest).toHaveBeenCalledWith(
+        "GET",
+        expect.stringContaining("/templates"),
+      );
+      const callUrl = mockApiRequest.mock.calls[0][1];
+      expect(callUrl).toContain("project_id=proj_001");
+      expect(callUrl).toContain("template_type=task");
+    });
+  });
+
+  // ---- pm_use_template ----
+
+  describe("pm_use_template", () => {
+    it("instantiates a task template", async () => {
+      const mockApiRequest = vi.mocked(apiClient.apiRequest);
+      mockApiRequest.mockResolvedValue({
+        task: { id: "task_new", title: "Bug Fix", type: "bug" },
+        subtasks: [],
+      });
+
+      const result = await client.callTool({
+        name: "pm_use_template",
+        arguments: {
+          template_id: "tpl_001",
+          project_id: "proj_001",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Template instantiated successfully");
+      expect(text).toContain("task_new");
+
+      expect(mockApiRequest).toHaveBeenCalledWith(
+        "POST",
+        "/templates/tpl_001/instantiate",
+        expect.objectContaining({ project_id: "proj_001" }),
+      );
+    });
+
+    it("instantiates a project template with name and overrides", async () => {
+      const mockApiRequest = vi.mocked(apiClient.apiRequest);
+      mockApiRequest.mockResolvedValue({
+        project: { id: "proj_new", name: "My Feature" },
+        labels: [],
+        epics: [],
+      });
+
+      const result = await client.callTool({
+        name: "pm_use_template",
+        arguments: {
+          template_id: "tpl_002",
+          workspace_id: "ws_001",
+          name: "My Feature",
+          overrides: { description: "Custom description" },
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Template instantiated successfully");
+      expect(text).toContain("proj_new");
+
+      expect(mockApiRequest).toHaveBeenCalledWith(
+        "POST",
+        "/templates/tpl_002/instantiate",
+        {
+          workspace_id: "ws_001",
+          name: "My Feature",
+          overrides: { description: "Custom description" },
+        },
+      );
+    });
+  });
+
   // ---- Error handling ----
 
   describe("error handling", () => {
