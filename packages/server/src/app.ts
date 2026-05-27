@@ -5,6 +5,7 @@ import { requestIdMiddleware } from "./middleware/request-id.js";
 import { loggerMiddleware } from "./middleware/logger.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
+import { createProjectRoutes } from "./routes/projects.js";
 import type { AppVariables } from "./types.js";
 
 /**
@@ -50,6 +51,9 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
 
   // 4. Auth stub — extract token (no validation yet)
   app.use("/api/*", authMiddleware);
+
+  // ── Resource routes ───────────────────────────────────────────────
+  app.route("/", createProjectRoutes());
 
   // ── Health endpoint ───────────────────────────────────────────────
   const healthRoute = createRoute({
