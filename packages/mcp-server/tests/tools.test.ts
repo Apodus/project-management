@@ -503,7 +503,7 @@ describe("MCP Tools", () => {
     it("creates work items from accepted proposal", async () => {
       mockImplementProposal.mockResolvedValue({
         ...sampleProposal,
-        status: "implemented",
+        status: "planned",
       });
 
       const result = await client.callTool({
@@ -526,8 +526,8 @@ describe("MCP Tools", () => {
       });
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("Proposal implemented successfully");
-      expect(text).toContain("implemented");
+      expect(text).toContain("Proposal planned successfully");
+      expect(text).toContain("planned");
       expect(text).toContain("**Epics created:** 1");
       expect(text).toContain("**Tasks created:** 3");
       expect(text).toContain("Breaking this into one epic");
@@ -551,7 +551,7 @@ describe("MCP Tools", () => {
     it("handles proposal with only standalone tasks", async () => {
       mockImplementProposal.mockResolvedValue({
         ...sampleProposal,
-        status: "implemented",
+        status: "planned",
       });
 
       const result = await client.callTool({
@@ -563,7 +563,7 @@ describe("MCP Tools", () => {
       });
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("Proposal implemented successfully");
+      expect(text).toContain("Proposal planned successfully");
       expect(text).toContain("**Tasks created:** 1");
       expect(text).not.toContain("**Epics created:**");
     });
@@ -571,7 +571,7 @@ describe("MCP Tools", () => {
     it("handles proposal with only epics and no tasks", async () => {
       mockImplementProposal.mockResolvedValue({
         ...sampleProposal,
-        status: "implemented",
+        status: "planned",
       });
 
       const result = await client.callTool({
@@ -583,7 +583,7 @@ describe("MCP Tools", () => {
       });
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("Proposal implemented successfully");
+      expect(text).toContain("Proposal planned successfully");
       expect(text).toContain("**Epics created:** 1");
       expect(text).not.toContain("**Tasks created:**");
     });

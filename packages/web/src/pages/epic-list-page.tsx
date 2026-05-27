@@ -203,7 +203,7 @@ export function EpicListPage() {
           <Milestone className="mb-3 size-10 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">
             No epics found. Epics will appear here when proposals are
-            implemented.
+            planned.
           </p>
         </div>
       )}

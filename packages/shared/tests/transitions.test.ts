@@ -45,8 +45,8 @@ describe("PROPOSAL_TRANSITIONS", () => {
     expect(rule!.allowedBy).toEqual(["human"]);
   });
 
-  it("accepted -> implemented is allowed by ai_agent ONLY", () => {
-    const rule = PROPOSAL_TRANSITION_MAP.get("accepted->implemented");
+  it("accepted -> planned is allowed by ai_agent ONLY", () => {
+    const rule = PROPOSAL_TRANSITION_MAP.get("accepted->planned");
     expect(rule).toBeDefined();
     expect(rule!.allowedBy).toEqual(["ai_agent"]);
   });
@@ -58,7 +58,7 @@ describe("isValidProposalTransition", () => {
     expect(isValidProposalTransition("discussing", "accepted")).toBe(true);
     expect(isValidProposalTransition("discussing", "rejected")).toBe(true);
     expect(isValidProposalTransition("open", "rejected")).toBe(true);
-    expect(isValidProposalTransition("accepted", "implemented")).toBe(true);
+    expect(isValidProposalTransition("accepted", "planned")).toBe(true);
   });
 
   // Invalid transitions
@@ -66,8 +66,8 @@ describe("isValidProposalTransition", () => {
     expect(isValidProposalTransition("open", "accepted")).toBe(false);
   });
 
-  it("returns false for open -> implemented", () => {
-    expect(isValidProposalTransition("open", "implemented")).toBe(false);
+  it("returns false for open -> planned", () => {
+    expect(isValidProposalTransition("open", "planned")).toBe(false);
   });
 
   it("returns false for rejected -> open (no undoing rejection)", () => {
@@ -78,16 +78,16 @@ describe("isValidProposalTransition", () => {
     expect(isValidProposalTransition("rejected", "discussing")).toBe(false);
   });
 
-  it("returns false for implemented -> accepted", () => {
-    expect(isValidProposalTransition("implemented", "accepted")).toBe(false);
+  it("returns false for planned -> accepted", () => {
+    expect(isValidProposalTransition("planned", "accepted")).toBe(false);
   });
 
   it("returns false for discussing -> open", () => {
     expect(isValidProposalTransition("discussing", "open")).toBe(false);
   });
 
-  it("returns false for discussing -> implemented", () => {
-    expect(isValidProposalTransition("discussing", "implemented")).toBe(false);
+  it("returns false for discussing -> planned", () => {
+    expect(isValidProposalTransition("discussing", "planned")).toBe(false);
   });
 
   it("returns false for accepted -> rejected", () => {
@@ -99,7 +99,7 @@ describe("isValidProposalTransition", () => {
       "open",
       "discussing",
       "accepted",
-      "implemented",
+      "planned",
       "rejected",
     ];
     for (const s of statuses) {
@@ -132,12 +132,12 @@ describe("isValidProposalTransition", () => {
     expect(isValidProposalTransition("open", "rejected", "ai_agent")).toBe(false);
   });
 
-  it("denies accepted -> implemented by human", () => {
-    expect(isValidProposalTransition("accepted", "implemented", "human")).toBe(false);
+  it("denies accepted -> planned by human", () => {
+    expect(isValidProposalTransition("accepted", "planned", "human")).toBe(false);
   });
 
-  it("allows accepted -> implemented by ai_agent", () => {
-    expect(isValidProposalTransition("accepted", "implemented", "ai_agent")).toBe(true);
+  it("allows accepted -> planned by ai_agent", () => {
+    expect(isValidProposalTransition("accepted", "planned", "ai_agent")).toBe(true);
   });
 });
 
@@ -165,12 +165,12 @@ describe("getValidProposalTargets", () => {
     expect(getValidProposalTargets("discussing", "ai_agent")).toEqual([]);
   });
 
-  it("returns [implemented] for accepted", () => {
-    expect(getValidProposalTargets("accepted")).toEqual(["implemented"]);
+  it("returns [planned] for accepted", () => {
+    expect(getValidProposalTargets("accepted")).toEqual(["planned"]);
   });
 
-  it("returns [] for implemented (terminal)", () => {
-    expect(getValidProposalTargets("implemented")).toEqual([]);
+  it("returns [] for planned (terminal)", () => {
+    expect(getValidProposalTargets("planned")).toEqual([]);
   });
 
   it("returns [] for rejected (terminal)", () => {

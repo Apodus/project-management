@@ -32,7 +32,7 @@ function eventToAction(event: EventName): string {
     // Status changed events
     case EVENT_NAMES.TASK_STATUS_CHANGED:
     case EVENT_NAMES.PROPOSAL_TRANSITIONED:
-    case EVENT_NAMES.PROPOSAL_IMPLEMENTED:
+    case EVENT_NAMES.PROPOSAL_PLANNED:
       return "status_changed";
 
     // Assigned events

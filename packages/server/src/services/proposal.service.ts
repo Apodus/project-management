@@ -419,7 +419,7 @@ export function getWorkItems(proposalId: string) {
  * 1. Verify proposal is in "accepted" status
  * 2. Create epics with proposal_id set
  * 3. Create tasks (under epics or standalone) with proposal_id set
- * 4. Transition proposal to "implemented"
+ * 4. Transition proposal to "planned"
  * 5. Add a summary comment
  * All in a single transaction.
  */
@@ -515,10 +515,10 @@ export function implementProposal(
         .run();
     }
 
-    // Transition proposal to "implemented"
+    // Transition proposal to "planned"
     tx.update(proposals)
       .set({
-        status: "implemented",
+        status: "planned",
         updatedAt: now,
       })
       .where(eq(proposals.id, proposalId))
@@ -531,7 +531,7 @@ export function implementProposal(
     const summaryParts: string[] = [];
     if (epicCount > 0) summaryParts.push(`${epicCount} epic(s)`);
     if (taskCount > 0) summaryParts.push(`${taskCount} task(s)`);
-    const summaryText = `Proposal implemented: created ${summaryParts.join(" and ")}.`;
+    const summaryText = `Proposal planned: created ${summaryParts.join(" and ")}.`;
 
     tx.insert(comments)
       .values({

@@ -935,7 +935,7 @@ export function TaskListPage() {
                     <p className="text-sm text-muted-foreground">
                       {hasActiveFilters
                         ? "No tasks match your filters."
-                        : "No tasks found. Tasks will appear here when proposals are implemented."}
+                        : "No tasks found. Tasks will appear here when proposals are planned."}
                     </p>
                     {hasActiveFilters && (
                       <Button

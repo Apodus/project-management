@@ -8,7 +8,7 @@ export const PROPOSAL_STATUSES = [
   "open",
   "discussing",
   "accepted",
-  "implemented",
+  "planned",
   "rejected",
 ] as const;
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -25,6 +25,7 @@ import {
   useAddProposalComment,
   useProposalWorkItems,
 } from "@/hooks/use-proposals";
+import { useUsers } from "@/hooks/use-users";
 import { useProjectStore } from "@/stores/project-store";
 import { formatRelativeTime, formatStatus, getStatusColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -32,9 +33,15 @@ import type { Comment, ProposalEpic, ProposalTask } from "@/lib/api";
 
 // ---- Comment component ----
 
-function CommentItem({ comment }: { comment: Comment }) {
-  const isAI = comment.authorId.startsWith("ai-") || comment.authorId === "ai_agent";
-  const isHuman = !isAI;
+function CommentItem({
+  comment,
+  userMap,
+}: {
+  comment: Comment;
+  userMap: Map<string, { displayName: string; type: string }>;
+}) {
+  const author = userMap.get(comment.authorId);
+  const isAI = author?.type === "ai_agent";
 
   return (
     <div
@@ -58,7 +65,7 @@ function CommentItem({ comment }: { comment: Comment }) {
             {isAI ? "AI" : "H"}
           </div>
           <span className="text-sm font-medium">
-            {isAI ? "AI Agent" : "Human Director"}
+            {author?.displayName ?? "Unknown User"}
           </span>
           {comment.commentType && comment.commentType !== "comment" && (
             <Badge variant="outline" className="text-[10px]">
@@ -302,9 +309,20 @@ function WorkItemsSection({
 export function ProposalDetailPage() {
   const { proposalId } = useParams({ strict: false });
   const { data: proposal, isLoading, error, refetch } = useProposal(proposalId);
+  const { data: users } = useUsers();
   const updateProposal = useUpdateProposal();
   const transitionProposal = useTransitionProposal();
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
+
+  const userMap = useMemo(() => {
+    const map = new Map<string, { displayName: string; type: string }>();
+    if (users) {
+      for (const u of users) {
+        map.set(u.id, { displayName: u.displayName, type: u.type });
+      }
+    }
+    return map;
+  }, [users]);
 
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
@@ -529,7 +547,7 @@ export function ProposalDetailPage() {
         {proposal.comments && proposal.comments.length > 0 ? (
           <div className="space-y-3">
             {proposal.comments.map((comment) => (
-              <CommentItem key={comment.id} comment={comment} />
+              <CommentItem key={comment.id} comment={comment} userMap={userMap} />
             ))}
           </div>
         ) : (
@@ -547,14 +565,14 @@ export function ProposalDetailPage() {
             proposalId={proposalId!}
             disabled={
               proposal.status === "rejected" ||
-              proposal.status === "implemented"
+              proposal.status === "planned"
             }
           />
         </div>
       </section>
 
-      {/* Work items (visible when implemented) */}
-      {proposal.status === "implemented" && (
+      {/* Work items (visible when planned) */}
+      {proposal.status === "planned" && (
         <>
           <Separator />
           <WorkItemsSection proposalId={proposalId!} />

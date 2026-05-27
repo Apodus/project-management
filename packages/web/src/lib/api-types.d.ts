@@ -307,7 +307,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    status?: "open" | "discussing" | "accepted" | "implemented" | "rejected";
+                    status?: "open" | "discussing" | "accepted" | "planned" | "rejected";
                 };
                 header?: never;
                 path: {
@@ -781,7 +781,7 @@ export interface paths {
         put?: never;
         /**
          * Implement proposal
-         * @description Atomically create epics and tasks from an accepted proposal, transitioning it to implemented.
+         * @description Atomically create epics and tasks from an accepted proposal, transitioning it to planned.
          */
         post: {
             parameters: {
@@ -798,7 +798,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Proposal implemented */
+                /** @description Proposal planned */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2971,7 +2971,7 @@ export interface components {
         };
         ProposalTransition: {
             /** @enum {string} */
-            toStatus: "open" | "discussing" | "accepted" | "implemented" | "rejected";
+            toStatus: "open" | "discussing" | "accepted" | "planned" | "rejected";
             actorId: string;
         };
         AddProposalComment: {

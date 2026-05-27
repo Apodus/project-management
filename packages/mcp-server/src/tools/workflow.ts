@@ -14,7 +14,7 @@ export function registerWorkflowTools(server: McpServer): void {
 
   server.tool(
     "pm_implement_proposal",
-    "Create epics and tasks from an accepted proposal. Transitions the proposal to 'implemented' status. The proposal must be in 'accepted' status.",
+    "Create epics and tasks from an accepted proposal. Transitions the proposal to 'planned' status. The proposal must be in 'accepted' status.",
     {
       proposal_id: z.string().describe("The accepted proposal ID to implement"),
       epics: z
@@ -110,7 +110,7 @@ export function registerWorkflowTools(server: McpServer): void {
       });
 
       const sections: string[] = [
-        "Proposal implemented successfully.",
+        "Proposal planned successfully.",
         "",
         `**Proposal ID:** ${result.id}`,
         `**Status:** ${result.status}`,

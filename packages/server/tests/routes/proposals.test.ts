@@ -430,7 +430,7 @@ describe("Proposals API", () => {
       expect(body.error.code).toBe("INVALID_TRANSITION");
     });
 
-    it("should reject open → implemented (invalid transition)", async () => {
+    it("should reject open → planned (invalid transition)", async () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "open",
@@ -443,7 +443,7 @@ describe("Proposals API", () => {
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
           token: aiAgent.token,
-          body: { toStatus: "implemented" },
+          body: { toStatus: "planned" },
         },
       );
       expect(res.status).toBe(400);
@@ -452,7 +452,7 @@ describe("Proposals API", () => {
       expect(body.error.code).toBe("INVALID_TRANSITION");
     });
 
-    it("should reject discussing → implemented (invalid transition)", async () => {
+    it("should reject discussing → planned (invalid transition)", async () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
@@ -465,7 +465,7 @@ describe("Proposals API", () => {
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
           token: aiAgent.token,
-          body: { toStatus: "implemented" },
+          body: { toStatus: "planned" },
         },
       );
       expect(res.status).toBe(400);
@@ -494,9 +494,9 @@ describe("Proposals API", () => {
       expect(body.error.code).toBe("INVALID_TRANSITION");
     });
 
-    it("should reject implemented → open (invalid transition)", async () => {
+    it("should reject planned → open (invalid transition)", async () => {
       const proposal = createTestProposal(testApp.db, {
-        status: "implemented",
+        status: "planned",
         createdBy: testApp.testUser.id,
       });
 
@@ -590,7 +590,7 @@ describe("Proposals API", () => {
         "POST",
         `/api/v1/proposals/${proposal.id}/transitions`,
         {
-          body: { toStatus: "implemented" },
+          body: { toStatus: "planned" },
         },
       );
       expect(res.status).toBe(403);
@@ -901,7 +901,7 @@ describe("Proposals API", () => {
       expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.data.status).toBe("implemented");
+      expect(body.data.status).toBe("planned");
     });
 
     it("should create epics with proposalId set", async () => {
@@ -968,7 +968,7 @@ describe("Proposals API", () => {
       expect(workItemsBody.data.tasks[0].proposalId).toBe(proposal.id);
     });
 
-    it("should transition to implemented", async () => {
+    it("should transition to planned", async () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
@@ -995,7 +995,7 @@ describe("Proposals API", () => {
         `/api/v1/proposals/${proposal.id}`,
       );
       const proposalBody = await proposalRes.json();
-      expect(proposalBody.data.status).toBe("implemented");
+      expect(proposalBody.data.status).toBe("planned");
     });
 
     it("should add a summary comment after implementation", async () => {
@@ -1027,7 +1027,7 @@ describe("Proposals API", () => {
       const proposalBody = await proposalRes.json();
       expect(proposalBody.data.comments).toHaveLength(1);
       expect(proposalBody.data.comments[0].body).toContain(
-        "Proposal implemented",
+        "Proposal planned",
       );
       expect(proposalBody.data.comments[0].body).toContain("1 epic(s)");
       expect(proposalBody.data.comments[0].body).toContain("2 task(s)");
@@ -1108,10 +1108,10 @@ describe("Proposals API", () => {
       expect(body.error.code).toBe("INVALID_STATUS");
     });
 
-    it("should fail if proposal is not in accepted status (implemented)", async () => {
+    it("should fail if proposal is not in accepted status (planned)", async () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
-        status: "implemented",
+        status: "planned",
         createdBy: testApp.testUser.id,
       });
 
@@ -1386,7 +1386,7 @@ describe("Proposals API", () => {
         },
       );
       expect(implementRes.status).toBe(200);
-      expect((await implementRes.json()).data.status).toBe("implemented");
+      expect((await implementRes.json()).data.status).toBe("planned");
 
       // 5. Verify final state
       proposalRes = await authRequest(
@@ -1395,7 +1395,7 @@ describe("Proposals API", () => {
         `/api/v1/proposals/${proposalId}`,
       );
       const finalProposal = (await proposalRes.json()).data;
-      expect(finalProposal.status).toBe("implemented");
+      expect(finalProposal.status).toBe("planned");
       expect(finalProposal.workItems.epics).toHaveLength(1);
       expect(finalProposal.workItems.tasks).toHaveLength(3);
       // Comments: 1 AI discussion + 1 implementation summary

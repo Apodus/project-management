@@ -61,9 +61,9 @@ function maybeShowToast(eventType: string, payload: SSEPayload): void {
       toast.success(`Proposal accepted`, {
         description: `Proposal ${payload.entity_id.slice(-6)} has been accepted`,
       });
-    } else if (toStatus === "implemented") {
-      toast.success(`Proposal implemented`, {
-        description: `Proposal ${payload.entity_id.slice(-6)} has been implemented`,
+    } else if (toStatus === "planned") {
+      toast.success(`Proposal planned`, {
+        description: `Proposal ${payload.entity_id.slice(-6)} has been planned`,
       });
     }
   }
@@ -128,7 +128,7 @@ export function useSSE(projectId?: string | null): void {
       "proposal.created",
       "proposal.transitioned",
       "proposal.commented",
-      "proposal.implemented",
+      "proposal.planned",
       // Epic
       "epic.created",
       "epic.updated",

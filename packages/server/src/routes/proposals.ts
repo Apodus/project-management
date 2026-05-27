@@ -405,7 +405,7 @@ const implementProposalRoute = createRoute({
   tags: ["Proposals"],
   summary: "Implement proposal",
   description:
-    "Atomically create epics and tasks from an accepted proposal, transitioning it to implemented.",
+    "Atomically create epics and tasks from an accepted proposal, transitioning it to planned.",
   request: {
     params: z.object({ id: proposalIdParam }),
     body: {
@@ -415,7 +415,7 @@ const implementProposalRoute = createRoute({
   },
   responses: {
     200: {
-      description: "Proposal implemented",
+      description: "Proposal planned",
       content: { "application/json": { schema: proposalDataEnvelope } },
     },
     400: {

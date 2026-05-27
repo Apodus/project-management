@@ -9,7 +9,7 @@ export function registerProposalTools(server: McpServer): void {
     {
       project_id: z.string().optional().describe("Filter by project ID"),
       status: z
-        .enum(["open", "discussing", "accepted", "implemented", "rejected"])
+        .enum(["open", "discussing", "accepted", "planned", "rejected"])
         .optional()
         .describe("Filter by proposal status"),
     },
