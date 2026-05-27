@@ -276,6 +276,51 @@ export const activityLog = sqliteTable(
   ],
 );
 
+// ─── automation_rules ─────────────────────────────────────────────
+export const automationRules = sqliteTable(
+  "automation_rules",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    triggerEvent: text("trigger_event").notNull(),
+    conditions: text("conditions", { mode: "json" }),
+    actionType: text("action_type").notNull(),
+    actionConfig: text("action_config", { mode: "json" }),
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    createdBy: text("created_by").references(() => users.id),
+  },
+  (table) => [
+    index("idx_automation_rules_project").on(table.projectId),
+    index("idx_automation_rules_trigger").on(table.projectId, table.triggerEvent),
+  ],
+);
+
+// ─── templates ────────────────────────────────────────────────────
+export const templates = sqliteTable(
+  "templates",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").references(() => projects.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    templateType: text("template_type").notNull(), // "task" or "project"
+    templateData: text("template_data", { mode: "json" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    createdBy: text("created_by").references(() => users.id),
+  },
+  (table) => [
+    index("idx_templates_project").on(table.projectId),
+    index("idx_templates_type").on(table.templateType),
+  ],
+);
+
 // ─── git_refs ──────────────────────────────────────────────────────
 export const gitRefs = sqliteTable(
   "git_refs",

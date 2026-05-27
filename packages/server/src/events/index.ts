@@ -9,8 +9,10 @@ export {
 } from "./event-bus.js";
 
 export { registerActivityLogListener } from "./listeners.js";
+export { registerAutomationListener } from "./automation-listener.js";
 
 import { registerActivityLogListener } from "./listeners.js";
+import { registerAutomationListener } from "./automation-listener.js";
 
 /**
  * Initialize all event listeners.
@@ -18,4 +20,5 @@ import { registerActivityLogListener } from "./listeners.js";
  */
 export function initializeEventListeners(): void {
   registerActivityLogListener();
+  registerAutomationListener();
 }

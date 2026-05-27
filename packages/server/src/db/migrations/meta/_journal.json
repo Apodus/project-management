@@ -15,6 +15,20 @@
       "when": 1779878054387,
       "tag": "0001_yummy_madame_web",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1779883751002,
+      "tag": "0002_condemned_marvel_zombies",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1779883874896,
+      "tag": "0003_mute_captain_flint",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,8 @@ import {
   activityLog,
   gitRefs,
   sessions,
+  automationRules,
+  templates,
 } from "./schema.js";
 
 // ─── workspaces ────────────────────────────────────────────────────
@@ -58,6 +60,8 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   labels: many(labels),
   milestones: many(milestones),
   activityLogs: many(activityLog),
+  automationRules: many(automationRules),
+  templates: many(templates),
 }));
 
 // ─── milestones ────────────────────────────────────────────────────
@@ -210,6 +214,30 @@ export const activityLogRelations = relations(activityLog, ({ one }) => ({
   }),
   actor: one(users, {
     fields: [activityLog.actorId],
+    references: [users.id],
+  }),
+}));
+
+// ─── automation_rules ─────────────────────────────────────────────
+export const automationRulesRelations = relations(automationRules, ({ one }) => ({
+  project: one(projects, {
+    fields: [automationRules.projectId],
+    references: [projects.id],
+  }),
+  creator: one(users, {
+    fields: [automationRules.createdBy],
+    references: [users.id],
+  }),
+}));
+
+// ─── templates ───────────────────────────────────────────────────
+export const templatesRelations = relations(templates, ({ one }) => ({
+  project: one(projects, {
+    fields: [templates.projectId],
+    references: [projects.id],
+  }),
+  creator: one(users, {
+    fields: [templates.createdBy],
     references: [users.id],
   }),
 }));

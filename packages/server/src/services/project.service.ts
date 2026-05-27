@@ -4,6 +4,7 @@ import { getDb, projects, tasks, epics, proposals, workspaces } from "../db/inde
 import { AppError } from "../types.js";
 import { computeChanges } from "./activity.service.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
+import { createBuiltInRules } from "./automation.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -182,6 +183,9 @@ export function create(data: CreateProjectInput) {
     actorId: data.createdBy ?? null,
     timestamp: now,
   });
+
+  // Create built-in automation rules for the new project
+  createBuiltInRules(id, data.createdBy ?? null);
 
   return result;
 }
