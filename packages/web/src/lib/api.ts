@@ -15,6 +15,15 @@ export type Comment = components["schemas"]["Comment"];
 export type AddProposalComment = components["schemas"]["AddProposalComment"];
 export type ProposalEpic = components["schemas"]["ProposalEpic"];
 export type ProposalTask = components["schemas"]["ProposalTask"];
+export type Task = components["schemas"]["Task"];
+export type CreateTask = components["schemas"]["CreateTask"];
+export type UpdateTask = components["schemas"]["UpdateTask"];
+export type TaskComment = components["schemas"]["TaskComment"];
+export type CreateTaskComment = components["schemas"]["CreateTaskComment"];
+export type Epic = components["schemas"]["Epic"];
+export type CreateEpic = components["schemas"]["CreateEpic"];
+export type UpdateEpic = components["schemas"]["UpdateEpic"];
+export type TaskDependency = components["schemas"]["TaskDependency"];
 
 // ---- API client ----
 
@@ -189,4 +198,114 @@ export async function getProposalWorkItems(
   return apiFetch<{ epics: ProposalEpic[]; tasks: ProposalTask[] }>(
     `/proposals/${id}/work-items`,
   );
+}
+
+// ---- Task API ----
+
+export interface TaskFilters {
+  status?: string;
+  priority?: string;
+  type?: string;
+  assignee?: string;
+  epic?: string;
+  search?: string;
+  sortBy?: string;
+  order?: "asc" | "desc";
+  page?: number;
+  perPage?: number;
+}
+
+export interface PaginatedTasks {
+  data: Task[];
+  pagination: {
+    page: number;
+    perPage: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export async function getTasks(
+  projectId: string,
+  filters?: TaskFilters,
+): Promise<PaginatedTasks> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.priority) params.set("priority", filters.priority);
+  if (filters?.type) params.set("type", filters.type);
+  if (filters?.assignee) params.set("assignee", filters.assignee);
+  if (filters?.epic) params.set("epic", filters.epic);
+  if (filters?.search) params.set("search", filters.search);
+  if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters?.order) params.set("order", filters.order);
+  if (filters?.page) params.set("page", String(filters.page));
+  if (filters?.perPage) params.set("perPage", String(filters.perPage));
+  const query = params.toString();
+  return apiFetch<PaginatedTasks>(
+    `/projects/${projectId}/tasks${query ? `?${query}` : ""}`,
+    { rawResponse: true },
+  );
+}
+
+export async function getTask(id: string): Promise<Task> {
+  return apiFetch<Task>(`/tasks/${id}`);
+}
+
+export async function updateTask(
+  id: string,
+  data: UpdateTask,
+): Promise<Task> {
+  return apiFetch<Task>(`/tasks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getTaskComments(taskId: string): Promise<TaskComment[]> {
+  return apiFetch<TaskComment[]>(`/tasks/${taskId}/comments`);
+}
+
+export async function addTaskComment(
+  taskId: string,
+  body: string,
+  type?: string,
+  metadata?: Record<string, unknown> | null,
+): Promise<TaskComment> {
+  return apiFetch<TaskComment>(`/tasks/${taskId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({
+      authorId: "human-director",
+      body,
+      ...(type ? { commentType: type } : {}),
+      ...(metadata ? { metadata } : {}),
+    }),
+  });
+}
+
+export async function getTaskSubtasks(taskId: string): Promise<Task[]> {
+  return apiFetch<Task[]>(`/tasks/${taskId}/subtasks`);
+}
+
+// ---- Epic API ----
+
+export interface EpicFilters {
+  status?: string;
+  milestone?: string;
+}
+
+export async function getEpics(
+  projectId: string,
+  filters?: EpicFilters,
+): Promise<Epic[]> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.milestone) params.set("milestone", filters.milestone);
+  const query = params.toString();
+  return apiFetch<Epic[]>(
+    `/projects/${projectId}/epics${query ? `?${query}` : ""}`,
+  );
+}
+
+export async function getEpic(id: string): Promise<Epic> {
+  return apiFetch<Epic>(`/epics/${id}`);
 }
