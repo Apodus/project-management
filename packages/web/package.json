@@ -8,17 +8,19 @@
     "dev": "vite",
     "preview": "vite preview",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "generate:api": "openapi-typescript ../server/openapi.json -o src/lib/api-types.d.ts"
   },
   "dependencies": {
     "react": "^19",
     "react-dom": "^19"
   },
   "devDependencies": {
-    "typescript": "^5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5",
     "vite": "^6"
   }
 }

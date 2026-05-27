@@ -2,6 +2,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import { getDb, epics, tasks } from "../db/index.js";
 import { AppError } from "../types.js";
+import * as activityService from "./activity.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -156,7 +157,17 @@ export function create(data: CreateEpicInput) {
     })
     .run();
 
-  return getById(id);
+  const result = getById(id);
+
+  activityService.logActivity({
+    entityType: "epic",
+    entityId: id,
+    projectId: data.projectId,
+    actorId: data.createdBy ?? null,
+    action: "created",
+  });
+
+  return result;
 }
 
 /**
@@ -184,14 +195,24 @@ export function update(id: string, data: UpdateEpicInput) {
 
   db.update(epics).set(values).where(eq(epics.id, id)).run();
 
-  return getById(id);
+  const result = getById(id);
+
+  activityService.logActivity({
+    entityType: "epic",
+    entityId: id,
+    projectId: result.projectId,
+    actorId: null,
+    action: data.status !== undefined ? "status_changed" : "updated",
+  });
+
+  return result;
 }
 
 /**
  * Archive an epic (set status to "cancelled"). Throws 404 if not found.
  */
 export function archive(id: string) {
-  getRawById(id);
+  const existing = getRawById(id);
   const db = getDb();
   const now = new Date().toISOString();
 
@@ -200,5 +221,16 @@ export function archive(id: string) {
     .where(eq(epics.id, id))
     .run();
 
-  return getById(id);
+  const result = getById(id);
+
+  activityService.logActivity({
+    entityType: "epic",
+    entityId: id,
+    projectId: existing.projectId,
+    actorId: null,
+    action: "archived",
+    changes: { status: { from: existing.status, to: "cancelled" } },
+  });
+
+  return result;
 }

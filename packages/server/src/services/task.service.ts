@@ -3,6 +3,7 @@ import { createId } from "@pm/shared";
 import { getDb, tasks, taskLabels, taskDependencies } from "../db/index.js";
 import { AppError } from "../types.js";
 import * as dependencyService from "./dependency.service.js";
+import * as activityService from "./activity.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -282,7 +283,17 @@ export function create(data: CreateTaskInput) {
     })
     .run();
 
-  return getById(id);
+  const result = getById(id);
+
+  activityService.logActivity({
+    entityType: "task",
+    entityId: id,
+    projectId: data.projectId,
+    actorId: data.reporterId,
+    action: "created",
+  });
+
+  return result;
 }
 
 /**
@@ -331,14 +342,39 @@ export function update(id: string, data: UpdateTaskInput) {
 
   db.update(tasks).set(values).where(eq(tasks.id, id)).run();
 
-  return getById(id);
+  const result = getById(id);
+
+  // Determine the action based on what changed
+  let action = "updated";
+  if (data.status !== undefined && data.status !== existing.status) {
+    action = "status_changed";
+  } else if (data.assigneeId !== undefined && data.assigneeId !== existing.assigneeId) {
+    action = "assigned";
+  }
+
+  const changes = activityService.computeChanges(
+    existing as unknown as Record<string, unknown>,
+    result as unknown as Record<string, unknown>,
+    ["title", "description", "status", "priority", "assigneeId", "epicId", "type"],
+  );
+
+  activityService.logActivity({
+    entityType: "task",
+    entityId: id,
+    projectId: existing.projectId,
+    actorId: null,
+    action,
+    changes,
+  });
+
+  return result;
 }
 
 /**
  * Archive a task (set status to "cancelled"). Throws 404 if not found.
  */
 export function archive(id: string) {
-  getById(id);
+  const existing = getById(id);
   const db = getDb();
   const now = new Date().toISOString();
 
@@ -347,7 +383,18 @@ export function archive(id: string) {
     .where(eq(tasks.id, id))
     .run();
 
-  return getById(id);
+  const result = getById(id);
+
+  activityService.logActivity({
+    entityType: "task",
+    entityId: id,
+    projectId: existing.projectId,
+    actorId: null,
+    action: "archived",
+    changes: { status: { from: existing.status, to: "cancelled" } },
+  });
+
+  return result;
 }
 
 /**

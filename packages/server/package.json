@@ -16,7 +16,8 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "openapi:export": "tsx src/scripts/export-openapi.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1",

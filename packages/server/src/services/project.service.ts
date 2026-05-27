@@ -2,6 +2,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import { getDb, projects, tasks, epics, proposals, workspaces } from "../db/index.js";
 import { AppError } from "../types.js";
+import * as activityService from "./activity.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -170,7 +171,17 @@ export function create(data: CreateProjectInput) {
     })
     .run();
 
-  return getById(id);
+  const result = getById(id);
+
+  activityService.logActivity({
+    entityType: "project",
+    entityId: id,
+    projectId: id,
+    actorId: data.createdBy ?? null,
+    action: "created",
+  });
+
+  return result;
 }
 
 /**
@@ -205,7 +216,28 @@ export function update(id: string, data: UpdateProjectInput) {
     .where(eq(projects.id, id))
     .run();
 
-  return getById(id);
+  const result = getById(id);
+
+  const changes = activityService.computeChanges(
+    existing as unknown as Record<string, unknown>,
+    result as unknown as Record<string, unknown>,
+    ["name", "description", "status", "gitRepoUrl"],
+  );
+
+  const action = data.status !== undefined && data.status !== existing.status
+    ? "status_changed"
+    : "updated";
+
+  activityService.logActivity({
+    entityType: "project",
+    entityId: id,
+    projectId: id,
+    actorId: null,
+    action,
+    changes,
+  });
+
+  return result;
 }
 
 /**
@@ -214,7 +246,7 @@ export function update(id: string, data: UpdateProjectInput) {
  */
 export function archive(id: string) {
   // Verify the project exists first
-  getById(id);
+  const existing = getById(id);
   const db = getDb();
   const now = new Date().toISOString();
 
@@ -223,7 +255,18 @@ export function archive(id: string) {
     .where(eq(projects.id, id))
     .run();
 
-  return getById(id);
+  const result = getById(id);
+
+  activityService.logActivity({
+    entityType: "project",
+    entityId: id,
+    projectId: id,
+    actorId: null,
+    action: "archived",
+    changes: { status: { from: existing.status, to: "archived" } },
+  });
+
+  return result;
 }
 
 /**

@@ -5,6 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ALL_FTS_STATEMENTS } from "./fts.js";
+import { ALL_FTS_TRIGGER_STATEMENTS } from "./fts-triggers.js";
 import { seedDefaultWorkspace } from "./seed.js";
 import * as schema from "./schema.js";
 import * as relations from "./relations.js";
@@ -84,6 +85,11 @@ export function initializeDatabase(options?: InitOptions): AppDatabase {
     rawDb.exec(stmt);
   }
 
+  // Create FTS5 sync triggers
+  for (const stmt of ALL_FTS_TRIGGER_STATEMENTS) {
+    rawDb.exec(stmt);
+  }
+
   // Seed default workspace
   seedDefaultWorkspace(db);
 
@@ -104,6 +110,20 @@ export function getDb(): AppDatabase {
 }
 
 /**
+ * Get the raw better-sqlite3 Database instance.
+ * Needed for executing raw SQL (e.g., FTS triggers).
+ * Throws if the database has not been initialized yet.
+ */
+export function getRawDb(): Database.Database {
+  if (!rawDb) {
+    throw new Error(
+      "Database not initialized. Call initializeDatabase() first.",
+    );
+  }
+  return rawDb;
+}
+
+/**
  * Close the database connection and reset the singleton.
  * Important for tests that need clean state between runs.
  */
@@ -119,4 +139,5 @@ export function closeDb(): void {
 export * from "./schema.js";
 export * from "./relations.js";
 export { ALL_FTS_STATEMENTS } from "./fts.js";
+export { ALL_FTS_TRIGGER_STATEMENTS } from "./fts-triggers.js";
 export { seedDefaultWorkspace } from "./seed.js";

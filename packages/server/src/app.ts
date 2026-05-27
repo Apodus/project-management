@@ -12,6 +12,10 @@ import { createTaskRoutes } from "./routes/tasks.js";
 import { createCommentRoutes } from "./routes/comments.js";
 import { createLabelRoutes } from "./routes/labels.js";
 import { createDependencyRoutes } from "./routes/dependencies.js";
+import { createSearchRoutes } from "./routes/search.js";
+import { createActivityRoutes } from "./routes/activity.js";
+import { createMilestoneRoutes } from "./routes/milestones.js";
+import { createGitRefRoutes } from "./routes/git-refs.js";
 import type { AppVariables } from "./types.js";
 
 /**
@@ -66,6 +70,10 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
   app.route("/", createCommentRoutes());
   app.route("/", createLabelRoutes());
   app.route("/", createDependencyRoutes());
+  app.route("/", createSearchRoutes());
+  app.route("/", createActivityRoutes());
+  app.route("/", createMilestoneRoutes());
+  app.route("/", createGitRefRoutes());
 
   // ── Health endpoint ───────────────────────────────────────────────
   const healthRoute = createRoute({

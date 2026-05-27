@@ -15,6 +15,7 @@ import {
   users,
 } from "../db/index.js";
 import { AppError } from "../types.js";
+import * as activityService from "./activity.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -158,11 +159,21 @@ export function create(projectId: string, data: CreateProposalInput) {
     })
     .run();
 
-  return db
+  const result = db
     .select()
     .from(proposals)
     .where(eq(proposals.id, id))
     .get()!;
+
+  activityService.logActivity({
+    entityType: "proposal",
+    entityId: id,
+    projectId,
+    actorId: data.createdBy,
+    action: "created",
+  });
+
+  return result;
 }
 
 /**
@@ -265,11 +276,22 @@ export function transition(
     .where(eq(proposals.id, id))
     .run();
 
-  return db
+  const result = db
     .select()
     .from(proposals)
     .where(eq(proposals.id, id))
     .get()!;
+
+  activityService.logActivity({
+    entityType: "proposal",
+    entityId: id,
+    projectId: proposal.projectId,
+    actorId: actor.id,
+    action: "status_changed",
+    changes: { status: { from: fromStatus, to: toStatus } },
+  });
+
+  return result;
 }
 
 /**
