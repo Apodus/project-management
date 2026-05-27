@@ -15,6 +15,7 @@ function isPublicRoute(path: string): boolean {
   if (path === "/api/v1/auth") return true;
   if (path === "/api/v1/openapi.json") return true;
   if (path === "/api/v1/docs") return true;
+  if (path.startsWith("/api/v1/webhooks/")) return true;
   return false;
 }
 

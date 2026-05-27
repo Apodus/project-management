@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
   ArrowRightLeft,
   BarChart3,
+  Check,
   Code2,
   ExternalLink,
   FileText,
@@ -13,7 +14,10 @@ import {
   MessageCircleQuestion,
   MessageSquare,
   Pencil,
+  Plus,
+  Save,
   Send,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -403,19 +407,310 @@ function SubtasksSection({ taskId }: { taskId: string }) {
   );
 }
 
+// ---- Context types ----
+
+interface TaskContext {
+  relevant_files?: string[];
+  codebase_areas?: string[];
+  acceptance_criteria?: string[];
+  design_references?: string[];
+  notes?: string;
+  implementation_hints?: string;
+}
+
+// ---- Tag input (chips) ----
+
+function TagInput({
+  values,
+  onChange,
+  placeholder,
+  mono,
+}: {
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder?: string;
+  mono?: boolean;
+}) {
+  const [inputValue, setInputValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function addTag() {
+    const trimmed = inputValue.trim();
+    if (trimmed && !values.includes(trimmed)) {
+      onChange([...values, trimmed]);
+    }
+    setInputValue("");
+    inputRef.current?.focus();
+  }
+
+  function removeTag(index: number) {
+    onChange(values.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {values.map((val, i) => (
+          <Badge
+            key={i}
+            variant="secondary"
+            className={cn(
+              "flex items-center gap-1 pr-1",
+              mono && "font-mono text-xs",
+            )}
+          >
+            {val}
+            <button
+              type="button"
+              onClick={() => removeTag(i)}
+              className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+            >
+              <X className="size-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          ref={inputRef}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addTag();
+            }
+          }}
+          placeholder={placeholder}
+          className={cn("h-8 text-sm", mono && "font-mono")}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={addTag}
+          disabled={!inputValue.trim()}
+          className="h-8 px-2"
+        >
+          <Plus className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Ordered list editor ----
+
+function OrderedListEditor({
+  values,
+  onChange,
+  placeholder,
+}: {
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder?: string;
+}) {
+  const [inputValue, setInputValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function addItem() {
+    const trimmed = inputValue.trim();
+    if (trimmed) {
+      onChange([...values, trimmed]);
+    }
+    setInputValue("");
+    inputRef.current?.focus();
+  }
+
+  function removeItem(index: number) {
+    onChange(values.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className="space-y-2">
+      <ol className="space-y-1.5">
+        {values.map((item, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm group">
+            <span className="mt-0.5 shrink-0 text-xs text-muted-foreground font-medium w-5 text-right">
+              {i + 1}.
+            </span>
+            <span className="flex-1">{item}</span>
+            <button
+              type="button"
+              onClick={() => removeItem(i)}
+              className="mt-0.5 shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity"
+            >
+              <X className="size-3 text-muted-foreground" />
+            </button>
+          </li>
+        ))}
+      </ol>
+      <div className="flex items-center gap-2">
+        <Input
+          ref={inputRef}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addItem();
+            }
+          }}
+          placeholder={placeholder}
+          className="h-8 text-sm"
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={addItem}
+          disabled={!inputValue.trim()}
+          className="h-8 px-2"
+        >
+          <Plus className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Editable text field ----
+
+function EditableTextField({
+  value,
+  onSave,
+  placeholder,
+  multiline,
+}: {
+  value: string;
+  onSave: (newValue: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  function save() {
+    const trimmed = draft.trim();
+    if (trimmed !== value) {
+      onSave(trimmed);
+    }
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="space-y-2">
+        {multiline ? (
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={4}
+            autoFocus
+            className="text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setDraft(value);
+                setEditing(false);
+              }
+            }}
+          />
+        ) : (
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            autoFocus
+            className="h-8 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") save();
+              if (e.key === "Escape") {
+                setDraft(value);
+                setEditing(false);
+              }
+            }}
+          />
+        )}
+        <div className="flex justify-end gap-2">
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => {
+              setDraft(value);
+              setEditing(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button size="xs" onClick={save}>
+            <Check className="size-3" />
+            Save
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(value);
+        setEditing(true);
+      }}
+      className="group w-full text-left"
+    >
+      {value ? (
+        <p className="whitespace-pre-wrap text-sm">{value}</p>
+      ) : (
+        <p className="text-sm italic text-muted-foreground/50">
+          {placeholder ?? "Click to add..."}
+        </p>
+      )}
+      <span className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+        <Pencil className="size-3" />
+        Edit
+      </span>
+    </button>
+  );
+}
+
 // ---- Context section ----
 
-function ContextSection({ task }: { task: Task }) {
-  const context = task.context as {
-    relevant_files?: string[];
-    codebase_areas?: string[];
-    acceptance_criteria?: string[];
-    design_references?: string[];
-    notes?: string;
-    implementation_hints?: string;
-  } | null;
+function ContextSection({
+  task,
+  onSave,
+  isSaving,
+}: {
+  task: Task;
+  onSave: (context: TaskContext) => void;
+  isSaving?: boolean;
+}) {
+  const context = (task.context as TaskContext | null) ?? {};
 
-  if (!context) return null;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<TaskContext>({
+    relevant_files: context.relevant_files ?? [],
+    acceptance_criteria: context.acceptance_criteria ?? [],
+    implementation_hints: context.implementation_hints ?? "",
+    design_references: context.design_references ?? [],
+    notes: context.notes ?? "",
+  });
+
+  // Sync draft when task context changes externally
+  useEffect(() => {
+    const ctx = (task.context as TaskContext | null) ?? {};
+    setDraft({
+      relevant_files: ctx.relevant_files ?? [],
+      acceptance_criteria: ctx.acceptance_criteria ?? [],
+      implementation_hints: ctx.implementation_hints ?? "",
+      design_references: ctx.design_references ?? [],
+      notes: ctx.notes ?? "",
+    });
+  }, [task.context]);
 
   const hasContent =
     (context.relevant_files && context.relevant_files.length > 0) ||
@@ -424,14 +719,187 @@ function ContextSection({ task }: { task: Task }) {
     (context.design_references && context.design_references.length > 0) ||
     context.notes;
 
-  if (!hasContent) return null;
+  const handleSave = useCallback(() => {
+    // Clean up empty arrays and empty strings before saving
+    const cleaned: TaskContext = {};
+    if (draft.relevant_files && draft.relevant_files.length > 0) {
+      cleaned.relevant_files = draft.relevant_files;
+    }
+    if (draft.acceptance_criteria && draft.acceptance_criteria.length > 0) {
+      cleaned.acceptance_criteria = draft.acceptance_criteria;
+    }
+    if (draft.implementation_hints) {
+      cleaned.implementation_hints = draft.implementation_hints;
+    }
+    if (draft.design_references && draft.design_references.length > 0) {
+      cleaned.design_references = draft.design_references;
+    }
+    if (draft.notes) {
+      cleaned.notes = draft.notes;
+    }
 
+    onSave(cleaned);
+    setEditing(false);
+  }, [draft, onSave]);
+
+  if (!editing && !hasContent) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <Code2 className="size-4" />
+            Context
+          </h3>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => setEditing(true)}
+          >
+            <Plus className="size-3" />
+            Add context
+          </Button>
+        </div>
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-6">
+          <Code2 className="mb-2 size-6 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">
+            No context information. Click "Add context" to define files, criteria, and notes.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <Code2 className="size-4" />
+            Context
+          </h3>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                const ctx = (task.context as TaskContext | null) ?? {};
+                setDraft({
+                  relevant_files: ctx.relevant_files ?? [],
+                  acceptance_criteria: ctx.acceptance_criteria ?? [],
+                  implementation_hints: ctx.implementation_hints ?? "",
+                  design_references: ctx.design_references ?? [],
+                  notes: ctx.notes ?? "",
+                });
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button size="xs" onClick={handleSave} disabled={isSaving}>
+              <Save className="size-3" />
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Relevant files - tag input */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Relevant files
+          </p>
+          <TagInput
+            values={draft.relevant_files ?? []}
+            onChange={(values) =>
+              setDraft((d) => ({ ...d, relevant_files: values }))
+            }
+            placeholder="Add a file path..."
+            mono
+          />
+        </div>
+
+        {/* Acceptance criteria - ordered list */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Acceptance criteria
+          </p>
+          <OrderedListEditor
+            values={draft.acceptance_criteria ?? []}
+            onChange={(values) =>
+              setDraft((d) => ({ ...d, acceptance_criteria: values }))
+            }
+            placeholder="Add a criterion..."
+          />
+        </div>
+
+        {/* Implementation hints - text area */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Implementation hints
+          </p>
+          <Textarea
+            value={draft.implementation_hints ?? ""}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                implementation_hints: e.target.value,
+              }))
+            }
+            rows={3}
+            placeholder="Add implementation hints..."
+            className="text-sm"
+          />
+        </div>
+
+        {/* Design references - tag input */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Design references
+          </p>
+          <TagInput
+            values={draft.design_references ?? []}
+            onChange={(values) =>
+              setDraft((d) => ({ ...d, design_references: values }))
+            }
+            placeholder="Add a reference URL or path..."
+          />
+        </div>
+
+        {/* Notes - text area */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Notes
+          </p>
+          <Textarea
+            value={draft.notes ?? ""}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, notes: e.target.value }))
+            }
+            rows={3}
+            placeholder="Add notes..."
+            className="text-sm"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // View mode (has content, not editing)
   return (
     <div className="space-y-4">
-      <h3 className="flex items-center gap-2 text-sm font-medium">
-        <Code2 className="size-4" />
-        Context
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          <Code2 className="size-4" />
+          Context
+        </h3>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() => setEditing(true)}
+        >
+          <Pencil className="size-3" />
+          Edit
+        </Button>
+      </div>
 
       {/* Relevant files */}
       {context.relevant_files && context.relevant_files.length > 0 && (
@@ -699,7 +1167,17 @@ export function TaskDetailPage() {
           </section>
 
           {/* Context */}
-          <ContextSection task={task} />
+          <ContextSection
+            task={task}
+            onSave={(context) => {
+              if (!taskId) return;
+              updateTask.mutate({
+                id: taskId,
+                data: { context: context as Record<string, unknown> },
+              });
+            }}
+            isSaving={updateTask.isPending}
+          />
 
           {/* Subtasks */}
           <SubtasksSection taskId={taskId!} />
