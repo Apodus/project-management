@@ -20,7 +20,9 @@
   },
   "dependencies": {
     "@hono/node-server": "^1",
+    "@hono/zod-openapi": "^1.4.0",
     "@pm/shared": "workspace:*",
+    "@scalar/hono-api-reference": "^0.10.19",
     "better-sqlite3": "^12.10.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4"
