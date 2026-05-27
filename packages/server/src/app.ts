@@ -16,6 +16,8 @@ import { createSearchRoutes } from "./routes/search.js";
 import { createActivityRoutes } from "./routes/activity.js";
 import { createMilestoneRoutes } from "./routes/milestones.js";
 import { createGitRefRoutes } from "./routes/git-refs.js";
+import { createAuthRoutes } from "./routes/auth.js";
+import { createUserRoutes } from "./routes/users.js";
 import type { AppVariables } from "./types.js";
 
 /**
@@ -61,6 +63,10 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
 
   // 4. Auth stub — extract token (no validation yet)
   app.use("/api/*", authMiddleware);
+
+  // ── Auth & user routes ────────────────────────────────────────────
+  app.route("/", createAuthRoutes());
+  app.route("/", createUserRoutes());
 
   // ── Resource routes ───────────────────────────────────────────────
   app.route("/", createProjectRoutes());
