@@ -59,6 +59,7 @@ export async function apiFetch<T>(
   const response = await fetch(url, {
     ...fetchOptions,
     headers,
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -308,4 +309,125 @@ export async function getEpics(
 
 export async function getEpic(id: string): Promise<Epic> {
   return apiFetch<Epic>(`/epics/${id}`);
+}
+
+// ---- Auth API ----
+
+export interface SetupStatus {
+  needsSetup: boolean;
+}
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  displayName: string;
+  email: string | null;
+  role: string;
+  type: string;
+  avatarUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SetupData {
+  username: string;
+  displayName: string;
+  password: string;
+}
+
+export interface LoginData {
+  username: string;
+  password: string;
+}
+
+export async function getSetupStatus(): Promise<SetupStatus> {
+  return apiFetch<SetupStatus>("/auth/setup/status");
+}
+
+export async function setup(data: SetupData): Promise<AuthUser> {
+  return apiFetch<AuthUser>("/auth/setup", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function login(data: LoginData): Promise<AuthUser> {
+  return apiFetch<AuthUser>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await apiFetch<{ message: string }>("/auth/logout", {
+    method: "POST",
+  });
+}
+
+export async function getCurrentUser(): Promise<AuthUser> {
+  return apiFetch<AuthUser>("/auth/me");
+}
+
+// ---- User Management API ----
+
+export interface UserWithToken extends AuthUser {
+  apiToken?: string;
+}
+
+export interface CreateUserData {
+  username: string;
+  displayName: string;
+  email?: string | null;
+  password?: string;
+  role: string;
+  type: string;
+}
+
+export interface UpdateUserData {
+  username?: string;
+  displayName?: string;
+  email?: string | null;
+  role?: string;
+}
+
+export async function getUsers(): Promise<AuthUser[]> {
+  return apiFetch<AuthUser[]>("/users");
+}
+
+export async function createUser(data: CreateUserData): Promise<UserWithToken> {
+  return apiFetch<UserWithToken>("/users", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateUser(
+  id: string,
+  data: UpdateUserData,
+): Promise<AuthUser> {
+  return apiFetch<AuthUser>(`/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function rotateToken(
+  id: string,
+): Promise<{ apiToken: string }> {
+  return apiFetch<{ apiToken: string }>(`/users/${id}/rotate-token`, {
+    method: "POST",
+  });
+}
+
+export async function deactivateUser(id: string): Promise<AuthUser> {
+  return apiFetch<AuthUser>(`/users/${id}/deactivate`, {
+    method: "POST",
+  });
+}
+
+export async function activateUser(id: string): Promise<AuthUser> {
+  return apiFetch<AuthUser>(`/users/${id}/activate`, {
+    method: "POST",
+  });
 }

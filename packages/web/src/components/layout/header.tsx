@@ -1,5 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
-import { Moon, Search, Sun, User } from "lucide-react";
+import { LogOut, Moon, Search, Settings, Sun, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { useThemeStore } from "@/stores/theme-store";
+import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 
 function Breadcrumbs() {
   const router = useRouter();
@@ -50,6 +51,17 @@ function Breadcrumbs() {
 
 export function Header() {
   const { theme, toggleTheme } = useThemeStore();
+  const { data: currentUser } = useCurrentUser();
+  const logoutMutation = useLogout();
+
+  const initials = currentUser?.displayName
+    ? currentUser.displayName
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : null;
 
   return (
     <header className="flex h-14 shrink-0 items-center border-b border-border bg-background px-4">
@@ -97,15 +109,40 @@ export function Header() {
               aria-label="User menu"
             >
               <div className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
-                <User className="size-3.5" />
+                {initials ?? <User className="size-3.5" />}
               </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem disabled>Profile</DropdownMenuItem>
-            <DropdownMenuItem disabled>Settings</DropdownMenuItem>
+          <DropdownMenuContent align="end" className="w-56">
+            {currentUser && (
+              <>
+                <div className="px-2 py-1.5">
+                  <p className="text-sm font-medium">
+                    {currentUser.displayName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    @{currentUser.username}
+                  </p>
+                </div>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuItem disabled>
+              <User className="mr-2 size-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled>
+              <Settings className="mr-2 size-4" />
+              Settings
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled>Log out</DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+            >
+              <LogOut className="mr-2 size-4" />
+              {logoutMutation.isPending ? "Logging out..." : "Log out"}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

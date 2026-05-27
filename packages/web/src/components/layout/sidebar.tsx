@@ -260,9 +260,8 @@ export function Sidebar() {
           item={{
             label: "Settings",
             icon: Settings,
-            href: "/projects",
+            href: "/settings/users",
             matchPath: "/settings",
-            disabled: true,
           }}
           collapsed={collapsed}
         />
