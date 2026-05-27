@@ -440,6 +440,108 @@ describe("Agent Pool", () => {
     });
   });
 
+  // ── Remove agent from pool ───────────────────────────────────────
+
+  describe("DELETE /api/v1/auth/agent-pools/:id/agents/:userId", () => {
+    it("should hard-delete an agent with no activity", async () => {
+      const pool = await createPoolViaAPI("remove-pool", "secret-12345");
+      const agents = await createPoolAgentsViaAPI(pool.id, 2);
+      const targetId = agents[0].id;
+
+      const res = await authRequest(
+        testApp.app,
+        "DELETE",
+        `/api/v1/auth/agent-pools/${pool.id}/agents/${targetId}`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.deleted).toBe(true);
+      expect(body.data.deactivated).toBe(false);
+
+      // User should no longer exist
+      const user = testApp.db.select().from(users).where(eq(users.id, targetId)).get();
+      expect(user).toBeUndefined();
+
+      // Other agent should still be there
+      const otherUser = testApp.db.select().from(users).where(eq(users.id, agents[1].id)).get();
+      expect(otherUser).toBeTruthy();
+      expect(otherUser?.isActive).toBe(true);
+    });
+
+    it("should release claim before deleting", async () => {
+      const pool = await createPoolViaAPI("remove-claimed-pool", TEST_POOL_SECRET);
+      const agents = await createPoolAgentsViaAPI(pool.id, 1);
+      const targetId = agents[0].id;
+
+      // Claim the agent
+      const claimRes = await testApp.app.request("/api/v1/auth/agent-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ poolName: "remove-claimed-pool", poolSecret: TEST_POOL_SECRET }),
+      });
+      expect(claimRes.status).toBe(200);
+
+      // Now remove (should release claim first, then delete)
+      const res = await authRequest(
+        testApp.app,
+        "DELETE",
+        `/api/v1/auth/agent-pools/${pool.id}/agents/${targetId}`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.deleted).toBe(true);
+
+      // Claims should be gone
+      const claims = testApp.db
+        .select()
+        .from(agentClaims)
+        .where(eq(agentClaims.userId, targetId))
+        .all();
+      expect(claims.length).toBe(0);
+    });
+
+    it("should return 404 for non-existent user", async () => {
+      const pool = await createPoolViaAPI("remove-404-pool", "secret-12345");
+
+      const res = await authRequest(
+        testApp.app,
+        "DELETE",
+        `/api/v1/auth/agent-pools/${pool.id}/agents/nonexistent`,
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("should return 400 if agent does not belong to the pool", async () => {
+      const poolA = await createPoolViaAPI("pool-a-rm", "secret-a-12345");
+      const poolB = await createPoolViaAPI("pool-b-rm", "secret-b-12345");
+      const agentsB = await createPoolAgentsViaAPI(poolB.id, 1);
+
+      const res = await authRequest(
+        testApp.app,
+        "DELETE",
+        `/api/v1/auth/agent-pools/${poolA.id}/agents/${agentsB[0].id}`,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("should update pool agent count after removal", async () => {
+      const pool = await createPoolViaAPI("count-pool", "secret-12345");
+      const agents = await createPoolAgentsViaAPI(pool.id, 3);
+
+      // Remove one
+      await authRequest(
+        testApp.app,
+        "DELETE",
+        `/api/v1/auth/agent-pools/${pool.id}/agents/${agents[0].id}`,
+      );
+
+      // Check pool detail
+      const detailRes = await authRequest(testApp.app, "GET", `/api/v1/auth/agent-pools/${pool.id}`);
+      const detail = await detailRes.json();
+      expect(detail.data.agents.length).toBe(2);
+    });
+  });
+
   // ── Legacy endpoint ──────────────────────────────────────────────
 
   describe("GET /api/v1/auth/agent-pool (legacy)", () => {

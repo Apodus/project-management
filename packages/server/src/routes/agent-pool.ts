@@ -107,6 +107,19 @@ const poolIdParam = z.object({
   id: z.string().min(1),
 });
 
+const poolAgentParams = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
+});
+
+const removeAgentResponseSchema = z.object({
+  data: z.object({
+    deleted: z.boolean(),
+    deactivated: z.boolean(),
+    reason: z.string().optional(),
+  }),
+});
+
 // ─── Route definitions ──────────────────────────────────────────
 
 const createPoolRoute = createRoute({
@@ -268,6 +281,32 @@ const createPoolAgentsRoute = createRoute({
     },
     404: {
       description: "Pool not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const removePoolAgentRoute = createRoute({
+  method: "delete",
+  path: "/api/v1/auth/agent-pools/{id}/agents/{userId}",
+  tags: ["Agent Pool"],
+  summary: "Remove agent from pool",
+  description:
+    "Remove an agent from a pool. If the agent has existing activity (comments, tasks, etc.), it will be deactivated and removed from the pool instead of deleted. Admin only.",
+  request: {
+    params: poolAgentParams,
+  },
+  responses: {
+    200: {
+      description: "Agent removed or deactivated",
+      content: { "application/json": { schema: removeAgentResponseSchema } },
+    },
+    400: {
+      description: "Agent does not belong to this pool",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "User not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -537,6 +576,19 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
     const { count, namePrefix } = c.req.valid("json");
     const agents = await agentPoolService.createAgentPool(id, count, namePrefix);
     return c.json({ data: agents }, 201);
+  });
+
+  // DELETE /api/v1/auth/agent-pools/:id/agents/:userId — ADMIN. Remove agent from pool.
+  router.openapi(removePoolAgentRoute, async (c) => {
+    const user = await resolveUser(c);
+    const authErr = requireAuth(user, c);
+    if (authErr) return authErr as any;
+    const adminErr = requireAdminRole(user!, c);
+    if (adminErr) return adminErr as any;
+
+    const { id, userId } = c.req.valid("param");
+    const result = agentPoolService.removeAgentFromPool(id, userId);
+    return c.json({ data: result }, 200);
   });
 
   // POST /api/v1/auth/agent-claim — PUBLIC (authenticated by pool secret)

@@ -791,6 +791,22 @@ export async function createPoolAgents(
   });
 }
 
+export interface RemoveAgentResult {
+  deleted: boolean;
+  deactivated: boolean;
+  reason?: string;
+}
+
+export async function removeAgentFromPool(
+  poolId: string,
+  userId: string,
+): Promise<RemoveAgentResult> {
+  return apiFetch<RemoveAgentResult>(
+    `/auth/agent-pools/${poolId}/agents/${userId}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function forceReleaseAgent(userId: string): Promise<void> {
   await apiFetch<{ message: string }>(`/auth/agent-pool/force-release`, {
     method: "POST",

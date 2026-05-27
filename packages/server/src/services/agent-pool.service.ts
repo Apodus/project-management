@@ -573,6 +573,67 @@ export function getAllPoolStatus(): PoolAgentStatus[] {
   });
 }
 
+// ─── Remove agent from pool ────────────────────────────────────────
+
+export interface RemoveAgentResult {
+  deleted: boolean;
+  deactivated: boolean;
+  reason?: string;
+}
+
+/**
+ * Remove an agent from a pool.
+ *
+ * 1. Release any active claim for this user.
+ * 2. Try to hard-delete the user from the database.
+ * 3. If FK constraints prevent deletion, deactivate the user and
+ *    remove them from the pool instead.
+ */
+export function removeAgentFromPool(poolId: string, userId: string): RemoveAgentResult {
+  const db = getDb();
+  const rawDb = getRawDb();
+
+  // Verify the user exists and belongs to this pool
+  const user = db.select().from(users).where(eq(users.id, userId)).get();
+  if (!user) {
+    throw new AppError(404, "USER_NOT_FOUND", "User not found");
+  }
+  if (user.poolId !== poolId) {
+    throw new AppError(400, "AGENT_NOT_IN_POOL", "Agent does not belong to this pool");
+  }
+
+  // Release any active claim
+  db.delete(agentClaims).where(eq(agentClaims.userId, userId)).run();
+
+  // Try hard delete
+  try {
+    rawDb.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    return { deleted: true, deactivated: false };
+  } catch (err: any) {
+    // FK constraint error — deactivate and remove from pool instead
+    if (
+      err?.code === "SQLITE_CONSTRAINT" ||
+      err?.code === "SQLITE_CONSTRAINT_FOREIGNKEY" ||
+      (typeof err?.message === "string" && err.message.includes("FOREIGN KEY"))
+    ) {
+      db.update(users)
+        .set({
+          isActive: false,
+          poolId: null,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(users.id, userId))
+        .run();
+      return {
+        deleted: false,
+        deactivated: true,
+        reason: "Agent has existing activity. Deactivated and removed from pool instead.",
+      };
+    }
+    throw err;
+  }
+}
+
 /**
  * Delete all expired claims.
  */

@@ -8,6 +8,7 @@ import {
   updateAgentPoolSecret,
   createPoolAgents,
   forceReleaseAgent,
+  removeAgentFromPool,
 } from "@/lib/api";
 import { userKeys } from "@/hooks/use-users";
 
@@ -83,6 +84,18 @@ export function useCreatePoolAgents() {
   return useMutation({
     mutationFn: ({ poolId, count, namePrefix }: { poolId: string; count: number; namePrefix?: string }) =>
       createPoolAgents(poolId, count, namePrefix),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: agentPoolKeys.all });
+      queryClient.invalidateQueries({ queryKey: userKeys.list() });
+    },
+  });
+}
+
+export function useRemoveAgentFromPool() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ poolId, userId }: { poolId: string; userId: string }) =>
+      removeAgentFromPool(poolId, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: agentPoolKeys.all });
       queryClient.invalidateQueries({ queryKey: userKeys.list() });

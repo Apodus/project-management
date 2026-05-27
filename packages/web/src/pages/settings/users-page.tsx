@@ -14,6 +14,7 @@ import {
   Server,
   Shield,
   ShieldCheck,
+  Trash2,
   Unlock,
   User as UserIcon,
   UserMinus,
@@ -81,6 +82,7 @@ import {
   useUpdatePoolSecret,
   useCreatePoolAgents,
   useForceReleaseAgent,
+  useRemoveAgentFromPool,
 } from "@/hooks/use-agent-pool";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { ApiError, type AuthUser, type CreateUserData, type UpdateUserData } from "@/lib/api";
@@ -1309,6 +1311,7 @@ function IndividualAgentRow({ user }: { user: AuthUser }) {
 
 function PoolAgentRow({
   agent,
+  poolId,
 }: {
   agent: {
     user: { id: string; username: string; displayName: string; type: string; isActive: boolean; poolId: string | null };
@@ -1317,13 +1320,16 @@ function PoolAgentRow({
     expiresAt: string | null;
     heartbeatAt: string | null;
   };
+  poolId: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(agent.user.displayName);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const updateMutation = useUpdateUser();
   const forceReleaseMutation = useForceReleaseAgent();
   const deactivateMutation = useDeactivateUser();
   const activateMutation = useActivateUser();
+  const removeMutation = useRemoveAgentFromPool();
 
   function formatTime(iso: string | null): string {
     if (!iso) return "-";
@@ -1374,131 +1380,189 @@ function PoolAgentRow({
     }
   }
 
+  async function handleRemove() {
+    try {
+      await removeMutation.mutateAsync({ poolId, userId: agent.user.id });
+      setDeleteConfirmOpen(false);
+    } catch {
+      // Error handled by mutation state
+    }
+  }
+
   return (
-    <TableRow className={cn(!agent.user.isActive && "opacity-60")}>
-      <TableCell className="font-medium">
-        <div className="flex items-center gap-2">
-          <Bot className="size-4 shrink-0 text-muted-foreground" />
-          {isEditing ? (
-            <div className="flex items-center gap-1">
-              <Input
-                className="h-7 w-40 text-sm"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveName();
-                  if (e.key === "Escape") {
+    <>
+      <TableRow className={cn(!agent.user.isActive && "opacity-60")}>
+        <TableCell className="font-medium">
+          <div className="flex items-center gap-2">
+            <Bot className="size-4 shrink-0 text-muted-foreground" />
+            {isEditing ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  className="h-7 w-40 text-sm"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveName();
+                    if (e.key === "Escape") {
+                      setEditName(agent.user.displayName);
+                      setIsEditing(false);
+                    }
+                  }}
+                  autoFocus
+                />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleSaveName}
+                  disabled={updateMutation.isPending}
+                >
+                  <Check className="size-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => {
                     setEditName(agent.user.displayName);
                     setIsEditing(false);
-                  }
-                }}
-                autoFocus
-              />
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleSaveName}
-                disabled={updateMutation.isPending}
+                  }}
+                >
+                  <X className="size-3" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                className="group flex items-center gap-1 text-left hover:underline"
+                onClick={() => setIsEditing(true)}
+                title="Click to rename"
               >
-                <Check className="size-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => {
-                  setEditName(agent.user.displayName);
-                  setIsEditing(false);
-                }}
-              >
-                <X className="size-3" />
-              </Button>
-            </div>
-          ) : (
-            <button
-              className="group flex items-center gap-1 text-left hover:underline"
-              onClick={() => setIsEditing(true)}
-              title="Click to rename"
-            >
-              {agent.user.displayName}
-              <Pencil className="size-3 opacity-0 group-hover:opacity-50" />
-            </button>
-          )}
-        </div>
-      </TableCell>
-      <TableCell>
-        {!agent.user.isActive ? (
-          <Badge
-            variant="secondary"
-            className="border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-400"
-          >
-            Inactive
-          </Badge>
-        ) : agent.claimed ? (
-          <Badge
-            variant="secondary"
-            className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400"
-          >
-            <CircleDot className="size-3" />
-            Claimed
-          </Badge>
-        ) : (
-          <Badge
-            variant="secondary"
-            className="gap-1 border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"
-          >
-            Available
-          </Badge>
-        )}
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {formatTime(agent.claimedAt)}
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {formatTime(agent.heartbeatAt)}
-      </TableCell>
-      <TableCell className="text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm">
-              <MoreHorizontal className="size-4" />
-              <span className="sr-only">Actions for {agent.user.displayName}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setIsEditing(true)}>
-              <Pencil className="mr-2 size-4" />
-              Rename
-            </DropdownMenuItem>
-            {agent.claimed && (
-              <DropdownMenuItem
-                onClick={handleForceRelease}
-                disabled={forceReleaseMutation.isPending}
-              >
-                <Unlock className="mr-2 size-4" />
-                Force Release
-              </DropdownMenuItem>
+                {agent.user.displayName}
+                <Pencil className="size-3 opacity-0 group-hover:opacity-50" />
+              </button>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleToggleActive}
-              disabled={deactivateMutation.isPending || activateMutation.isPending}
+          </div>
+        </TableCell>
+        <TableCell>
+          {!agent.user.isActive ? (
+            <Badge
+              variant="secondary"
+              className="border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-400"
             >
-              {agent.user.isActive ? (
+              Inactive
+            </Badge>
+          ) : agent.claimed ? (
+            <Badge
+              variant="secondary"
+              className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400"
+            >
+              <CircleDot className="size-3" />
+              Claimed
+            </Badge>
+          ) : (
+            <Badge
+              variant="secondary"
+              className="gap-1 border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"
+            >
+              Available
+            </Badge>
+          )}
+        </TableCell>
+        <TableCell className="text-muted-foreground">
+          {formatTime(agent.claimedAt)}
+        </TableCell>
+        <TableCell className="text-muted-foreground">
+          {formatTime(agent.heartbeatAt)}
+        </TableCell>
+        <TableCell className="text-right">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm">
+                <MoreHorizontal className="size-4" />
+                <span className="sr-only">Actions for {agent.user.displayName}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                <Pencil className="mr-2 size-4" />
+                Rename
+              </DropdownMenuItem>
+              {agent.claimed && (
+                <DropdownMenuItem
+                  onClick={handleForceRelease}
+                  disabled={forceReleaseMutation.isPending}
+                >
+                  <Unlock className="mr-2 size-4" />
+                  Force Release
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleToggleActive}
+                disabled={deactivateMutation.isPending || activateMutation.isPending}
+              >
+                {agent.user.isActive ? (
+                  <>
+                    <UserMinus className="mr-2 size-4" />
+                    Deactivate
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="mr-2 size-4" />
+                    Activate
+                  </>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setDeleteConfirmOpen(true)}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 size-4" />
+                Remove from Pool
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      </TableRow>
+
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Agent from Pool</DialogTitle>
+            <DialogDescription>
+              Remove <strong>{agent.user.displayName}</strong> from this pool?
+              If the agent has existing activity (comments, task assignments, etc.),
+              it will be deactivated and removed from the pool instead of deleted.
+            </DialogDescription>
+          </DialogHeader>
+          {removeMutation.isError && (
+            <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {removeMutation.error instanceof ApiError
+                ? removeMutation.error.message
+                : "Failed to remove agent. Please try again."}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRemove}
+              disabled={removeMutation.isPending}
+            >
+              {removeMutation.isPending ? (
                 <>
-                  <UserMinus className="mr-2 size-4" />
-                  Deactivate
+                  <Loader2 className="size-4 animate-spin" />
+                  Removing...
                 </>
               ) : (
-                <>
-                  <UserPlus className="mr-2 size-4" />
-                  Activate
-                </>
+                "Remove Agent"
               )}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </TableCell>
-    </TableRow>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -1693,6 +1757,12 @@ function PoolCard({
             <Badge variant="secondary" className="text-xs">
               {pool.agentCount} agent{pool.agentCount !== 1 ? "s" : ""}
             </Badge>
+            <Badge
+              variant="secondary"
+              className="border-green-500/30 bg-green-500/10 text-xs text-green-700 dark:text-green-400"
+            >
+              {pool.availableCount} available
+            </Badge>
             {pool.claimedCount > 0 && (
               <Badge
                 variant="secondary"
@@ -1701,12 +1771,14 @@ function PoolCard({
                 {pool.claimedCount} claimed
               </Badge>
             )}
-            <Badge
-              variant="secondary"
-              className="border-green-500/30 bg-green-500/10 text-xs text-green-700 dark:text-green-400"
-            >
-              {pool.availableCount} available
-            </Badge>
+            {pool.agentCount - pool.availableCount - pool.claimedCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="border-gray-500/30 bg-gray-500/10 text-xs text-gray-700 dark:text-gray-400"
+              >
+                {pool.agentCount - pool.availableCount - pool.claimedCount} inactive
+              </Badge>
+            )}
           </div>
         </button>
         <DropdownMenu>
@@ -1750,10 +1822,25 @@ function PoolCard({
                 onClick={() => setAddAgentsOpen(true)}
               >
                 <Plus className="size-4" />
-                Add Agents
+                Add Agents to Pool
               </Button>
             </div>
           ) : (
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {poolDetail.agents.length} agent{poolDetail.agents.length !== 1 ? "s" : ""} in pool
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAddAgentsOpen(true)}
+              >
+                <UserPlus className="size-4" />
+                Add Agents to Pool
+              </Button>
+            </div>
+          )}
+          {poolDetail.agents.length > 0 && (
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -1769,7 +1856,7 @@ function PoolCard({
                 </TableHeader>
                 <TableBody>
                   {poolDetail.agents.map((agent) => (
-                    <PoolAgentRow key={agent.user.id} agent={agent} />
+                    <PoolAgentRow key={agent.user.id} agent={agent} poolId={pool.id} />
                   ))}
                 </TableBody>
               </Table>
