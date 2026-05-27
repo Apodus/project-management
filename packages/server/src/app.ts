@@ -9,6 +9,9 @@ import { createProjectRoutes } from "./routes/projects.js";
 import { createProposalRoutes } from "./routes/proposals.js";
 import { createEpicRoutes } from "./routes/epics.js";
 import { createTaskRoutes } from "./routes/tasks.js";
+import { createCommentRoutes } from "./routes/comments.js";
+import { createLabelRoutes } from "./routes/labels.js";
+import { createDependencyRoutes } from "./routes/dependencies.js";
 import type { AppVariables } from "./types.js";
 
 /**
@@ -60,6 +63,9 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
   app.route("/", createProposalRoutes());
   app.route("/", createEpicRoutes());
   app.route("/", createTaskRoutes());
+  app.route("/", createCommentRoutes());
+  app.route("/", createLabelRoutes());
+  app.route("/", createDependencyRoutes());
 
   // ── Health endpoint ───────────────────────────────────────────────
   const healthRoute = createRoute({

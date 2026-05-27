@@ -1,7 +1,8 @@
-import { eq, and, like, isNull, desc, asc, count, sql } from "drizzle-orm";
+import { eq, and, like, isNull, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import { getDb, tasks } from "../db/index.js";
+import { getDb, tasks, taskLabels, taskDependencies } from "../db/index.js";
 import { AppError } from "../types.js";
+import * as dependencyService from "./dependency.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -50,6 +51,8 @@ export interface TaskListFilters {
   epic?: string; // epic id or "none"
   type?: string;
   search?: string;
+  label?: string; // label id — filter to tasks with this label attached
+  is_blocked?: string; // "true" or "false"
   sortBy?: string; // priority, created_at, updated_at, due_date, sort_order
   order?: "asc" | "desc";
   page?: number;
@@ -134,6 +137,42 @@ export function list(projectId: string, filters?: TaskListFilters) {
   // Search filter (LIKE on title)
   if (filters?.search) {
     conditions.push(like(tasks.title, `%${filters.search}%`));
+  }
+
+  // Label filter: tasks that have a specific label attached
+  if (filters?.label) {
+    conditions.push(
+      sql`${tasks.id} IN (
+        SELECT ${taskLabels.taskId} FROM ${taskLabels}
+        WHERE ${taskLabels.labelId} = ${filters.label}
+      )` as any,
+    );
+  }
+
+  // is_blocked filter: tasks with/without unresolved blocking dependencies
+  // A task is "blocked" if it has at least one "blocks" dependency where
+  // the blocking task is NOT in "done" status.
+  if (filters?.is_blocked !== undefined) {
+    const wantBlocked = filters.is_blocked === "true";
+    if (wantBlocked) {
+      // Tasks that have at least one blocking dependency where the blocker is not done
+      conditions.push(
+        sql`${tasks.id} IN (
+          SELECT td.task_id FROM task_dependencies td
+          INNER JOIN tasks t2 ON t2.id = td.depends_on_task_id
+          WHERE td.dependency_type = 'blocks' AND t2.status != 'done'
+        )` as any,
+      );
+    } else {
+      // Tasks that either have no blocking deps, or all blocking deps are done
+      conditions.push(
+        sql`${tasks.id} NOT IN (
+          SELECT td.task_id FROM task_dependencies td
+          INNER JOIN tasks t2 ON t2.id = td.depends_on_task_id
+          WHERE td.dependency_type = 'blocks' AND t2.status != 'done'
+        )` as any,
+      );
+    }
   }
 
   // Count total matching items

@@ -194,6 +194,8 @@ const listTasksRoute = createRoute({
       assignee: z.string().optional(),
       epic: z.string().optional(),
       search: z.string().optional(),
+      label: z.string().optional(),
+      is_blocked: z.enum(["true", "false"]).optional(),
       sortBy: z
         .enum(["priority", "created_at", "updated_at", "due_date", "sort_order"])
         .optional(),
@@ -368,6 +370,8 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
       assignee: query.assignee,
       epic: query.epic,
       search: query.search,
+      label: query.label,
+      is_blocked: query.is_blocked,
       sortBy: query.sortBy,
       order: query.order,
       page: query.page,
