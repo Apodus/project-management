@@ -15,6 +15,10 @@ const activitySchema = z
     action: z.string(),
     changes: z.unknown().nullable(),
     createdAt: z.string(),
+    entityTitle: z.string().nullable().optional(),
+    epicName: z.string().nullable().optional(),
+    actorName: z.string().nullable().optional(),
+    actorType: z.string().nullable().optional(),
   })
   .openapi("ActivityLogEntry");
 

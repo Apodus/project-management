@@ -3225,6 +3225,10 @@ export interface components {
             action: string;
             changes?: unknown;
             createdAt: string;
+            entityTitle?: string | null;
+            epicName?: string | null;
+            actorName?: string | null;
+            actorType?: string | null;
         };
         Milestone: {
             id: string;

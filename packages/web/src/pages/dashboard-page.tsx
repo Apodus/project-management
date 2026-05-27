@@ -271,6 +271,8 @@ function CompactActivityEntry({
 }) {
   const Icon = getActionIcon(entry.action);
   const iconColor = getActionColor(entry.action);
+  const displayActorName = entry.actorName ?? actorName ?? entry.actorId ?? "System";
+  const displayTitle = entry.entityTitle ?? entry.entityId.slice(0, 8);
 
   return (
     <div className="flex items-center gap-3 py-2">
@@ -283,11 +285,18 @@ function CompactActivityEntry({
         <Icon className="size-3" />
       </div>
       <p className="min-w-0 flex-1 truncate text-sm">
-        <span className="font-medium">{actorName ?? entry.actorId ?? "System"}</span>
+        <span className="font-medium">{displayActorName}</span>
         {" "}
         <span className="text-muted-foreground">
           {formatStatus(entry.action).toLowerCase()} {entry.entityType}
         </span>
+        {" "}
+        <span className="font-medium">&apos;{displayTitle}&apos;</span>
+        {entry.epicName && (
+          <span className="text-muted-foreground/70 text-xs ml-1">
+            (Epic: {entry.epicName})
+          </span>
+        )}
       </p>
       <span className="shrink-0 text-xs text-muted-foreground/60">
         {formatRelativeTime(entry.createdAt)}

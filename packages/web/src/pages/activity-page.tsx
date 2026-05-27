@@ -142,7 +142,10 @@ interface ActivityEntryProps {
 function ActivityEntry({ entry, actorName, actorType }: ActivityEntryProps) {
   const Icon = getActionIcon(entry.action);
   const iconColor = getActionColor(entry.action);
-  const isAI = actorType === "ai_agent";
+  const displayActorName = entry.actorName ?? actorName ?? entry.actorId ?? "System";
+  const displayActorType = entry.actorType ?? actorType;
+  const isAI = displayActorType === "ai_agent";
+  const displayTitle = entry.entityTitle ?? entry.entityId.slice(0, 8);
 
   return (
     <div className="flex gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/30">
@@ -160,15 +163,20 @@ function ActivityEntry({ entry, actorName, actorType }: ActivityEntryProps) {
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm">
-            <span className="font-medium">{actorName ?? entry.actorId ?? "System"}</span>
+            <span className="font-medium">{displayActorName}</span>
             {" "}
             <span className="text-muted-foreground">{formatStatus(entry.action).toLowerCase()}</span>
             {" "}
             <span className="text-muted-foreground">{entry.entityType}</span>
             {" "}
-            <span className="font-mono text-xs text-muted-foreground/70">
-              {entry.entityId.slice(0, 8)}
+            <span className="font-medium">
+              &apos;{displayTitle}&apos;
             </span>
+            {entry.epicName && (
+              <span className="text-muted-foreground/70 text-xs ml-1">
+                (Epic: {entry.epicName})
+              </span>
+            )}
           </p>
 
           <div className="flex shrink-0 items-center gap-2">
