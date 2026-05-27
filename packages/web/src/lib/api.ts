@@ -365,6 +365,56 @@ export async function getEpic(id: string): Promise<Epic> {
   return apiFetch<Epic>(`/epics/${id}`);
 }
 
+export async function updateEpic(
+  id: string,
+  data: UpdateEpic,
+): Promise<Epic> {
+  return apiFetch<Epic>(`/epics/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+// ---- Milestone API ----
+
+export type Milestone = components["schemas"]["Milestone"];
+export type CreateMilestone = components["schemas"]["CreateMilestone"];
+export type UpdateMilestone = components["schemas"]["UpdateMilestone"];
+
+export async function getMilestones(
+  projectId: string,
+): Promise<Milestone[]> {
+  return apiFetch<Milestone[]>(
+    `/projects/${projectId}/milestones`,
+  );
+}
+
+export async function createMilestone(
+  projectId: string,
+  data: CreateMilestone,
+): Promise<Milestone> {
+  return apiFetch<Milestone>(`/projects/${projectId}/milestones`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateMilestone(
+  id: string,
+  data: UpdateMilestone,
+): Promise<Milestone> {
+  return apiFetch<Milestone>(`/milestones/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteMilestone(id: string): Promise<Milestone> {
+  return apiFetch<Milestone>(`/milestones/${id}`, {
+    method: "DELETE",
+  });
+}
+
 // ---- Auth API ----
 
 export interface SetupStatus {

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Milestone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -138,14 +137,10 @@ export function EpicListPage() {
   );
 
   function handleEpicClick(epicId: string) {
-    // Navigate to task list filtered by this epic
-    if (projectId) {
-      navigate({
-        to: "/projects/$projectId/tasks",
-        params: { projectId },
-        search: { epic: epicId } as Record<string, string>,
-      });
-    }
+    navigate({
+      to: "/epics/$epicId",
+      params: { epicId },
+    });
   }
 
   return (

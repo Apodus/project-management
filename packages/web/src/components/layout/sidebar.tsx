@@ -5,6 +5,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   FileText,
+  Flag,
   FolderOpen,
   Kanban,
   LayoutDashboard,
@@ -74,6 +75,12 @@ function getNavItems(projectId: string | null): NavItem[] {
       icon: Milestone,
       href: projectId ? `${base}/epics` : "/projects",
       matchPath: "/epics",
+    },
+    {
+      label: "Milestones",
+      icon: Flag,
+      href: projectId ? `${base}/milestones` : "/projects",
+      matchPath: "/milestones",
     },
     {
       label: "Activity",

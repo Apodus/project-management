@@ -1,8 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getEpics,
   getEpic,
+  updateEpic,
   type EpicFilters,
+  type UpdateEpic,
 } from "@/lib/api";
 
 export const epicKeys = {
@@ -27,5 +29,19 @@ export function useEpic(id: string | undefined) {
     queryKey: epicKeys.detail(id!),
     queryFn: () => getEpic(id!),
     enabled: !!id,
+  });
+}
+
+export function useUpdateEpic() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateEpic }) =>
+      updateEpic(id, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: epicKeys.lists() });
+      queryClient.invalidateQueries({
+        queryKey: epicKeys.detail(variables.id),
+      });
+    },
   });
 }

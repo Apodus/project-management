@@ -9,8 +9,10 @@ import {
 import { AppLayout } from "@/components/layout/app-layout";
 import { ActivityPage } from "@/pages/activity-page";
 import { DashboardPage } from "@/pages/dashboard-page";
+import { EpicDetailPage } from "@/pages/epic-detail-page";
 import { EpicListPage } from "@/pages/epic-list-page";
 import { LoginPage } from "@/pages/login-page";
+import { MilestonesPage } from "@/pages/milestones-page";
 import { ProjectListPage } from "@/pages/project-list-page";
 import { ProposalDetailPage } from "@/pages/proposal-detail-page";
 import { ProposalListPage } from "@/pages/proposal-list-page";
@@ -129,6 +131,13 @@ const projectActivityRoute = createRoute({
   component: ActivityPage,
 });
 
+// /projects/$projectId/milestones — milestones
+const projectMilestonesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/milestones",
+  component: MilestonesPage,
+});
+
 // /proposals/$proposalId — proposal detail
 const proposalDetailRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
@@ -141,6 +150,13 @@ const taskDetailRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/tasks/$taskId",
   component: TaskDetailPage,
+});
+
+// /epics/$epicId — epic detail
+const epicDetailRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/epics/$epicId",
+  component: EpicDetailPage,
 });
 
 // /settings/users — user management
@@ -163,9 +179,11 @@ const routeTree = rootRoute.addChildren([
       projectTaskListRoute,
       projectEpicListRoute,
       projectActivityRoute,
+      projectMilestonesRoute,
     ]),
     proposalDetailRoute,
     taskDetailRoute,
+    epicDetailRoute,
     settingsUsersRoute,
   ]),
 ]);
