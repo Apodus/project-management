@@ -303,4 +303,173 @@ describe("Activity API", () => {
       expect(changes.priority.to).toBe("critical");
     });
   });
+
+  // ── since filter on project activity endpoint ────────────────────
+
+  describe("since and exclude_actor filters", () => {
+    it("should filter activity by since timestamp", async () => {
+      const project = createTestProject(testApp.db);
+      const user = createTestUser(testApp.db);
+
+      // Create two tasks at different times (activity is logged automatically)
+      const createRes1 = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/tasks`,
+        { body: { title: "Early task", reporterId: user.id } },
+      );
+      expect(createRes1.status).toBe(201);
+
+      // Capture a timestamp between the two creations
+      const midpoint = new Date().toISOString();
+
+      // Tiny delay to ensure different timestamps
+      const createRes2 = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/tasks`,
+        { body: { title: "Later task", reporterId: user.id } },
+      );
+      expect(createRes2.status).toBe(201);
+
+      // Query with since=midpoint — should only get the later task's activity
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/activity?since=${encodeURIComponent(midpoint)}`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // All returned entries should have createdAt > midpoint
+      for (const entry of body.data) {
+        expect(entry.createdAt > midpoint).toBe(true);
+      }
+    });
+
+    it("should filter activity by exclude_actor", async () => {
+      const project = createTestProject(testApp.db);
+      const user = createTestUser(testApp.db);
+
+      // Create a task (activity logged with the authenticated user's actorId)
+      await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/tasks`,
+        { body: { title: "Actor filter task", reporterId: user.id } },
+      );
+
+      // Exclude the test user from activity results
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/activity?exclude_actor=${testApp.testUser.id}`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // No entries should have the excluded actor
+      for (const entry of body.data) {
+        expect(entry.actorId).not.toBe(testApp.testUser.id);
+      }
+    });
+  });
+
+  // ── GET /api/v1/activity/updates ────────────────────────────────
+
+  describe("GET /api/v1/activity/updates", () => {
+    it("should return has_updates false when no new activity", async () => {
+      const futureTimestamp = "2099-01-01T00:00:00Z";
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/activity/updates?since=${encodeURIComponent(futureTimestamp)}`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.has_updates).toBe(false);
+      expect(body.count).toBe(0);
+      expect(body.data).toEqual([]);
+    });
+
+    it("should return updates excluding the current user's activity", async () => {
+      const project = createTestProject(testApp.db);
+      const otherUser = createTestUser(testApp.db);
+
+      const pastTimestamp = "2000-01-01T00:00:00Z";
+
+      // Create task as the default test user (this will be excluded)
+      await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/tasks`,
+        { body: { title: "Own task", reporterId: otherUser.id } },
+      );
+
+      // The updates endpoint should exclude the authenticated user's own activity
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/activity/updates?since=${encodeURIComponent(pastTimestamp)}`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // All returned entries should NOT have the test user's actorId
+      for (const entry of body.data) {
+        expect(entry.actorId).not.toBe(testApp.testUser.id);
+      }
+    });
+
+    it("should scope updates to a specific project", async () => {
+      const project1 = createTestProject(testApp.db);
+      const project2 = createTestProject(testApp.db);
+      const otherUser = createTestUser(testApp.db);
+
+      const pastTimestamp = "2000-01-01T00:00:00Z";
+
+      // Create tasks in both projects
+      await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project1.id}/tasks`,
+        { body: { title: "P1 task", reporterId: otherUser.id } },
+      );
+      await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project2.id}/tasks`,
+        { body: { title: "P2 task", reporterId: otherUser.id } },
+      );
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/activity/updates?since=${encodeURIComponent(pastTimestamp)}&project_id=${project1.id}`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // All returned entries should be for project1 only
+      for (const entry of body.data) {
+        expect(entry.projectId).toBe(project1.id);
+      }
+    });
+
+    it("should include count and has_updates fields", async () => {
+      const pastTimestamp = "2000-01-01T00:00:00Z";
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/activity/updates?since=${encodeURIComponent(pastTimestamp)}`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(typeof body.has_updates).toBe("boolean");
+      expect(typeof body.count).toBe("number");
+      expect(Array.isArray(body.data)).toBe(true);
+    });
+  });
 });

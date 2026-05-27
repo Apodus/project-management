@@ -1,4 +1,4 @@
-import { eq, and, desc, count, sql } from "drizzle-orm";
+import { eq, and, desc, count, sql, gt, ne } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import { getDb, activityLog } from "../db/index.js";
 
@@ -16,6 +16,8 @@ export interface LogActivityInput {
 export interface ActivityListOptions {
   entityType?: string;
   actorId?: string;
+  since?: string;
+  excludeActorId?: string;
   page?: number;
   perPage?: number;
 }
@@ -93,6 +95,12 @@ export function listByProject(projectId: string, options?: ActivityListOptions) 
   }
   if (options?.actorId) {
     conditions.push(eq(activityLog.actorId, options.actorId));
+  }
+  if (options?.since) {
+    conditions.push(gt(activityLog.createdAt, options.since));
+  }
+  if (options?.excludeActorId) {
+    conditions.push(ne(activityLog.actorId, options.excludeActorId));
   }
 
   // Count total
@@ -175,5 +183,50 @@ export function listByEntity(
       total,
       totalPages,
     },
+  };
+}
+
+/**
+ * List recent activity updates, excluding actions by a specific actor.
+ * Designed for agents to poll for human activity between work steps.
+ */
+export function listUpdates(options: {
+  since: string;
+  excludeActorId: string;
+  projectId?: string;
+  limit?: number;
+}) {
+  const db = getDb();
+  const maxEntries = Math.min(options.limit ?? 50, 50);
+
+  const conditions: ReturnType<typeof eq>[] = [
+    gt(activityLog.createdAt, options.since),
+    ne(activityLog.actorId, options.excludeActorId),
+  ];
+
+  if (options.projectId) {
+    conditions.push(eq(activityLog.projectId, options.projectId));
+  }
+
+  // Count total matching
+  const totalResult = db
+    .select({ count: count() })
+    .from(activityLog)
+    .where(and(...conditions))
+    .get();
+  const total = totalResult?.count ?? 0;
+
+  const data = db
+    .select()
+    .from(activityLog)
+    .where(and(...conditions))
+    .orderBy(desc(activityLog.createdAt))
+    .limit(maxEntries)
+    .all();
+
+  return {
+    has_updates: total > 0,
+    count: total,
+    data,
   };
 }

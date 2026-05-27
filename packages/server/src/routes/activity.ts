@@ -61,6 +61,8 @@ const listProjectActivityRoute = createRoute({
     query: z.object({
       entity_type: z.string().optional(),
       actor_id: z.string().optional(),
+      since: z.string().optional(),
+      exclude_actor: z.string().optional(),
       page: z.coerce.number().int().min(1).optional(),
       per_page: z.coerce.number().int().min(1).max(100).optional(),
     }),
@@ -94,6 +96,37 @@ const listTaskActivityRoute = createRoute({
   },
 });
 
+const updatesResponseSchema = z.object({
+  has_updates: z.boolean(),
+  count: z.number(),
+  data: z.array(activitySchema),
+});
+
+const listUpdatesRoute = createRoute({
+  method: "get",
+  path: "/api/v1/activity/updates",
+  tags: ["Activity"],
+  summary: "Check for recent updates",
+  description:
+    "Returns recent activity by other users since a given timestamp. Designed for agents polling for human input between work steps.",
+  request: {
+    query: z.object({
+      since: z.string().min(1),
+      project_id: z.string().optional(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Recent updates",
+      content: { "application/json": { schema: updatesResponseSchema } },
+    },
+    400: {
+      description: "Missing required parameter",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createActivityRoutes(): OpenAPIHono<{
@@ -104,12 +137,29 @@ export function createActivityRoutes(): OpenAPIHono<{
   // GET /api/v1/projects/:projectId/activity
   router.openapi(listProjectActivityRoute, (c) => {
     const { projectId } = c.req.valid("param");
-    const { entity_type, actor_id, page, per_page } = c.req.valid("query");
+    const { entity_type, actor_id, since, exclude_actor, page, per_page } = c.req.valid("query");
     const result = activityService.listByProject(projectId, {
       entityType: entity_type,
       actorId: actor_id,
+      since,
+      excludeActorId: exclude_actor,
       page,
       perPage: per_page,
+    });
+
+    return c.json(result, 200);
+  });
+
+  // GET /api/v1/activity/updates
+  router.openapi(listUpdatesRoute, (c) => {
+    const { since, project_id } = c.req.valid("query");
+    const currentUser = c.get("currentUser");
+    const excludeActorId = currentUser?.id ?? "";
+
+    const result = activityService.listUpdates({
+      since,
+      excludeActorId,
+      projectId: project_id,
     });
 
     return c.json(result, 200);

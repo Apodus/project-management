@@ -110,6 +110,17 @@ If the planner's declared file sets contradict the DAG (e.g. the DAG says C2 and
 
 After each step completes, write/update `<roadmap>.progress.json` next to the roadmap with completed step indices, current step, and open issues. Resuming `/campaign` on the same roadmap reads this file and continues from the next pending step.
 
+## Human input checkpoint
+
+After each step completes (after checkpointing, before starting the next step's Plan leg), call `pm_check_updates` with the timestamp of the last check (or campaign start). If the human has:
+
+- **Commented on a task in progress**: Read the comment. If it's a question, answer it via `pm_add_comment`. If it's a redirect, adjust the plan for the next step.
+- **Changed priority**: Reorder remaining steps if priorities shifted.
+- **Blocked a task**: Skip that task's remaining steps and note it in the progress file.
+- **Accepted/rejected a proposal**: If relevant to the campaign, adjust scope.
+
+If no updates, proceed silently. This check adds ~2 seconds per step and ensures the human's voice is never ignored.
+
 ## User-facing updates
 
 One short line at step start ("Step N: <title> — planning") and at step completion ("Step N done — <one-line outcome>"). Nothing in between unless ESCALATE. The user should always know where in the campaign you are without seeing every sub-agent's churn.

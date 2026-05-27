@@ -532,6 +532,65 @@ export async function createGitRef(
 // Typed API functions — Project Tasks (for board resource)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Typed API functions — Activity Updates
+// ---------------------------------------------------------------------------
+
+export interface ActivityEntry {
+  id: string;
+  entityType: string;
+  entityId: string;
+  projectId: string | null;
+  actorId: string | null;
+  action: string;
+  changes: unknown;
+  createdAt: string;
+}
+
+export interface UpdatesResponse {
+  has_updates: boolean;
+  count: number;
+  data: ActivityEntry[];
+}
+
+export async function checkUpdates(
+  since: string,
+  projectId?: string,
+): Promise<UpdatesResponse> {
+  const params: Record<string, string | number | boolean | undefined> = {
+    since,
+  };
+  if (projectId) params.project_id = projectId;
+
+  // The /activity/updates endpoint returns { has_updates, count, data } directly (not wrapped in { data })
+  const url = `${getBaseUrl()}/api/v1/activity/updates${qs(params)}`;
+  const token = getToken();
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    const err = json?.error;
+    throw new ApiError(
+      res.status,
+      err?.code ?? "UNKNOWN_ERROR",
+      err?.message ?? `HTTP ${res.status}`,
+    );
+  }
+
+  return (await res.json()) as UpdatesResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Project Tasks (for board resource)
+// ---------------------------------------------------------------------------
+
 export async function getProjectTasks(
   projectId: string,
   status?: string,

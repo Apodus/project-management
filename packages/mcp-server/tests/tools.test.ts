@@ -36,6 +36,7 @@ vi.mock("../src/api-client.js", () => ({
   updateTask: vi.fn(),
   createGitRef: vi.fn(),
   getProjectTasks: vi.fn(),
+  checkUpdates: vi.fn(),
 }));
 
 // Import the mocked functions so we can configure them per test
@@ -57,6 +58,7 @@ const mockCreateTask = vi.mocked(apiClient.createTask);
 const mockUpdateTask = vi.mocked(apiClient.updateTask);
 const mockCreateGitRef = vi.mocked(apiClient.createGitRef);
 const mockGetProjectTasks = vi.mocked(apiClient.getProjectTasks);
+const mockCheckUpdates = vi.mocked(apiClient.checkUpdates);
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -1581,6 +1583,99 @@ describe("MCP Tools", () => {
         url: "https://github.com/org/repo/pull/42",
         title: "Add caching feature",
       });
+    });
+  });
+
+  // ---- pm_check_updates ----
+
+  describe("pm_check_updates", () => {
+    it("returns no-updates message when nothing new", async () => {
+      mockCheckUpdates.mockResolvedValue({
+        has_updates: false,
+        count: 0,
+        data: [],
+      });
+
+      const result = await client.callTool({
+        name: "pm_check_updates",
+        arguments: { since: "2026-01-01T00:00:00Z" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("No updates since 2026-01-01T00:00:00Z");
+      expect(mockCheckUpdates).toHaveBeenCalledWith("2026-01-01T00:00:00Z", undefined);
+    });
+
+    it("returns formatted update list when updates exist", async () => {
+      mockCheckUpdates.mockResolvedValue({
+        has_updates: true,
+        count: 2,
+        data: [
+          {
+            id: "act_001",
+            entityType: "task",
+            entityId: "task_001",
+            projectId: "proj_001",
+            actorId: "user_human",
+            action: "commented",
+            changes: null,
+            createdAt: "2026-01-02T12:00:00Z",
+          },
+          {
+            id: "act_002",
+            entityType: "task",
+            entityId: "task_002",
+            projectId: "proj_001",
+            actorId: "user_human",
+            action: "updated",
+            changes: { priority: { from: "medium", to: "critical" } },
+            createdAt: "2026-01-02T11:00:00Z",
+          },
+        ],
+      });
+
+      const result = await client.callTool({
+        name: "pm_check_updates",
+        arguments: { since: "2026-01-01T00:00:00Z", project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("2 updates since");
+      expect(text).toContain("user_human");
+      expect(text).toContain("commented");
+      expect(text).toContain("task_001");
+      expect(text).toContain("updated");
+      expect(text).toContain("task_002");
+      expect(text).toContain("critical");
+      expect(mockCheckUpdates).toHaveBeenCalledWith("2026-01-01T00:00:00Z", "proj_001");
+    });
+
+    it("shows singular 'update' for count of 1", async () => {
+      mockCheckUpdates.mockResolvedValue({
+        has_updates: true,
+        count: 1,
+        data: [
+          {
+            id: "act_003",
+            entityType: "task",
+            entityId: "task_001",
+            projectId: null,
+            actorId: "user_human",
+            action: "status_changed",
+            changes: { status: { from: "ready", to: "blocked" } },
+            createdAt: "2026-01-02T10:00:00Z",
+          },
+        ],
+      });
+
+      const result = await client.callTool({
+        name: "pm_check_updates",
+        arguments: { since: "2026-01-01T00:00:00Z" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("1 update since");
+      expect(text).not.toContain("1 updates");
     });
   });
 
