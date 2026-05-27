@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-node/
+data/
+*.db
+*.db-journal
+*.db-wal
+.turbo/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
