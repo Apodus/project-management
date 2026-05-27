@@ -60,9 +60,8 @@ function getNavItems(projectId: string | null): NavItem[] {
     {
       label: "Board",
       icon: Kanban,
-      href: base,
+      href: projectId ? `${base}/board` : "/projects",
       matchPath: "/board",
-      disabled: true,
     },
     {
       label: "Tasks",
