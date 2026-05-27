@@ -96,7 +96,7 @@ describe("App foundation", () => {
     });
 
     it("should return 404 for unknown API routes", async () => {
-      const res = await testApp.app.request("/api/v1/nonexistent");
+      const res = await authRequest(testApp.app, "GET", "/api/v1/nonexistent");
       expect(res.status).toBe(404);
 
       const body = await res.json();
@@ -143,18 +143,53 @@ describe("App foundation", () => {
     });
   });
 
-  // ── Auth middleware stub ───────────────────────────────────────────
+  // ── Auth middleware ────────────────────────────────────────────────
   describe("Auth middleware", () => {
-    it("should accept requests without auth on non-API routes", async () => {
+    it("should accept requests without auth on public routes", async () => {
       const res = await testApp.app.request("/health");
       expect(res.status).toBe(200);
     });
 
-    it("should accept requests with Bearer token on API routes", async () => {
-      // API routes get 404 since no routes are registered yet,
-      // but they should NOT get a 401 — auth is a stub
+    it("should accept requests with valid Bearer token on API routes", async () => {
       const res = await authRequest(testApp.app, "GET", "/api/v1/test-route");
-      expect(res.status).toBe(404); // Not 401
+      // 404 because the route doesn't exist, but NOT 401
+      expect(res.status).toBe(404);
+    });
+
+    it("should return 401 for unauthenticated API requests", async () => {
+      const res = await testApp.app.request("/api/v1/projects");
+      expect(res.status).toBe(401);
+
+      const body = await res.json();
+      expect(body.error.code).toBe("UNAUTHORIZED");
+      expect(body.error.message).toBe("Valid authentication required");
+    });
+
+    it("should return 401 for invalid Bearer token", async () => {
+      const res = await authRequest(testApp.app, "GET", "/api/v1/projects", {
+        token: "invalid-token-that-does-not-exist",
+      });
+      expect(res.status).toBe(401);
+
+      const body = await res.json();
+      expect(body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("should allow /health without auth", async () => {
+      const res = await testApp.app.request("/health");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe("ok");
+    });
+
+    it("should allow /api/v1/openapi.json without auth", async () => {
+      const res = await testApp.app.request("/api/v1/openapi.json");
+      expect(res.status).toBe(200);
+    });
+
+    it("should allow /api/v1/docs without auth", async () => {
+      const res = await testApp.app.request("/api/v1/docs");
+      expect(res.status).toBe(200);
     });
   });
 

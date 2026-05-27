@@ -13,6 +13,7 @@ import {
   comments,
   activityLog,
   gitRefs,
+  sessions,
 } from "./schema.js";
 
 // ─── workspaces ────────────────────────────────────────────────────
@@ -30,6 +31,15 @@ export const usersRelations = relations(users, ({ many }) => ({
   reportedTasks: many(tasks, { relationName: "taskReporter" }),
   comments: many(comments),
   activityLogs: many(activityLog),
+  sessions: many(sessions),
+}));
+
+// ─── sessions ─────────────────────────────────────────────────────
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
 }));
 
 // ─── projects ──────────────────────────────────────────────────────

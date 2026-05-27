@@ -238,6 +238,21 @@ export const comments = sqliteTable(
   ],
 );
 
+// ─── sessions ─────────────────────────────────────────────────────
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_sessions_user").on(table.userId)],
+);
+
 // ─── activity_log ──────────────────────────────────────────────────
 export const activityLog = sqliteTable(
   "activity_log",

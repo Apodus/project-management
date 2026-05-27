@@ -1,4 +1,5 @@
 import { createId } from "@pm/shared";
+import bcrypt from "bcryptjs";
 import { createApp } from "../src/app.js";
 import {
   initializeDatabase,
@@ -15,6 +16,18 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { AppVariables } from "../src/types.js";
 
 /**
+ * The default test token used by authRequest().
+ * createTestApp() creates a user whose api_token_hash matches this token.
+ */
+export const DEFAULT_TEST_TOKEN = "test-token";
+
+/**
+ * Pre-computed bcrypt hash of DEFAULT_TEST_TOKEN.
+ * Computing this once at module load avoids repeated hashSync calls.
+ */
+const DEFAULT_TEST_TOKEN_HASH = bcrypt.hashSync(DEFAULT_TEST_TOKEN, 10);
+
+/**
  * Test app instance with associated database handles.
  */
 export interface TestApp {
@@ -24,11 +37,18 @@ export interface TestApp {
   db: AppDatabase;
   /** Tear down: close DB and reset singletons */
   cleanup: () => void;
+  /** The default authenticated test user */
+  testUser: TestUser;
+  /** The raw API token for the default test user */
+  testToken: string;
 }
 
 /**
  * Creates a test Hono app backed by an in-memory SQLite database.
  * No HTTP server is started — use `app.request()` for testing.
+ *
+ * Also creates a default test user with a valid API token so that
+ * authRequest() works out of the box with the default token.
  *
  * Call `cleanup()` when done (typically in afterEach).
  */
@@ -36,12 +56,43 @@ export function createTestApp(): TestApp {
   const db = initializeDatabase({ inMemory: true });
   const app = createApp();
 
+  // Create a default authenticated user with a known API token
+  const ts = new Date().toISOString();
+  const userId = createId();
+  const username = "test-admin";
+  const displayName = "Test Admin";
+
+  db.insert(users)
+    .values({
+      id: userId,
+      username,
+      displayName,
+      email: "test@example.com",
+      role: "admin",
+      type: "human",
+      apiTokenHash: DEFAULT_TEST_TOKEN_HASH,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+    .run();
+
+  const testUser: TestUser = {
+    id: userId,
+    username,
+    displayName,
+    email: "test@example.com",
+    role: "admin",
+    type: "human",
+  };
+
   return {
     app,
     db,
     cleanup: () => {
       closeDb();
     },
+    testUser,
+    testToken: DEFAULT_TEST_TOKEN,
   };
 }
 
