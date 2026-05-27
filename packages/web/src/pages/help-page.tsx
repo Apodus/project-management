@@ -11,8 +11,7 @@ export function HelpPage() {
       mcpServers: {
         "project-management": {
           command: "node",
-          args: ["packages/mcp-server/dist/index.js"],
-          cwd: "<path-to-project-management>",
+          args: ["<path-to>/pm-mcp-server.mjs"],
           env: {
             PM_API_URL: serverUrl,
             PM_API_TOKEN: "<your-ai-agent-api-token>",
@@ -105,15 +104,28 @@ export function HelpPage() {
               <ul className="text-muted-foreground mt-1 list-inside list-disc space-y-1 text-sm">
                 <li>
                   <code className="bg-muted rounded px-1">
-                    &lt;path-to-project-management&gt;
+                    &lt;path-to&gt;/pm-mcp-server.mjs
                   </code>{" "}
-                  — absolute path to this project on disk
+                  — the standalone MCP client file (365 KB, zero dependencies).
+                  Find it at{" "}
+                  <code className="bg-muted rounded px-1">
+                    packages/mcp-server/dist/bundle/pm-mcp-server.mjs
+                  </code>{" "}
+                  after building, then copy it wherever you like
                 </li>
                 <li>
                   <code className="bg-muted rounded px-1">
                     &lt;your-ai-agent-api-token&gt;
                   </code>{" "}
                   — the token from step 1
+                </li>
+                <li>
+                  <code className="bg-muted rounded px-1">
+                    PM_API_URL
+                  </code>{" "}
+                  — already set to this server&apos;s address. Change it if the
+                  server moves (e.g., to a Raspberry Pi at{" "}
+                  <code className="bg-muted rounded px-1">http://192.168.1.x:3000</code>)
                 </li>
               </ul>
             </Step>

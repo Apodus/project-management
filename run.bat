@@ -1,5 +1,10 @@
 @echo off
 title Project Management System
+
+REM Port is configurable: run.bat [port]
+REM Default: 3000
+if "%~1"=="" (set PM_PORT=3000) else (set PM_PORT=%~1)
+
 echo.
 echo  ====================================
 echo   Project Management System
@@ -7,7 +12,7 @@ echo   Human-AI Collaborative PM Tool
 echo  ====================================
 echo.
 
-:: Check for Node.js
+REM Check for Node.js
 where node >nul 2>&1
 if %errorlevel% neq 0 (
     echo  [ERROR] Node.js is not installed or not in PATH.
@@ -15,28 +20,25 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
+echo  Node.js found
 
-:: Check Node version
-for /f "tokens=1 delims=v" %%a in ('node -v') do set NODE_VERSION=%%a
-echo  Node.js: %NODE_VERSION%
-
-:: Check for pnpm
+REM Check for pnpm
 where pnpm >nul 2>&1
 if %errorlevel% neq 0 (
     echo  pnpm not found. Installing...
-    npm install -g pnpm
+    call npm install -g pnpm
     if %errorlevel% neq 0 (
-        echo  [ERROR] Failed to install pnpm. Try: npm install -g pnpm
+        echo  [ERROR] Failed to install pnpm.
         pause
         exit /b 1
     )
 )
-echo  pnpm: found
+echo  pnpm found
 
-:: Install dependencies if needed
+REM Install dependencies if needed
 if not exist "node_modules" (
     echo.
-    echo  Installing dependencies (first run)...
+    echo  Installing dependencies...
     call pnpm install
     if %errorlevel% neq 0 (
         echo  [ERROR] pnpm install failed.
@@ -45,7 +47,7 @@ if not exist "node_modules" (
     )
 )
 
-:: Build all packages
+REM Build all packages
 echo.
 echo  Building...
 call pnpm build
@@ -55,14 +57,15 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: Start the production server
+REM Start the production server
 echo.
 echo  ====================================
-echo   Starting server...
+echo   Starting server on port %PM_PORT%
 echo  ====================================
 echo.
-echo  Web UI:   http://localhost:3000
-echo  API Docs: http://localhost:3000/api/v1/docs
+echo  Web UI:   http://localhost:%PM_PORT%
+echo  API Docs: http://localhost:%PM_PORT%/api/v1/docs
+echo  Help:     http://localhost:%PM_PORT%/help
 echo.
 echo  First visit? You'll be guided through setup.
 echo  Press Ctrl+C to stop.

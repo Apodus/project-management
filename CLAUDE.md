@@ -129,8 +129,7 @@ Add the following to your Claude MCP settings (e.g., `claude_desktop_config.json
   "mcpServers": {
     "project-management": {
       "command": "node",
-      "args": ["packages/mcp-server/dist/index.js"],
-      "cwd": "/path/to/project-management",
+      "args": ["/path/to/project-management/packages/mcp-server/dist/index.js"],
       "env": {
         "PM_API_URL": "http://localhost:3000",
         "PM_API_TOKEN": "your-api-token"
@@ -139,6 +138,8 @@ Add the following to your Claude MCP settings (e.g., `claude_desktop_config.json
   }
 }
 ```
+
+Replace `/path/to/project-management` with the absolute path to this project. `PM_API_URL` can point to any machine running the server (e.g., `http://192.168.1.x:3000` for a remote host).
 
 ### Available MCP Tools
 
