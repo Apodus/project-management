@@ -65,6 +65,14 @@ function maybeShowToast(eventType: string, payload: SSEPayload): void {
       toast.success(`Proposal planned`, {
         description: `Proposal ${payload.entity_id.slice(-6)} has been planned`,
       });
+    } else if (toStatus === "in_progress") {
+      toast.success(`Proposal work started`, {
+        description: `Proposal ${payload.entity_id.slice(-6)} is now in progress`,
+      });
+    } else if (toStatus === "completed") {
+      toast.success(`Proposal completed`, {
+        description: `Proposal ${payload.entity_id.slice(-6)} has been completed`,
+      });
     }
   }
 }

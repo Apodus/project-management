@@ -307,7 +307,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    status?: "open" | "discussing" | "accepted" | "planned" | "rejected";
+                    status?: "open" | "discussing" | "accepted" | "planned" | "in_progress" | "completed" | "rejected";
                 };
                 header?: never;
                 path: {
@@ -2971,7 +2971,7 @@ export interface components {
         };
         ProposalTransition: {
             /** @enum {string} */
-            toStatus: "open" | "discussing" | "accepted" | "planned" | "rejected";
+            toStatus: "open" | "discussing" | "accepted" | "planned" | "in_progress" | "completed" | "rejected";
             actorId: string;
         };
         AddProposalComment: {

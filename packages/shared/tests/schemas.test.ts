@@ -415,7 +415,7 @@ describe("selectProposalSchema", () => {
   });
 
   it("accepts all valid proposal statuses", () => {
-    for (const status of ["open", "discussing", "accepted", "planned", "rejected"]) {
+    for (const status of ["open", "discussing", "accepted", "planned", "in_progress", "completed", "rejected"]) {
       expect(selectProposalSchema.parse({ ...validProposal, status })).toBeTruthy();
     }
   });

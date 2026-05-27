@@ -14,6 +14,8 @@ export const PROPOSAL_TRANSITIONS: readonly ProposalTransitionRule[] = [
   { from: "discussing", to: "rejected", allowedBy: ["human"] },
   { from: "open", to: "rejected", allowedBy: ["human"] },
   { from: "accepted", to: "planned", allowedBy: ["ai_agent"] },
+  { from: "planned", to: "in_progress", allowedBy: ["human", "ai_agent"] },
+  { from: "in_progress", to: "completed", allowedBy: ["human", "ai_agent"] },
 ] as const;
 
 /** O(1) lookup: "open->discussing" => ProposalTransitionRule */

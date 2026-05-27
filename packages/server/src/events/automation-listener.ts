@@ -1,4 +1,4 @@
-import { getEventBus, type EventName, type EventPayload } from "./event-bus.js";
+import { getEventBus, EVENT_NAMES, type EventName, type EventPayload } from "./event-bus.js";
 import {
   findMatchingRules,
   evaluateConditions,
@@ -7,8 +7,99 @@ import {
   type Condition,
   type ActionContext,
 } from "../services/automation.service.js";
-import { getDb, tasks, epics } from "../db/index.js";
+import { getDb, tasks, epics, proposals } from "../db/index.js";
 import { eq } from "drizzle-orm";
+import type { ProposalStatus, UserType } from "@pm/shared";
+
+/**
+ * Register the proposal auto-transition listener.
+ * When a task's status changes, checks if linked proposal should advance:
+ * - planned → in_progress: when any linked task becomes in_progress
+ * - in_progress → completed: when all non-cancelled linked tasks are done
+ */
+export function registerProposalAutoTransitionListener(): () => void {
+  const bus = getEventBus();
+
+  bus.on(EVENT_NAMES.TASK_STATUS_CHANGED, (payload: EventPayload) => {
+    if (payload.entityType !== "task") return;
+
+    const entity = payload.entity as { proposalId?: string | null; status?: string } | null;
+    const proposalId = entity?.proposalId;
+    if (!proposalId) return;
+
+    const db = getDb();
+    const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
+    if (!proposal) return;
+
+    const currentStatus = proposal.status as ProposalStatus;
+    const changes = payload.changes as { status?: { from: unknown; to: unknown } } | undefined;
+    const newTaskStatus = changes?.status?.to as string | undefined;
+
+    // planned → in_progress: when any linked task becomes in_progress
+    if (currentStatus === "planned" && newTaskStatus === "in_progress") {
+      const now = new Date().toISOString();
+      db.update(proposals)
+        .set({ status: "in_progress", updatedAt: now })
+        .where(eq(proposals.id, proposalId))
+        .run();
+
+      const updated = db.select().from(proposals).where(eq(proposals.id, proposalId)).get()!;
+      bus.emit(EVENT_NAMES.PROPOSAL_TRANSITIONED, {
+        entity: updated,
+        entityType: "proposal",
+        entityId: proposalId,
+        projectId: proposal.projectId,
+        actorId: null,
+        timestamp: now,
+        changes: { status: { from: "planned", to: "in_progress" } },
+        previousStatus: "planned",
+      });
+      return;
+    }
+
+    // in_progress → completed: when all non-cancelled tasks are done
+    if (currentStatus === "in_progress" && newTaskStatus === "done") {
+      const proposalTasks = db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.proposalId, proposalId))
+        .all();
+
+      if (proposalTasks.length === 0) return;
+
+      // Filter out cancelled tasks
+      const nonCancelledTasks = proposalTasks.filter((t) => t.status !== "cancelled");
+      if (nonCancelledTasks.length === 0) return; // only cancelled tasks, don't auto-complete
+
+      const allDone = nonCancelledTasks.every((t) => t.status === "done");
+      if (!allDone) return;
+
+      const now = new Date().toISOString();
+      db.update(proposals)
+        .set({ status: "completed", updatedAt: now })
+        .where(eq(proposals.id, proposalId))
+        .run();
+
+      const updated = db.select().from(proposals).where(eq(proposals.id, proposalId)).get()!;
+      bus.emit(EVENT_NAMES.PROPOSAL_TRANSITIONED, {
+        entity: updated,
+        entityType: "proposal",
+        entityId: proposalId,
+        projectId: proposal.projectId,
+        actorId: null,
+        timestamp: now,
+        changes: { status: { from: "in_progress", to: "completed" } },
+        previousStatus: "in_progress",
+      });
+    }
+  });
+
+  // Return a cleanup function
+  return () => {
+    // The bus.on doesn't return a cleanup, but registerAutomationListener
+    // handles the broader cleanup via onAll. This is fine for now.
+  };
+}
 
 /**
  * Register the automation rules listener on the event bus.

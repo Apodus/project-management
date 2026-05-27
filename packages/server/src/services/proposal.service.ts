@@ -546,10 +546,48 @@ export function implementProposal(
       .run();
   });
 
-  // Return the updated proposal
-  return db
+  // Emit events after transaction commits
+  const eventBus = getEventBus();
+
+  for (const epicId of createdEpicIds) {
+    const epic = db.select().from(epics).where(eq(epics.id, epicId)).get();
+    eventBus.emit(EVENT_NAMES.EPIC_CREATED, {
+      entity: epic,
+      entityType: "epic",
+      entityId: epicId,
+      projectId,
+      actorId,
+      timestamp: now,
+    });
+  }
+
+  for (const taskId of createdTaskIds) {
+    const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+    eventBus.emit(EVENT_NAMES.TASK_CREATED, {
+      entity: task,
+      entityType: "task",
+      entityId: taskId,
+      projectId,
+      actorId,
+      timestamp: now,
+    });
+  }
+
+  const updatedProposal = db
     .select()
     .from(proposals)
     .where(eq(proposals.id, proposalId))
     .get()!;
+
+  eventBus.emit(EVENT_NAMES.PROPOSAL_PLANNED, {
+    entity: updatedProposal,
+    entityType: "proposal",
+    entityId: proposalId,
+    projectId,
+    actorId,
+    timestamp: now,
+    changes: { status: { from: "accepted", to: "planned" } },
+  });
+
+  return updatedProposal;
 }

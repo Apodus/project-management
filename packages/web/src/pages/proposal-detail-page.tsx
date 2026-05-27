@@ -565,14 +565,18 @@ export function ProposalDetailPage() {
             proposalId={proposalId!}
             disabled={
               proposal.status === "rejected" ||
-              proposal.status === "planned"
+              proposal.status === "planned" ||
+              proposal.status === "in_progress" ||
+              proposal.status === "completed"
             }
           />
         </div>
       </section>
 
-      {/* Work items (visible when planned) */}
-      {proposal.status === "planned" && (
+      {/* Work items (visible when planned, in progress, or completed) */}
+      {(proposal.status === "planned" ||
+        proposal.status === "in_progress" ||
+        proposal.status === "completed") && (
         <>
           <Separator />
           <WorkItemsSection proposalId={proposalId!} />

@@ -5,12 +5,14 @@ import {
   createTestUser,
   createTestTask,
   createTestEpic,
+  createTestProposal,
   authRequest,
   type TestApp,
 } from "../utils.js";
 import * as automationService from "../../src/services/automation.service.js";
 import { getEventBus, EVENT_NAMES, resetEventBus } from "../../src/events/event-bus.js";
-import { getDb, tasks, epics, automationRules } from "../../src/db/index.js";
+import { registerProposalAutoTransitionListener } from "../../src/events/automation-listener.js";
+import { getDb, tasks, epics, proposals, automationRules } from "../../src/db/index.js";
 import { eq } from "drizzle-orm";
 
 // ─── Automation service unit tests ──────────────────────────────
@@ -919,6 +921,276 @@ describe("Automation Event Triggering", () => {
     const db = getDb();
     const unchangedEpic = db.select().from(epics).where(eq(epics.id, epic.id)).get();
     expect(unchangedEpic!.status).toBe("active");
+  });
+});
+
+// ─── Proposal auto-transition tests ───────────────────────────────
+
+describe("Proposal Auto-Transition", () => {
+  let testApp: TestApp;
+  let cleanupListener: () => void;
+
+  beforeEach(() => {
+    testApp = createTestApp();
+    cleanupListener = registerProposalAutoTransitionListener();
+  });
+
+  afterEach(() => {
+    cleanupListener();
+    testApp.cleanup();
+  });
+
+  it("should transition proposal from planned to in_progress when a task starts", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "planned",
+    });
+    const task = createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "ready",
+    });
+
+    // Transition task to in_progress
+    const db = getDb();
+    db.update(tasks)
+      .set({ status: "in_progress", updatedAt: new Date().toISOString() })
+      .where(eq(tasks.id, task.id))
+      .run();
+
+    getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
+      entity: { ...task, status: "in_progress", proposalId: proposal.id },
+      entityType: "task",
+      entityId: task.id,
+      projectId: project.id,
+      actorId: user.id,
+      timestamp: new Date().toISOString(),
+      changes: { status: { from: "ready", to: "in_progress" } },
+      previousStatus: "ready",
+    });
+
+    // Proposal should now be in_progress
+    const updatedProposal = db.select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updatedProposal!.status).toBe("in_progress");
+  });
+
+  it("should transition proposal from in_progress to completed when all tasks are done", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "in_progress",
+    });
+    const task1 = createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "done",
+    });
+    const task2 = createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "in_progress",
+    });
+
+    // Transition task2 to done
+    const db = getDb();
+    db.update(tasks)
+      .set({ status: "done", updatedAt: new Date().toISOString() })
+      .where(eq(tasks.id, task2.id))
+      .run();
+
+    getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
+      entity: { ...task2, status: "done", proposalId: proposal.id },
+      entityType: "task",
+      entityId: task2.id,
+      projectId: project.id,
+      actorId: user.id,
+      timestamp: new Date().toISOString(),
+      changes: { status: { from: "in_progress", to: "done" } },
+      previousStatus: "in_progress",
+    });
+
+    // Proposal should now be completed
+    const updatedProposal = db.select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updatedProposal!.status).toBe("completed");
+  });
+
+  it("should NOT auto-complete proposal when there are non-done tasks remaining", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "in_progress",
+    });
+    createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "ready",
+    });
+    const task2 = createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "in_progress",
+    });
+
+    // Transition task2 to done
+    const db = getDb();
+    db.update(tasks)
+      .set({ status: "done", updatedAt: new Date().toISOString() })
+      .where(eq(tasks.id, task2.id))
+      .run();
+
+    getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
+      entity: { ...task2, status: "done", proposalId: proposal.id },
+      entityType: "task",
+      entityId: task2.id,
+      projectId: project.id,
+      actorId: user.id,
+      timestamp: new Date().toISOString(),
+      changes: { status: { from: "in_progress", to: "done" } },
+      previousStatus: "in_progress",
+    });
+
+    // Proposal should still be in_progress (task1 is still "ready")
+    const updatedProposal = db.select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updatedProposal!.status).toBe("in_progress");
+  });
+
+  it("should auto-complete when cancelled tasks exist but all non-cancelled are done", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "in_progress",
+    });
+    createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "done",
+    });
+    createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "cancelled",
+    });
+    const task3 = createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "in_progress",
+    });
+
+    // Transition task3 to done
+    const db = getDb();
+    db.update(tasks)
+      .set({ status: "done", updatedAt: new Date().toISOString() })
+      .where(eq(tasks.id, task3.id))
+      .run();
+
+    getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
+      entity: { ...task3, status: "done", proposalId: proposal.id },
+      entityType: "task",
+      entityId: task3.id,
+      projectId: project.id,
+      actorId: user.id,
+      timestamp: new Date().toISOString(),
+      changes: { status: { from: "in_progress", to: "done" } },
+      previousStatus: "in_progress",
+    });
+
+    // Proposal should be completed (only cancelled + done tasks)
+    const updatedProposal = db.select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updatedProposal!.status).toBe("completed");
+  });
+
+  it("should NOT auto-complete when only cancelled tasks exist", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "in_progress",
+    });
+    const task1 = createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "in_progress",
+    });
+
+    // Cancel the task (simulating that all tasks become cancelled)
+    const db = getDb();
+    db.update(tasks)
+      .set({ status: "cancelled", updatedAt: new Date().toISOString() })
+      .where(eq(tasks.id, task1.id))
+      .run();
+
+    // Emit status_changed but the change is to "cancelled" not "done"
+    // so the auto-complete check won't trigger (it only triggers on "done")
+    getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
+      entity: { ...task1, status: "cancelled", proposalId: proposal.id },
+      entityType: "task",
+      entityId: task1.id,
+      projectId: project.id,
+      actorId: user.id,
+      timestamp: new Date().toISOString(),
+      changes: { status: { from: "in_progress", to: "cancelled" } },
+      previousStatus: "in_progress",
+    });
+
+    // Proposal should still be in_progress
+    const updatedProposal = db.select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updatedProposal!.status).toBe("in_progress");
+  });
+
+  it("should NOT transition proposal if it is not in planned status when task starts", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "open",
+    });
+    const task = createTestTask(testApp.db, {
+      projectId: project.id,
+      reporterId: user.id,
+      proposalId: proposal.id,
+      status: "ready",
+    });
+
+    const db = getDb();
+    db.update(tasks)
+      .set({ status: "in_progress", updatedAt: new Date().toISOString() })
+      .where(eq(tasks.id, task.id))
+      .run();
+
+    getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
+      entity: { ...task, status: "in_progress", proposalId: proposal.id },
+      entityType: "task",
+      entityId: task.id,
+      projectId: project.id,
+      actorId: user.id,
+      timestamp: new Date().toISOString(),
+      changes: { status: { from: "ready", to: "in_progress" } },
+      previousStatus: "ready",
+    });
+
+    // Proposal should stay "open"
+    const updatedProposal = db.select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updatedProposal!.status).toBe("open");
   });
 });
 
