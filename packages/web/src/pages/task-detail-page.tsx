@@ -6,11 +6,13 @@ import {
   BarChart3,
   Check,
   Code2,
+  Copy,
   ExternalLink,
   FileText,
   Gavel,
   GitBranch,
   ListChecks,
+  Loader2,
   MessageCircleQuestion,
   MessageSquare,
   Pencil,
@@ -22,7 +24,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -40,6 +51,7 @@ import {
   useTaskSubtasks,
   useAddTaskComment,
 } from "@/hooks/use-tasks";
+import { useCreateTemplateFromTask } from "@/hooks/use-templates";
 import { useProjectStore } from "@/stores/project-store";
 import {
   formatRelativeTime,
@@ -49,7 +61,7 @@ import {
   getTypeColor,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Task, TaskComment } from "@/lib/api";
+import { ApiError, type Task, type TaskComment } from "@/lib/api";
 
 // ---- Constants ----
 
@@ -982,6 +994,135 @@ function ContextSection({
   );
 }
 
+// ---- Save as Template Dialog ----
+
+function SaveAsTemplateDialog({
+  open,
+  onOpenChange,
+  taskId,
+  taskTitle,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  taskId: string;
+  taskTitle: string;
+}) {
+  const createFromTask = useCreateTemplateFromTask();
+  const [name, setName] = useState(`${taskTitle} Template`);
+  const [description, setDescription] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function resetForm() {
+    setName(`${taskTitle} Template`);
+    setDescription("");
+    setErrors({});
+    createFromTask.reset();
+  }
+
+  function validate(): boolean {
+    const newErrors: Record<string, string> = {};
+    if (!name.trim()) newErrors.name = "Name is required";
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!validate()) return;
+
+    try {
+      await createFromTask.mutateAsync({
+        taskId,
+        data: {
+          name: name.trim(),
+          ...(description.trim() ? { description: description.trim() } : {}),
+        },
+      });
+      onOpenChange(false);
+      resetForm();
+    } catch {
+      // Error handled by mutation state
+    }
+  }
+
+  function handleOpenChange(newOpen: boolean) {
+    if (!newOpen) resetForm();
+    onOpenChange(newOpen);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Save as Template</DialogTitle>
+            <DialogDescription>
+              Create a reusable task template from this task, including its
+              subtasks.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="tpl-from-name">Template Name</Label>
+              <Input
+                id="tpl-from-name"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (errors.name) setErrors((p) => ({ ...p, name: "" }));
+                }}
+                autoFocus
+              />
+              {errors.name && (
+                <p className="text-xs text-destructive">{errors.name}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tpl-from-desc">Description (optional)</Label>
+              <Textarea
+                id="tpl-from-desc"
+                placeholder="What is this template for?"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+              />
+            </div>
+            {createFromTask.isError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {createFromTask.error instanceof ApiError
+                  ? createFromTask.error.message
+                  : "Failed to create template from task."}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createFromTask.isPending}>
+              {createFromTask.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Copy className="size-4" />
+                  Save Template
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ---- Main page ----
 
 export function TaskDetailPage() {
@@ -994,6 +1135,7 @@ export function TaskDetailPage() {
 
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
 
   const hasProject = !!currentProjectId;
 
@@ -1392,8 +1534,31 @@ export function TaskDetailPage() {
               </span>
             </MetadataField>
           )}
+
+          <Separator className="my-2" />
+
+          {/* Save as Template */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-1.5"
+            onClick={() => setSaveTemplateOpen(true)}
+          >
+            <Copy className="size-3.5" />
+            Save as Template
+          </Button>
         </div>
       </div>
+
+      {/* Save as Template Dialog */}
+      {task && taskId && (
+        <SaveAsTemplateDialog
+          open={saveTemplateOpen}
+          onOpenChange={setSaveTemplateOpen}
+          taskId={taskId}
+          taskTitle={task.title}
+        />
+      )}
     </div>
   );
 }

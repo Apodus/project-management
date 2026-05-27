@@ -71,6 +71,7 @@ import {
 import { useCurrentUser } from "@/hooks/use-auth";
 import { ApiError, type AuthUser, type CreateUserData, type UpdateUserData } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { SettingsNav } from "@/components/settings-nav";
 
 // ---- Token Display Dialog ----
 
@@ -734,6 +735,8 @@ export function UsersPage() {
 
   return (
     <div className="space-y-6">
+      <SettingsNav />
+
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">

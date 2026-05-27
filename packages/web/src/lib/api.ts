@@ -590,3 +590,100 @@ export async function activateUser(id: string): Promise<AuthUser> {
     method: "POST",
   });
 }
+
+// ---- Templates API ----
+
+export interface Template {
+  id: string;
+  projectId: string | null;
+  name: string;
+  description: string | null;
+  templateType: string;
+  templateData: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+}
+
+export interface CreateTemplateData {
+  name: string;
+  description?: string | null;
+  project_id?: string | null;
+  template_type: "task" | "project";
+  template_data: Record<string, unknown>;
+  created_by?: string | null;
+}
+
+export interface UpdateTemplateData {
+  name?: string;
+  description?: string | null;
+  template_data?: Record<string, unknown>;
+}
+
+export interface InstantiateTemplateData {
+  project_id?: string;
+  workspace_id?: string;
+  name?: string;
+  overrides?: Record<string, unknown>;
+}
+
+export interface CreateTemplateFromTaskData {
+  name: string;
+  description?: string;
+}
+
+export async function getTemplates(
+  projectId?: string,
+  type?: string,
+): Promise<Template[]> {
+  const params = new URLSearchParams();
+  if (projectId) params.set("project_id", projectId);
+  if (type) params.set("template_type", type);
+  const query = params.toString();
+  return apiFetch<Template[]>(`/templates${query ? `?${query}` : ""}`);
+}
+
+export async function createTemplate(
+  data: CreateTemplateData,
+): Promise<Template> {
+  return apiFetch<Template>("/templates", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateTemplate(
+  id: string,
+  data: UpdateTemplateData,
+): Promise<Template> {
+  return apiFetch<Template>(`/templates/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteTemplate(id: string): Promise<Template> {
+  return apiFetch<Template>(`/templates/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function instantiateTemplate(
+  id: string,
+  data: InstantiateTemplateData,
+): Promise<unknown> {
+  return apiFetch<unknown>(`/templates/${id}/instantiate`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function createTemplateFromTask(
+  taskId: string,
+  data: CreateTemplateFromTaskData,
+): Promise<Template> {
+  return apiFetch<Template>(`/tasks/${taskId}/create-template`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

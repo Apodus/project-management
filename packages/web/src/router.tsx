@@ -22,6 +22,7 @@ import { TaskListPage } from "@/pages/task-list-page";
 import { BoardPage } from "@/pages/board-page";
 import { UsersPage } from "@/pages/settings/users-page";
 import { BackupPage } from "@/pages/settings/backup-page";
+import { TemplatesPage } from "@/pages/settings/templates-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
 
 // ---- Root route (no layout — just an outlet) ----
@@ -208,6 +209,13 @@ const settingsBackupRoute = createRoute({
   component: BackupPage,
 });
 
+// /settings/templates — templates management
+const settingsTemplatesRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/settings/templates",
+  component: TemplatesPage,
+});
+
 // Build the route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -229,6 +237,7 @@ const routeTree = rootRoute.addChildren([
     epicDetailRoute,
     settingsUsersRoute,
     settingsBackupRoute,
+    settingsTemplatesRoute,
   ]),
 ]);
 

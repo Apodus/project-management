@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { SettingsNav } from "@/components/settings-nav";
 import { backupDatabase, type BackupResult } from "@/lib/api";
 
 export function BackupPage() {
@@ -38,6 +39,8 @@ export function BackupPage() {
 
   return (
     <div className="space-y-6">
+      <SettingsNav />
+
       <div className="flex items-center gap-3">
         <Database className="size-6 text-muted-foreground" />
         <h1 className="text-2xl font-bold tracking-tight">
