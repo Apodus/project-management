@@ -446,3 +446,101 @@ export async function addTaskDependency(
     },
   );
 }
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Create / Update Tasks
+// ---------------------------------------------------------------------------
+
+export interface CreateTaskData {
+  title: string;
+  description?: string | null;
+  epicId?: string | null;
+  parentTaskId?: string | null;
+  priority?: string;
+  type?: string;
+  estimatedEffort?: string | null;
+  context?: Record<string, unknown> | null;
+}
+
+export async function createTask(
+  projectId: string,
+  data: CreateTaskData,
+): Promise<TaskSummary> {
+  return apiRequest<TaskSummary>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/tasks`,
+    data,
+  );
+}
+
+export interface UpdateTaskData {
+  title?: string;
+  description?: string | null;
+  priority?: string;
+  type?: string;
+  estimatedEffort?: string | null;
+  context?: Record<string, unknown> | null;
+  dueDate?: string | null;
+}
+
+export async function updateTask(
+  taskId: string,
+  data: UpdateTaskData,
+): Promise<TaskSummary> {
+  return apiRequest<TaskSummary>(
+    "PATCH",
+    `/tasks/${encodeURIComponent(taskId)}`,
+    data,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Git Refs
+// ---------------------------------------------------------------------------
+
+export interface GitRefData {
+  id: string;
+  taskId: string;
+  refType: string;
+  refValue: string;
+  url: string | null;
+  title: string | null;
+  status: string | null;
+  metadata: unknown;
+  createdAt: string;
+}
+
+export interface CreateGitRefData {
+  refType: string;
+  refValue: string;
+  url?: string | null;
+  title?: string | null;
+}
+
+export async function createGitRef(
+  taskId: string,
+  data: CreateGitRefData,
+): Promise<GitRefData> {
+  return apiRequest<GitRefData>(
+    "POST",
+    `/tasks/${encodeURIComponent(taskId)}/git-refs`,
+    data,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Project Tasks (for board resource)
+// ---------------------------------------------------------------------------
+
+export async function getProjectTasks(
+  projectId: string,
+  status?: string,
+): Promise<TaskSummary[]> {
+  const params: Record<string, string | number | boolean | undefined> = {};
+  if (status) params.status = status;
+
+  return apiRequest<TaskSummary[]>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/tasks${qs(params)}`,
+  );
+}
