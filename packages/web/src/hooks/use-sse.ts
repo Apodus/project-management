@@ -7,6 +7,7 @@ import { projectKeys } from "./use-projects";
 import { proposalKeys } from "./use-proposals";
 import { taskKeys } from "./use-tasks";
 import { epicKeys } from "./use-epics";
+import { useConnectionStore } from "@/stores/connection-store";
 
 // ─── SSE event payload shape ─────────────────────────────────────
 
@@ -72,8 +73,9 @@ function maybeShowToast(eventType: string, payload: SSEPayload): void {
 
 /**
  * Establishes an SSE connection to the server event stream.
- * Automatically invalidates relevant TanStack Query caches and
- * shows toast notifications for key events.
+ * Automatically invalidates relevant TanStack Query caches,
+ * shows toast notifications for key events, and tracks
+ * connection state + unread counts in the connection store.
  *
  * EventSource handles auto-reconnect natively.
  */
@@ -82,6 +84,9 @@ export function useSSE(projectId?: string | null): void {
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
+    const { setStatus, recordEvent, clearUnread } =
+      useConnectionStore.getState();
+
     // Build URL with optional project filter
     const params = new URLSearchParams();
     if (projectId) {
@@ -90,23 +95,29 @@ export function useSSE(projectId?: string | null): void {
 
     const url = `/api/v1/events${params.toString() ? `?${params.toString()}` : ""}`;
 
+    setStatus("connecting");
+
     const es = new EventSource(url, { withCredentials: true });
     eventSourceRef.current = es;
 
-    // Generic message handler — EventSource 'message' fires for unnamed events,
-    // but we use named events so we listen via onmessage as a fallback only.
-    // Instead, we register listeners for known event prefixes.
+    // ── Connection lifecycle ──────────────────────────────────
+    es.onopen = () => {
+      const prev = useConnectionStore.getState().status;
+      setStatus("connected");
+      if (prev === "reconnecting") {
+        toast.success("Reconnected", {
+          description: "Real-time updates restored",
+          duration: 2000,
+        });
+      }
+    };
 
-    // For SSE named events, we need addEventListener per event type.
-    // Since we don't know all event types up front, we use the generic
-    // 'message' event which doesn't fire for named events in standard SSE.
-    // We'll instead use a workaround: listen for all events via onmessage
-    // won't work for named events. The proper approach is to listen to
-    // specific event types. But the server sends named events dynamically.
-    //
-    // Solution: The server also includes the event name in the data payload.
-    // But actually, EventSource only lets you listen to specific named events.
-    // We'll listen for all the known event patterns.
+    es.onerror = () => {
+      // EventSource auto-reconnects; surface the attempt
+      setStatus("reconnecting");
+    };
+
+    // ── Event handling ────────────────────────────────────────
 
     const eventTypes = [
       // Project
@@ -143,6 +154,9 @@ export function useSSE(projectId?: string | null): void {
         return;
       }
 
+      // Track in connection store
+      recordEvent();
+
       // Invalidate relevant query caches
       const keys = getInvalidationKeys(eventType);
       for (const key of keys) {
@@ -161,13 +175,23 @@ export function useSSE(projectId?: string | null): void {
       handlers.push([eventType, handler]);
     }
 
+    // ── Clear unread when tab regains focus ───────────────────
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        clearUnread();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     // Cleanup on unmount or dependency change
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
       for (const [eventType, handler] of handlers) {
         es.removeEventListener(eventType, handler as EventListener);
       }
       es.close();
       eventSourceRef.current = null;
+      setStatus("disconnected");
     };
   }, [projectId, queryClient]);
 }

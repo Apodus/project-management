@@ -1,5 +1,5 @@
-import { useRouter } from "@tanstack/react-router";
-import { LogOut, Moon, Search, Settings, Sun, User } from "lucide-react";
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import { Bell, LogOut, Moon, Search, Settings, Sun, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,8 +9,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useThemeStore } from "@/stores/theme-store";
 import { useProjectStore } from "@/stores/project-store";
+import { useConnectionStore } from "@/stores/connection-store";
 import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 
 const KNOWN_SECTIONS: Record<string, string> = {
@@ -87,6 +93,116 @@ function Breadcrumbs() {
   );
 }
 
+// ─── Connection status indicator ─────────────────────────────────
+
+const STATUS_CONFIG = {
+  connected: {
+    color: "bg-emerald-500",
+    pulse: false,
+    tooltip: "Live — receiving real-time updates",
+  },
+  reconnecting: {
+    color: "bg-amber-400",
+    pulse: true,
+    tooltip: "Reconnecting...",
+  },
+  disconnected: {
+    color: "bg-red-500",
+    pulse: false,
+    tooltip: "Disconnected — updates paused. Click to retry.",
+  },
+  connecting: {
+    color: "bg-muted-foreground/50",
+    pulse: true,
+    tooltip: "Connecting...",
+  },
+} as const;
+
+function ConnectionIndicator() {
+  const status = useConnectionStore((s) => s.status);
+  const config = STATUS_CONFIG[status];
+
+  const handleClick = () => {
+    if (status === "disconnected") {
+      // Force a page reload to re-establish SSE
+      window.location.reload();
+    }
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={handleClick}
+          className={`relative inline-flex size-2 shrink-0 rounded-full ${config.color} ${
+            status === "disconnected" ? "cursor-pointer" : "cursor-default"
+          }`}
+          aria-label={config.tooltip}
+        >
+          {config.pulse && (
+            <span
+              className={`absolute inset-0 rounded-full ${config.color} animate-ping opacity-75`}
+            />
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{config.tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ─── Notification bell ───────────────────────────────────────────
+
+function NotificationBell() {
+  const unreadCount = useConnectionStore((s) => s.unreadCount);
+  const clearUnread = useConnectionStore((s) => s.clearUnread);
+  const currentProjectId = useProjectStore((s) => s.currentProjectId);
+  const navigate = useNavigate();
+
+  const handleClick = () => {
+    clearUnread();
+    if (currentProjectId) {
+      navigate({
+        to: "/projects/$projectId/activity",
+        params: { projectId: currentProjectId },
+      });
+    }
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleClick}
+          className="relative"
+          aria-label={
+            unreadCount > 0
+              ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`
+              : "No new notifications"
+          }
+        >
+          <Bell className="size-4 text-muted-foreground" />
+          {unreadCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-semibold leading-none text-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {unreadCount > 0
+          ? `${unreadCount} new update${unreadCount === 1 ? "" : "s"} — click to view activity`
+          : "No new updates"}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ─── Header ──────────────────────────────────────────────────────
+
 export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
   const { theme, toggleTheme } = useThemeStore();
   const { data: currentUser } = useCurrentUser();
@@ -106,6 +222,10 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
       <Breadcrumbs />
 
       <div className="ml-auto flex items-center gap-1">
+        <ConnectionIndicator />
+
+        <Separator orientation="vertical" className="mx-1 h-6" />
+
         <Button
           variant="ghost"
           size="sm"
@@ -120,6 +240,8 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
             <span className="text-xs">&#8984;</span>K
           </kbd>
         </Button>
+
+        <NotificationBell />
 
         <Separator orientation="vertical" className="mx-1 h-6" />
 

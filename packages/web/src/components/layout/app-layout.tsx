@@ -10,6 +10,8 @@ import {
   useKeyboardShortcuts,
 } from "@/components/keyboard-shortcuts-dialog";
 import { useSSE } from "@/hooks/use-sse";
+import { useFaviconBadge } from "@/hooks/use-favicon-badge";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useProjectStore } from "@/stores/project-store";
 
 export function AppLayout() {
@@ -21,6 +23,10 @@ export function AppLayout() {
 
   // Establish SSE connection for real-time updates, scoped to current project
   useSSE(currentProjectId);
+
+  // Favicon badge + document title reflect unread event count
+  useFaviconBadge();
+  useDocumentTitle();
 
   return (
     <div className="flex h-screen overflow-hidden">
