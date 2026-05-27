@@ -18,6 +18,7 @@ interface SSEPayload {
   changes?: Record<string, { from: unknown; to: unknown }>;
   actor: { id: string | null; name: string; type: string };
   timestamp: string;
+  entity_title?: string;
 }
 
 // ─── Query key invalidation map ──────────────────────────────────
@@ -44,34 +45,53 @@ function getInvalidationKeys(eventType: string): readonly (readonly unknown[])[]
 // ─── Toast notifications for key events ──────────────────────────
 
 function maybeShowToast(eventType: string, payload: SSEPayload): void {
+  const titleLabel = payload.entity_title
+    ? `'${payload.entity_title}'`
+    : `${payload.entity_id.slice(-6)}`;
+
   if (
     eventType === "task.status_changed" &&
-    payload.changes?.status &&
-    (payload.changes.status as { to: string }).to === "done"
+    payload.changes?.status
   ) {
-    toast.success(`Task completed`, {
-      description: `Task ${payload.entity_id.slice(-6)} marked as done`,
-    });
-    return;
+    const toStatus = (payload.changes.status as { to: string }).to;
+    if (toStatus === "done") {
+      const actorSuffix =
+        payload.actor.name && payload.actor.name !== "system"
+          ? ` by ${payload.actor.name}`
+          : "";
+      toast.success(`Task completed`, {
+        description: `Task ${titleLabel} completed${actorSuffix}`,
+      });
+      return;
+    }
+    if (toStatus === "in_progress") {
+      toast.success(`Task started`, {
+        description:
+          payload.actor.name && payload.actor.name !== "system"
+            ? `${payload.actor.name} started ${titleLabel}`
+            : `Task ${titleLabel} started`,
+      });
+      return;
+    }
   }
 
   if (eventType === "proposal.transitioned" && payload.changes?.status) {
     const toStatus = (payload.changes.status as { to: string }).to;
     if (toStatus === "accepted") {
       toast.success(`Proposal accepted`, {
-        description: `Proposal ${payload.entity_id.slice(-6)} has been accepted`,
+        description: `Proposal ${titleLabel} accepted`,
       });
     } else if (toStatus === "planned") {
       toast.success(`Proposal planned`, {
-        description: `Proposal ${payload.entity_id.slice(-6)} has been planned`,
+        description: `Proposal ${titleLabel} planned`,
       });
     } else if (toStatus === "in_progress") {
       toast.success(`Proposal work started`, {
-        description: `Proposal ${payload.entity_id.slice(-6)} is now in progress`,
+        description: `Proposal ${titleLabel} is now in progress`,
       });
     } else if (toStatus === "completed") {
       toast.success(`Proposal completed`, {
-        description: `Proposal ${payload.entity_id.slice(-6)} has been completed`,
+        description: `Proposal ${titleLabel} has been completed`,
       });
     }
   }

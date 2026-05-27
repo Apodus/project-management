@@ -73,6 +73,38 @@ const TASK_TYPES = [
   "research",
 ] as const;
 
+// ---- Epic color palette ----
+
+/**
+ * 8-10 distinct colors that work in both dark and light mode.
+ * Each entry: [border class, badge bg class, badge text class, dot bg class]
+ */
+const EPIC_COLORS = [
+  { border: "border-l-emerald-500", badgeBg: "bg-emerald-500/15", badgeText: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" },
+  { border: "border-l-blue-500", badgeBg: "bg-blue-500/15", badgeText: "text-blue-700 dark:text-blue-400", dot: "bg-blue-500" },
+  { border: "border-l-violet-500", badgeBg: "bg-violet-500/15", badgeText: "text-violet-700 dark:text-violet-400", dot: "bg-violet-500" },
+  { border: "border-l-amber-500", badgeBg: "bg-amber-500/15", badgeText: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" },
+  { border: "border-l-rose-500", badgeBg: "bg-rose-500/15", badgeText: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" },
+  { border: "border-l-cyan-500", badgeBg: "bg-cyan-500/15", badgeText: "text-cyan-700 dark:text-cyan-400", dot: "bg-cyan-500" },
+  { border: "border-l-orange-500", badgeBg: "bg-orange-500/15", badgeText: "text-orange-700 dark:text-orange-400", dot: "bg-orange-500" },
+  { border: "border-l-pink-500", badgeBg: "bg-pink-500/15", badgeText: "text-pink-700 dark:text-pink-400", dot: "bg-pink-500" },
+  { border: "border-l-teal-500", badgeBg: "bg-teal-500/15", badgeText: "text-teal-700 dark:text-teal-400", dot: "bg-teal-500" },
+  { border: "border-l-indigo-500", badgeBg: "bg-indigo-500/15", badgeText: "text-indigo-700 dark:text-indigo-400", dot: "bg-indigo-500" },
+] as const;
+
+const NEUTRAL_EPIC_COLOR = {
+  border: "border-l-gray-300 dark:border-l-gray-600",
+  badgeBg: "bg-gray-500/15",
+  badgeText: "text-gray-600 dark:text-gray-400",
+  dot: "bg-gray-400",
+};
+
+function getEpicColor(epicId: string | null | undefined) {
+  if (!epicId) return NEUTRAL_EPIC_COLOR;
+  const index = epicId.charCodeAt(0) % EPIC_COLORS.length;
+  return EPIC_COLORS[index];
+}
+
 // ---- Helpers ----
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -124,10 +156,13 @@ function TaskCard({
   onClick,
   isDragOverlay,
 }: TaskCardProps) {
+  const epicColor = getEpicColor(task.epicId);
+
   return (
     <div
       className={cn(
-        "group rounded-lg border bg-card p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer",
+        "group rounded-lg border border-l-4 bg-card p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer",
+        epicColor.border,
         isDragOverlay && "shadow-lg ring-2 ring-primary/20 rotate-1",
       )}
       onClick={(e) => {
@@ -135,6 +170,19 @@ function TaskCard({
         onClick(task.id);
       }}
     >
+      {/* Epic badge */}
+      {epicName ? (
+        <span
+          className={cn(
+            "inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mb-1.5 truncate max-w-full",
+            epicColor.badgeBg,
+            epicColor.badgeText,
+          )}
+        >
+          {epicName}
+        </span>
+      ) : null}
+
       {/* Title */}
       <p className="text-sm font-medium leading-snug line-clamp-2 mb-2">
         {task.title}
@@ -156,17 +204,8 @@ function TaskCard({
         </Badge>
       </div>
 
-      {/* Bottom row: epic + assignee */}
-      <div className="flex items-center justify-between gap-2">
-        {/* Epic name */}
-        <div className="flex-1 min-w-0">
-          {epicName ? (
-            <span className="text-[11px] text-muted-foreground truncate block">
-              {epicName}
-            </span>
-          ) : null}
-        </div>
-
+      {/* Bottom row: assignee */}
+      <div className="flex items-center justify-end gap-2">
         {/* Assignee initials */}
         <div
           className={cn(
@@ -242,6 +281,7 @@ interface BoardColumnProps {
   userMap: Map<string, string>;
   isOver: boolean;
   onTaskClick: (taskId: string) => void;
+  groupByEpic?: boolean;
 }
 
 function BoardColumn({
@@ -251,8 +291,28 @@ function BoardColumn({
   userMap,
   isOver,
   onTaskClick,
+  groupByEpic = false,
 }: BoardColumnProps) {
   const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
+
+  // Group tasks by epic within the column
+  const epicGroups = useMemo(() => {
+    if (!groupByEpic) return null;
+    const groups = new Map<string | null, Task[]>();
+    for (const task of tasks) {
+      const key = task.epicId;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(task);
+    }
+    // Sort: named epics alphabetically, "No Epic" last
+    return Array.from(groups.entries()).sort(([a], [b]) => {
+      if (a === null) return 1;
+      if (b === null) return -1;
+      const nameA = epicMap.get(a) ?? "";
+      const nameB = epicMap.get(b) ?? "";
+      return nameA.localeCompare(nameB);
+    });
+  }, [tasks, groupByEpic, epicMap]);
 
   return (
     <div
@@ -278,18 +338,49 @@ function BoardColumn({
       <ScrollArea className="flex-1 p-2">
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
           <div className="space-y-2 min-h-[60px]">
-            {tasks.map((task) => (
-              <SortableTaskCard
-                key={task.id}
-                id={task.id}
-                task={task}
-                epicName={task.epicId ? epicMap.get(task.epicId) : undefined}
-                assigneeName={
-                  task.assigneeId ? userMap.get(task.assigneeId) : undefined
-                }
-                onClick={onTaskClick}
-              />
-            ))}
+            {epicGroups
+              ? epicGroups.map(([epicId, groupTasks]) => {
+                  const epicName = epicId ? epicMap.get(epicId) ?? "Unknown Epic" : "No Epic";
+                  const color = getEpicColor(epicId);
+                  return (
+                    <div key={epicId ?? "__no_epic__"} className="space-y-1.5">
+                      {/* Epic group header */}
+                      <div className="flex items-center gap-1.5 px-1 pt-1">
+                        <span className={cn("size-2 rounded-full shrink-0", color.dot)} />
+                        <span className="text-[11px] font-medium text-muted-foreground truncate">
+                          {epicName}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/60">
+                          {groupTasks.length}
+                        </span>
+                      </div>
+                      {groupTasks.map((task) => (
+                        <SortableTaskCard
+                          key={task.id}
+                          id={task.id}
+                          task={task}
+                          epicName={task.epicId ? epicMap.get(task.epicId) : undefined}
+                          assigneeName={
+                            task.assigneeId ? userMap.get(task.assigneeId) : undefined
+                          }
+                          onClick={onTaskClick}
+                        />
+                      ))}
+                    </div>
+                  );
+                })
+              : tasks.map((task) => (
+                  <SortableTaskCard
+                    key={task.id}
+                    id={task.id}
+                    task={task}
+                    epicName={task.epicId ? epicMap.get(task.epicId) : undefined}
+                    assigneeName={
+                      task.assigneeId ? userMap.get(task.assigneeId) : undefined
+                    }
+                    onClick={onTaskClick}
+                  />
+                ))}
           </div>
         </SortableContext>
       </ScrollArea>
@@ -835,6 +926,7 @@ export function BoardPage() {
                   userMap={userMap}
                   isOver={overColumnStatus === status}
                   onTaskClick={handleTaskClick}
+                  groupByEpic={!groupByEpic}
                 />
               ))}
             </div>

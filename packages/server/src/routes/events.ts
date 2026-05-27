@@ -69,6 +69,23 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
         // Determine action from event name
         const action = event.split(".").slice(1).join(".");
 
+        // Extract entity title based on entity type
+        let entity_title: string | undefined;
+        if (payload.entity && typeof payload.entity === "object") {
+          const entity = payload.entity as Record<string, unknown>;
+          switch (payload.entityType) {
+            case "task":
+            case "proposal":
+              entity_title = typeof entity.title === "string" ? entity.title : undefined;
+              break;
+            case "epic":
+            case "project":
+              entity_title = typeof entity.name === "string" ? entity.name : undefined;
+              break;
+            // comments have no title — omit
+          }
+        }
+
         const ssePayload = {
           entity_type: payload.entityType,
           entity_id: payload.entityId,
@@ -76,6 +93,7 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           changes: payload.changes ?? undefined,
           actor,
           timestamp: payload.timestamp,
+          ...(entity_title ? { entity_title } : {}),
         };
 
         stream.writeSSE({
