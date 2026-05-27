@@ -36,6 +36,13 @@
       "when": 1780099200000,
       "tag": "0004_agent_pool_epic_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1780185600000,
+      "tag": "0005_pool_secret_and_pool_members",
+      "breakpoints": true
     }
   ]
 }

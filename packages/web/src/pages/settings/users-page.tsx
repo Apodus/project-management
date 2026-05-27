@@ -6,17 +6,21 @@ import {
   Copy,
   KeyRound,
   Loader2,
+  Lock,
   MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
+  Server,
   Shield,
   ShieldCheck,
+  Unlock,
   User as UserIcon,
   UserMinus,
   UserPlus,
   Users,
   Wifi,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,7 +38,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -52,7 +55,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -62,6 +64,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useUsers,
   useCreateUser,
@@ -70,9 +73,15 @@ import {
   useDeactivateUser,
   useActivateUser,
 } from "@/hooks/use-users";
-import { useAgentPoolStatus } from "@/hooks/use-agent-pool";
+import {
+  useAgentPoolStatus,
+  usePoolSecretStatus,
+  useSetPoolSecret,
+  useCreateAgentPool,
+  useForceReleaseAgent,
+} from "@/hooks/use-agent-pool";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { ApiError, type AuthUser, type CreateUserData, type UpdateUserData, type AgentPoolStatus } from "@/lib/api";
+import { ApiError, type AuthUser, type CreateUserData, type UpdateUserData } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SettingsNav } from "@/components/settings-nav";
 
@@ -139,9 +148,9 @@ function TokenDialog({
   );
 }
 
-// ---- Create User Dialog ----
+// ---- Create Human User Dialog ----
 
-function CreateUserDialog({
+function CreateHumanUserDialog({
   open,
   onOpenChange,
 }: {
@@ -153,19 +162,13 @@ function CreateUserDialog({
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState("member");
-  const [isAiAgent, setIsAiAgent] = useState(false);
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // Token display after successful AI agent creation
-  const [showToken, setShowToken] = useState(false);
-  const [newToken, setNewToken] = useState("");
 
   function resetForm() {
     setUsername("");
     setDisplayName("");
     setRole("member");
-    setIsAiAgent(false);
     setPassword("");
     setErrors({});
     createMutation.reset();
@@ -175,8 +178,8 @@ function CreateUserDialog({
     const newErrors: Record<string, string> = {};
     if (!username.trim()) newErrors.username = "Username is required";
     if (!displayName.trim()) newErrors.displayName = "Display name is required";
-    if (!isAiAgent && !password) newErrors.password = "Password is required for human users";
-    if (!isAiAgent && password && password.length < 6) {
+    if (!password) newErrors.password = "Password is required";
+    if (password && password.length < 6) {
       newErrors.password = "Password must be at least 6 characters";
     }
     setErrors(newErrors);
@@ -191,48 +194,22 @@ function CreateUserDialog({
       username: username.trim(),
       displayName: displayName.trim(),
       role,
-      type: isAiAgent ? "ai_agent" : "human",
-      ...(isAiAgent ? {} : { password }),
+      type: "human",
+      password,
     };
 
     try {
-      const result = await createMutation.mutateAsync(data);
-      if (result.apiToken) {
-        setNewToken(result.apiToken);
-        setShowToken(true);
-      } else {
-        onOpenChange(false);
-        resetForm();
-      }
+      await createMutation.mutateAsync(data);
+      onOpenChange(false);
+      resetForm();
     } catch {
-      // Error is handled by mutation state
+      // Error handled by mutation state
     }
   }
 
   function handleOpenChange(newOpen: boolean) {
-    if (!newOpen) {
-      resetForm();
-      setShowToken(false);
-      setNewToken("");
-    }
+    if (!newOpen) resetForm();
     onOpenChange(newOpen);
-  }
-
-  // If showing the token after creation, show the token dialog instead
-  if (showToken && newToken) {
-    return (
-      <TokenDialog
-        open={open}
-        onOpenChange={(newOpen) => {
-          if (!newOpen) {
-            handleOpenChange(false);
-          }
-        }}
-        token={newToken}
-        title="API Token Created"
-        description={`API token for ${username}. Store this token securely — it cannot be retrieved later.`}
-      />
-    );
   }
 
   return (
@@ -240,17 +217,16 @@ function CreateUserDialog({
       <DialogContent>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Add User</DialogTitle>
+            <DialogTitle>Add Human User</DialogTitle>
             <DialogDescription>
-              Create a new user account. AI agents receive an API token for
-              programmatic access.
+              Create a new human user account with password authentication.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="create-username">Username</Label>
+              <Label htmlFor="create-human-username">Username</Label>
               <Input
-                id="create-username"
+                id="create-human-username"
                 placeholder="johndoe"
                 value={username}
                 onChange={(e) => {
@@ -265,9 +241,9 @@ function CreateUserDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="create-displayname">Display Name</Label>
+              <Label htmlFor="create-human-displayname">Display Name</Label>
               <Input
-                id="create-displayname"
+                id="create-human-displayname"
                 placeholder="John Doe"
                 value={displayName}
                 onChange={(e) => {
@@ -281,9 +257,9 @@ function CreateUserDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="create-role">Role</Label>
+              <Label htmlFor="create-human-role">Role</Label>
               <Select value={role} onValueChange={setRole}>
-                <SelectTrigger id="create-role" className="w-full">
+                <SelectTrigger id="create-human-role" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -293,47 +269,23 @@ function CreateUserDialog({
               </Select>
             </div>
 
-            <div className="flex items-center justify-between rounded-md border px-3 py-3">
-              <div className="space-y-0.5">
-                <Label htmlFor="create-type" className="cursor-pointer">
-                  AI Agent
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  AI agents authenticate with API tokens instead of passwords
-                </p>
-              </div>
-              <Switch
-                id="create-type"
-                checked={isAiAgent}
-                onCheckedChange={(checked) => {
-                  setIsAiAgent(checked === true);
-                  if (checked) {
-                    setPassword("");
-                    setErrors((p) => ({ ...p, password: "" }));
-                  }
+            <div className="space-y-2">
+              <Label htmlFor="create-human-password">Password</Label>
+              <Input
+                id="create-human-password"
+                type="password"
+                placeholder="At least 6 characters"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (errors.password) setErrors((p) => ({ ...p, password: "" }));
                 }}
+                autoComplete="new-password"
               />
+              {errors.password && (
+                <p className="text-xs text-destructive">{errors.password}</p>
+              )}
             </div>
-
-            {!isAiAgent && (
-              <div className="space-y-2">
-                <Label htmlFor="create-password">Password</Label>
-                <Input
-                  id="create-password"
-                  type="password"
-                  placeholder="At least 6 characters"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (errors.password) setErrors((p) => ({ ...p, password: "" }));
-                  }}
-                  autoComplete="new-password"
-                />
-                {errors.password && (
-                  <p className="text-xs text-destructive">{errors.password}</p>
-                )}
-              </div>
-            )}
 
             {createMutation.isError && (
               <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -359,6 +311,180 @@ function CreateUserDialog({
                 </>
               ) : (
                 "Create User"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Create Individual Agent Dialog ----
+
+function CreateIndividualAgentDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const createMutation = useCreateUser();
+
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [role, setRole] = useState("member");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const [showToken, setShowToken] = useState(false);
+  const [newToken, setNewToken] = useState("");
+
+  function resetForm() {
+    setUsername("");
+    setDisplayName("");
+    setRole("member");
+    setErrors({});
+    createMutation.reset();
+  }
+
+  function validate(): boolean {
+    const newErrors: Record<string, string> = {};
+    if (!username.trim()) newErrors.username = "Username is required";
+    if (!displayName.trim()) newErrors.displayName = "Display name is required";
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!validate()) return;
+
+    const data: CreateUserData = {
+      username: username.trim(),
+      displayName: displayName.trim(),
+      role,
+      type: "ai_agent",
+    };
+
+    try {
+      const result = await createMutation.mutateAsync(data);
+      if (result.apiToken) {
+        setNewToken(result.apiToken);
+        setShowToken(true);
+      } else {
+        onOpenChange(false);
+        resetForm();
+      }
+    } catch {
+      // Error handled by mutation state
+    }
+  }
+
+  function handleOpenChange(newOpen: boolean) {
+    if (!newOpen) {
+      resetForm();
+      setShowToken(false);
+      setNewToken("");
+    }
+    onOpenChange(newOpen);
+  }
+
+  if (showToken && newToken) {
+    return (
+      <TokenDialog
+        open={open}
+        onOpenChange={(newOpen) => {
+          if (!newOpen) handleOpenChange(false);
+        }}
+        token={newToken}
+        title="API Token Created"
+        description={`API token for ${username}. Store this token securely — it cannot be retrieved later.`}
+      />
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Add Individual Agent</DialogTitle>
+            <DialogDescription>
+              Create an AI agent with a static API token. Use this for agents that
+              connect with their own dedicated token (PM_API_TOKEN).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="create-agent-username">Username</Label>
+              <Input
+                id="create-agent-username"
+                placeholder="claude-agent"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  if (errors.username) setErrors((p) => ({ ...p, username: "" }));
+                }}
+                autoFocus
+              />
+              {errors.username && (
+                <p className="text-xs text-destructive">{errors.username}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="create-agent-displayname">Display Name</Label>
+              <Input
+                id="create-agent-displayname"
+                placeholder="Claude Agent"
+                value={displayName}
+                onChange={(e) => {
+                  setDisplayName(e.target.value);
+                  if (errors.displayName) setErrors((p) => ({ ...p, displayName: "" }));
+                }}
+              />
+              {errors.displayName && (
+                <p className="text-xs text-destructive">{errors.displayName}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="create-agent-role">Role</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger id="create-agent-role" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="member">Member</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {createMutation.isError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {createMutation.error instanceof ApiError
+                  ? createMutation.error.message
+                  : "Failed to create agent. Please try again."}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createMutation.isPending}>
+              {createMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Agent"
               )}
             </Button>
           </DialogFooter>
@@ -403,7 +529,6 @@ function EditUserDialog({
     if (displayName.trim() !== user.displayName) data.displayName = displayName.trim();
     if (role !== user.role) data.role = role;
 
-    // Only send if there are actual changes
     if (Object.keys(data).length === 0) {
       onOpenChange(false);
       return;
@@ -517,9 +642,342 @@ function EditUserDialog({
   );
 }
 
-// ---- User Row ----
+// ---- Set Pool Secret Dialog ----
 
-function UserRow({ user }: { user: AuthUser }) {
+function SetPoolSecretDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const setSecretMutation = useSetPoolSecret();
+  const [secret, setSecret] = useState("");
+  const [error, setError] = useState("");
+
+  function handleOpenChange(newOpen: boolean) {
+    if (!newOpen) {
+      setSecret("");
+      setError("");
+      setSecretMutation.reset();
+    }
+    onOpenChange(newOpen);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!secret.trim()) {
+      setError("Secret is required");
+      return;
+    }
+    if (secret.trim().length < 8) {
+      setError("Secret must be at least 8 characters");
+      return;
+    }
+
+    try {
+      await setSecretMutation.mutateAsync(secret.trim());
+      handleOpenChange(false);
+    } catch {
+      // Error handled by mutation state
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="size-5" />
+              Set Pool Secret
+            </DialogTitle>
+            <DialogDescription>
+              Set a shared secret that pool agents use to authenticate when claiming
+              an identity. This replaces any previous secret.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="pool-secret">Pool Secret</Label>
+              <Input
+                id="pool-secret"
+                type="password"
+                placeholder="Enter a strong secret (min 8 characters)"
+                value={secret}
+                onChange={(e) => {
+                  setSecret(e.target.value);
+                  setError("");
+                }}
+                autoFocus
+                autoComplete="off"
+              />
+              {error && (
+                <p className="text-xs text-destructive">{error}</p>
+              )}
+            </div>
+
+            {setSecretMutation.isError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {setSecretMutation.error instanceof ApiError
+                  ? setSecretMutation.error.message
+                  : "Failed to set secret. Please try again."}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={setSecretMutation.isPending}>
+              {setSecretMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Set Secret"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Create Agent Pool Dialog ----
+
+function CreateAgentPoolDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const createPoolMutation = useCreateAgentPool();
+  const [count, setCount] = useState(5);
+  const [namePrefix, setNamePrefix] = useState("");
+  const [error, setError] = useState("");
+
+  function handleOpenChange(newOpen: boolean) {
+    if (!newOpen) {
+      setCount(5);
+      setNamePrefix("");
+      setError("");
+      createPoolMutation.reset();
+    }
+    onOpenChange(newOpen);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (count < 1 || count > 20) {
+      setError("Count must be between 1 and 20");
+      return;
+    }
+
+    try {
+      await createPoolMutation.mutateAsync({
+        count,
+        namePrefix: namePrefix.trim() || undefined,
+      });
+      handleOpenChange(false);
+    } catch {
+      // Error handled by mutation state
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Server className="size-5" />
+              Create Agent Pool
+            </DialogTitle>
+            <DialogDescription>
+              Create multiple AI agent identities for the pool. Pool agents are claimed
+              dynamically via the pool secret — they do not have static API tokens.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="pool-count">Number of Agents</Label>
+              <Input
+                id="pool-count"
+                type="number"
+                min={1}
+                max={20}
+                value={count}
+                onChange={(e) => {
+                  setCount(parseInt(e.target.value) || 1);
+                  setError("");
+                }}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Between 1 and 20 agents.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pool-prefix">Name Prefix (optional)</Label>
+              <Input
+                id="pool-prefix"
+                placeholder='Leave empty for "Agent Alpha", "Agent Beta"...'
+                value={namePrefix}
+                onChange={(e) => setNamePrefix(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {namePrefix.trim()
+                  ? `Will create: "${namePrefix.trim()} 1", "${namePrefix.trim()} 2", ...`
+                  : 'Default: "Agent Alpha", "Agent Beta", "Agent Gamma", ...'}
+              </p>
+            </div>
+
+            {error && (
+              <p className="text-xs text-destructive">{error}</p>
+            )}
+
+            {createPoolMutation.isError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {createPoolMutation.error instanceof ApiError
+                  ? createPoolMutation.error.message
+                  : "Failed to create agent pool. Please try again."}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createPoolMutation.isPending}>
+              {createPoolMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                `Create ${count} Agent${count !== 1 ? "s" : ""}`
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Human User Row ----
+
+function HumanUserRow({ user }: { user: AuthUser }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const deactivateMutation = useDeactivateUser();
+  const activateMutation = useActivateUser();
+
+  async function handleToggleActive() {
+    if (user.isActive) {
+      await deactivateMutation.mutateAsync(user.id);
+    } else {
+      await activateMutation.mutateAsync(user.id);
+    }
+  }
+
+  const isToggling = deactivateMutation.isPending || activateMutation.isPending;
+
+  return (
+    <>
+      <TableRow className={cn(!user.isActive && "opacity-60")}>
+        <TableCell className="font-medium">{user.username}</TableCell>
+        <TableCell>{user.displayName}</TableCell>
+        <TableCell>
+          <Badge
+            variant="outline"
+            className={cn(
+              "gap-1",
+              user.role === "admin"
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                : "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+            )}
+          >
+            {user.role === "admin" ? (
+              <ShieldCheck className="size-3" />
+            ) : (
+              <Shield className="size-3" />
+            )}
+            {user.role === "admin" ? "Admin" : "Member"}
+          </Badge>
+        </TableCell>
+        <TableCell>
+          {user.isActive ? (
+            <Badge
+              variant="secondary"
+              className="border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"
+            >
+              Active
+            </Badge>
+          ) : (
+            <Badge
+              variant="secondary"
+              className="border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400"
+            >
+              Inactive
+            </Badge>
+          )}
+        </TableCell>
+        <TableCell className="text-right">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm">
+                <MoreHorizontal className="size-4" />
+                <span className="sr-only">Actions for {user.username}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                <Pencil className="mr-2 size-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleToggleActive}
+                disabled={isToggling}
+              >
+                {user.isActive ? (
+                  <>
+                    <UserMinus className="mr-2 size-4" />
+                    Deactivate
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="mr-2 size-4" />
+                    Activate
+                  </>
+                )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      </TableRow>
+
+      <EditUserDialog open={editOpen} onOpenChange={setEditOpen} user={user} />
+    </>
+  );
+}
+
+// ---- Individual Agent Row ----
+
+function IndividualAgentRow({ user }: { user: AuthUser }) {
   const [editOpen, setEditOpen] = useState(false);
   const [rotateConfirmOpen, setRotateConfirmOpen] = useState(false);
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
@@ -574,17 +1032,9 @@ function UserRow({ user }: { user: AuthUser }) {
           </Badge>
         </TableCell>
         <TableCell>
-          <Badge
-            variant="secondary"
-            className="gap-1"
-          >
-            {user.type === "ai_agent" ? (
-              <Bot className="size-3" />
-            ) : (
-              <UserIcon className="size-3" />
-            )}
-            {user.type === "ai_agent" ? "AI Agent" : "Human"}
-          </Badge>
+          <span className="font-mono text-xs text-muted-foreground">
+            {"••••••••"}
+          </span>
         </TableCell>
         <TableCell>
           {user.isActive ? (
@@ -616,12 +1066,10 @@ function UserRow({ user }: { user: AuthUser }) {
                 <Pencil className="mr-2 size-4" />
                 Edit
               </DropdownMenuItem>
-              {user.type === "ai_agent" && (
-                <DropdownMenuItem onClick={() => setRotateConfirmOpen(true)}>
-                  <RefreshCw className="mr-2 size-4" />
-                  Rotate Token
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem onClick={() => setRotateConfirmOpen(true)}>
+                <RefreshCw className="mr-2 size-4" />
+                Rotate Token
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleToggleActive}
@@ -644,14 +1092,8 @@ function UserRow({ user }: { user: AuthUser }) {
         </TableCell>
       </TableRow>
 
-      {/* Edit Dialog */}
-      <EditUserDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        user={user}
-      />
+      <EditUserDialog open={editOpen} onOpenChange={setEditOpen} user={user} />
 
-      {/* Rotate Token Confirmation Dialog */}
       <Dialog open={rotateConfirmOpen} onOpenChange={setRotateConfirmOpen}>
         <DialogContent>
           <DialogHeader>
@@ -694,7 +1136,6 @@ function UserRow({ user }: { user: AuthUser }) {
         </DialogContent>
       </Dialog>
 
-      {/* Token Display Dialog */}
       {rotatedToken && (
         <TokenDialog
           open={tokenDialogOpen}
@@ -708,39 +1149,25 @@ function UserRow({ user }: { user: AuthUser }) {
   );
 }
 
-// ---- Agent Pool Card ----
+// ---- Pool Agent Row (with inline edit) ----
 
-function AgentPoolCard() {
-  const { data: poolStatus, isLoading, error } = useAgentPoolStatus();
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-5 w-40" />
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-8 w-full" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (error) {
-    return null; // Silently skip if pool status isn't accessible
-  }
-
-  if (!poolStatus || poolStatus.length === 0) {
-    return null; // No agents in pool, skip the section
-  }
-
-  const totalAgents = poolStatus.length;
-  const claimedAgents = poolStatus.filter((a) => a.claimed).length;
-  const availableAgents = totalAgents - claimedAgents;
+function PoolAgentRow({
+  agent,
+}: {
+  agent: {
+    user: { id: string; username: string; displayName: string; type: string; isActive: boolean; poolMember: boolean };
+    claimed: boolean;
+    claimedAt: string | null;
+    expiresAt: string | null;
+    heartbeatAt: string | null;
+  };
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(agent.user.displayName);
+  const updateMutation = useUpdateUser();
+  const forceReleaseMutation = useForceReleaseAgent();
+  const deactivateMutation = useDeactivateUser();
+  const activateMutation = useActivateUser();
 
   function formatTime(iso: string | null): string {
     if (!iso) return "-";
@@ -760,6 +1187,339 @@ function AgentPoolCard() {
     return `${Math.round(diffMin / 60)}h ${diffMin % 60}m`;
   }
 
+  async function handleSaveName() {
+    if (!editName.trim() || editName.trim() === agent.user.displayName) {
+      setIsEditing(false);
+      setEditName(agent.user.displayName);
+      return;
+    }
+    try {
+      await updateMutation.mutateAsync({
+        id: agent.user.id,
+        data: { displayName: editName.trim() },
+      });
+      setIsEditing(false);
+    } catch {
+      // Revert on error
+      setEditName(agent.user.displayName);
+      setIsEditing(false);
+    }
+  }
+
+  async function handleForceRelease() {
+    await forceReleaseMutation.mutateAsync(agent.user.id);
+  }
+
+  async function handleToggleActive() {
+    if (agent.user.isActive) {
+      await deactivateMutation.mutateAsync(agent.user.id);
+    } else {
+      await activateMutation.mutateAsync(agent.user.id);
+    }
+  }
+
+  return (
+    <TableRow className={cn(!agent.user.isActive && "opacity-60")}>
+      <TableCell className="font-medium">
+        <div className="flex items-center gap-2">
+          <Bot className="size-4 shrink-0 text-muted-foreground" />
+          {isEditing ? (
+            <div className="flex items-center gap-1">
+              <Input
+                className="h-7 w-40 text-sm"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveName();
+                  if (e.key === "Escape") {
+                    setEditName(agent.user.displayName);
+                    setIsEditing(false);
+                  }
+                }}
+                autoFocus
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleSaveName}
+                disabled={updateMutation.isPending}
+              >
+                <Check className="size-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => {
+                  setEditName(agent.user.displayName);
+                  setIsEditing(false);
+                }}
+              >
+                <X className="size-3" />
+              </Button>
+            </div>
+          ) : (
+            <button
+              className="group flex items-center gap-1 text-left hover:underline"
+              onClick={() => setIsEditing(true)}
+              title="Click to rename"
+            >
+              {agent.user.displayName}
+              <Pencil className="size-3 opacity-0 group-hover:opacity-50" />
+            </button>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>
+        {!agent.user.isActive ? (
+          <Badge
+            variant="secondary"
+            className="border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-400"
+          >
+            Inactive
+          </Badge>
+        ) : agent.claimed ? (
+          <Badge
+            variant="secondary"
+            className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400"
+          >
+            <CircleDot className="size-3" />
+            Claimed
+          </Badge>
+        ) : (
+          <Badge
+            variant="secondary"
+            className="gap-1 border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"
+          >
+            Available
+          </Badge>
+        )}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {formatTime(agent.claimedAt)}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {formatTime(agent.heartbeatAt)}
+      </TableCell>
+      <TableCell className="text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm">
+              <MoreHorizontal className="size-4" />
+              <span className="sr-only">Actions for {agent.user.displayName}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setIsEditing(true)}>
+              <Pencil className="mr-2 size-4" />
+              Rename
+            </DropdownMenuItem>
+            {agent.claimed && (
+              <DropdownMenuItem
+                onClick={handleForceRelease}
+                disabled={forceReleaseMutation.isPending}
+              >
+                <Unlock className="mr-2 size-4" />
+                Force Release
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleToggleActive}
+              disabled={deactivateMutation.isPending || activateMutation.isPending}
+            >
+              {agent.user.isActive ? (
+                <>
+                  <UserMinus className="mr-2 size-4" />
+                  Deactivate
+                </>
+              ) : (
+                <>
+                  <UserPlus className="mr-2 size-4" />
+                  Activate
+                </>
+              )}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+// ---- Human Users Section ----
+
+function HumanUsersSection({ users }: { users: AuthUser[] }) {
+  const [createOpen, setCreateOpen] = useState(false);
+  const humanUsers = users.filter((u) => u.type === "human");
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <UserIcon className="size-4" />
+              Human Users
+            </CardTitle>
+            <CardDescription>
+              {humanUsers.length} user{humanUsers.length !== 1 ? "s" : ""} with password authentication.
+            </CardDescription>
+          </div>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            Add Human User
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {humanUsers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8">
+            <UserIcon className="mb-3 size-10 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">No human users yet.</p>
+            <Button
+              className="mt-3"
+              size="sm"
+              variant="outline"
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus className="size-4" />
+              Add Human User
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Username</TableHead>
+                  <TableHead>Display Name</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-12 text-right">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {humanUsers.map((user) => (
+                  <HumanUserRow key={user.id} user={user} />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+
+      <CreateHumanUserDialog open={createOpen} onOpenChange={setCreateOpen} />
+    </Card>
+  );
+}
+
+// ---- Individual Agents Section ----
+
+function IndividualAgentsSection({ users }: { users: AuthUser[] }) {
+  const [createOpen, setCreateOpen] = useState(false);
+  const individualAgents = users.filter(
+    (u) => u.type === "ai_agent" && !u.poolMember,
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Bot className="size-4" />
+              Individual Agents
+            </CardTitle>
+            <CardDescription>
+              {individualAgents.length} agent{individualAgents.length !== 1 ? "s" : ""} with
+              static API tokens (PM_API_TOKEN).
+            </CardDescription>
+          </div>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            Add Individual Agent
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {individualAgents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8">
+            <Bot className="mb-3 size-10 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">No individual agents yet.</p>
+            <Button
+              className="mt-3"
+              size="sm"
+              variant="outline"
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus className="size-4" />
+              Add Individual Agent
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Username</TableHead>
+                  <TableHead>Display Name</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>API Token</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-12 text-right">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {individualAgents.map((user) => (
+                  <IndividualAgentRow key={user.id} user={user} />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+
+      <CreateIndividualAgentDialog open={createOpen} onOpenChange={setCreateOpen} />
+    </Card>
+  );
+}
+
+// ---- Agent Pool Section ----
+
+function AgentPoolSection() {
+  const { data: poolStatus, isLoading: poolLoading } = useAgentPoolStatus();
+  const { data: secretStatus, isLoading: secretLoading } = usePoolSecretStatus();
+  const [secretOpen, setSecretOpen] = useState(false);
+  const [createPoolOpen, setCreatePoolOpen] = useState(false);
+
+  const isLoading = poolLoading || secretLoading;
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-40" />
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const agents = poolStatus ?? [];
+  const totalAgents = agents.length;
+  const claimedAgents = agents.filter((a) => a.claimed).length;
+  const availableAgents = agents.filter((a) => a.user.isActive && !a.claimed).length;
+
   return (
     <Card>
       <CardHeader>
@@ -770,73 +1530,68 @@ function AgentPoolCard() {
               Agent Pool
             </CardTitle>
             <CardDescription>
-              {totalAgents} agent{totalAgents !== 1 ? "s" : ""} total,{" "}
-              {claimedAgents} claimed, {availableAgents} available
+              {totalAgents === 0
+                ? "No pool agents. Create a pool to get started."
+                : `${totalAgents} agent${totalAgents !== 1 ? "s" : ""} total, ${claimedAgents} claimed, ${availableAgents} available`}
             </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setSecretOpen(true)}>
+              <Lock className="size-4" />
+              {secretStatus?.isSet ? "Update Secret" : "Set Secret"}
+            </Button>
+            <Button size="sm" onClick={() => setCreatePoolOpen(true)}>
+              <Plus className="size-4" />
+              Create Pool
+            </Button>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Agent</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Claimed Since</TableHead>
-                <TableHead>Heartbeat</TableHead>
-                <TableHead>Expires In</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {poolStatus.map((agent) => (
-                <TableRow key={agent.user.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <Bot className="size-4 text-muted-foreground" />
-                      {agent.user.displayName}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {!agent.user.isActive ? (
-                      <Badge
-                        variant="secondary"
-                        className="border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-400"
-                      >
-                        Inactive
-                      </Badge>
-                    ) : agent.claimed ? (
-                      <Badge
-                        variant="secondary"
-                        className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400"
-                      >
-                        <CircleDot className="size-3" />
-                        Claimed
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="secondary"
-                        className="gap-1 border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"
-                      >
-                        Available
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatTime(agent.claimedAt)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatTime(agent.heartbeatAt)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatRelative(agent.expiresAt)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      <CardContent className="space-y-4">
+        {/* Secret status */}
+        <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+          {secretStatus?.isSet ? (
+            <>
+              <Lock className="size-4 text-green-600 dark:text-green-400" />
+              <span className="text-green-700 dark:text-green-400">Pool secret is configured</span>
+            </>
+          ) : (
+            <>
+              <Unlock className="size-4 text-amber-600 dark:text-amber-400" />
+              <span className="text-amber-700 dark:text-amber-400">
+                Pool secret not set — agents cannot claim identities
+              </span>
+            </>
+          )}
         </div>
+
+        {/* Pool agents table */}
+        {totalAgents > 0 && (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Agent</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Claimed Since</TableHead>
+                  <TableHead>Heartbeat</TableHead>
+                  <TableHead className="w-12 text-right">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {agents.map((agent) => (
+                  <PoolAgentRow key={agent.user.id} agent={agent} />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
+
+      <SetPoolSecretDialog open={secretOpen} onOpenChange={setSecretOpen} />
+      <CreateAgentPoolDialog open={createPoolOpen} onOpenChange={setCreatePoolOpen} />
     </Card>
   );
 }
@@ -846,7 +1601,6 @@ function AgentPoolCard() {
 export function UsersPage() {
   const { data: currentUser } = useCurrentUser();
   const { data: users, isLoading, error, refetch } = useUsers();
-  const [createOpen, setCreateOpen] = useState(false);
 
   // Only admins can access this page
   if (currentUser && currentUser.role !== "admin") {
@@ -874,15 +1628,9 @@ export function UsersPage() {
       <SettingsNav />
 
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Users className="size-6 text-muted-foreground" />
-          <h1 className="text-2xl font-bold tracking-tight">Users</h1>
-        </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="size-4" />
-          Add User
-        </Button>
+      <div className="flex items-center gap-3">
+        <Users className="size-6 text-muted-foreground" />
+        <h1 className="text-2xl font-bold tracking-tight">Users & Agents</h1>
       </div>
 
       {/* Error state */}
@@ -921,66 +1669,40 @@ export function UsersPage() {
         </Card>
       )}
 
-      {/* Agent Pool */}
-      <AgentPoolCard />
-
-      {/* Users table */}
+      {/* Main content */}
       {!isLoading && !error && users && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              {users.length} {users.length === 1 ? "user" : "users"}
-            </CardTitle>
-            <CardDescription>
-              Manage user accounts, roles, and API tokens.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {users.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <Users className="mb-4 size-12 text-muted-foreground/50" />
-                <h3 className="text-lg font-medium">No users</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Create your first user to get started.
-                </p>
-                <Button
-                  className="mt-4"
-                  size="sm"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  <Plus className="size-4" />
-                  Add User
-                </Button>
-              </div>
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Username</TableHead>
-                      <TableHead>Display Name</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-12 text-right">
-                        <span className="sr-only">Actions</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((user) => (
-                      <UserRow key={user.id} user={user} />
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+        <>
+          {/* Section 1: Human Users */}
+          <HumanUsersSection users={users} />
 
-      {/* Create User Dialog */}
-      <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />
+          {/* Section 2: AI Agents */}
+          <div className="space-y-4">
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <Bot className="size-5 text-muted-foreground" />
+              AI Agents
+            </h2>
+
+            <Tabs defaultValue="pool" className="w-full">
+              <TabsList>
+                <TabsTrigger value="pool">
+                  <Wifi className="size-4" />
+                  Agent Pool
+                </TabsTrigger>
+                <TabsTrigger value="individual">
+                  <Bot className="size-4" />
+                  Individual Agents
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="pool">
+                <AgentPoolSection />
+              </TabsContent>
+              <TabsContent value="individual">
+                <IndividualAgentsSection users={users} />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </>
+      )}
     </div>
   );
 }

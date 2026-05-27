@@ -484,6 +484,7 @@ export interface AuthUser {
   role: string;
   type: string;
   avatarUrl: string | null;
+  poolMember: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -697,6 +698,7 @@ export interface AgentPoolStatus {
     displayName: string;
     type: string;
     isActive: boolean;
+    poolMember: boolean;
   };
   claimed: boolean;
   claimedAt: string | null;
@@ -704,15 +706,48 @@ export interface AgentPoolStatus {
   heartbeatAt: string | null;
 }
 
+export interface PoolSecretStatus {
+  isSet: boolean;
+}
+
+export interface PoolAgent {
+  id: string;
+  username: string;
+  displayName: string;
+  role: string;
+  type: string;
+  poolMember: boolean;
+}
+
 export async function getAgentPoolStatus(): Promise<AgentPoolStatus[]> {
   return apiFetch<AgentPoolStatus[]>("/auth/agent-pool");
 }
 
 export async function forceReleaseAgent(userId: string): Promise<void> {
-  // Force-release is done by calling release on behalf of the agent
-  // For the admin UI, we call a DELETE on the claim by user
-  await apiFetch<{ message: string }>(`/auth/agent-release`, {
+  await apiFetch<{ message: string }>(`/auth/agent-pool/force-release`, {
     method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export async function setPoolSecret(secret: string): Promise<void> {
+  await apiFetch<{ message: string }>("/auth/agent-pool/secret", {
+    method: "POST",
+    body: JSON.stringify({ secret }),
+  });
+}
+
+export async function getPoolSecretStatus(): Promise<PoolSecretStatus> {
+  return apiFetch<PoolSecretStatus>("/auth/agent-pool/secret/status");
+}
+
+export async function createAgentPool(
+  count: number,
+  namePrefix?: string,
+): Promise<PoolAgent[]> {
+  return apiFetch<PoolAgent[]>("/auth/agent-pool/create", {
+    method: "POST",
+    body: JSON.stringify({ count, ...(namePrefix ? { namePrefix } : {}) }),
   });
 }
 

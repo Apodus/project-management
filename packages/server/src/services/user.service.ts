@@ -18,6 +18,7 @@ export interface UserRecord {
   role: string;
   type: string;
   avatarUrl: string | null;
+  poolMember: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -56,6 +57,7 @@ function toUserRecord(row: typeof users.$inferSelect): UserRecord {
     role: row.role,
     type: row.type,
     avatarUrl: row.avatarUrl,
+    poolMember: row.poolMember,
     isActive: row.isActive,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

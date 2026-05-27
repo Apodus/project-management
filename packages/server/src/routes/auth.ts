@@ -19,6 +19,7 @@ const userSchema = z
     role: z.string(),
     type: z.string(),
     avatarUrl: z.string().nullable(),
+    poolMember: z.boolean(),
     isActive: z.boolean(),
     createdAt: z.string(),
     updatedAt: z.string(),
