@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Archive,
   ArrowRight,
+  Bot,
   CheckCircle2,
   FileText,
   LayoutDashboard,
@@ -23,6 +24,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useProject, useProjectStats } from "@/hooks/use-projects";
 import { useProjectActivity } from "@/hooks/use-activity";
 import { useTasks } from "@/hooks/use-tasks";
@@ -58,6 +64,15 @@ const STATUS_BAR_COLORS: Record<string, string> = {
   done: "bg-green-500 dark:bg-green-400",
   cancelled: "bg-red-400 dark:bg-red-500",
 };
+
+// ---- Proposal pipeline colors ----
+
+const PROPOSAL_PIPELINE = [
+  { status: "open", label: "Open", color: "bg-blue-500", textColor: "text-white" },
+  { status: "discussing", label: "Discussing", color: "bg-amber-500", textColor: "text-white" },
+  { status: "accepted", label: "Accepted", color: "bg-green-500", textColor: "text-white" },
+  { status: "implemented", label: "Implemented", color: "bg-purple-500", textColor: "text-white" },
+] as const;
 
 // ---- Stats Section ----
 
@@ -151,18 +166,26 @@ function StatsSection({
           </CardHeader>
           <CardContent className="space-y-3">
             {/* Horizontal stacked bar */}
-            <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+            <div className="flex h-4 overflow-hidden rounded-full bg-muted">
               {STATUS_ORDER.map((status) => {
                 const count = tasksByStatus[status] ?? 0;
                 if (count === 0) return null;
                 const pct = (count / totalTasks) * 100;
                 return (
-                  <div
-                    key={status}
-                    className={cn("transition-all", STATUS_BAR_COLORS[status])}
-                    style={{ width: `${pct}%` }}
-                    title={`${formatStatus(status)}: ${count}`}
-                  />
+                  <Tooltip key={status}>
+                    <TooltipTrigger asChild>
+                      <div
+                        className={cn(
+                          "transition-all cursor-default",
+                          STATUS_BAR_COLORS[status],
+                        )}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{formatStatus(status)}: {count}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -450,6 +473,198 @@ function MyTasksSection({
   );
 }
 
+// ---- Active AI Agents ----
+
+function formatDuration(startedAt: string): string {
+  const started = new Date(startedAt);
+  const now = new Date();
+  const diffMs = now.getTime() - started.getTime();
+  const diffMinutes = Math.floor(diffMs / 60_000);
+  const diffHours = Math.floor(diffMinutes / 60);
+
+  if (diffMinutes < 1) return "just started";
+  if (diffMinutes < 60) return `working for ${diffMinutes}m`;
+  if (diffHours < 24) return `working for ${diffHours}h ${diffMinutes % 60}m`;
+  return `working for ${Math.floor(diffHours / 24)}d ${diffHours % 24}h`;
+}
+
+function ActiveAIAgentsSection({
+  projectId,
+  userMap,
+}: {
+  projectId: string;
+  userMap: Map<string, { name: string; type: string }>;
+}) {
+  const navigate = useNavigate();
+  const { data, isLoading } = useTasks(projectId, {
+    status: "in_progress",
+    perPage: 50,
+  });
+
+  const tasks = data?.data ?? [];
+
+  // Filter to tasks assigned to AI agent users
+  const aiTasks = tasks.filter((t) => {
+    if (!t.assigneeId) return false;
+    const user = userMap.get(t.assigneeId);
+    return user?.type === "ai_agent";
+  });
+
+  return (
+    <Card className="py-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          Active AI Agents
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading && (
+          <div className="space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="size-8 rounded-full" />
+                <div className="flex-1 space-y-1">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isLoading && aiTasks.length === 0 && (
+          <div className="flex flex-col items-center py-6">
+            <Bot className="mb-2 size-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">
+              No AI agents currently working
+            </p>
+          </div>
+        )}
+
+        {!isLoading && aiTasks.length > 0 && (
+          <div className="divide-y">
+            {aiTasks.map((task) => {
+              const agent = task.assigneeId
+                ? userMap.get(task.assigneeId)
+                : undefined;
+              return (
+                <div
+                  key={task.id}
+                  className="flex cursor-pointer items-center gap-3 py-2.5 transition-colors hover:bg-muted/30"
+                  onClick={() =>
+                    navigate({
+                      to: "/tasks/$taskId",
+                      params: { taskId: task.id },
+                    })
+                  }
+                >
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400">
+                    <Bot className="size-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">
+                      {task.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {agent?.name ?? task.assigneeId}
+                      {task.startedAt && (
+                        <span className="ml-1.5 text-muted-foreground/60">
+                          {formatDuration(task.startedAt)}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Proposal Pipeline ----
+
+function ProposalPipelineSection({
+  projectId,
+}: {
+  projectId: string;
+}) {
+  const navigate = useNavigate();
+  const { data: allProposals, isLoading } = useProposals(projectId);
+
+  const counts = PROPOSAL_PIPELINE.reduce(
+    (acc, stage) => {
+      acc[stage.status] =
+        allProposals?.filter((p) => p.status === stage.status).length ?? 0;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  const totalProposals = allProposals?.length ?? 0;
+
+  return (
+    <Card className="py-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          Proposal Pipeline
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading && (
+          <div className="flex gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 flex-1" />
+            ))}
+          </div>
+        )}
+
+        {!isLoading && totalProposals === 0 && (
+          <div className="flex flex-col items-center py-6">
+            <FileText className="mb-2 size-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">
+              No proposals yet
+            </p>
+          </div>
+        )}
+
+        {!isLoading && totalProposals > 0 && (
+          <div className="flex gap-1">
+            {PROPOSAL_PIPELINE.map((stage, i) => {
+              const count = counts[stage.status] ?? 0;
+              return (
+                <button
+                  key={stage.status}
+                  className={cn(
+                    "flex flex-1 flex-col items-center justify-center gap-1 py-3 transition-opacity hover:opacity-80",
+                    stage.color,
+                    stage.textColor,
+                    i === 0 && "rounded-l-lg",
+                    i === PROPOSAL_PIPELINE.length - 1 && "rounded-r-lg",
+                  )}
+                  onClick={() =>
+                    navigate({
+                      to: "/projects/$projectId/proposals",
+                      params: { projectId },
+                    })
+                  }
+                >
+                  <span className="text-lg font-bold">{count}</span>
+                  <span className="text-[10px] font-medium opacity-90">
+                    {stage.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ---- Attention Needed ----
 
 function AttentionSection({
@@ -584,7 +799,7 @@ export function DashboardPage() {
   // Fetch current user for "My Tasks"
   const { data: currentUser } = useCurrentUser();
 
-  // Fetch users for activity actor names
+  // Fetch users for activity actor names and AI agent filtering
   const { data: users } = useUsers();
   const userMap = new Map(
     (users ?? []).map((u) => [u.id, { name: u.displayName, type: u.type }]),
@@ -620,6 +835,12 @@ export function DashboardPage() {
             currentUserId={currentUser.id}
           />
         )}
+      </div>
+
+      {/* Active AI Agents + Proposal Pipeline */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ActiveAIAgentsSection projectId={projectId} userMap={userMap} />
+        <ProposalPipelineSection projectId={projectId} />
       </div>
 
       {/* Attention Needed */}

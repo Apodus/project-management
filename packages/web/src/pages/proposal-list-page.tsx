@@ -110,7 +110,7 @@ export function ProposalListPage() {
   }
 
   // Fetch all proposals (no status filter) so we can calculate counts per tab
-  const { data: allProposals, isLoading, error } = useProposals(projectId);
+  const { data: allProposals, isLoading, error, refetch } = useProposals(projectId);
   const createProposal = useCreateProposal();
 
   const [activeTab, setActiveTab] = useState<string>("open");
@@ -243,9 +243,16 @@ export function ProposalListPage() {
 
       {/* Error state */}
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load proposals. Please try again.
-        </div>
+        <Card className="border-destructive/50 bg-destructive/10">
+          <CardContent className="flex flex-col items-center gap-3 py-8">
+            <p className="text-sm text-destructive">
+              Failed to load proposals. Please try again.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {/* Status tabs */}

@@ -986,7 +986,7 @@ function ContextSection({
 
 export function TaskDetailPage() {
   const { taskId } = useParams({ strict: false });
-  const { data: task, isLoading, error } = useTask(taskId);
+  const { data: task, isLoading, error, refetch } = useTask(taskId);
   const { data: comments, isLoading: commentsLoading } =
     useTaskComments(taskId);
   const updateTask = useUpdateTask();
@@ -1031,8 +1031,15 @@ export function TaskDetailPage() {
             Back to projects
           </Link>
         )}
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          {error ? "Failed to load task." : "Task not found."}
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
+          <p className="text-sm text-destructive">
+            {error ? "Failed to load task." : "Task not found."}
+          </p>
+          {error && (
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Retry
+            </Button>
+          )}
         </div>
       </div>
     );

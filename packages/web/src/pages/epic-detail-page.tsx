@@ -180,7 +180,7 @@ export function EpicDetailPage() {
   const navigate = useNavigate();
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
 
-  const { data: epic, isLoading, error } = useEpic(epicId);
+  const { data: epic, isLoading, error, refetch } = useEpic(epicId);
   const updateEpic = useUpdateEpic();
 
   // Fetch milestones for the dropdown
@@ -240,8 +240,15 @@ export function EpicDetailPage() {
             Back to projects
           </Link>
         )}
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          {error ? "Failed to load epic." : "Epic not found."}
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
+          <p className="text-sm text-destructive">
+            {error ? "Failed to load epic." : "Epic not found."}
+          </p>
+          {error && (
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Retry
+            </Button>
+          )}
         </div>
       </div>
     );

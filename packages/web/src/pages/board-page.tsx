@@ -422,7 +422,7 @@ export function BoardPage() {
     [effectivePriority, effectiveType, effectiveAssignee, effectiveEpic, debouncedSearch],
   );
 
-  const { data, isLoading, error } = useTasks(projectId, filters);
+  const { data, isLoading, error, refetch } = useTasks(projectId, filters);
   const { data: epics } = useEpics(projectId);
   const { data: users } = useUsers();
 
@@ -678,8 +678,13 @@ export function BoardPage() {
 
       {/* Error state */}
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive shrink-0">
-          Failed to load tasks. Please try again.
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8 shrink-0">
+          <p className="text-sm text-destructive">
+            Failed to load tasks. Please try again.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
         </div>
       )}
 

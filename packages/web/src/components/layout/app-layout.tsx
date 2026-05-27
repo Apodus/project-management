@@ -5,6 +5,10 @@ import {
   CommandPalette,
   useCommandPalette,
 } from "@/components/command-palette";
+import {
+  KeyboardShortcutsDialog,
+  useKeyboardShortcuts,
+} from "@/components/keyboard-shortcuts-dialog";
 import { useSSE } from "@/hooks/use-sse";
 import { useProjectStore } from "@/stores/project-store";
 
@@ -12,6 +16,8 @@ export function AppLayout() {
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
   const { open: commandPaletteOpen, setOpen: setCommandPaletteOpen } =
     useCommandPalette();
+  const { open: shortcutsOpen, setOpen: setShortcutsOpen } =
+    useKeyboardShortcuts();
 
   // Establish SSE connection for real-time updates, scoped to current project
   useSSE(currentProjectId);
@@ -28,6 +34,10 @@ export function AppLayout() {
       <CommandPalette
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}
+      />
+      <KeyboardShortcutsDialog
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
       />
     </div>
   );

@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 
 export function ProjectListPage() {
   const navigate = useNavigate();
-  const { data: projects, isLoading, error } = useProjects();
+  const { data: projects, isLoading, error, refetch } = useProjects();
   const createProject = useCreateProject();
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
 
@@ -139,9 +139,16 @@ export function ProjectListPage() {
 
       {/* Error state */}
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load projects. Please try again.
-        </div>
+        <Card className="border-destructive/50 bg-destructive/10">
+          <CardContent className="flex flex-col items-center gap-3 py-8">
+            <p className="text-sm text-destructive">
+              Failed to load projects. Please try again.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {/* Loading skeleton */}
