@@ -430,7 +430,7 @@ describe("Proposals API", () => {
       expect(body.error.code).toBe("INVALID_TRANSITION");
     });
 
-    it("should reject open → planned (invalid transition)", async () => {
+    it("should transition open → planned (AI agent)", async () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "open",
@@ -446,13 +446,13 @@ describe("Proposals API", () => {
           body: { toStatus: "planned" },
         },
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.error.code).toBe("INVALID_TRANSITION");
+      expect(body.data.status).toBe("planned");
     });
 
-    it("should reject discussing → planned (invalid transition)", async () => {
+    it("should transition discussing → planned (AI agent)", async () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
@@ -468,10 +468,10 @@ describe("Proposals API", () => {
           body: { toStatus: "planned" },
         },
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.error.code).toBe("INVALID_TRANSITION");
+      expect(body.data.status).toBe("planned");
     });
 
     it("should reject rejected → open (invalid transition)", async () => {
@@ -579,7 +579,7 @@ describe("Proposals API", () => {
       expect(body.error.code).toBe("FORBIDDEN");
     });
 
-    it("should reject human trying to implement a proposal (403)", async () => {
+    it("should allow human to transition accepted → planned", async () => {
       const proposal = createTestProposal(testApp.db, {
         status: "accepted",
         createdBy: testApp.testUser.id,
@@ -593,10 +593,10 @@ describe("Proposals API", () => {
           body: { toStatus: "planned" },
         },
       );
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.error.code).toBe("FORBIDDEN");
+      expect(body.data.status).toBe("planned");
     });
 
     it("should reject AI trying to reject from open (403)", async () => {
@@ -1033,7 +1033,7 @@ describe("Proposals API", () => {
       expect(proposalBody.data.comments[0].body).toContain("2 task(s)");
     });
 
-    it("should fail if proposal is not in accepted status (open)", async () => {
+    it("should succeed when implementing an open proposal", async () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "open",
@@ -1052,13 +1052,13 @@ describe("Proposals API", () => {
           },
         },
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.error.code).toBe("INVALID_STATUS");
+      expect(body.data.status).toBe("planned");
     });
 
-    it("should fail if proposal is not in accepted status (discussing)", async () => {
+    it("should succeed when implementing a discussing proposal", async () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "discussing",
@@ -1077,10 +1077,10 @@ describe("Proposals API", () => {
           },
         },
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.error.code).toBe("INVALID_STATUS");
+      expect(body.data.status).toBe("planned");
     });
 
     it("should fail if proposal is not in accepted status (rejected)", async () => {
