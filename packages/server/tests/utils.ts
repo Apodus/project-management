@@ -194,6 +194,7 @@ export function createTestProject(
     slug: string;
     status: string;
     createdBy: string;
+    settings: Record<string, unknown>;
   }> = {},
 ): TestProject {
   const ts = new Date().toISOString();
@@ -219,6 +220,7 @@ export function createTestProject(
       name,
       slug,
       status,
+      settings: overrides.settings ?? null,
       createdAt: ts,
       updatedAt: ts,
       createdBy,
@@ -426,6 +428,54 @@ export function createTestTask(
     assigneeId: overrides.assigneeId ?? null,
     epicId: overrides.epicId ?? null,
     parentTaskId: overrides.parentTaskId ?? null,
+  };
+}
+
+/**
+ * Create a test AI agent user with a known API token.
+ * Returns the user and their raw token for use in authRequest().
+ */
+export function createTestAiAgent(
+  db: AppDatabase,
+  overrides: Partial<{
+    id: string;
+    username: string;
+    displayName: string;
+    email: string;
+    role: string;
+  }> = {},
+): { user: TestUser; token: string } {
+  const ts = new Date().toISOString();
+  const id = overrides.id ?? createId();
+  const username = overrides.username ?? `ai-agent-${id.slice(-6)}`;
+  const displayName = overrides.displayName ?? `AI Agent ${id.slice(-6)}`;
+  const token = `ai-token-${id}`;
+  const tokenHash = bcrypt.hashSync(token, 10);
+
+  db.insert(users)
+    .values({
+      id,
+      username,
+      displayName,
+      email: overrides.email ?? null,
+      role: overrides.role ?? "member",
+      type: "ai_agent",
+      apiTokenHash: tokenHash,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+    .run();
+
+  return {
+    user: {
+      id,
+      username,
+      displayName,
+      email: overrides.email ?? null,
+      role: overrides.role ?? "member",
+      type: "ai_agent",
+    },
+    token,
   };
 }
 

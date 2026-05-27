@@ -110,13 +110,13 @@ describe("Activity API", () => {
         testApp.app,
         "POST",
         `/api/v1/projects/${project.id}/tasks`,
-        { body: { title: "Status change task", reporterId: user.id } },
+        { body: { title: "Status change task", reporterId: user.id, status: "ready" } },
       );
       const task = (await createRes.json()).data;
 
-      // Update status
-      await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
-        body: { status: "in_progress" },
+      // Transition status via workflow endpoint (ready→in_progress)
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "in_progress" },
       });
 
       const res = await authRequest(
@@ -137,7 +137,7 @@ describe("Activity API", () => {
         typeof statusActivity.changes === "string"
           ? JSON.parse(statusActivity.changes)
           : statusActivity.changes;
-      expect(changes.status.from).toBe("backlog");
+      expect(changes.status.from).toBe("ready");
       expect(changes.status.to).toBe("in_progress");
     });
 

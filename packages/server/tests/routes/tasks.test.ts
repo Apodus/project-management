@@ -716,7 +716,7 @@ describe("Tasks API", () => {
       expect(body.data.title).toBe("Updated Title");
     });
 
-    it("should update task status", async () => {
+    it("should reject status changes via PATCH (use transitions endpoint)", async () => {
       const project = createTestProject(testApp.db);
       const user = createTestUser(testApp.db);
       const task = createTestTask(testApp.db, {
@@ -731,10 +731,11 @@ describe("Tasks API", () => {
         `/api/v1/tasks/${task.id}`,
         { body: { status: "in_progress" } },
       );
+      // Status field is no longer accepted in PATCH body — Zod strips unknown fields
+      // so this should succeed but not change the status
       expect(res.status).toBe(200);
-
       const body = await res.json();
-      expect(body.data.status).toBe("in_progress");
+      expect(body.data.status).toBe("backlog"); // Status unchanged
     });
 
     it("should update the updatedAt timestamp", async () => {

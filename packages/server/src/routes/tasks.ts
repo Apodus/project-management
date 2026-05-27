@@ -5,7 +5,8 @@ import {
   TASK_TYPES,
   EFFORT_SIZES,
 } from "@pm/shared";
-import type { AppVariables } from "../types.js";
+import type { TaskStatus } from "@pm/shared";
+import type { AppVariables, AuthUser } from "../types.js";
 import * as taskService from "../services/task.service.js";
 
 // ─── Response schemas ─────────────────────────────────────────────
@@ -139,7 +140,6 @@ const updateTaskBody = z
   .object({
     title: z.string().min(1).optional(),
     description: z.string().nullable().optional(),
-    status: z.enum(TASK_STATUSES).optional(),
     priority: z.enum(PRIORITIES).optional(),
     type: z.enum(TASK_TYPES).optional(),
     assigneeId: z.string().nullable().optional(),
@@ -354,6 +354,84 @@ const listSubtasksRoute = createRoute({
   },
 });
 
+// ─── Workflow schemas ────────────────────────────────────────────
+
+const transitionBody = z
+  .object({
+    to_status: z.enum(TASK_STATUSES),
+    comment: z.string().optional(),
+  })
+  .openapi("TransitionTask");
+
+const pickNextBody = z
+  .object({
+    project_id: z.string().optional(),
+    task_types: z.array(z.enum(TASK_TYPES)).optional(),
+    max_effort: z.enum(EFFORT_SIZES).optional(),
+  })
+  .openapi("PickNextTask");
+
+// ─── Workflow route definitions ──────────────────────────────────
+
+const transitionTaskRoute = createRoute({
+  method: "post",
+  path: "/api/v1/tasks/{id}/transitions",
+  tags: ["Task Workflow"],
+  summary: "Transition task status",
+  description:
+    "Change a task's status using validated workflow transitions. Optionally add a comment.",
+  request: {
+    params: z.object({ id: taskIdParam }),
+    body: {
+      content: { "application/json": { schema: transitionBody } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: "Task transitioned",
+      content: { "application/json": { schema: taskDataEnvelope } },
+    },
+    400: {
+      description: "Invalid transition",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Task not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const pickNextTaskRoute = createRoute({
+  method: "post",
+  path: "/api/v1/tasks/pick-next",
+  tags: ["Task Workflow"],
+  summary: "Pick next task",
+  description:
+    "Find and atomically claim the highest-priority ready task. Returns the claimed task or 404 if nothing available.",
+  request: {
+    body: {
+      content: { "application/json": { schema: pickNextBody } },
+      required: false,
+    },
+  },
+  responses: {
+    200: {
+      description: "Task claimed",
+      content: { "application/json": { schema: taskDataEnvelope } },
+    },
+    403: {
+      description: "Guardrail blocked or max concurrent tasks reached",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "No task available",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
@@ -385,7 +463,8 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   router.openapi(createTaskRoute, (c) => {
     const { projectId } = c.req.valid("param");
     const body = c.req.valid("json");
-    const task = taskService.create({ ...body, projectId });
+    const actor = c.get("currentUser") as AuthUser | null;
+    const task = taskService.create({ ...body, projectId }, actor ?? undefined);
 
     return c.json({ data: task }, 201);
   });
@@ -402,7 +481,8 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   router.openapi(updateTaskRoute, (c) => {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const task = taskService.update(id, body);
+    const actor = c.get("currentUser") as AuthUser | null;
+    const task = taskService.update(id, body, actor ?? undefined);
 
     return c.json({ data: task }, 200);
   });
@@ -419,7 +499,8 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   router.openapi(createSubtaskRoute, (c) => {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const subtask = taskService.createSubtask(id, body);
+    const actor = c.get("currentUser") as AuthUser | null;
+    const subtask = taskService.createSubtask(id, body, actor ?? undefined);
 
     return c.json({ data: subtask }, 201);
   });
@@ -436,6 +517,46 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
       },
       200,
     );
+  });
+
+  // POST /api/v1/tasks/pick-next
+  router.openapi(pickNextTaskRoute, (c) => {
+    const actor = c.get("currentUser") as AuthUser;
+    let body: { project_id?: string; task_types?: string[]; max_effort?: string } = {};
+    try {
+      body = c.req.valid("json");
+    } catch {
+      // Body is optional — if parsing fails, use empty options
+    }
+    const task = taskService.pickNextTask(actor, {
+      projectId: body.project_id,
+      taskTypes: body.task_types,
+      maxEffort: body.max_effort,
+    });
+
+    if (!task) {
+      return c.json(
+        { error: { code: "NOT_FOUND", message: "No task available" } },
+        404,
+      );
+    }
+
+    return c.json({ data: task }, 200);
+  });
+
+  // POST /api/v1/tasks/:id/transitions
+  router.openapi(transitionTaskRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const actor = c.get("currentUser") as AuthUser;
+    const task = taskService.transition(
+      id,
+      body.to_status as TaskStatus,
+      actor,
+      body.comment,
+    );
+
+    return c.json({ data: task }, 200);
   });
 
   return router;

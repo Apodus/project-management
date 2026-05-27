@@ -1,9 +1,13 @@
 import { eq, and, like, isNull, desc, asc, count, sql, inArray } from "drizzle-orm";
-import { createId } from "@pm/shared";
-import { getDb, tasks, taskLabels, taskDependencies } from "../db/index.js";
+import { createId, isValidTaskTransition, getValidTaskTargets } from "@pm/shared";
+import type { TaskStatus, EffortSize } from "@pm/shared";
+import { getDb, getRawDb, tasks, taskLabels, taskDependencies } from "../db/index.js";
 import { AppError } from "../types.js";
+import type { AuthUser } from "../types.js";
 import * as dependencyService from "./dependency.service.js";
 import * as activityService from "./activity.service.js";
+import * as commentService from "./comment.service.js";
+import * as autonomyService from "./autonomy.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -29,7 +33,7 @@ export interface CreateTaskInput {
 export interface UpdateTaskInput {
   title?: string;
   description?: string | null;
-  status?: string;
+  status?: string; // Rejected at runtime — must use transition() instead
   priority?: string;
   type?: string;
   assigneeId?: string | null;
@@ -254,7 +258,11 @@ export function getById(id: string) {
 /**
  * Create a new task with auto-generated ID and timestamps.
  */
-export function create(data: CreateTaskInput) {
+export function create(data: CreateTaskInput, actor?: AuthUser) {
+  // Check autonomy guardrails for AI agents creating top-level tasks
+  if (actor && !data.parentTaskId) {
+    autonomyService.checkGuardrail(actor, "create_task", data.projectId);
+  }
   const db = getDb();
   const now = new Date().toISOString();
   const id = createId();
@@ -301,10 +309,24 @@ export function create(data: CreateTaskInput) {
  * Automatically updates the `updatedAt` timestamp.
  * Context JSON is merged with existing context (shallow merge).
  */
-export function update(id: string, data: UpdateTaskInput) {
+export function update(id: string, data: UpdateTaskInput, actor?: AuthUser) {
+  // Reject status changes via PATCH — use POST /tasks/:id/transitions instead
+  if (data.status !== undefined) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "Cannot change status via PATCH. Use POST /tasks/:id/transitions to change task status.",
+    );
+  }
+
   const existing = getById(id);
   const db = getDb();
   const now = new Date().toISOString();
+
+  // Check autonomy guardrails for priority changes by AI agents
+  if (data.priority !== undefined && data.priority !== existing.priority && actor) {
+    autonomyService.checkGuardrail(actor, "change_priority", existing.projectId);
+  }
 
   const values: Record<string, unknown> = {
     updatedAt: now,
@@ -312,7 +334,6 @@ export function update(id: string, data: UpdateTaskInput) {
 
   if (data.title !== undefined) values.title = data.title;
   if (data.description !== undefined) values.description = data.description;
-  if (data.status !== undefined) values.status = data.status;
   if (data.priority !== undefined) values.priority = data.priority;
   if (data.type !== undefined) values.type = data.type;
   if (data.assigneeId !== undefined) values.assigneeId = data.assigneeId;
@@ -346,23 +367,21 @@ export function update(id: string, data: UpdateTaskInput) {
 
   // Determine the action based on what changed
   let action = "updated";
-  if (data.status !== undefined && data.status !== existing.status) {
-    action = "status_changed";
-  } else if (data.assigneeId !== undefined && data.assigneeId !== existing.assigneeId) {
+  if (data.assigneeId !== undefined && data.assigneeId !== existing.assigneeId) {
     action = "assigned";
   }
 
   const changes = activityService.computeChanges(
     existing as unknown as Record<string, unknown>,
     result as unknown as Record<string, unknown>,
-    ["title", "description", "status", "priority", "assigneeId", "epicId", "type"],
+    ["title", "description", "priority", "assigneeId", "epicId", "type"],
   );
 
   activityService.logActivity({
     entityType: "task",
     entityId: id,
     projectId: existing.projectId,
-    actorId: null,
+    actorId: actor?.id ?? null,
     action,
     changes,
   });
@@ -401,8 +420,13 @@ export function archive(id: string) {
  * Create a subtask of a given parent task.
  * The parent task must exist. The subtask inherits the parent's projectId.
  */
-export function createSubtask(parentTaskId: string, data: Omit<CreateTaskInput, "projectId" | "parentTaskId">) {
+export function createSubtask(parentTaskId: string, data: Omit<CreateTaskInput, "projectId" | "parentTaskId">, actor?: AuthUser) {
   const parent = getById(parentTaskId);
+
+  // Check autonomy guardrails for AI agents creating subtasks
+  if (actor) {
+    autonomyService.checkGuardrail(actor, "create_subtask", parent.projectId);
+  }
 
   return create({
     ...data,
@@ -424,4 +448,266 @@ export function listSubtasks(parentTaskId: string) {
     .from(tasks)
     .where(eq(tasks.parentTaskId, parentTaskId))
     .all();
+}
+
+// ─── Workflow engine ─────────────────────────────────────────────
+
+/**
+ * Transition a task's status, enforcing valid workflow transitions.
+ * - Validates the transition using TASK_TRANSITION_MAP
+ * - Sets started_at when moving to in_progress
+ * - Sets completed_at when moving to done
+ * - Optionally creates a comment
+ * - Logs status_changed activity
+ */
+export function transition(
+  taskId: string,
+  toStatus: TaskStatus,
+  actor: AuthUser,
+  comment?: string,
+) {
+  const existing = getById(taskId);
+  const currentStatus = existing.status as TaskStatus;
+
+  // Validate transition
+  if (!isValidTaskTransition(currentStatus, toStatus)) {
+    const validTargets = getValidTaskTargets(currentStatus);
+    const validList = validTargets.length > 0 ? validTargets.join(", ") : "none";
+    throw new AppError(
+      400,
+      "INVALID_TRANSITION",
+      `Cannot transition from "${currentStatus}" to "${toStatus}". Valid transitions from "${currentStatus}": ${validList}`,
+    );
+  }
+
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const values: Record<string, unknown> = {
+    status: toStatus,
+    updatedAt: now,
+  };
+
+  // Set started_at when moving to in_progress (if not already set)
+  if (toStatus === "in_progress") {
+    if (!existing.startedAt) {
+      values.startedAt = now;
+    }
+    // Auto-assign to actor if not already assigned
+    values.assigneeId = actor.id;
+  }
+
+  // Set completed_at when moving to done
+  if (toStatus === "done") {
+    values.completedAt = now;
+  }
+
+  db.update(tasks).set(values).where(eq(tasks.id, taskId)).run();
+
+  const result = getById(taskId);
+
+  // Create a comment if provided
+  if (comment) {
+    commentService.create({
+      taskId,
+      authorId: actor.id,
+      body: comment,
+      commentType: "comment",
+    });
+  }
+
+  // Log activity
+  activityService.logActivity({
+    entityType: "task",
+    entityId: taskId,
+    projectId: existing.projectId,
+    actorId: actor.id,
+    action: "status_changed",
+    changes: { status: { from: currentStatus, to: toStatus } },
+  });
+
+  return result;
+}
+
+// ─── Effort ordering ─────────────────────────────────────────────
+
+const EFFORT_ORDER: Record<string, number> = {
+  xs: 1,
+  s: 2,
+  m: 3,
+  l: 4,
+  xl: 5,
+};
+
+// ─── Pick next task ──────────────────────────────────────────────
+
+export interface PickNextOptions {
+  projectId?: string;
+  taskTypes?: string[];
+  maxEffort?: string;
+}
+
+/**
+ * Find and atomically claim the highest-priority ready task.
+ *
+ * For AI agents, checks autonomy guardrails (can_self_assign, max_concurrent_tasks).
+ * Returns the claimed task, or null if nothing is available.
+ */
+export function pickNextTask(actor: AuthUser, options?: PickNextOptions): ReturnType<typeof getById> | null {
+  const db = getDb();
+  const rawDb = getRawDb();
+
+  // Check autonomy guardrails for AI agents
+  if (actor.type === "ai_agent") {
+    if (options?.projectId) {
+      autonomyService.checkGuardrail(actor, "self_assign", options.projectId);
+    }
+    // If no projectId, we'll check per-candidate below
+  }
+
+  // Check max_concurrent_tasks
+  const inProgressCount = db
+    .select({ count: count() })
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.assigneeId, actor.id),
+        eq(tasks.status, "in_progress"),
+      ),
+    )
+    .get();
+
+  // For AI agents, enforce max_concurrent_tasks
+  if (actor.type === "ai_agent") {
+    // Use the project-specific setting if projectId provided, otherwise use default
+    const maxConcurrent = options?.projectId
+      ? autonomyService.getMaxConcurrentTasks(options.projectId)
+      : 3; // default
+
+    if ((inProgressCount?.count ?? 0) >= maxConcurrent) {
+      throw new AppError(
+        403,
+        "MAX_CONCURRENT_TASKS",
+        "Maximum concurrent tasks reached",
+      );
+    }
+  }
+
+  // Build SQL conditions for finding candidates
+  const conditions: string[] = [
+    `t.status = 'ready'`,
+    `t.assignee_id IS NULL`,
+  ];
+  const params: unknown[] = [];
+
+  // Not blocked: no unresolved blocking dependencies
+  conditions.push(`t.id NOT IN (
+    SELECT td.task_id FROM task_dependencies td
+    INNER JOIN tasks t2 ON t2.id = td.depends_on_task_id
+    WHERE td.dependency_type = 'blocks' AND t2.status != 'done'
+  )`);
+
+  // Optional projectId filter
+  if (options?.projectId) {
+    conditions.push(`t.project_id = ?`);
+    params.push(options.projectId);
+  }
+
+  // Optional taskTypes filter
+  if (options?.taskTypes && options.taskTypes.length > 0) {
+    const placeholders = options.taskTypes.map(() => "?").join(", ");
+    conditions.push(`t.type IN (${placeholders})`);
+    params.push(...options.taskTypes);
+  }
+
+  // Optional maxEffort filter
+  if (options?.maxEffort) {
+    const maxEffortValue = EFFORT_ORDER[options.maxEffort];
+    if (maxEffortValue !== undefined) {
+      // Tasks with null effort are included (eligible)
+      // Tasks with effort > maxEffort are excluded
+      const effortConditions: string[] = ["t.estimated_effort IS NULL"];
+      for (const [effort, value] of Object.entries(EFFORT_ORDER)) {
+        if (value <= maxEffortValue) {
+          effortConditions.push(`t.estimated_effort = '${effort}'`);
+        }
+      }
+      conditions.push(`(${effortConditions.join(" OR ")})`);
+    }
+  }
+
+  const whereClause = conditions.join(" AND ");
+
+  // Use a transaction to atomically find and claim
+  const now = new Date().toISOString();
+
+  const txn = rawDb.transaction(() => {
+    // Find the highest priority ready task
+    const candidateSql = `
+      SELECT t.id, t.project_id FROM tasks t
+      WHERE ${whereClause}
+      ORDER BY
+        CASE t.priority
+          WHEN 'critical' THEN 0
+          WHEN 'high' THEN 1
+          WHEN 'medium' THEN 2
+          WHEN 'low' THEN 3
+          ELSE 4
+        END ASC,
+        t.created_at ASC
+      LIMIT 1
+    `;
+
+    const candidate = rawDb.prepare(candidateSql).get(...params) as { id: string; project_id: string } | undefined;
+
+    if (!candidate) {
+      return null;
+    }
+
+    // For AI agents without a projectId filter, check guardrails per-candidate
+    if (actor.type === "ai_agent" && !options?.projectId) {
+      autonomyService.checkGuardrail(actor, "self_assign", candidate.project_id);
+    }
+
+    // Atomically claim the task
+    const updateSql = `
+      UPDATE tasks
+      SET status = 'in_progress',
+          assignee_id = ?,
+          started_at = COALESCE(started_at, ?),
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'ready'
+        AND assignee_id IS NULL
+    `;
+
+    const result = rawDb.prepare(updateSql).run(actor.id, now, now, candidate.id);
+
+    if (result.changes === 0) {
+      // Another caller claimed it between our SELECT and UPDATE
+      return null;
+    }
+
+    return candidate.id;
+  });
+
+  const claimedId = txn();
+
+  if (!claimedId) {
+    return null;
+  }
+
+  const claimedTask = getById(claimedId);
+
+  // Log activity
+  activityService.logActivity({
+    entityType: "task",
+    entityId: claimedId,
+    projectId: claimedTask.projectId,
+    actorId: actor.id,
+    action: "status_changed",
+    changes: { status: { from: "ready", to: "in_progress" } },
+  });
+
+  return claimedTask;
 }
