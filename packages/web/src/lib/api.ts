@@ -289,6 +289,20 @@ export async function getTaskSubtasks(taskId: string): Promise<Task[]> {
   return apiFetch<Task[]>(`/tasks/${taskId}/subtasks`);
 }
 
+export async function transitionTask(
+  taskId: string,
+  toStatus: string,
+  comment?: string,
+): Promise<Task> {
+  return apiFetch<Task>(`/tasks/${taskId}/transitions`, {
+    method: "POST",
+    body: JSON.stringify({
+      to_status: toStatus,
+      ...(comment ? { comment } : {}),
+    }),
+  });
+}
+
 // ---- Activity API ----
 
 export type ActivityLogEntry = components["schemas"]["ActivityLogEntry"];

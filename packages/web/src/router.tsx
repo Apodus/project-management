@@ -17,6 +17,7 @@ import { ProposalListPage } from "@/pages/proposal-list-page";
 import { SetupPage } from "@/pages/setup-page";
 import { TaskDetailPage } from "@/pages/task-detail-page";
 import { TaskListPage } from "@/pages/task-list-page";
+import { BoardPage } from "@/pages/board-page";
 import { UsersPage } from "@/pages/settings/users-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
 
@@ -115,6 +116,13 @@ const projectTaskListRoute = createRoute({
   component: TaskListPage,
 });
 
+// /projects/$projectId/board — kanban board
+const projectBoardRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/board",
+  component: BoardPage,
+});
+
 // /projects/$projectId/epics — epic list
 const projectEpicListRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -160,6 +168,7 @@ const routeTree = rootRoute.addChildren([
     projectRoute.addChildren([
       projectIndexRoute,
       projectProposalListRoute,
+      projectBoardRoute,
       projectTaskListRoute,
       projectEpicListRoute,
       projectActivityRoute,

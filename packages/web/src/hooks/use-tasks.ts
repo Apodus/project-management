@@ -6,6 +6,7 @@ import {
   getTaskSubtasks,
   updateTask,
   addTaskComment,
+  transitionTask,
   type TaskFilters,
   type UpdateTask,
 } from "@/lib/api";
@@ -85,6 +86,27 @@ export function useAddTaskComment() {
       queryClient.invalidateQueries({
         queryKey: taskKeys.comments(variables.taskId),
       });
+      queryClient.invalidateQueries({
+        queryKey: taskKeys.detail(variables.taskId),
+      });
+    },
+  });
+}
+
+export function useTransitionTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      toStatus,
+      comment,
+    }: {
+      taskId: string;
+      toStatus: string;
+      comment?: string;
+    }) => transitionTask(taskId, toStatus, comment),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
       queryClient.invalidateQueries({
         queryKey: taskKeys.detail(variables.taskId),
       });
