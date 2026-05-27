@@ -111,11 +111,37 @@ const projectProposalListRoute = createRoute({
   component: ProposalListPage,
 });
 
+// Search params type for task list
+export interface TaskListSearch {
+  status?: string;
+  priority?: string;
+  type?: string;
+  assignee?: string;
+  epic?: string;
+  search?: string;
+  sort?: string;
+  order?: "asc" | "desc";
+  page?: number;
+  group_by?: string;
+}
+
 // /projects/$projectId/tasks — task list
 const projectTaskListRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/tasks",
   component: TaskListPage,
+  validateSearch: (search: Record<string, unknown>): TaskListSearch => ({
+    status: typeof search.status === "string" ? search.status : undefined,
+    priority: typeof search.priority === "string" ? search.priority : undefined,
+    type: typeof search.type === "string" ? search.type : undefined,
+    assignee: typeof search.assignee === "string" ? search.assignee : undefined,
+    epic: typeof search.epic === "string" ? search.epic : undefined,
+    search: typeof search.search === "string" ? search.search : undefined,
+    sort: typeof search.sort === "string" ? search.sort : undefined,
+    order: search.order === "asc" || search.order === "desc" ? search.order : undefined,
+    page: typeof search.page === "number" ? search.page : (typeof search.page === "string" ? parseInt(search.page, 10) || undefined : undefined),
+    group_by: typeof search.group_by === "string" ? search.group_by : undefined,
+  }),
 });
 
 // /projects/$projectId/board — kanban board
