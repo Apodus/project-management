@@ -24,6 +24,7 @@ import { UsersPage } from "@/pages/settings/users-page";
 import { BackupPage } from "@/pages/settings/backup-page";
 import { TemplatesPage } from "@/pages/settings/templates-page";
 import { AutomationPage } from "@/pages/settings/automation-page";
+import { HelpPage } from "@/pages/help-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
 
 // ---- Root route (no layout — just an outlet) ----
@@ -224,6 +225,13 @@ const projectAutomationRoute = createRoute({
   component: AutomationPage,
 });
 
+// /help — getting started and MCP setup
+const helpRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/help",
+  component: HelpPage,
+});
+
 // Build the route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -247,6 +255,7 @@ const routeTree = rootRoute.addChildren([
     settingsUsersRoute,
     settingsBackupRoute,
     settingsTemplatesRoute,
+    helpRoute,
   ]),
 ]);
 

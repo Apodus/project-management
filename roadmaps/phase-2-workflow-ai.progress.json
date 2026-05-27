@@ -1,0 +1,21 @@
+{
+  "roadmap": "roadmaps/phase-2-workflow-ai.md",
+  "status": "complete",
+  "completed_at": "2026-05-27",
+  "completed_steps": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  "step_outcomes": {
+    "1": "Sessions table, auth service (bcrypt tokens/sessions), real auth middleware replacing stub. Zero existing test breakage via pre-hashed token.",
+    "2": "User service + auth routes (setup/login/logout/me) + user management routes (CRUD, rotate-token, deactivate). Admin role enforcement.",
+    "3": "Setup wizard, login page, auth guard in router, user menu with logout.",
+    "4": "User management UI: user table, add user dialog (human/AI), API token display on creation, rotate token, deactivate/activate.",
+    "5": "Task workflow engine: status transition validation via TASK_TRANSITION_MAP, pick_next_task with atomic claim, autonomy guardrails (can_self_assign, max_concurrent_tasks, etc.).",
+    "6": "MCP write tools: pm_implement_proposal, pm_pick_next_task, pm_start_task, pm_complete_task, pm_request_review, pm_block_task.",
+    "7": "MCP context tools: pm_create_task, pm_update_task, pm_add_comment, pm_log_decision, pm_report_progress, pm_set_task_context, pm_link_git_ref. Board resource.",
+    "8": "Event bus refactor: typed EventEmitter, activity log listener, all 4 services emit events instead of inline logActivity calls.",
+    "9": "SSE endpoint (GET /events with project_id filter), frontend useSSE hook with TanStack Query cache invalidation and toast notifications.",
+    "10": "Activity feed page (chronological, filtered, paginated), dashboard (stats, recent activity, my tasks, attention needed)."
+  },
+  "total_tests": 672,
+  "open_issues": [],
+  "parallelism_notes": "Steps 2+5 parallel, Steps 3+4+6+8 parallel (3 agents), Steps 7+9 parallel."
+}

@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   ListTodo,
   Milestone,
+  HelpCircle,
   Settings,
   Zap,
 } from "lucide-react";
@@ -282,7 +283,17 @@ export function Sidebar() {
             label: "Settings",
             icon: Settings,
             href: "/settings/users",
-            matchPath: "/settings/users",
+            matchPath: "/settings",
+          }}
+          collapsed={collapsed}
+        />
+
+        <NavLink
+          item={{
+            label: "Help",
+            icon: HelpCircle,
+            href: "/help",
+            matchPath: "/help",
           }}
           collapsed={collapsed}
         />

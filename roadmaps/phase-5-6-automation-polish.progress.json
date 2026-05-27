@@ -1,0 +1,21 @@
+{
+  "roadmap": "roadmaps/phase-5-6-automation-polish.md",
+  "status": "complete",
+  "completed_at": "2026-05-27",
+  "completed_steps": [1, 2, 3, 4, 5, 6, 7],
+  "step_outcomes": {
+    "1": "Automation rules engine: automation_rules table, condition evaluator (5 operators, nested field access), action executor (4 action types), event bus listener with loop prevention (depth 3), built-in rules (auto-close epic, auto-advance parent). 44 tests.",
+    "2": "Automation rules UI: management page with condition builder, trigger/action config, active toggle, built-in badge, create/edit/delete dialogs.",
+    "3": "Templates: templates table, task + project template instantiation, create-from-task, pm_list_templates + pm_use_template MCP tools. 22 server + 5 MCP tests.",
+    "4": "Templates UI: two-tab page (task/project), create/edit/use dialogs, subtask/epic list editors, color picker for labels, save-as-template from task detail.",
+    "5": "JSON export/import: full project export with all entity types, import with ID remapping, backup via SQLite backup API. 12 tests.",
+    "6": "Production server: static file serving, SPA fallback, cross-env scripts, .env.example, comprehensive CLAUDE.md.",
+    "7": "E2E tests: Playwright setup, 15 tests across 4 spec files (setup/login, project workflow, task management, search). Found and fixed a createdBy bug."
+  },
+  "total_tests": {
+    "unit_integration": 805,
+    "e2e": 15,
+    "total": 820
+  },
+  "open_issues": []
+}

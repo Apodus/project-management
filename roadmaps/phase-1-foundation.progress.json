@@ -1,0 +1,25 @@
+{
+  "roadmap": "roadmaps/phase-1-foundation.md",
+  "status": "complete",
+  "completed_at": "2026-05-27",
+  "current_step": null,
+  "completed_steps": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+  "step_outcomes": {
+    "1": "Monorepo scaffolded: pnpm + Turborepo + TypeScript + ESLint 9 + Prettier. 4 packages.",
+    "2": "Shared package: 15 Zod schemas, types, constants, transition rules, ULID utility. 199 tests.",
+    "3": "Drizzle ORM + SQLite: 13 tables, indexes, FTS5 virtual tables, migrations, seed. 31 tests.",
+    "4": "Server foundation: OpenAPIHono, middleware (request-id, logger, CORS, error-handler, auth stub), test utilities. 21 tests.",
+    "5": "Projects CRUD: service layer + routes + 31 integration tests. Established API pattern.",
+    "6": "Proposals API: CRUD + role-enforced transitions + auto-transition + implementProposal. 55 tests.",
+    "7": "Epics + Tasks API: CRUD with filtering, sorting, pagination, subtasks, context JSON. 61 tests.",
+    "8": "Comments (polymorphic), Labels (project-scoped), Dependencies (BFS cycle detection). 56 tests.",
+    "9": "FTS5 search with triggers, activity logging in all services, milestones, git refs, OpenAPI finalized (30 paths). 40 tests.",
+    "10": "Web UI shell: Tailwind v4, shadcn/ui (15 components), TanStack Router, dark mode, collapsible sidebar.",
+    "11": "Project + Proposal pages: card grid, status tabs, discussion thread, accept/reject, spawned work items.",
+    "12": "Task list (table, filters, sort, pagination), task detail (inline editing, typed comments, context, subtasks, dependencies), epic list (progress bars).",
+    "13": "MCP server: 7 tools (pm_list_projects, pm_list_tasks, pm_get_task, pm_search, pm_list_proposals, pm_get_proposal, pm_discuss_proposal), 2 resources, 31 tests."
+  },
+  "total_tests": 525,
+  "open_issues": [],
+  "parallelism_notes": "Steps 6+7 ran in parallel. Steps 11+13 ran in parallel. All merges clean or resolved."
+}
