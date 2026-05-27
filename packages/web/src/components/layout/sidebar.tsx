@@ -1,10 +1,11 @@
-import { Link, useMatches } from "@tanstack/react-router";
+import { Link, useMatches, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
   FileText,
+  FolderOpen,
   Kanban,
   LayoutDashboard,
   ListTodo,
@@ -16,6 +17,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
@@ -25,6 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useProjects } from "@/hooks/use-projects";
 import { useProjectStore } from "@/stores/project-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
 
@@ -126,8 +129,19 @@ function NavLink({
 
 export function Sidebar() {
   const { collapsed, toggle } = useSidebarStore();
-  const { currentProjectName } = useProjectStore();
-  const navItems = getNavItems(useProjectStore((s) => s.currentProjectId));
+  const { currentProjectName, currentProjectId, setCurrentProject } = useProjectStore();
+  const navItems = getNavItems(currentProjectId);
+  const { data: projects } = useProjects();
+  const navigate = useNavigate();
+
+  function handleProjectSelect(projectId: string, projectName: string) {
+    setCurrentProject(projectId, projectName);
+    navigate({ to: "/projects/$projectId/proposals", params: { projectId } });
+  }
+
+  function handleViewAllProjects() {
+    navigate({ to: "/projects" });
+  }
 
   return (
     <aside
@@ -180,11 +194,34 @@ export function Sidebar() {
               align="start"
               className="w-[var(--radix-dropdown-menu-trigger-width)]"
             >
-              <DropdownMenuItem disabled>
-                <span className="text-xs text-muted-foreground">
-                  Projects load in Step 11
-                </span>
-              </DropdownMenuItem>
+              {projects && projects.length > 0 ? (
+                <>
+                  {projects.map((project) => (
+                    <DropdownMenuItem
+                      key={project.id}
+                      onClick={() =>
+                        handleProjectSelect(project.id, project.name)
+                      }
+                      className={cn(
+                        currentProjectId === project.id &&
+                          "bg-accent font-medium",
+                      )}
+                    >
+                      <span className="truncate">{project.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleViewAllProjects}>
+                    <FolderOpen className="mr-2 size-3.5" />
+                    All Projects
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <DropdownMenuItem onClick={handleViewAllProjects}>
+                  <FolderOpen className="mr-2 size-3.5" />
+                  View Projects
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
@@ -195,7 +232,7 @@ export function Sidebar() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={8}>
-              Select project
+              {currentProjectName ?? "Select project"}
             </TooltipContent>
           </Tooltip>
         )}
