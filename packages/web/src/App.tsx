@@ -1,17 +1,28 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
+import { router } from "@/router";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+    },
+  },
+});
+
 export function App() {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: "100vh",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-      }}
-    >
-      <h1 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>Project Management</h1>
-      <p style={{ color: "#666" }}>Human-AI Collaborative Project Management System</p>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <TooltipProvider delayDuration={300}>
+          <RouterProvider router={router} />
+          <Toaster />
+        </TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
