@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useCurrentUser } from "@/hooks/use-auth";
 import { useProject } from "@/hooks/use-projects";
 import { useProposals, useCreateProposal } from "@/hooks/use-proposals";
 import { useProjectStore } from "@/stores/project-store";
@@ -109,6 +110,8 @@ export function ProposalListPage() {
     setCurrentProject(project.id, project.name);
   }
 
+  const { data: currentUser } = useCurrentUser();
+
   // Fetch all proposals (no status filter) so we can calculate counts per tab
   const { data: allProposals, isLoading, error, refetch } = useProposals(projectId);
   const createProposal = useCreateProposal();
@@ -144,7 +147,7 @@ export function ProposalListPage() {
         data: {
           title: title.trim(),
           description: description.trim() || undefined,
-          createdBy: "human-director",
+          createdBy: currentUser?.id ?? "human-director",
         },
       });
       setDialogOpen(false);

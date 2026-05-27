@@ -46,8 +46,11 @@ pnpm start:prod
 # Start server (without setting NODE_ENV)
 pnpm start
 
-# Run all tests
+# Run all tests (unit/integration via Vitest)
 pnpm test
+
+# Run E2E tests (Playwright — builds, starts server, runs in Chromium)
+pnpm test:e2e
 
 # Lint all packages
 pnpm lint
@@ -167,7 +170,7 @@ See `.env.example` for a template.
 ## Testing
 
 ```bash
-# Run all tests
+# Run all unit/integration tests (Vitest)
 pnpm test
 
 # Run tests for a specific package
@@ -177,9 +180,14 @@ pnpm --filter @pm/mcp-server test
 
 # Run tests in watch mode (package-level)
 cd packages/server && npx vitest
+
+# Run E2E tests (Playwright)
+pnpm test:e2e
 ```
 
-Tests use Vitest. Server tests use in-memory SQLite databases for isolation.
+Unit/integration tests use Vitest. Server tests use in-memory SQLite databases for isolation.
+
+E2E tests use Playwright with Chromium. They build the app, start a production server on a dedicated port (default 3099, configurable via `E2E_PORT`), and test critical user flows: setup wizard, login/logout, project creation, proposals, task management, board view, and command-palette search.
 
 ## Database Management
 
