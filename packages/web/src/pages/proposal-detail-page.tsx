@@ -301,7 +301,7 @@ function WorkItemsSection({
 
 export function ProposalDetailPage() {
   const { proposalId } = useParams({ strict: false });
-  const { data: proposal, isLoading, error } = useProposal(proposalId);
+  const { data: proposal, isLoading, error, refetch } = useProposal(proposalId);
   const updateProposal = useUpdateProposal();
   const transitionProposal = useTransitionProposal();
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
@@ -346,8 +346,15 @@ export function ProposalDetailPage() {
             Back to projects
           </Link>
         )}
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          {error ? "Failed to load proposal." : "Proposal not found."}
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
+          <p className="text-sm text-destructive">
+            {error ? "Failed to load proposal." : "Proposal not found."}
+          </p>
+          {error && (
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Retry
+            </Button>
+          )}
         </div>
       </div>
     );

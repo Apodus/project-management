@@ -484,7 +484,7 @@ export function MilestonesPage() {
     setCurrentProject(project.id, project.name);
   }
 
-  const { data: milestones, isLoading, error } = useMilestones(projectId);
+  const { data: milestones, isLoading, error, refetch } = useMilestones(projectId);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -520,8 +520,13 @@ export function MilestonesPage() {
 
       {/* Error state */}
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load milestones. Please try again.
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
+          <p className="text-sm text-destructive">
+            Failed to load milestones. Please try again.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
         </div>
       )}
 

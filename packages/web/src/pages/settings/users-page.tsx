@@ -708,7 +708,7 @@ function UserRow({ user }: { user: AuthUser }) {
 
 export function UsersPage() {
   const { data: currentUser } = useCurrentUser();
-  const { data: users, isLoading, error } = useUsers();
+  const { data: users, isLoading, error, refetch } = useUsers();
   const [createOpen, setCreateOpen] = useState(false);
 
   // Only admins can access this page
@@ -748,9 +748,16 @@ export function UsersPage() {
 
       {/* Error state */}
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load users. Please try again.
-        </div>
+        <Card className="border-destructive/50 bg-destructive/10">
+          <CardContent className="flex flex-col items-center gap-3 py-8">
+            <p className="text-sm text-destructive">
+              Failed to load users. Please try again.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {/* Loading skeleton */}

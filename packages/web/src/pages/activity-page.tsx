@@ -259,7 +259,7 @@ export function ActivityPage() {
     per_page: perPage,
   };
 
-  const { data, isLoading, error } = useProjectActivity(projectId, filters);
+  const { data, isLoading, error, refetch } = useProjectActivity(projectId, filters);
 
   const entries = data?.data ?? [];
   const pagination = data?.pagination;
@@ -280,8 +280,13 @@ export function ActivityPage() {
 
       {/* Error state */}
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load activity. Please try again.
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
+          <p className="text-sm text-destructive">
+            Failed to load activity. Please try again.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
         </div>
       )}
 

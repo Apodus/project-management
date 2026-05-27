@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Milestone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -131,7 +132,7 @@ export function EpicListPage() {
 
   const [statusFilter, setStatusFilter] = useState<string>("");
 
-  const { data: epics, isLoading, error } = useEpics(
+  const { data: epics, isLoading, error, refetch } = useEpics(
     projectId,
     statusFilter && statusFilter !== "all" ? { status: statusFilter } : undefined,
   );
@@ -160,8 +161,13 @@ export function EpicListPage() {
 
       {/* Error state */}
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load epics. Please try again.
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
+          <p className="text-sm text-destructive">
+            Failed to load epics. Please try again.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
         </div>
       )}
 
