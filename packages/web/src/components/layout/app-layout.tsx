@@ -12,17 +12,19 @@ import {
 import { useSSE } from "@/hooks/use-sse";
 import { useFaviconBadge } from "@/hooks/use-favicon-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
 
 export function AppLayout() {
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
+  const { data: currentUser } = useCurrentUser();
   const { open: commandPaletteOpen, setOpen: setCommandPaletteOpen } =
     useCommandPalette();
   const { open: shortcutsOpen, setOpen: setShortcutsOpen } =
     useKeyboardShortcuts();
 
   // Establish SSE connection for real-time updates, scoped to current project
-  useSSE(currentProjectId);
+  useSSE(currentProjectId, currentUser?.id);
 
   // Favicon badge + document title reflect unread event count
   useFaviconBadge();

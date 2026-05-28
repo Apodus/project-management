@@ -1,8 +1,10 @@
 import { eq, and, count, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import { getDb, epics, tasks } from "../db/index.js";
+import type { UserType } from "@pm/shared";
+import { getDb, epics, proposals, tasks } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
+import { assertClaimOk } from "./proposal.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -133,9 +135,34 @@ function getRawById(id: string) {
 
 /**
  * Create a new epic with auto-generated ID and timestamps.
+ * If proposalId is set, the proposal must exist and the actor (if AI agent)
+ * must hold the claim — adding work to a claimed proposal is a write that
+ * goes through the same gate as comments/transitions.
  */
-export function create(data: CreateEpicInput) {
+export function create(
+  data: CreateEpicInput,
+  actor?: { id: string; type: UserType },
+) {
   const db = getDb();
+
+  if (data.proposalId) {
+    const proposal = db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.id, data.proposalId))
+      .get();
+    if (!proposal) {
+      throw new AppError(
+        404,
+        "NOT_FOUND",
+        `Proposal not found: ${data.proposalId}`,
+      );
+    }
+    if (actor) {
+      assertClaimOk(proposal, actor);
+    }
+  }
+
   const now = new Date().toISOString();
   const id = createId();
 

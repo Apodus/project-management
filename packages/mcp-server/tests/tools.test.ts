@@ -24,6 +24,10 @@ vi.mock("../src/api-client.js", () => ({
   listProposals: vi.fn(),
   getProposal: vi.fn(),
   addProposalComment: vi.fn(),
+  claimProposal: vi.fn(),
+  releaseProposal: vi.fn(),
+  createProposal: vi.fn(),
+  createEpic: vi.fn(),
   listTasks: vi.fn(),
   getTask: vi.fn(),
   search: vi.fn(),
@@ -46,6 +50,10 @@ const mockListProjects = vi.mocked(apiClient.listProjects);
 const mockGetProposal = vi.mocked(apiClient.getProposal);
 const mockListProposals = vi.mocked(apiClient.listProposals);
 const mockAddProposalComment = vi.mocked(apiClient.addProposalComment);
+const mockClaimProposal = vi.mocked(apiClient.claimProposal);
+const mockReleaseProposal = vi.mocked(apiClient.releaseProposal);
+const mockCreateProposal = vi.mocked(apiClient.createProposal);
+const mockCreateEpic = vi.mocked(apiClient.createEpic);
 const mockListTasks = vi.mocked(apiClient.listTasks);
 const mockGetTask = vi.mocked(apiClient.getTask);
 const mockSearch = vi.mocked(apiClient.search);
@@ -118,6 +126,8 @@ const sampleProposal = {
   description: "We should add a caching layer to improve performance.",
   status: "open",
   createdBy: "user_001",
+  claimedBy: null,
+  claimStatus: "unclaimed" as const,
   commentCount: 0,
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
@@ -367,7 +377,7 @@ describe("MCP Tools", () => {
         arguments: { project_id: "proj_001", status: "discussing" },
       });
 
-      expect(mockListProposals).toHaveBeenCalledWith("proj_001", "discussing");
+      expect(mockListProposals).toHaveBeenCalledWith("proj_001", "discussing", undefined);
     });
   });
 
@@ -495,6 +505,156 @@ describe("MCP Tools", () => {
         "design_discussion",
       );
     });
+
+    it("surfaces a clean message when the API rejects with CLAIM_DENIED", async () => {
+      const { ApiError } = await import("../src/api-client.js");
+      mockAddProposalComment.mockRejectedValue(
+        new ApiError(409, "CLAIM_DENIED", "Not your claim"),
+      );
+
+      const result = await client.callTool({
+        name: "pm_discuss_proposal",
+        arguments: {
+          proposal_id: "prop_001",
+          body: "trying anyway",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("haven't claimed this proposal");
+      expect(text).toContain("pm_claim_proposal");
+    });
+  });
+
+  // ---- pm_claim_proposal / pm_release_proposal ----
+
+  describe("pm_claim_proposal", () => {
+    it("returns a friendly confirmation when the claim succeeds", async () => {
+      mockClaimProposal.mockResolvedValue({ ok: true, status: "claimed_by_you" });
+
+      const result = await client.callTool({
+        name: "pm_claim_proposal",
+        arguments: { proposal_id: "prop_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Claimed");
+      expect(text).toContain("yours to work on");
+      expect(mockClaimProposal).toHaveBeenCalledWith("prop_001");
+    });
+
+    it("reports already_claimed_by_you", async () => {
+      mockClaimProposal.mockResolvedValue({
+        ok: true,
+        status: "already_claimed_by_you",
+      });
+
+      const result = await client.callTool({
+        name: "pm_claim_proposal",
+        arguments: { proposal_id: "prop_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("already hold this claim");
+    });
+
+    it("warns when another agent holds the claim — no IDs leaked", async () => {
+      mockClaimProposal.mockResolvedValue({
+        ok: false,
+        status: "claimed_by_another_agent",
+      });
+
+      const result = await client.callTool({
+        name: "pm_claim_proposal",
+        arguments: { proposal_id: "prop_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("claimed by another agent");
+      expect(text).not.toMatch(/user[_-]/);
+    });
+
+    it("reports proposal_closed for terminal proposals", async () => {
+      mockClaimProposal.mockResolvedValue({ ok: false, status: "proposal_closed" });
+
+      const result = await client.callTool({
+        name: "pm_claim_proposal",
+        arguments: { proposal_id: "prop_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("closed");
+    });
+  });
+
+  describe("pm_release_proposal", () => {
+    it("confirms a successful release", async () => {
+      mockReleaseProposal.mockResolvedValue({ ok: true, status: "released" });
+
+      const result = await client.callTool({
+        name: "pm_release_proposal",
+        arguments: { proposal_id: "prop_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Released");
+    });
+
+    it("reports when you don't hold the claim", async () => {
+      mockReleaseProposal.mockResolvedValue({
+        ok: false,
+        status: "claimed_by_another_agent",
+      });
+
+      const result = await client.callTool({
+        name: "pm_release_proposal",
+        arguments: { proposal_id: "prop_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("don't hold this claim");
+    });
+  });
+
+  describe("pm_list_proposals claim rendering", () => {
+    it("renders claim_status as human text, never the claimed_by ID", async () => {
+      mockListProposals.mockResolvedValue([
+        {
+          ...sampleProposal,
+          id: "prop_a",
+          title: "Mine",
+          claimedBy: "user-me",
+          claimStatus: "claimed_by_you",
+        },
+        {
+          ...sampleProposal,
+          id: "prop_b",
+          title: "Theirs",
+          claimedBy: "user-someone-else",
+          claimStatus: "claimed_by_other",
+        },
+        {
+          ...sampleProposal,
+          id: "prop_c",
+          title: "Free",
+          claimedBy: null,
+          claimStatus: "unclaimed",
+        },
+      ]);
+
+      const result = await client.callTool({
+        name: "pm_list_proposals",
+        arguments: { claim: "all" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("claimed for you");
+      expect(text).toContain("claimed by another agent");
+      expect(text).toContain("available to claim");
+      expect(text).not.toContain("user-someone-else");
+      expect(text).not.toContain("user-me");
+      expect(mockListProposals).toHaveBeenCalledWith(undefined, undefined, "all");
+    });
   });
 
   // ---- pm_implement_proposal ----
@@ -503,7 +663,7 @@ describe("MCP Tools", () => {
     it("creates work items from accepted proposal", async () => {
       mockImplementProposal.mockResolvedValue({
         ...sampleProposal,
-        status: "planned",
+        status: "in_progress",
       });
 
       const result = await client.callTool({
@@ -527,13 +687,12 @@ describe("MCP Tools", () => {
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("Proposal planned successfully");
-      expect(text).toContain("planned");
+      expect(text).toContain("in_progress");
       expect(text).toContain("**Epics created:** 1");
       expect(text).toContain("**Tasks created:** 3");
       expect(text).toContain("Breaking this into one epic");
 
       expect(mockImplementProposal).toHaveBeenCalledWith("prop_001", {
-        actorId: "mcp-agent",
         epics: [{ name: "Epic 1", description: "First epic", priority: undefined }],
         tasks: [
           { title: "Task A", description: null, priority: "high", type: undefined, epicIndex: 0 },
@@ -551,7 +710,7 @@ describe("MCP Tools", () => {
     it("handles proposal with only standalone tasks", async () => {
       mockImplementProposal.mockResolvedValue({
         ...sampleProposal,
-        status: "planned",
+        status: "in_progress",
       });
 
       const result = await client.callTool({
@@ -571,7 +730,7 @@ describe("MCP Tools", () => {
     it("handles proposal with only epics and no tasks", async () => {
       mockImplementProposal.mockResolvedValue({
         ...sampleProposal,
-        status: "planned",
+        status: "in_progress",
       });
 
       const result = await client.callTool({
@@ -1009,6 +1168,129 @@ describe("MCP Tools", () => {
       // Comment body should mention the blocking task
       const commentBody = mockAddTaskComment.mock.calls[0][1];
       expect(commentBody).toContain("task_002");
+    });
+  });
+
+  // ---- pm_create_proposal ----
+
+  describe("pm_create_proposal", () => {
+    it("creates a proposal — no createdBy parameter exposed to the agent", async () => {
+      mockCreateProposal.mockResolvedValue({
+        ...sampleProposal,
+        id: "prop_new",
+        title: "New idea",
+        status: "open",
+      });
+
+      const result = await client.callTool({
+        name: "pm_create_proposal",
+        arguments: {
+          project_id: "proj_001",
+          title: "New idea",
+          description: "Let's add X",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Proposal created successfully");
+      expect(text).toContain("prop_new");
+      expect(text).toContain("pm_claim_proposal");
+      expect(mockCreateProposal).toHaveBeenCalledWith("proj_001", {
+        title: "New idea",
+        description: "Let's add X",
+      });
+    });
+
+    it("handles minimal arguments (no description)", async () => {
+      mockCreateProposal.mockResolvedValue({
+        ...sampleProposal,
+        id: "prop_min",
+        title: "Quick idea",
+      });
+
+      await client.callTool({
+        name: "pm_create_proposal",
+        arguments: { project_id: "proj_001", title: "Quick idea" },
+      });
+
+      expect(mockCreateProposal).toHaveBeenCalledWith("proj_001", {
+        title: "Quick idea",
+        description: null,
+      });
+    });
+  });
+
+  // ---- pm_create_epic ----
+
+  describe("pm_create_epic", () => {
+    const sampleEpic = {
+      id: "epic_new",
+      projectId: "proj_001",
+      name: "New epic",
+      description: null,
+      status: "draft",
+      priority: "medium",
+      assigneeId: null,
+      taskSummary: { total: 0, done: 0, byStatus: {} },
+    };
+
+    it("creates an epic without proposal link", async () => {
+      mockCreateEpic.mockResolvedValue(sampleEpic);
+
+      const result = await client.callTool({
+        name: "pm_create_epic",
+        arguments: { project_id: "proj_001", name: "New epic" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Epic created successfully");
+      expect(text).toContain("epic_new");
+      expect(text).not.toContain("Linked proposal");
+    });
+
+    it("creates an epic linked to a proposal", async () => {
+      mockCreateEpic.mockResolvedValue({ ...sampleEpic });
+
+      const result = await client.callTool({
+        name: "pm_create_epic",
+        arguments: {
+          project_id: "proj_001",
+          name: "Linked epic",
+          proposal_id: "prop_001",
+          priority: "high",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("**Linked proposal:** prop_001");
+      expect(mockCreateEpic).toHaveBeenCalledWith("proj_001", {
+        name: "Linked epic",
+        description: null,
+        priority: "high",
+        proposalId: "prop_001",
+        milestoneId: null,
+        targetDate: null,
+      });
+    });
+
+    it("surfaces a clean message when CLAIM_DENIED", async () => {
+      const { ApiError } = await import("../src/api-client.js");
+      mockCreateEpic.mockRejectedValue(
+        new ApiError(409, "CLAIM_DENIED", "Not your claim"),
+      );
+
+      const result = await client.callTool({
+        name: "pm_create_epic",
+        arguments: {
+          project_id: "proj_001",
+          name: "Sneaky epic",
+          proposal_id: "prop_001",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("haven't claimed this proposal");
+      expect(text).toContain("pm_claim_proposal");
     });
   });
 

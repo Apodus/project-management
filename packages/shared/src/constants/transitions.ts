@@ -13,8 +13,9 @@ export const PROPOSAL_TRANSITIONS: readonly ProposalTransitionRule[] = [
   { from: "discussing", to: "accepted", allowedBy: ["human"] },
   { from: "discussing", to: "rejected", allowedBy: ["human"] },
   { from: "open", to: "rejected", allowedBy: ["human"] },
-  { from: "accepted", to: "planned", allowedBy: ["ai_agent"] },
-  { from: "planned", to: "in_progress", allowedBy: ["human", "ai_agent"] },
+  { from: "accepted", to: "in_progress", allowedBy: ["human", "ai_agent"] },
+  { from: "discussing", to: "in_progress", allowedBy: ["human", "ai_agent"] },
+  { from: "open", to: "in_progress", allowedBy: ["human", "ai_agent"] },
   { from: "in_progress", to: "completed", allowedBy: ["human", "ai_agent"] },
 ] as const;
 
@@ -52,6 +53,7 @@ export const TASK_TRANSITIONS: readonly TaskTransitionRule[] = [
   { from: "in_progress", to: "done" },
   { from: "in_review", to: "done" },
   { from: "in_review", to: "in_progress" },
+  { from: "done", to: "in_progress" },
   { from: "backlog", to: "cancelled" },
   { from: "ready", to: "cancelled" },
   { from: "in_progress", to: "cancelled" },

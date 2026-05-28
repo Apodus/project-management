@@ -18,7 +18,20 @@ export function registerUpdateTools(server: McpServer): void {
         .describe("Scope to a specific project."),
     },
     async ({ since, project_id }) => {
-      const result = await checkUpdates(since, project_id);
+      let result;
+      try {
+        result = await checkUpdates(since, project_id);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Failed to check updates: ${message}`,
+            },
+          ],
+        };
+      }
 
       if (!result.has_updates) {
         return {

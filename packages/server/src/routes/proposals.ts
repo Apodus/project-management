@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { PROPOSAL_STATUSES, COMMENT_TYPES } from "@pm/shared";
+import { CLAIM_RESULT_STATUSES, CLAIM_STATUSES, PROPOSAL_STATUSES, COMMENT_TYPES } from "@pm/shared";
 import type { UserType } from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as proposalService from "../services/proposal.service.js";
@@ -14,6 +14,8 @@ const proposalSchema = z
     description: z.string().nullable(),
     status: z.string(),
     createdBy: z.string(),
+    claimedBy: z.string().nullable(),
+    claimStatus: z.enum(CLAIM_STATUSES),
     resolvedBy: z.string().nullable(),
     resolvedAt: z.string().nullable(),
     createdAt: z.string(),
@@ -121,6 +123,15 @@ const workItemsEnvelope = z.object({
   data: workItemsSchema,
 });
 
+const claimResultSchema = z
+  .object({
+    ok: z.boolean(),
+    status: z.enum(CLAIM_RESULT_STATUSES),
+  })
+  .openapi("ClaimResult");
+
+const claimResultEnvelope = z.object({ data: claimResultSchema });
+
 const errorEnvelope = z.object({
   error: z.object({
     code: z.string(),
@@ -134,7 +145,7 @@ const createProposalBody = z
   .object({
     title: z.string().min(1, "Title is required"),
     description: z.string().nullable().optional(),
-    createdBy: z.string().min(1, "createdBy is required"),
+    createdBy: z.string().min(1).optional(),
   })
   .openapi("CreateProposal");
 
@@ -196,6 +207,8 @@ const proposalIdParam = z.string().min(1).openapi({
   example: "01HXYZ1234567890ABCDEFGHIJ",
 });
 
+const claimFilterQuery = z.enum(["available", "mine", "all"]).optional();
+
 // ─── Route definitions ────────────────────────────────────────────
 
 const listProposalsRoute = createRoute({
@@ -203,11 +216,12 @@ const listProposalsRoute = createRoute({
   path: "/api/v1/projects/{projectId}/proposals",
   tags: ["Proposals"],
   summary: "List proposals",
-  description: "List proposals for a project with optional status filter.",
+  description: "List proposals for a project with optional status and claim filters.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     query: z.object({
       status: z.enum(PROPOSAL_STATUSES).optional(),
+      claim: claimFilterQuery,
     }),
   },
   responses: {
@@ -299,7 +313,7 @@ const transitionProposalRoute = createRoute({
   tags: ["Proposals"],
   summary: "Transition proposal status",
   description:
-    "Change proposal status with role enforcement. Only allowed transitions are permitted.",
+    "Change proposal status with role enforcement. AI agents must hold the claim. Terminal transitions clear the claim.",
   request: {
     params: z.object({ id: proposalIdParam }),
     body: {
@@ -322,6 +336,10 @@ const transitionProposalRoute = createRoute({
     },
     404: {
       description: "Proposal not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Claim denied — proposal claimed by another agent or unclaimed",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -354,7 +372,7 @@ const addCommentRoute = createRoute({
   tags: ["Proposals"],
   summary: "Add comment",
   description:
-    "Add a comment to a proposal. If proposal is open and commenter is an AI agent, auto-transitions to discussing.",
+    "Add a comment to a proposal. AI agents must hold the claim. If proposal is open and commenter is an AI agent, auto-transitions to discussing.",
   request: {
     params: z.object({ id: proposalIdParam }),
     body: {
@@ -373,6 +391,10 @@ const addCommentRoute = createRoute({
     },
     404: {
       description: "Proposal not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Claim denied — proposal claimed by another agent or unclaimed",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -405,7 +427,7 @@ const implementProposalRoute = createRoute({
   tags: ["Proposals"],
   summary: "Implement proposal",
   description:
-    "Atomically create epics and tasks from an accepted proposal, transitioning it to planned.",
+    "Atomically create epics and tasks from a proposal, transitioning it to in_progress. AI agents must hold the claim.",
   request: {
     params: z.object({ id: proposalIdParam }),
     body: {
@@ -415,12 +437,60 @@ const implementProposalRoute = createRoute({
   },
   responses: {
     200: {
-      description: "Proposal planned",
+      description: "Proposal moved to in_progress and work items created",
       content: { "application/json": { schema: proposalDataEnvelope } },
     },
     400: {
-      description: "Invalid status — proposal must be in accepted status",
+      description: "Invalid status — proposal is already in_progress, completed, or rejected",
       content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Proposal not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Claim denied — proposal claimed by another agent or unclaimed",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const claimProposalRoute = createRoute({
+  method: "post",
+  path: "/api/v1/proposals/{id}/claim",
+  tags: ["Proposals"],
+  summary: "Claim proposal",
+  description:
+    "Atomically claim a proposal for the caller. Returns a structured result without leaking other claimants' IDs.",
+  request: {
+    params: z.object({ id: proposalIdParam }),
+  },
+  responses: {
+    200: {
+      description: "Claim attempt outcome",
+      content: { "application/json": { schema: claimResultEnvelope } },
+    },
+    404: {
+      description: "Proposal not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const releaseProposalRoute = createRoute({
+  method: "post",
+  path: "/api/v1/proposals/{id}/release",
+  tags: ["Proposals"],
+  summary: "Release proposal claim",
+  description:
+    "Release the caller's claim on a proposal. Humans can release any claim; AI agents only their own.",
+  request: {
+    params: z.object({ id: proposalIdParam }),
+  },
+  responses: {
+    200: {
+      description: "Release attempt outcome",
+      content: { "application/json": { schema: claimResultEnvelope } },
     },
     404: {
       description: "Proposal not found",
@@ -439,10 +509,12 @@ export function createProposalRoutes(): OpenAPIHono<{
   // GET /api/v1/projects/:projectId/proposals
   router.openapi(listProposalsRoute, (c) => {
     const { projectId } = c.req.valid("param");
-    const { status } = c.req.valid("query");
+    const { status, claim } = c.req.valid("query");
+    const user = c.get("currentUser");
     const proposalsList = proposalService.list(
       projectId,
-      status ? { status } : undefined,
+      { status, claim },
+      user ? { id: user.id } : null,
     );
 
     return c.json(
@@ -458,15 +530,41 @@ export function createProposalRoutes(): OpenAPIHono<{
   router.openapi(createProposalRoute, (c) => {
     const { projectId } = c.req.valid("param");
     const body = c.req.valid("json");
-    const proposal = proposalService.create(projectId, body);
+    const user = c.get("currentUser");
+    // Derive createdBy: AI agents always self-attribute; humans may pass an
+    // explicit createdBy to create on behalf of someone else.
+    const createdBy =
+      user?.type === "ai_agent" ? user.id : (body.createdBy ?? user?.id);
+    if (!createdBy) {
+      return c.json(
+        { error: { code: "MISSING_CREATED_BY", message: "createdBy could not be determined from auth context" } },
+        400,
+      );
+    }
+    const proposal = proposalService.create(projectId, {
+      ...body,
+      createdBy,
+    });
 
-    return c.json({ data: proposal }, 201);
+    return c.json(
+      {
+        data: proposalService.withClaimStatus(
+          proposal,
+          user ? { id: user.id } : null,
+        ),
+      },
+      201,
+    );
   });
 
   // GET /api/v1/proposals/:id
   router.openapi(getProposalRoute, (c) => {
     const { id } = c.req.valid("param");
-    const proposal = proposalService.getById(id);
+    const user = c.get("currentUser");
+    const proposal = proposalService.getById(
+      id,
+      user ? { id: user.id } : null,
+    );
 
     return c.json({ data: proposal }, 200);
   });
@@ -475,9 +573,18 @@ export function createProposalRoutes(): OpenAPIHono<{
   router.openapi(updateProposalRoute, (c) => {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
+    const user = c.get("currentUser");
     const proposal = proposalService.update(id, body);
 
-    return c.json({ data: proposal }, 200);
+    return c.json(
+      {
+        data: proposalService.withClaimStatus(
+          proposal,
+          user ? { id: user.id } : null,
+        ),
+      },
+      200,
+    );
   });
 
   // POST /api/v1/proposals/:id/transitions
@@ -491,7 +598,12 @@ export function createProposalRoutes(): OpenAPIHono<{
       type: user!.type as UserType,
     });
 
-    return c.json({ data: proposal }, 200);
+    return c.json(
+      {
+        data: proposalService.withClaimStatus(proposal, { id: user!.id }),
+      },
+      200,
+    );
   });
 
   // GET /api/v1/proposals/:id/comments
@@ -534,14 +646,41 @@ export function createProposalRoutes(): OpenAPIHono<{
     const { id } = c.req.valid("param");
     const { epics, tasks } = c.req.valid("json");
     const user = c.get("currentUser");
-    const proposal = proposalService.implementProposal(
-      id,
-      epics,
-      tasks,
-      user!.id,
-    );
+    const proposal = proposalService.implementProposal(id, epics, tasks, {
+      id: user!.id,
+      type: user!.type as UserType,
+    });
 
-    return c.json({ data: proposal }, 200);
+    return c.json(
+      {
+        data: proposalService.withClaimStatus(proposal, { id: user!.id }),
+      },
+      200,
+    );
+  });
+
+  // POST /api/v1/proposals/:id/claim
+  router.openapi(claimProposalRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("currentUser");
+    const result = proposalService.claim(id, {
+      id: user!.id,
+      type: user!.type as UserType,
+    });
+
+    return c.json({ data: result }, 200);
+  });
+
+  // POST /api/v1/proposals/:id/release
+  router.openapi(releaseProposalRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("currentUser");
+    const result = proposalService.release(id, {
+      id: user!.id,
+      type: user!.type as UserType,
+    });
+
+    return c.json({ data: result }, 200);
   });
 
   return router;

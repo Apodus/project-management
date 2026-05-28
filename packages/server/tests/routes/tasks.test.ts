@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   createTestApp,
   createTestUser,
+  createTestAiAgent,
   createTestProject,
   createTestEpic,
   createTestTask,
@@ -643,16 +644,57 @@ describe("Tasks API", () => {
       expect(res.status).toBe(400);
     });
 
-    it("should reject missing reporterId", async () => {
+    it("should derive reporterId from the authenticated caller when omitted", async () => {
       const project = createTestProject(testApp.db);
 
       const res = await authRequest(
         testApp.app,
         "POST",
         `/api/v1/projects/${project.id}/tasks`,
-        { body: { title: "No reporter" } },
+        { body: { title: "Reporter derived from auth" } },
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      // Default test user is the authenticated caller — should be reporter
+      expect(body.data.reporterId).toBe(testApp.testUser.id);
+    });
+
+    it("should force reporterId to the AI agent's own ID (ignores body value)", async () => {
+      const aiAgent = createTestAiAgent(testApp.db);
+      const otherUser = createTestUser(testApp.db);
+      // Enable AI task creation for this project so we can exercise the
+      // identity-derivation path (autonomy default denies AI top-level creates).
+      const project = createTestProject(testApp.db, {
+        settings: { ai_autonomy: { can_create_tasks: true } },
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/tasks`,
+        {
+          token: aiAgent.token,
+          body: { title: "Agent task", reporterId: otherUser.id },
+        },
+      );
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.reporterId).toBe(aiAgent.user.id);
+    });
+
+    it("should respect human-supplied reporterId (create on behalf of)", async () => {
+      const project = createTestProject(testApp.db);
+      const otherUser = createTestUser(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/tasks`,
+        { body: { title: "On behalf", reporterId: otherUser.id } },
+      );
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.reporterId).toBe(otherUser.id);
     });
   });
 

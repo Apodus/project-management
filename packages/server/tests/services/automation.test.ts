@@ -940,44 +940,6 @@ describe("Proposal Auto-Transition", () => {
     testApp.cleanup();
   });
 
-  it("should transition proposal from planned to in_progress when a task starts", () => {
-    const project = createTestProject(testApp.db);
-    const user = createTestUser(testApp.db);
-    const proposal = createTestProposal(testApp.db, {
-      projectId: project.id,
-      createdBy: user.id,
-      status: "planned",
-    });
-    const task = createTestTask(testApp.db, {
-      projectId: project.id,
-      reporterId: user.id,
-      proposalId: proposal.id,
-      status: "ready",
-    });
-
-    // Transition task to in_progress
-    const db = getDb();
-    db.update(tasks)
-      .set({ status: "in_progress", updatedAt: new Date().toISOString() })
-      .where(eq(tasks.id, task.id))
-      .run();
-
-    getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
-      entity: { ...task, status: "in_progress", proposalId: proposal.id },
-      entityType: "task",
-      entityId: task.id,
-      projectId: project.id,
-      actorId: user.id,
-      timestamp: new Date().toISOString(),
-      changes: { status: { from: "ready", to: "in_progress" } },
-      previousStatus: "ready",
-    });
-
-    // Proposal should now be in_progress
-    const updatedProposal = db.select().from(proposals).where(eq(proposals.id, proposal.id)).get();
-    expect(updatedProposal!.status).toBe("in_progress");
-  });
-
   it("should transition proposal from in_progress to completed when all tasks are done", () => {
     const project = createTestProject(testApp.db);
     const user = createTestUser(testApp.db);

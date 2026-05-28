@@ -41,7 +41,6 @@ const errorEnvelope = z.object({
 
 const createTaskCommentBody = z
   .object({
-    authorId: z.string().min(1, "authorId is required"),
     body: z.string().min(1, "Comment body is required"),
     commentType: z.enum(COMMENT_TYPES).optional(),
     metadata: z
@@ -194,9 +193,10 @@ export function createCommentRoutes(): OpenAPIHono<{
   router.openapi(createTaskCommentRoute, (c) => {
     const { taskId } = c.req.valid("param");
     const body = c.req.valid("json");
+    const user = c.get("currentUser");
     const comment = commentService.create({
       taskId,
-      authorId: body.authorId,
+      authorId: user!.id,
       body: body.body,
       commentType: body.commentType,
       metadata: body.metadata ?? null,

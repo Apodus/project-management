@@ -53,10 +53,10 @@ describe("Comments API", () => {
 
       // Create comments via API
       await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
-        body: { authorId: user.id, body: "First comment" },
+        body: { body: "First comment" },
       });
       await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
-        body: { authorId: user.id, body: "Second comment" },
+        body: { body: "Second comment" },
       });
 
       const res = await authRequest(
@@ -80,11 +80,11 @@ describe("Comments API", () => {
       });
 
       await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
-        body: { authorId: user.id, body: "First" },
+        body: { body: "First" },
       });
       await new Promise((r) => setTimeout(r, 10));
       await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
-        body: { authorId: user.id, body: "Second" },
+        body: { body: "Second" },
       });
 
       const res = await authRequest(
@@ -124,7 +124,6 @@ describe("Comments API", () => {
         `/api/v1/tasks/${task.id}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "This is a comment",
           },
         },
@@ -135,7 +134,7 @@ describe("Comments API", () => {
       expect(body.data.body).toBe("This is a comment");
       expect(body.data.taskId).toBe(task.id);
       expect(body.data.proposalId).toBeNull();
-      expect(body.data.authorId).toBe(user.id);
+      expect(body.data.authorId).toBe(testApp.testUser.id);
       expect(body.data.commentType).toBe("comment");
       expect(body.data.id).toBeDefined();
       expect(body.data.createdAt).toBeDefined();
@@ -154,7 +153,7 @@ describe("Comments API", () => {
         "POST",
         `/api/v1/tasks/${task.id}/comments`,
         {
-          body: { authorId: user.id },
+          body: {},
         },
       );
       expect(res.status).toBe(400);
@@ -174,7 +173,6 @@ describe("Comments API", () => {
         `/api/v1/tasks/${task.id}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "Some comment",
             commentType: "invalid_type",
           },
@@ -197,7 +195,6 @@ describe("Comments API", () => {
         `/api/v1/tasks/${task.id}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "Progress report",
             commentType: "progress_update",
           },
@@ -218,7 +215,7 @@ describe("Comments API", () => {
         "POST",
         `/api/v1/tasks/${fakeId}/comments`,
         {
-          body: { authorId: user.id, body: "Comment on nothing" },
+          body: { body: "Comment on nothing" },
         },
       );
       expect(res.status).toBe(404);
@@ -238,7 +235,6 @@ describe("Comments API", () => {
         `/api/v1/tasks/${task.id}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "Task comment via route",
           },
         },
@@ -273,7 +269,6 @@ describe("Comments API", () => {
         `/api/v1/tasks/${task.id}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "Progress update",
             commentType: "progress_update",
             metadata,
@@ -307,7 +302,6 @@ describe("Comments API", () => {
         `/api/v1/tasks/${task.id}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "Decision made",
             commentType: "decision",
             metadata,
@@ -342,7 +336,6 @@ describe("Comments API", () => {
         `/api/v1/tasks/${task.id}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "Handoff notes",
             commentType: "handoff",
             metadata,
@@ -372,7 +365,7 @@ describe("Comments API", () => {
         "POST",
         `/api/v1/tasks/${task.id}/comments`,
         {
-          body: { authorId: user.id, body: "Original body" },
+          body: { body: "Original body" },
         },
       );
       const created = await createRes.json();
@@ -403,7 +396,6 @@ describe("Comments API", () => {
         `/api/v1/tasks/${task.id}/comments`,
         {
           body: {
-            authorId: user.id,
             body: "Comment with metadata",
             commentType: "progress_update",
             metadata: { completion_pct: 50 },
@@ -454,7 +446,7 @@ describe("Comments API", () => {
         "POST",
         `/api/v1/tasks/${task.id}/comments`,
         {
-          body: { authorId: user.id, body: "To be deleted" },
+          body: { body: "To be deleted" },
         },
       );
       const created = await createRes.json();

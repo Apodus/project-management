@@ -81,10 +81,6 @@ function maybeShowToast(eventType: string, payload: SSEPayload): void {
       toast.success(`Proposal accepted`, {
         description: `Proposal ${titleLabel} accepted`,
       });
-    } else if (toStatus === "planned") {
-      toast.success(`Proposal planned`, {
-        description: `Proposal ${titleLabel} planned`,
-      });
     } else if (toStatus === "in_progress") {
       toast.success(`Proposal work started`, {
         description: `Proposal ${titleLabel} is now in progress`,
@@ -107,9 +103,11 @@ function maybeShowToast(eventType: string, payload: SSEPayload): void {
  *
  * EventSource handles auto-reconnect natively.
  */
-export function useSSE(projectId?: string | null): void {
+export function useSSE(projectId?: string | null, currentUserId?: string | null): void {
   const queryClient = useQueryClient();
   const eventSourceRef = useRef<EventSource | null>(null);
+  const currentUserIdRef = useRef(currentUserId);
+  currentUserIdRef.current = currentUserId;
 
   useEffect(() => {
     const { setStatus, recordEvent, clearUnread } =
@@ -182,17 +180,18 @@ export function useSSE(projectId?: string | null): void {
         return;
       }
 
-      // Track in connection store
-      recordEvent();
-
-      // Invalidate relevant query caches
+      // Invalidate relevant query caches (always, even for own actions)
       const keys = getInvalidationKeys(eventType);
       for (const key of keys) {
         queryClient.invalidateQueries({ queryKey: key });
       }
 
-      // Show toast notifications for key events
-      maybeShowToast(eventType, payload);
+      // Skip toasts and unread count for events caused by the current user
+      const isSelf = currentUserIdRef.current && payload.actor.id === currentUserIdRef.current;
+      if (!isSelf) {
+        recordEvent();
+        maybeShowToast(eventType, payload);
+      }
     };
 
     // Register all event listeners

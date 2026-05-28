@@ -426,13 +426,20 @@ export function ProposalDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex-1 space-y-2">
           <EditableTitle value={proposal.title} onSave={handleTitleSave} />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge
               variant="secondary"
               className={cn(getStatusColor(proposal.status))}
             >
               {formatStatus(proposal.status)}
             </Badge>
+            {proposal.claimedBy && (
+              <Badge variant="outline" className="font-normal">
+                Claimed by{" "}
+                {userMap.get(proposal.claimedBy)?.displayName ??
+                  proposal.claimedBy}
+              </Badge>
+            )}
             <span className="text-xs text-muted-foreground">
               Created {formatRelativeTime(proposal.createdAt)}
             </span>
@@ -565,7 +572,6 @@ export function ProposalDetailPage() {
             proposalId={proposalId!}
             disabled={
               proposal.status === "rejected" ||
-              proposal.status === "planned" ||
               proposal.status === "in_progress" ||
               proposal.status === "completed"
             }
@@ -573,9 +579,8 @@ export function ProposalDetailPage() {
         </div>
       </section>
 
-      {/* Work items (visible when planned, in progress, or completed) */}
-      {(proposal.status === "planned" ||
-        proposal.status === "in_progress" ||
+      {/* Work items (visible when in progress or completed) */}
+      {(proposal.status === "in_progress" ||
         proposal.status === "completed") && (
         <>
           <Separator />

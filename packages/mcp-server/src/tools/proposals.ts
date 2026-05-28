@@ -1,26 +1,103 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { listProposals, getProposal, addProposalComment } from "../api-client.js";
+import {
+  ApiError,
+  addProposalComment,
+  claimProposal,
+  getProposal,
+  listProposals,
+  releaseProposal,
+  type ClaimResultData,
+  type ClaimStatusValue,
+} from "../api-client.js";
+
+// ---------------------------------------------------------------------------
+// Display helpers — translate enums into agent-friendly text
+// ---------------------------------------------------------------------------
+
+function claimStatusLabel(status: ClaimStatusValue | undefined): string {
+  switch (status) {
+    case "claimed_by_you":
+      return "claimed for you";
+    case "claimed_by_other":
+      return "claimed by another agent";
+    case "unclaimed":
+    case undefined:
+      return "available to claim";
+  }
+}
+
+function claimResultText(result: ClaimResultData, mode: "claim" | "release"): string {
+  if (mode === "claim") {
+    switch (result.status) {
+      case "claimed_by_you":
+        return "✓ Claimed — this proposal is yours to work on. You can now comment, transition, or implement it.";
+      case "already_claimed_by_you":
+        return "✓ You already hold this claim.";
+      case "claimed_by_another_agent":
+        return "⚠ This proposal is claimed by another agent. Pick a different one.";
+      case "proposal_closed":
+        return "⚠ This proposal is closed (completed or rejected) and can no longer be claimed.";
+      default:
+        return `Unexpected claim result: ${result.status}`;
+    }
+  }
+  // release
+  switch (result.status) {
+    case "released":
+      return "✓ Released. Other agents can now claim this proposal.";
+    case "not_held":
+      return "⚠ This proposal isn't currently claimed.";
+    case "claimed_by_another_agent":
+      return "⚠ You don't hold this claim — only the current claimant or a human can release it.";
+    default:
+      return `Unexpected release result: ${result.status}`;
+  }
+}
+
+function claimDeniedText(): string {
+  return "⚠ You haven't claimed this proposal. Call pm_claim_proposal first, or pick a different proposal.";
+}
+
+// ---------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------
 
 export function registerProposalTools(server: McpServer): void {
   server.tool(
     "pm_list_proposals",
-    "List proposals with optional project and status filters. Returns array of proposals with id, title, status, description, comment_count.",
+    "List proposals with optional project, status, and claim filters. Each proposal shows its claim_status relative to you (available to claim, claimed for you, claimed by another agent). Pass claim='available' to see only proposals you can safely work on.",
     {
       project_id: z.string().optional().describe("Filter by project ID"),
       status: z
-        .enum(["open", "discussing", "accepted", "planned", "in_progress", "completed", "rejected"])
+        .enum(["open", "discussing", "accepted", "in_progress", "completed", "rejected"])
         .optional()
         .describe("Filter by proposal status"),
+      claim: z
+        .enum(["available", "mine", "all"])
+        .optional()
+        .describe(
+          "Filter by claim ownership relative to you: 'available' = unclaimed OR claimed by you (safe to work on); 'mine' = only proposals you've claimed; 'all' = no claim restriction (default).",
+        ),
     },
-    async ({ project_id, status }) => {
-      const proposals = await listProposals(project_id, status);
+    async ({ project_id, status, claim }) => {
+      const proposals = await listProposals(project_id, status, claim);
 
       const text = proposals
-        .map(
-          (p) =>
-            `- **${p.title}**\n  ID: ${p.id}\n  Status: ${p.status}\n  Project: ${p.projectId}\n  ${p.description ? p.description.slice(0, 200) : "(no description)"}${p.commentCount !== undefined ? `\n  Comments: ${p.commentCount}` : ""}`,
-        )
+        .map((p) => {
+          const claimLine = `  Claim: ${claimStatusLabel(p.claimStatus)}`;
+          const descLine = p.description
+            ? p.description.slice(0, 200)
+            : "(no description)";
+          return [
+            `- **${p.title}**`,
+            `  ID: ${p.id}`,
+            `  Status: ${p.status}`,
+            `  Project: ${p.projectId}`,
+            claimLine,
+            `  ${descLine}`,
+          ].join("\n");
+        })
         .join("\n\n");
 
       return {
@@ -39,7 +116,7 @@ export function registerProposalTools(server: McpServer): void {
 
   server.tool(
     "pm_get_proposal",
-    "Get full proposal details with discussion comments and linked work items. Use this to understand what a proposal is about and what has been discussed.",
+    "Get full proposal details with discussion comments and linked work items. Includes claim_status (whether the proposal is available to claim, claimed for you, or claimed by another agent).",
     {
       proposal_id: z.string().describe("The proposal ID to retrieve"),
     },
@@ -51,6 +128,7 @@ export function registerProposalTools(server: McpServer): void {
         "",
         `**ID:** ${proposal.id}`,
         `**Status:** ${proposal.status}`,
+        `**Claim:** ${claimStatusLabel(proposal.claimStatus)}`,
         `**Project:** ${proposal.projectId}`,
         `**Created by:** ${proposal.createdBy ?? "unknown"}`,
         `**Created:** ${proposal.createdAt}`,
@@ -98,8 +176,46 @@ export function registerProposalTools(server: McpServer): void {
   );
 
   server.tool(
+    "pm_claim_proposal",
+    "Claim a proposal so other agents know it's being worked on. You must claim before commenting, transitioning, or implementing. The server tells you the outcome — it never reveals other claimants' identities.",
+    {
+      proposal_id: z.string().describe("The proposal ID to claim"),
+    },
+    async ({ proposal_id }) => {
+      const result = await claimProposal(proposal_id);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: claimResultText(result, "claim"),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "pm_release_proposal",
+    "Release your claim on a proposal so other agents can pick it up. Use this if you're abandoning the work or handing off.",
+    {
+      proposal_id: z.string().describe("The proposal ID to release"),
+    },
+    async ({ proposal_id }) => {
+      const result = await releaseProposal(proposal_id);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: claimResultText(result, "release"),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
     "pm_discuss_proposal",
-    "Add a comment to a proposal (design discussion, question, or decision). Automatically transitions open proposals to 'discussing' status on first AI comment.",
+    "Add a comment to a proposal (design discussion, question, or decision). You must hold the claim first (call pm_claim_proposal). Automatically transitions open proposals to 'discussing' on first comment.",
     {
       proposal_id: z.string().describe("The proposal ID to comment on"),
       body: z
@@ -111,30 +227,39 @@ export function registerProposalTools(server: McpServer): void {
         .describe("Type of comment (default: design_discussion)"),
     },
     async ({ proposal_id, body, comment_type }) => {
-      const result = await addProposalComment(
-        proposal_id,
-        body,
-        comment_type ?? "design_discussion",
-      );
+      try {
+        const result = await addProposalComment(
+          proposal_id,
+          body,
+          comment_type ?? "design_discussion",
+        );
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: [
-              "Comment added successfully.",
-              "",
-              `**Comment ID:** ${result.comment.id}`,
-              `**Proposal status:** ${result.proposal.status}`,
-              `**Comment type:** ${result.comment.commentType}`,
-              "",
-              "---",
-              "",
-              result.comment.body,
-            ].join("\n"),
-          },
-        ],
-      };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: [
+                "Comment added successfully.",
+                "",
+                `**Comment ID:** ${result.comment.id}`,
+                `**Proposal status:** ${result.proposal.status}`,
+                `**Comment type:** ${result.comment.commentType}`,
+                "",
+                "---",
+                "",
+                result.comment.body,
+              ].join("\n"),
+            },
+          ],
+        };
+      } catch (err) {
+        if (err instanceof ApiError && err.code === "CLAIM_DENIED") {
+          return {
+            content: [{ type: "text" as const, text: claimDeniedText() }],
+          };
+        }
+        throw err;
+      }
     },
   );
 }

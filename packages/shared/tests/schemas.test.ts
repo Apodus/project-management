@@ -404,6 +404,8 @@ describe("selectProposalSchema", () => {
     description: "We need authentication",
     status: "open" as const,
     created_by: VALID_ULID,
+    claimed_by: null,
+    claim_status: "unclaimed" as const,
     resolved_by: null,
     resolved_at: null,
     created_at: VALID_TIMESTAMP,
@@ -415,9 +417,13 @@ describe("selectProposalSchema", () => {
   });
 
   it("accepts all valid proposal statuses", () => {
-    for (const status of ["open", "discussing", "accepted", "planned", "in_progress", "completed", "rejected"]) {
+    for (const status of ["open", "discussing", "accepted", "in_progress", "completed", "rejected"]) {
       expect(selectProposalSchema.parse({ ...validProposal, status })).toBeTruthy();
     }
+  });
+
+  it("rejects 'planned' (removed in 2026-05)", () => {
+    expect(() => selectProposalSchema.parse({ ...validProposal, status: "planned" })).toThrow();
   });
 
   it("allows nullable project_id", () => {

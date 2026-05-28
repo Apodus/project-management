@@ -108,6 +108,7 @@ export const proposals = sqliteTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id),
+    claimedBy: text("claimed_by").references(() => users.id),
     resolvedBy: text("resolved_by").references(() => users.id),
     resolvedAt: text("resolved_at"),
     createdAt: text("created_at").notNull(),
@@ -116,6 +117,7 @@ export const proposals = sqliteTable(
   (table) => [
     index("idx_proposals_project_status").on(table.projectId, table.status),
     index("idx_proposals_created_by").on(table.createdBy),
+    index("idx_proposals_claimed_by").on(table.claimedBy),
   ],
 );
 

@@ -1,7 +1,9 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, or } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import {
   PROPOSAL_TRANSITION_MAP,
+  type ClaimStatus,
+  type ClaimResult,
   type ProposalStatus,
   type UserType,
 } from "@pm/shared";
@@ -51,39 +53,112 @@ export interface TaskInput {
   epicIndex?: number; // index into the epics array to link to
 }
 
+export interface Actor {
+  id: string;
+  type: UserType;
+}
+
+export type ClaimFilter = "available" | "mine" | "all";
+
+// ─── Claim helpers ────────────────────────────────────────────────
+
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "rejected"]);
+
+/**
+ * Compute the claim_status enum relative to a caller.
+ * Returns "unclaimed" when no caller is supplied (e.g. server-internal call).
+ */
+export function deriveClaimStatus(
+  claimedBy: string | null | undefined,
+  caller?: { id: string } | null,
+): ClaimStatus {
+  if (!claimedBy) return "unclaimed";
+  if (caller && claimedBy === caller.id) return "claimed_by_you";
+  return "claimed_by_other";
+}
+
+/**
+ * Decorate a proposal row with claim_status derived from the caller.
+ */
+export function withClaimStatus<T extends { claimedBy?: string | null }>(
+  row: T,
+  caller?: { id: string } | null,
+): T & { claimStatus: ClaimStatus } {
+  return {
+    ...row,
+    claimStatus: deriveClaimStatus(row.claimedBy ?? null, caller),
+  };
+}
+
+/**
+ * Enforce that an AI agent has the claim on a proposal before writing.
+ * Humans always pass. AI agents must hold the claim (or no one does)? No — per the
+ * approved design, AI agents must hold the claim. Unclaimed proposals reject writes
+ * from AI agents; they must explicitly call `claim()` first.
+ */
+export function assertClaimOk(
+  proposal: { claimedBy?: string | null },
+  actor: Actor,
+): void {
+  if (actor.type === "human") return;
+  if (proposal.claimedBy === actor.id) return;
+  throw new AppError(
+    409,
+    "CLAIM_DENIED",
+    proposal.claimedBy
+      ? "This proposal is claimed by another agent."
+      : "You have not claimed this proposal. Call claim first.",
+  );
+}
+
 // ─── Service functions ────────────────────────────────────────────
 
 /**
- * List proposals for a project, with optional status filter.
+ * List proposals for a project, with optional status filter and a claim filter.
+ * The `claim` filter narrows by claim ownership relative to the caller:
+ *   - "available": unclaimed OR claimed by the caller
+ *   - "mine":      claimed by the caller
+ *   - "all":       no claim restriction (default)
  */
-export function list(projectId: string, filters?: { status?: string }) {
+export function list(
+  projectId: string,
+  filters?: { status?: string; claim?: ClaimFilter },
+  caller?: { id: string } | null,
+) {
   const db = getDb();
+  const conditions = [eq(proposals.projectId, projectId)];
 
   if (filters?.status) {
-    return db
-      .select()
-      .from(proposals)
-      .where(
-        and(
-          eq(proposals.projectId, projectId),
-          eq(proposals.status, filters.status),
-        ),
-      )
-      .all();
+    conditions.push(eq(proposals.status, filters.status));
   }
 
-  return db
+  if (filters?.claim && filters.claim !== "all" && caller) {
+    if (filters.claim === "mine") {
+      conditions.push(eq(proposals.claimedBy, caller.id));
+    } else {
+      // available
+      const availClause = or(
+        isNull(proposals.claimedBy),
+        eq(proposals.claimedBy, caller.id),
+      );
+      if (availClause) conditions.push(availClause);
+    }
+  }
+
+  const rows = db
     .select()
     .from(proposals)
-    .where(eq(proposals.projectId, projectId))
+    .where(and(...conditions))
     .all();
+
+  return rows.map((row) => withClaimStatus(row, caller));
 }
 
 /**
  * Get a single proposal by ID with comments and linked work items.
  * Throws 404 if not found.
  */
-export function getById(id: string) {
+export function getById(id: string, caller?: { id: string } | null) {
   const db = getDb();
   const proposal = db
     .select()
@@ -95,21 +170,18 @@ export function getById(id: string) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${id}`);
   }
 
-  // Get comments
   const proposalComments = db
     .select()
     .from(comments)
     .where(eq(comments.proposalId, id))
     .all();
 
-  // Get linked epics
   const linkedEpics = db
     .select()
     .from(epics)
     .where(eq(epics.proposalId, id))
     .all();
 
-  // Get linked tasks
   const linkedTasks = db
     .select()
     .from(tasks)
@@ -117,7 +189,7 @@ export function getById(id: string) {
     .all();
 
   return {
-    ...proposal,
+    ...withClaimStatus(proposal, caller),
     comments: proposalComments,
     workItems: {
       epics: linkedEpics,
@@ -135,7 +207,6 @@ export function create(projectId: string, data: CreateProposalInput) {
   const now = new Date().toISOString();
   const id = createId();
 
-  // Validate project exists
   const project = db
     .select()
     .from(projects)
@@ -184,7 +255,6 @@ export function create(projectId: string, data: CreateProposalInput) {
 export function update(id: string, data: UpdateProposalInput) {
   const db = getDb();
 
-  // Verify proposal exists
   const existing = db
     .select()
     .from(proposals)
@@ -214,21 +284,130 @@ export function update(id: string, data: UpdateProposalInput) {
 }
 
 /**
+ * Claim a proposal for an actor. Atomic via WHERE claimed_by IS NULL.
+ * Idempotent for the holder (returns already_claimed_by_you).
+ * Returns a ClaimResult — no IDs leaked.
+ */
+export function claim(id: string, actor: Actor): ClaimResult {
+  const db = getDb();
+  const proposal = db
+    .select()
+    .from(proposals)
+    .where(eq(proposals.id, id))
+    .get();
+
+  if (!proposal) {
+    throw new AppError(404, "NOT_FOUND", `Proposal not found: ${id}`);
+  }
+
+  if (TERMINAL_STATUSES.has(proposal.status)) {
+    return { ok: false, status: "proposal_closed" };
+  }
+
+  if (proposal.claimedBy === actor.id) {
+    return { ok: true, status: "already_claimed_by_you" };
+  }
+
+  if (proposal.claimedBy && proposal.claimedBy !== actor.id) {
+    return { ok: false, status: "claimed_by_another_agent" };
+  }
+
+  const now = new Date().toISOString();
+  const update = db
+    .update(proposals)
+    .set({ claimedBy: actor.id, updatedAt: now })
+    .where(and(eq(proposals.id, id), isNull(proposals.claimedBy)))
+    .run();
+
+  if (update.changes === 0) {
+    // Someone else won the race in between our SELECT and UPDATE.
+    return { ok: false, status: "claimed_by_another_agent" };
+  }
+
+  const fresh = db
+    .select()
+    .from(proposals)
+    .where(eq(proposals.id, id))
+    .get()!;
+
+  getEventBus().emit(EVENT_NAMES.PROPOSAL_CLAIMED, {
+    entity: fresh,
+    entityType: "proposal",
+    entityId: id,
+    projectId: proposal.projectId,
+    actorId: actor.id,
+    timestamp: now,
+    changes: { claimed_by: { from: null, to: actor.id } },
+  });
+
+  return { ok: true, status: "claimed_by_you" };
+}
+
+/**
+ * Release a claim. Humans can release any claim; AI agents only their own.
+ */
+export function release(id: string, actor: Actor): ClaimResult {
+  const db = getDb();
+  const proposal = db
+    .select()
+    .from(proposals)
+    .where(eq(proposals.id, id))
+    .get();
+
+  if (!proposal) {
+    throw new AppError(404, "NOT_FOUND", `Proposal not found: ${id}`);
+  }
+
+  if (!proposal.claimedBy) {
+    return { ok: false, status: "not_held" };
+  }
+
+  if (actor.type === "ai_agent" && proposal.claimedBy !== actor.id) {
+    return { ok: false, status: "claimed_by_another_agent" };
+  }
+
+  const now = new Date().toISOString();
+  const previousClaimant = proposal.claimedBy;
+  db.update(proposals)
+    .set({ claimedBy: null, updatedAt: now })
+    .where(eq(proposals.id, id))
+    .run();
+
+  const fresh = db
+    .select()
+    .from(proposals)
+    .where(eq(proposals.id, id))
+    .get()!;
+
+  getEventBus().emit(EVENT_NAMES.PROPOSAL_RELEASED, {
+    entity: fresh,
+    entityType: "proposal",
+    entityId: id,
+    projectId: proposal.projectId,
+    actorId: actor.id,
+    timestamp: now,
+    changes: { claimed_by: { from: previousClaimant, to: null } },
+  });
+
+  return { ok: true, status: "released" };
+}
+
+/**
  * Transition a proposal to a new status.
- * THE CORE LOGIC:
  * - Validates the transition is allowed per PROPOSAL_TRANSITION_MAP
  * - Validates the actor's user type is allowed for this transition
+ * - Enforces claim ownership for AI agents
  * - If transitioning to accepted/rejected, sets resolved_by and resolved_at
+ * - If transitioning to a terminal state (completed/rejected), clears claimed_by
  * - Updates status and updated_at
  */
 export function transition(
   id: string,
   toStatus: ProposalStatus,
-  actor: { id: string; type: UserType },
+  actor: Actor,
 ) {
   const db = getDb();
 
-  // Get current proposal
   const proposal = db
     .select()
     .from(proposals)
@@ -241,7 +420,6 @@ export function transition(
 
   const fromStatus = proposal.status as ProposalStatus;
 
-  // Check if the transition is valid at all
   const rule = PROPOSAL_TRANSITION_MAP.get(`${fromStatus}->${toStatus}`);
   if (!rule) {
     throw new AppError(
@@ -251,7 +429,6 @@ export function transition(
     );
   }
 
-  // Check if the actor's type is allowed for this transition
   if (!rule.allowedBy.includes(actor.type)) {
     throw new AppError(
       403,
@@ -260,16 +437,21 @@ export function transition(
     );
   }
 
+  assertClaimOk(proposal, actor);
+
   const now = new Date().toISOString();
   const values: Record<string, unknown> = {
     status: toStatus,
     updatedAt: now,
   };
 
-  // Set resolved_by and resolved_at when transitioning to accepted or rejected
   if (toStatus === "accepted" || toStatus === "rejected") {
     values.resolvedBy = actor.id;
     values.resolvedAt = now;
+  }
+
+  if (TERMINAL_STATUSES.has(toStatus)) {
+    values.claimedBy = null;
   }
 
   db.update(proposals)
@@ -300,14 +482,13 @@ export function transition(
 /**
  * Add a comment to a proposal.
  * If proposal status is "open" and the commenter is an AI agent,
- * auto-transition to "discussing".
+ * auto-transition to "discussing". The AI agent must already hold the claim.
  */
 export function addComment(proposalId: string, data: AddCommentInput) {
   const db = getDb();
   const now = new Date().toISOString();
   const commentId = createId();
 
-  // Verify proposal exists
   const proposal = db
     .select()
     .from(proposals)
@@ -318,7 +499,16 @@ export function addComment(proposalId: string, data: AddCommentInput) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${proposalId}`);
   }
 
-  // Insert the comment
+  const author = db
+    .select()
+    .from(users)
+    .where(eq(users.id, data.authorId))
+    .get();
+
+  if (author) {
+    assertClaimOk(proposal, { id: author.id, type: author.type as UserType });
+  }
+
   db.insert(comments)
     .values({
       id: commentId,
@@ -332,20 +522,11 @@ export function addComment(proposalId: string, data: AddCommentInput) {
     .run();
 
   // Auto-transition: if proposal is "open" and commenter is AI agent, move to "discussing"
-  if (proposal.status === "open") {
-    // Look up the commenter's type
-    const author = db
-      .select()
-      .from(users)
-      .where(eq(users.id, data.authorId))
-      .get();
-
-    if (author && author.type === "ai_agent") {
-      db.update(proposals)
-        .set({ status: "discussing", updatedAt: now })
-        .where(eq(proposals.id, proposalId))
-        .run();
-    }
+  if (proposal.status === "open" && author && author.type === "ai_agent") {
+    db.update(proposals)
+      .set({ status: "discussing", updatedAt: now })
+      .where(eq(proposals.id, proposalId))
+      .run();
   }
 
   return db
@@ -361,7 +542,6 @@ export function addComment(proposalId: string, data: AddCommentInput) {
 export function listComments(proposalId: string) {
   const db = getDb();
 
-  // Verify proposal exists
   const proposal = db
     .select()
     .from(proposals)
@@ -385,7 +565,6 @@ export function listComments(proposalId: string) {
 export function getWorkItems(proposalId: string) {
   const db = getDb();
 
-  // Verify proposal exists
   const proposal = db
     .select()
     .from(proposals)
@@ -416,22 +595,22 @@ export function getWorkItems(proposalId: string) {
 
 /**
  * Implement a proposal by atomically creating epics and tasks from it.
- * 1. Verify proposal is in "accepted" status
- * 2. Create epics with proposal_id set
- * 3. Create tasks (under epics or standalone) with proposal_id set
- * 4. Transition proposal to "planned"
- * 5. Add a summary comment
+ * 1. Verify proposal is in a planning-eligible status (open/discussing/accepted)
+ * 2. AI agents must hold the claim
+ * 3. Create epics with proposal_id set
+ * 4. Create tasks (under epics or standalone) with proposal_id set
+ * 5. Transition proposal to "in_progress"
+ * 6. Add a summary comment
  * All in a single transaction.
  */
 export function implementProposal(
   proposalId: string,
   epicInputs: EpicInput[],
   taskInputs: TaskInput[],
-  actorId: string,
+  actor: Actor,
 ) {
   const db = getDb();
 
-  // Verify proposal exists and is in "accepted" status
   const proposal = db
     .select()
     .from(proposals)
@@ -442,13 +621,16 @@ export function implementProposal(
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${proposalId}`);
   }
 
-  if (proposal.status !== "accepted") {
+  const blockedStatuses = ["in_progress", "completed", "rejected"];
+  if (blockedStatuses.includes(proposal.status)) {
     throw new AppError(
       400,
       "INVALID_STATUS",
-      `Proposal must be in "accepted" status to implement, currently "${proposal.status}"`,
+      `Proposal cannot be planned from "${proposal.status}" status. Only open, discussing, or accepted proposals can be planned.`,
     );
   }
+
+  assertClaimOk(proposal, actor);
 
   const projectId = proposal.projectId;
   if (!projectId) {
@@ -463,9 +645,7 @@ export function implementProposal(
   const createdEpicIds: string[] = [];
   const createdTaskIds: string[] = [];
 
-  // Run everything in a transaction
   db.transaction((tx) => {
-    // Create epics
     for (const epicInput of epicInputs) {
       const epicId = createId();
       createdEpicIds.push(epicId);
@@ -481,17 +661,15 @@ export function implementProposal(
           priority: epicInput.priority ?? "medium",
           createdAt: now,
           updatedAt: now,
-          createdBy: actorId,
+          createdBy: actor.id,
         })
         .run();
     }
 
-    // Create tasks
     for (const taskInput of taskInputs) {
       const taskId = createId();
       createdTaskIds.push(taskId);
 
-      // If epicIndex is specified, link to the created epic
       const epicId =
         taskInput.epicIndex !== undefined
           ? createdEpicIds[taskInput.epicIndex]
@@ -508,23 +686,21 @@ export function implementProposal(
           status: "backlog",
           priority: taskInput.priority ?? "medium",
           type: taskInput.type ?? "feature",
-          reporterId: actorId,
+          reporterId: actor.id,
           createdAt: now,
           updatedAt: now,
         })
         .run();
     }
 
-    // Transition proposal to "planned"
     tx.update(proposals)
       .set({
-        status: "planned",
+        status: "in_progress",
         updatedAt: now,
       })
       .where(eq(proposals.id, proposalId))
       .run();
 
-    // Add a summary comment
     const commentId = createId();
     const epicCount = epicInputs.length;
     const taskCount = taskInputs.length;
@@ -537,7 +713,7 @@ export function implementProposal(
       .values({
         id: commentId,
         proposalId,
-        authorId: actorId,
+        authorId: actor.id,
         body: summaryText,
         commentType: "decision",
         createdAt: now,
@@ -546,7 +722,6 @@ export function implementProposal(
       .run();
   });
 
-  // Emit events after transaction commits
   const eventBus = getEventBus();
 
   for (const epicId of createdEpicIds) {
@@ -556,7 +731,7 @@ export function implementProposal(
       entityType: "epic",
       entityId: epicId,
       projectId,
-      actorId,
+      actorId: actor.id,
       timestamp: now,
     });
   }
@@ -568,7 +743,7 @@ export function implementProposal(
       entityType: "task",
       entityId: taskId,
       projectId,
-      actorId,
+      actorId: actor.id,
       timestamp: now,
     });
   }
@@ -584,9 +759,9 @@ export function implementProposal(
     entityType: "proposal",
     entityId: proposalId,
     projectId,
-    actorId,
+    actorId: actor.id,
     timestamp: now,
-    changes: { status: { from: "accepted", to: "planned" } },
+    changes: { status: { from: proposal.status, to: "in_progress" } },
   });
 
   return updatedProposal;

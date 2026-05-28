@@ -162,6 +162,8 @@ export async function getProject(id: string): Promise<ProjectSummary> {
 // Typed API functions — Proposals
 // ---------------------------------------------------------------------------
 
+export type ClaimStatusValue = "unclaimed" | "claimed_by_you" | "claimed_by_other";
+
 export interface ProposalSummary {
   id: string;
   projectId: string;
@@ -169,6 +171,8 @@ export interface ProposalSummary {
   description: string | null;
   status: string;
   createdBy: string | null;
+  claimedBy?: string | null;
+  claimStatus?: ClaimStatusValue;
   commentCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -180,6 +184,21 @@ export interface ProposalDetail extends ProposalSummary {
     epics: unknown[];
     tasks: unknown[];
   };
+}
+
+export type ClaimFilterValue = "available" | "mine" | "all";
+
+export type ClaimResultStatus =
+  | "claimed_by_you"
+  | "already_claimed_by_you"
+  | "claimed_by_another_agent"
+  | "released"
+  | "not_held"
+  | "proposal_closed";
+
+export interface ClaimResultData {
+  ok: boolean;
+  status: ClaimResultStatus;
 }
 
 export interface CommentData {
@@ -195,11 +214,13 @@ export interface CommentData {
 export async function listProposals(
   projectId?: string,
   status?: string,
+  claim?: ClaimFilterValue,
 ): Promise<ProposalSummary[]> {
+  const params = { status, claim };
   if (projectId) {
     return apiRequest<ProposalSummary[]>(
       "GET",
-      `/projects/${encodeURIComponent(projectId)}/proposals${qs({ status })}`,
+      `/projects/${encodeURIComponent(projectId)}/proposals${qs(params)}`,
     );
   }
   // Without projectId, list all projects and aggregate proposals
@@ -208,11 +229,41 @@ export async function listProposals(
   for (const project of projects) {
     const proposals = await apiRequest<ProposalSummary[]>(
       "GET",
-      `/projects/${encodeURIComponent(project.id)}/proposals${qs({ status })}`,
+      `/projects/${encodeURIComponent(project.id)}/proposals${qs(params)}`,
     );
     all.push(...proposals);
   }
   return all;
+}
+
+export interface CreateProposalData {
+  title: string;
+  description?: string | null;
+}
+
+export async function createProposal(
+  projectId: string,
+  data: CreateProposalData,
+): Promise<ProposalSummary> {
+  return apiRequest<ProposalSummary>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/proposals`,
+    data,
+  );
+}
+
+export async function claimProposal(proposalId: string): Promise<ClaimResultData> {
+  return apiRequest<ClaimResultData>(
+    "POST",
+    `/proposals/${encodeURIComponent(proposalId)}/claim`,
+  );
+}
+
+export async function releaseProposal(proposalId: string): Promise<ClaimResultData> {
+  return apiRequest<ClaimResultData>(
+    "POST",
+    `/proposals/${encodeURIComponent(proposalId)}/release`,
+  );
 }
 
 export async function getProposal(id: string): Promise<ProposalDetail> {
@@ -364,7 +415,6 @@ export async function search(query: string, options?: SearchOptions): Promise<Se
 // ---------------------------------------------------------------------------
 
 export interface ImplementProposalData {
-  actorId: string;
   epics?: Array<{
     name: string;
     description?: string | null;
@@ -708,6 +758,27 @@ export interface EpicSummary {
     done: number;
     byStatus: Record<string, number>;
   };
+}
+
+export interface CreateEpicData {
+  name: string;
+  description?: string | null;
+  status?: string;
+  priority?: string;
+  proposalId?: string | null;
+  milestoneId?: string | null;
+  targetDate?: string | null;
+}
+
+export async function createEpic(
+  projectId: string,
+  data: CreateEpicData,
+): Promise<EpicSummary> {
+  return apiRequest<EpicSummary>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/epics`,
+    data,
+  );
 }
 
 export async function claimEpic(epicId: string): Promise<EpicSummary> {

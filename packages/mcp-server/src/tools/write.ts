@@ -1,15 +1,133 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
-  createTask,
-  updateTask,
+  ApiError,
   addTaskComment,
   addTaskDependency,
-  getTask,
+  createEpic,
   createGitRef,
+  createProposal,
+  createTask,
+  getTask,
+  updateTask,
 } from "../api-client.js";
 
+function claimDeniedText(): string {
+  return "⚠ You haven't claimed this proposal. Call pm_claim_proposal first, or omit proposal_id.";
+}
+
 export function registerWriteTools(server: McpServer): void {
+  // ---- pm_create_proposal ----
+
+  server.tool(
+    "pm_create_proposal",
+    "Create a new proposal in a project. Proposals capture an idea or change for discussion. Identity is derived from your authenticated session — you don't need to provide an author ID.",
+    {
+      project_id: z.string().describe("The project ID to create the proposal in"),
+      title: z.string().describe("Short, descriptive proposal title"),
+      description: z
+        .string()
+        .optional()
+        .describe("Proposal body (markdown). Explain the what, why, and trade-offs."),
+    },
+    async ({ project_id, title, description }) => {
+      const proposal = await createProposal(project_id, {
+        title,
+        description: description ?? null,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: [
+              "Proposal created successfully.",
+              "",
+              `**ID:** ${proposal.id}`,
+              `**Title:** ${proposal.title}`,
+              `**Status:** ${proposal.status}`,
+              `**Project:** ${proposal.projectId}`,
+              "",
+              "Next: call pm_claim_proposal to take ownership before discussing or implementing.",
+            ].join("\n"),
+          },
+        ],
+      };
+    },
+  );
+
+  // ---- pm_create_epic ----
+
+  server.tool(
+    "pm_create_epic",
+    "Create a new epic in a project. Epics group related tasks. Optionally link to a proposal (any non-terminal status). If proposal_id is set, you must hold the claim — call pm_claim_proposal first.",
+    {
+      project_id: z.string().describe("The project ID to create the epic in"),
+      name: z.string().describe("Epic name"),
+      description: z.string().optional().describe("Epic description (markdown)"),
+      priority: z
+        .enum(["critical", "high", "medium", "low"])
+        .optional()
+        .describe("Epic priority (default: medium)"),
+      proposal_id: z
+        .string()
+        .optional()
+        .describe(
+          "Link this epic to a proposal. You must hold the claim on that proposal.",
+        ),
+      milestone_id: z
+        .string()
+        .optional()
+        .describe("Link this epic to a milestone"),
+      target_date: z
+        .string()
+        .optional()
+        .describe("Target completion date (ISO 8601)"),
+    },
+    async ({
+      project_id,
+      name,
+      description,
+      priority,
+      proposal_id,
+      milestone_id,
+      target_date,
+    }) => {
+      try {
+        const epic = await createEpic(project_id, {
+          name,
+          description: description ?? null,
+          priority,
+          proposalId: proposal_id ?? null,
+          milestoneId: milestone_id ?? null,
+          targetDate: target_date ?? null,
+        });
+
+        const sections: string[] = [
+          "Epic created successfully.",
+          "",
+          `**ID:** ${epic.id}`,
+          `**Name:** ${epic.name}`,
+          `**Status:** ${epic.status}`,
+          `**Priority:** ${epic.priority}`,
+          `**Project:** ${epic.projectId}`,
+        ];
+        if (proposal_id) sections.push(`**Linked proposal:** ${proposal_id}`);
+
+        return {
+          content: [{ type: "text" as const, text: sections.join("\n") }],
+        };
+      } catch (err) {
+        if (err instanceof ApiError && err.code === "CLAIM_DENIED") {
+          return {
+            content: [{ type: "text" as const, text: claimDeniedText() }],
+          };
+        }
+        throw err;
+      }
+    },
+  );
+
   // ---- pm_create_task ----
 
   server.tool(

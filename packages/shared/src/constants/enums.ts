@@ -8,12 +8,14 @@ export const PROPOSAL_STATUSES = [
   "open",
   "discussing",
   "accepted",
-  "planned",
   "in_progress",
   "completed",
   "rejected",
 ] as const;
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+
+export const CLAIM_STATUSES = ["unclaimed", "claimed_by_you", "claimed_by_other"] as const;
+export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
 export const EPIC_STATUSES = ["draft", "active", "completed", "cancelled"] as const;
 export type EpicStatus = (typeof EPIC_STATUSES)[number];

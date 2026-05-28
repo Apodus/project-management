@@ -71,7 +71,6 @@ const PROPOSAL_PIPELINE = [
   { status: "open", label: "Open", color: "bg-blue-500", textColor: "text-white" },
   { status: "discussing", label: "Discussing", color: "bg-amber-500", textColor: "text-white" },
   { status: "accepted", label: "Accepted", color: "bg-green-500", textColor: "text-white" },
-  { status: "planned", label: "Planned", color: "bg-purple-500", textColor: "text-white" },
   { status: "in_progress", label: "In Progress", color: "bg-sky-500", textColor: "text-white" },
   { status: "completed", label: "Completed", color: "bg-emerald-500", textColor: "text-white" },
 ] as const;

@@ -17,7 +17,7 @@ export interface AiAutonomySettings {
 const DEFAULT_AUTONOMY: AiAutonomySettings = {
   can_self_assign: true,
   can_create_subtasks: true,
-  can_create_tasks: false,
+  can_create_tasks: true,
   can_change_priority: false,
   can_close_epics: false,
   max_concurrent_tasks: 3,

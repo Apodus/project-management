@@ -13,6 +13,8 @@ export const EVENT_NAMES = {
   PROPOSAL_TRANSITIONED: "proposal.transitioned",
   PROPOSAL_COMMENTED: "proposal.commented",
   PROPOSAL_PLANNED: "proposal.planned",
+  PROPOSAL_CLAIMED: "proposal.claimed",
+  PROPOSAL_RELEASED: "proposal.released",
 
   // Epic events
   EPIC_CREATED: "epic.created",

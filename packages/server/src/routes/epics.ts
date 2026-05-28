@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { EPIC_STATUSES, PRIORITIES } from "@pm/shared";
+import type { UserType } from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import * as epicService from "../services/epic.service.js";
 
@@ -61,6 +62,7 @@ const createEpicBody = z
     milestoneId: z.string().nullable().optional(),
     targetDate: z.string().nullable().optional(),
     sortOrder: z.number().int().optional(),
+    createdBy: z.string().min(1).optional(),
   })
   .openapi("CreateEpic");
 
@@ -275,7 +277,15 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   router.openapi(createEpicRoute, (c) => {
     const { projectId } = c.req.valid("param");
     const body = c.req.valid("json");
-    const epic = epicService.create({ ...body, projectId });
+    const user = c.get("currentUser") as AuthUser | null;
+    // Derive createdBy: AI agents always self-attribute; humans may pass an
+    // explicit createdBy or default to themselves.
+    const createdBy =
+      user?.type === "ai_agent" ? user.id : (body.createdBy ?? user?.id ?? null);
+    const epic = epicService.create(
+      { ...body, projectId, createdBy },
+      user ? { id: user.id, type: user.type as UserType } : undefined,
+    );
 
     return c.json({ data: epic }, 201);
   });

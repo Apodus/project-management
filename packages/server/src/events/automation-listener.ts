@@ -7,14 +7,13 @@ import {
   type Condition,
   type ActionContext,
 } from "../services/automation.service.js";
-import { getDb, tasks, epics, proposals } from "../db/index.js";
+import { getDb, tasks, proposals } from "../db/index.js";
 import { eq } from "drizzle-orm";
-import type { ProposalStatus, UserType } from "@pm/shared";
+import type { ProposalStatus } from "@pm/shared";
 
 /**
  * Register the proposal auto-transition listener.
  * When a task's status changes, checks if linked proposal should advance:
- * - planned → in_progress: when any linked task becomes in_progress
  * - in_progress → completed: when all non-cancelled linked tasks are done
  */
 export function registerProposalAutoTransitionListener(): () => void {
@@ -34,28 +33,6 @@ export function registerProposalAutoTransitionListener(): () => void {
     const currentStatus = proposal.status as ProposalStatus;
     const changes = payload.changes as { status?: { from: unknown; to: unknown } } | undefined;
     const newTaskStatus = changes?.status?.to as string | undefined;
-
-    // planned → in_progress: when any linked task becomes in_progress
-    if (currentStatus === "planned" && newTaskStatus === "in_progress") {
-      const now = new Date().toISOString();
-      db.update(proposals)
-        .set({ status: "in_progress", updatedAt: now })
-        .where(eq(proposals.id, proposalId))
-        .run();
-
-      const updated = db.select().from(proposals).where(eq(proposals.id, proposalId)).get()!;
-      bus.emit(EVENT_NAMES.PROPOSAL_TRANSITIONED, {
-        entity: updated,
-        entityType: "proposal",
-        entityId: proposalId,
-        projectId: proposal.projectId,
-        actorId: null,
-        timestamp: now,
-        changes: { status: { from: "planned", to: "in_progress" } },
-        previousStatus: "planned",
-      });
-      return;
-    }
 
     // in_progress → completed: when all non-cancelled tasks are done
     if (currentStatus === "in_progress" && newTaskStatus === "done") {

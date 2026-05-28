@@ -768,8 +768,14 @@ describe("Task Workflow API", () => {
       expect(body.error.message).toContain("self-assign");
     });
 
-    it("should block AI agent from creating tasks when can_create_tasks=false (default)", async () => {
-      const project = createTestProject(testApp.db);
+    it("should block AI agent from creating tasks when can_create_tasks is explicitly disabled", async () => {
+      const project = createTestProject(testApp.db, {
+        settings: {
+          ai_autonomy: {
+            can_create_tasks: false,
+          },
+        },
+      });
       const { user: agent, token: agentToken } = createTestAiAgent(testApp.db);
 
       const res = await authRequest(
@@ -791,14 +797,8 @@ describe("Task Workflow API", () => {
       expect(body.error.message).toContain("create tasks");
     });
 
-    it("should allow AI agent to create tasks when can_create_tasks=true", async () => {
-      const project = createTestProject(testApp.db, {
-        settings: {
-          ai_autonomy: {
-            can_create_tasks: true,
-          },
-        },
-      });
+    it("should allow AI agent to create tasks by default (symmetric with epic and subtask creation)", async () => {
+      const project = createTestProject(testApp.db);
       const { user: agent, token: agentToken } = createTestAiAgent(testApp.db);
 
       const res = await authRequest(

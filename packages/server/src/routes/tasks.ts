@@ -86,7 +86,7 @@ const createTaskBody = z
     priority: z.enum(PRIORITIES).optional(),
     type: z.enum(TASK_TYPES).optional(),
     assigneeId: z.string().nullable().optional(),
-    reporterId: z.string(),
+    reporterId: z.string().optional(),
     epicId: z.string().nullable().optional(),
     proposalId: z.string().nullable().optional(),
     estimatedEffort: z.enum(EFFORT_SIZES).nullable().optional(),
@@ -115,7 +115,7 @@ const createSubtaskBody = z
     priority: z.enum(PRIORITIES).optional(),
     type: z.enum(TASK_TYPES).optional(),
     assigneeId: z.string().nullable().optional(),
-    reporterId: z.string(),
+    reporterId: z.string().optional(),
     epicId: z.string().nullable().optional(),
     proposalId: z.string().nullable().optional(),
     estimatedEffort: z.enum(EFFORT_SIZES).nullable().optional(),
@@ -465,7 +465,23 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     const { projectId } = c.req.valid("param");
     const body = c.req.valid("json");
     const actor = c.get("currentUser") as AuthUser | null;
-    const task = taskService.create({ ...body, projectId }, actor ?? undefined);
+    // Derive reporterId from auth. AI agents always reporter-of-record themselves
+    // (can't impersonate); humans may pass an explicit reporterId to create
+    // on behalf of someone else.
+    const reporterId =
+      actor?.type === "ai_agent"
+        ? actor.id
+        : (body.reporterId ?? actor?.id);
+    if (!reporterId) {
+      return c.json(
+        { error: { code: "MISSING_REPORTER", message: "reporterId could not be determined from auth context" } },
+        400,
+      );
+    }
+    const task = taskService.create(
+      { ...body, projectId, reporterId },
+      actor ?? undefined,
+    );
 
     return c.json({ data: task }, 201);
   });
@@ -501,7 +517,21 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const actor = c.get("currentUser") as AuthUser | null;
-    const subtask = taskService.createSubtask(id, body, actor ?? undefined);
+    const reporterId =
+      actor?.type === "ai_agent"
+        ? actor.id
+        : (body.reporterId ?? actor?.id);
+    if (!reporterId) {
+      return c.json(
+        { error: { code: "MISSING_REPORTER", message: "reporterId could not be determined from auth context" } },
+        400,
+      );
+    }
+    const subtask = taskService.createSubtask(
+      id,
+      { ...body, reporterId },
+      actor ?? undefined,
+    );
 
     return c.json({ data: subtask }, 201);
   });

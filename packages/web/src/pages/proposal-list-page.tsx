@@ -34,7 +34,6 @@ const PROPOSAL_STATUSES = [
   "open",
   "discussing",
   "accepted",
-  "planned",
   "in_progress",
   "completed",
   "rejected",

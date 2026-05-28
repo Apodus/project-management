@@ -16,8 +16,8 @@ import type { ProposalStatus, TaskStatus } from "../src/index.js";
 // ============================================================
 
 describe("PROPOSAL_TRANSITIONS", () => {
-  it("has exactly 9 transition rules", () => {
-    expect(PROPOSAL_TRANSITIONS).toHaveLength(9);
+  it("has exactly 8 transition rules", () => {
+    expect(PROPOSAL_TRANSITIONS).toHaveLength(8);
   });
 
   it("open -> discussing is allowed by both human and ai_agent", () => {
@@ -45,29 +45,22 @@ describe("PROPOSAL_TRANSITIONS", () => {
     expect(rule!.allowedBy).toEqual(["human"]);
   });
 
-  it("accepted -> planned is allowed by both human and ai_agent", () => {
-    const rule = PROPOSAL_TRANSITION_MAP.get("accepted->planned");
+  it("accepted -> in_progress is allowed by both human and ai_agent", () => {
+    const rule = PROPOSAL_TRANSITION_MAP.get("accepted->in_progress");
     expect(rule).toBeDefined();
     expect(rule!.allowedBy).toContain("human");
     expect(rule!.allowedBy).toContain("ai_agent");
   });
 
-  it("discussing -> planned is allowed by both human and ai_agent", () => {
-    const rule = PROPOSAL_TRANSITION_MAP.get("discussing->planned");
+  it("discussing -> in_progress is allowed by both human and ai_agent", () => {
+    const rule = PROPOSAL_TRANSITION_MAP.get("discussing->in_progress");
     expect(rule).toBeDefined();
     expect(rule!.allowedBy).toContain("human");
     expect(rule!.allowedBy).toContain("ai_agent");
   });
 
-  it("open -> planned is allowed by both human and ai_agent", () => {
-    const rule = PROPOSAL_TRANSITION_MAP.get("open->planned");
-    expect(rule).toBeDefined();
-    expect(rule!.allowedBy).toContain("human");
-    expect(rule!.allowedBy).toContain("ai_agent");
-  });
-
-  it("planned -> in_progress is allowed by both human and ai_agent", () => {
-    const rule = PROPOSAL_TRANSITION_MAP.get("planned->in_progress");
+  it("open -> in_progress is allowed by both human and ai_agent", () => {
+    const rule = PROPOSAL_TRANSITION_MAP.get("open->in_progress");
     expect(rule).toBeDefined();
     expect(rule!.allowedBy).toContain("human");
     expect(rule!.allowedBy).toContain("ai_agent");
@@ -79,18 +72,22 @@ describe("PROPOSAL_TRANSITIONS", () => {
     expect(rule!.allowedBy).toContain("human");
     expect(rule!.allowedBy).toContain("ai_agent");
   });
+
+  it("planned status is no longer in the transition map", () => {
+    expect(PROPOSAL_TRANSITION_MAP.has("accepted->planned")).toBe(false);
+    expect(PROPOSAL_TRANSITION_MAP.has("planned->in_progress")).toBe(false);
+  });
 });
 
 describe("isValidProposalTransition", () => {
-  it("returns true for all 9 valid transitions without actor check", () => {
+  it("returns true for all 8 valid transitions without actor check", () => {
     expect(isValidProposalTransition("open", "discussing")).toBe(true);
     expect(isValidProposalTransition("discussing", "accepted")).toBe(true);
     expect(isValidProposalTransition("discussing", "rejected")).toBe(true);
     expect(isValidProposalTransition("open", "rejected")).toBe(true);
-    expect(isValidProposalTransition("accepted", "planned")).toBe(true);
-    expect(isValidProposalTransition("discussing", "planned")).toBe(true);
-    expect(isValidProposalTransition("open", "planned")).toBe(true);
-    expect(isValidProposalTransition("planned", "in_progress")).toBe(true);
+    expect(isValidProposalTransition("accepted", "in_progress")).toBe(true);
+    expect(isValidProposalTransition("discussing", "in_progress")).toBe(true);
+    expect(isValidProposalTransition("open", "in_progress")).toBe(true);
     expect(isValidProposalTransition("in_progress", "completed")).toBe(true);
   });
 
@@ -107,12 +104,8 @@ describe("isValidProposalTransition", () => {
     expect(isValidProposalTransition("rejected", "discussing")).toBe(false);
   });
 
-  it("returns false for planned -> accepted (must go through in_progress)", () => {
-    expect(isValidProposalTransition("planned", "accepted")).toBe(false);
-  });
-
-  it("returns false for in_progress -> planned", () => {
-    expect(isValidProposalTransition("in_progress", "planned")).toBe(false);
+  it("returns false for in_progress -> accepted (cannot go backwards)", () => {
+    expect(isValidProposalTransition("in_progress", "accepted")).toBe(false);
   });
 
   it("returns false for completed -> in_progress", () => {
@@ -136,7 +129,6 @@ describe("isValidProposalTransition", () => {
       "open",
       "discussing",
       "accepted",
-      "planned",
       "in_progress",
       "completed",
       "rejected",
@@ -171,36 +163,28 @@ describe("isValidProposalTransition", () => {
     expect(isValidProposalTransition("open", "rejected", "ai_agent")).toBe(false);
   });
 
-  it("allows accepted -> planned by human", () => {
-    expect(isValidProposalTransition("accepted", "planned", "human")).toBe(true);
+  it("allows accepted -> in_progress by human", () => {
+    expect(isValidProposalTransition("accepted", "in_progress", "human")).toBe(true);
   });
 
-  it("allows accepted -> planned by ai_agent", () => {
-    expect(isValidProposalTransition("accepted", "planned", "ai_agent")).toBe(true);
+  it("allows accepted -> in_progress by ai_agent", () => {
+    expect(isValidProposalTransition("accepted", "in_progress", "ai_agent")).toBe(true);
   });
 
-  it("allows discussing -> planned by human", () => {
-    expect(isValidProposalTransition("discussing", "planned", "human")).toBe(true);
+  it("allows discussing -> in_progress by human", () => {
+    expect(isValidProposalTransition("discussing", "in_progress", "human")).toBe(true);
   });
 
-  it("allows discussing -> planned by ai_agent", () => {
-    expect(isValidProposalTransition("discussing", "planned", "ai_agent")).toBe(true);
+  it("allows discussing -> in_progress by ai_agent", () => {
+    expect(isValidProposalTransition("discussing", "in_progress", "ai_agent")).toBe(true);
   });
 
-  it("allows open -> planned by human", () => {
-    expect(isValidProposalTransition("open", "planned", "human")).toBe(true);
+  it("allows open -> in_progress by human", () => {
+    expect(isValidProposalTransition("open", "in_progress", "human")).toBe(true);
   });
 
-  it("allows open -> planned by ai_agent", () => {
-    expect(isValidProposalTransition("open", "planned", "ai_agent")).toBe(true);
-  });
-
-  it("allows planned -> in_progress by human", () => {
-    expect(isValidProposalTransition("planned", "in_progress", "human")).toBe(true);
-  });
-
-  it("allows planned -> in_progress by ai_agent", () => {
-    expect(isValidProposalTransition("planned", "in_progress", "ai_agent")).toBe(true);
+  it("allows open -> in_progress by ai_agent", () => {
+    expect(isValidProposalTransition("open", "in_progress", "ai_agent")).toBe(true);
   });
 
   it("allows in_progress -> completed by human", () => {
@@ -213,39 +197,35 @@ describe("isValidProposalTransition", () => {
 });
 
 describe("getValidProposalTargets", () => {
-  it("returns [discussing, rejected, planned] for open (no actor filter)", () => {
+  it("returns [discussing, rejected, in_progress] for open (no actor filter)", () => {
     const targets = getValidProposalTargets("open");
     expect(targets).toContain("discussing");
     expect(targets).toContain("rejected");
-    expect(targets).toContain("planned");
+    expect(targets).toContain("in_progress");
     expect(targets).toHaveLength(3);
   });
 
-  it("returns [discussing, planned] for open when actor is ai_agent", () => {
+  it("returns [discussing, in_progress] for open when actor is ai_agent", () => {
     const targets = getValidProposalTargets("open", "ai_agent");
     expect(targets).toContain("discussing");
-    expect(targets).toContain("planned");
+    expect(targets).toContain("in_progress");
     expect(targets).toHaveLength(2);
   });
 
-  it("returns [accepted, rejected, planned] for discussing (no actor filter)", () => {
+  it("returns [accepted, rejected, in_progress] for discussing (no actor filter)", () => {
     const targets = getValidProposalTargets("discussing");
     expect(targets).toContain("accepted");
     expect(targets).toContain("rejected");
-    expect(targets).toContain("planned");
+    expect(targets).toContain("in_progress");
     expect(targets).toHaveLength(3);
   });
 
-  it("returns [planned] for discussing when actor is ai_agent", () => {
-    expect(getValidProposalTargets("discussing", "ai_agent")).toEqual(["planned"]);
+  it("returns [in_progress] for discussing when actor is ai_agent", () => {
+    expect(getValidProposalTargets("discussing", "ai_agent")).toEqual(["in_progress"]);
   });
 
-  it("returns [planned] for accepted", () => {
-    expect(getValidProposalTargets("accepted")).toEqual(["planned"]);
-  });
-
-  it("returns [in_progress] for planned", () => {
-    expect(getValidProposalTargets("planned")).toEqual(["in_progress"]);
+  it("returns [in_progress] for accepted", () => {
+    expect(getValidProposalTargets("accepted")).toEqual(["in_progress"]);
   });
 
   it("returns [completed] for in_progress", () => {

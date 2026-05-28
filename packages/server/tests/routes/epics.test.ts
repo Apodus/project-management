@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   createTestApp,
   createTestUser,
+  createTestAiAgent,
   createTestProject,
+  createTestProposal,
   createTestEpic,
   createTestTask,
   authRequest,
@@ -235,6 +237,109 @@ describe("Epics API", () => {
         { body: { name: "" } },
       );
       expect(res.status).toBe(400);
+    });
+
+    it("should allow creating an epic linked to a proposal in any non-terminal state", async () => {
+      const project = createTestProject(testApp.db);
+      for (const status of ["open", "discussing", "accepted", "in_progress"]) {
+        const proposal = createTestProposal(testApp.db, {
+          projectId: project.id,
+          createdBy: testApp.testUser.id,
+          status,
+        });
+
+        const res = await authRequest(
+          testApp.app,
+          "POST",
+          `/api/v1/projects/${project.id}/epics`,
+          { body: { name: `Epic for ${status}`, proposalId: proposal.id } },
+        );
+        expect(res.status).toBe(201);
+        const body = await res.json();
+        expect(body.data.proposalId).toBe(proposal.id);
+      }
+    });
+
+    it("should 404 when linking to a non-existent proposal", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/epics`,
+        { body: { name: "Orphan", proposalId: createId() } },
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("should 409 when AI agent creates an epic on a proposal claimed by another agent", async () => {
+      const project = createTestProject(testApp.db);
+      const agentA = createTestAiAgent(testApp.db);
+      const agentB = createTestAiAgent(testApp.db);
+      const proposal = createTestProposal(testApp.db, {
+        projectId: project.id,
+        createdBy: testApp.testUser.id,
+        status: "discussing",
+      });
+
+      // Agent A claims
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/claim`, {
+        token: agentA.token,
+      });
+
+      // Agent B tries to add an epic
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/epics`,
+        {
+          token: agentB.token,
+          body: { name: "Stealing work", proposalId: proposal.id },
+        },
+      );
+      expect(res.status).toBe(409);
+      expect((await res.json()).error.code).toBe("CLAIM_DENIED");
+    });
+
+    it("should allow an AI agent to create an epic on a proposal they hold", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const proposal = createTestProposal(testApp.db, {
+        projectId: project.id,
+        createdBy: testApp.testUser.id,
+        status: "discussing",
+      });
+
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/claim`, {
+        token: agent.token,
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/epics`,
+        {
+          token: agent.token,
+          body: { name: "Legit work", proposalId: proposal.id },
+        },
+      );
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.createdBy).toBe(agent.user.id);
+    });
+
+    it("should derive createdBy from authenticated caller", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/epics`,
+        { body: { name: "Self-attributed" } },
+      );
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.createdBy).toBe(testApp.testUser.id);
     });
   });
 

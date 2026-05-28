@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
+  ApiError,
   implementProposal,
   pickNextTask,
   transitionTask,
@@ -14,7 +15,7 @@ export function registerWorkflowTools(server: McpServer): void {
 
   server.tool(
     "pm_implement_proposal",
-    "Create epics and tasks from an accepted proposal. Transitions the proposal to 'planned' status. The proposal must be in 'accepted' status.",
+    "Create epics and tasks from a proposal, transitioning it to 'in_progress'. You must hold the claim first (call pm_claim_proposal). The proposal must be in open, discussing, or accepted status.",
     {
       proposal_id: z.string().describe("The accepted proposal ID to implement"),
       epics: z
@@ -103,37 +104,50 @@ export function registerWorkflowTools(server: McpServer): void {
         }
       }
 
-      const result = await implementProposal(proposal_id, {
-        actorId: "mcp-agent",
-        epics: apiEpics.length > 0 ? apiEpics : undefined,
-        tasks: apiTasks.length > 0 ? apiTasks : undefined,
-      });
+      try {
+        const result = await implementProposal(proposal_id, {
+          epics: apiEpics.length > 0 ? apiEpics : undefined,
+          tasks: apiTasks.length > 0 ? apiTasks : undefined,
+        });
 
-      const sections: string[] = [
-        "Proposal planned successfully.",
-        "",
-        `**Proposal ID:** ${result.id}`,
-        `**Status:** ${result.status}`,
-      ];
+        const sections: string[] = [
+          "Proposal planned successfully.",
+          "",
+          `**Proposal ID:** ${result.id}`,
+          `**Status:** ${result.status}`,
+        ];
 
-      if (apiEpics.length > 0) {
-        sections.push(`**Epics created:** ${apiEpics.length}`);
-      }
-      if (apiTasks.length > 0) {
-        sections.push(`**Tasks created:** ${apiTasks.length}`);
-      }
-      if (summary) {
-        sections.push("", "**Plan summary:**", summary);
-      }
+        if (apiEpics.length > 0) {
+          sections.push(`**Epics created:** ${apiEpics.length}`);
+        }
+        if (apiTasks.length > 0) {
+          sections.push(`**Tasks created:** ${apiTasks.length}`);
+        }
+        if (summary) {
+          sections.push("", "**Plan summary:**", summary);
+        }
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: sections.join("\n"),
-          },
-        ],
-      };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: sections.join("\n"),
+            },
+          ],
+        };
+      } catch (err) {
+        if (err instanceof ApiError && err.code === "CLAIM_DENIED") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "⚠ You haven't claimed this proposal. Call pm_claim_proposal first, or pick a different proposal.",
+              },
+            ],
+          };
+        }
+        throw err;
+      }
     },
   );
 
