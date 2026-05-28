@@ -11,10 +11,7 @@ import {
   getTask,
   updateTask,
 } from "../api-client.js";
-
-function claimDeniedText(): string {
-  return "⚠ You haven't claimed this proposal. Call pm_claim_proposal first, or omit proposal_id.";
-}
+import { claimDeniedText } from "./claim-display.js";
 
 export function registerWriteTools(server: McpServer): void {
   // ---- pm_create_proposal ----
@@ -120,7 +117,7 @@ export function registerWriteTools(server: McpServer): void {
       } catch (err) {
         if (err instanceof ApiError && err.code === "CLAIM_DENIED") {
           return {
-            content: [{ type: "text" as const, text: claimDeniedText() }],
+            content: [{ type: "text" as const, text: claimDeniedText("proposal", "pm_claim_proposal") }],
           };
         }
         throw err;

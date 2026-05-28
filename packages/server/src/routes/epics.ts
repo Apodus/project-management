@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { EPIC_STATUSES, PRIORITIES } from "@pm/shared";
+import { CLAIM_STATUSES, EPIC_STATUSES, PRIORITIES } from "@pm/shared";
 import type { UserType } from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import * as epicService from "../services/epic.service.js";
@@ -19,6 +19,7 @@ const epicSchema = z
     proposalId: z.string().nullable(),
     milestoneId: z.string().nullable(),
     assigneeId: z.string().nullable(),
+    claimStatus: z.enum(CLAIM_STATUSES),
     name: z.string(),
     description: z.string().nullable(),
     status: z.string(),
@@ -42,6 +43,22 @@ const epicListEnvelope = z.object({
     total: z.number(),
   }),
 });
+
+const claimResultSchema = z
+  .object({
+    ok: z.boolean(),
+    status: z.enum([
+      "claimed_by_you",
+      "already_claimed_by_you",
+      "claimed_by_another_agent",
+      "released",
+      "not_held",
+      "closed",
+    ]),
+  })
+  .openapi("EpicClaimResult");
+
+const claimResultEnvelope = z.object({ data: claimResultSchema });
 
 const errorEnvelope = z.object({
   error: z.object({
@@ -89,6 +106,8 @@ const projectIdParam = z.string().min(1).openapi({
   example: "01HXYZ1234567890ABCDEFGHIJ",
 });
 
+const claimFilterQuery = z.enum(["available", "mine", "all"]).optional();
+
 // ─── Route definitions ────────────────────────────────────────────
 
 const listEpicsRoute = createRoute({
@@ -96,12 +115,14 @@ const listEpicsRoute = createRoute({
   path: "/api/v1/projects/{projectId}/epics",
   tags: ["Epics"],
   summary: "List epics",
-  description: "List all epics for a project with optional status and milestone filters.",
+  description:
+    "List all epics for a project with optional status, milestone, and claim filters.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     query: z.object({
       status: z.enum(EPIC_STATUSES).optional(),
       milestone: z.string().optional(),
+      claim: claimFilterQuery,
     }),
   },
   responses: {
@@ -142,7 +163,7 @@ const getEpicRoute = createRoute({
   path: "/api/v1/epics/{id}",
   tags: ["Epics"],
   summary: "Get epic",
-  description: "Get an epic by ID with task summary.",
+  description: "Get an epic by ID with task summary and claim_status.",
   request: {
     params: z.object({ id: epicIdParam }),
   },
@@ -163,7 +184,8 @@ const updateEpicRoute = createRoute({
   path: "/api/v1/epics/{id}",
   tags: ["Epics"],
   summary: "Update epic",
-  description: "Update epic fields.",
+  description:
+    "Update epic fields. AI agents must hold the claim. Transitioning to a terminal status (completed/cancelled) clears the claim.",
   request: {
     params: z.object({ id: epicIdParam }),
     body: {
@@ -180,6 +202,10 @@ const updateEpicRoute = createRoute({
       description: "Epic not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
+    409: {
+      description: "Claim denied — epic claimed by another agent or unclaimed",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -188,7 +214,8 @@ const deleteEpicRoute = createRoute({
   path: "/api/v1/epics/{id}",
   tags: ["Epics"],
   summary: "Archive epic",
-  description: "Soft-delete an epic by setting its status to cancelled.",
+  description:
+    "Soft-delete an epic by setting its status to cancelled. AI agents must hold the claim.",
   request: {
     params: z.object({ id: epicIdParam }),
   },
@@ -201,6 +228,10 @@ const deleteEpicRoute = createRoute({
       description: "Epic not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
+    409: {
+      description: "Claim denied — epic claimed by another agent or unclaimed",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -209,21 +240,18 @@ const claimEpicRoute = createRoute({
   path: "/api/v1/epics/{id}/claim",
   tags: ["Epics"],
   summary: "Claim epic",
-  description: "Assign the current user as the epic owner.",
+  description:
+    "Atomically claim an epic for the caller. Returns a structured result without leaking other claimants' IDs.",
   request: {
     params: z.object({ id: epicIdParam }),
   },
   responses: {
     200: {
-      description: "Epic claimed",
-      content: { "application/json": { schema: epicDataEnvelope } },
+      description: "Claim attempt outcome",
+      content: { "application/json": { schema: claimResultEnvelope } },
     },
     404: {
       description: "Epic not found",
-      content: { "application/json": { schema: errorEnvelope } },
-    },
-    409: {
-      description: "Epic already claimed",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -233,15 +261,16 @@ const releaseEpicRoute = createRoute({
   method: "post",
   path: "/api/v1/epics/{id}/release",
   tags: ["Epics"],
-  summary: "Release epic",
-  description: "Clear the assignee from an epic.",
+  summary: "Release epic claim",
+  description:
+    "Release the caller's claim on an epic. Humans can release any claim; AI agents only their own.",
   request: {
     params: z.object({ id: epicIdParam }),
   },
   responses: {
     200: {
-      description: "Epic released",
-      content: { "application/json": { schema: epicDataEnvelope } },
+      description: "Release attempt outcome",
+      content: { "application/json": { schema: claimResultEnvelope } },
     },
     404: {
       description: "Epic not found",
@@ -258,10 +287,12 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   // GET /api/v1/projects/:projectId/epics
   router.openapi(listEpicsRoute, (c) => {
     const { projectId } = c.req.valid("param");
-    const { status, milestone } = c.req.valid("query");
+    const { status, milestone, claim } = c.req.valid("query");
+    const user = c.get("currentUser");
     const epicsList = epicService.list(
       projectId,
-      status || milestone ? { status, milestone } : undefined,
+      { status, milestone, claim },
+      user ? { id: user.id } : null,
     );
 
     return c.json(
@@ -293,7 +324,8 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   // GET /api/v1/epics/:id
   router.openapi(getEpicRoute, (c) => {
     const { id } = c.req.valid("param");
-    const epic = epicService.getById(id);
+    const user = c.get("currentUser");
+    const epic = epicService.getById(id, user ? { id: user.id } : null);
 
     return c.json({ data: epic }, 200);
   });
@@ -302,7 +334,12 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   router.openapi(updateEpicRoute, (c) => {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const epic = epicService.update(id, body);
+    const user = c.get("currentUser") as AuthUser | null;
+    const epic = epicService.update(
+      id,
+      body,
+      user ? { id: user.id, type: user.type as UserType } : undefined,
+    );
 
     return c.json({ data: epic }, 200);
   });
@@ -310,7 +347,11 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   // DELETE /api/v1/epics/:id
   router.openapi(deleteEpicRoute, (c) => {
     const { id } = c.req.valid("param");
-    const epic = epicService.archive(id);
+    const user = c.get("currentUser") as AuthUser | null;
+    const epic = epicService.archive(
+      id,
+      user ? { id: user.id, type: user.type as UserType } : undefined,
+    );
 
     return c.json({ data: epic }, 200);
   });
@@ -318,18 +359,25 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   // POST /api/v1/epics/:id/claim
   router.openapi(claimEpicRoute, (c) => {
     const { id } = c.req.valid("param");
-    const actor = c.get("currentUser") as AuthUser;
-    const epic = epicService.claimEpic(id, actor.id);
+    const user = c.get("currentUser") as AuthUser;
+    const result = epicService.claim(id, {
+      id: user.id,
+      type: user.type as UserType,
+    });
 
-    return c.json({ data: epic }, 200);
+    return c.json({ data: result }, 200);
   });
 
   // POST /api/v1/epics/:id/release
   router.openapi(releaseEpicRoute, (c) => {
     const { id } = c.req.valid("param");
-    const epic = epicService.releaseEpic(id);
+    const user = c.get("currentUser") as AuthUser;
+    const result = epicService.release(id, {
+      id: user.id,
+      type: user.type as UserType,
+    });
 
-    return c.json({ data: epic }, 200);
+    return c.json({ data: result }, 200);
   });
 
   return router;

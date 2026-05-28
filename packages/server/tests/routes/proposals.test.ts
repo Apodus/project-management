@@ -1766,7 +1766,7 @@ describe("Proposals API", () => {
       expect(txBody.data.claimedBy).toBeNull();
     });
 
-    it("claiming a completed proposal returns proposal_closed", async () => {
+    it("claiming a completed proposal returns closed", async () => {
       const agent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
         status: "completed",
@@ -1781,7 +1781,7 @@ describe("Proposals API", () => {
       );
       expect((await res.json()).data).toEqual({
         ok: false,
-        status: "proposal_closed",
+        status: "closed",
       });
     });
 

@@ -39,6 +39,8 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.TASK_ASSIGNED:
     case EVENT_NAMES.PROPOSAL_CLAIMED:
     case EVENT_NAMES.PROPOSAL_RELEASED:
+    case EVENT_NAMES.EPIC_CLAIMED:
+    case EVENT_NAMES.EPIC_RELEASED:
       return "assigned";
 
     // Commented events

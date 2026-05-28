@@ -753,7 +753,7 @@
               "claimed_by_another_agent",
               "released",
               "not_held",
-              "proposal_closed"
+              "closed"
             ]
           }
         },
@@ -782,6 +782,14 @@
           "assigneeId": {
             "type": "string",
             "nullable": true
+          },
+          "claimStatus": {
+            "type": "string",
+            "enum": [
+              "unclaimed",
+              "claimed_by_you",
+              "claimed_by_other"
+            ]
           },
           "name": {
             "type": "string"
@@ -842,6 +850,7 @@
           "proposalId",
           "milestoneId",
           "assigneeId",
+          "claimStatus",
           "name",
           "description",
           "status",
@@ -952,6 +961,29 @@
             "type": "integer"
           }
         }
+      },
+      "EpicClaimResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "claimed_by_you",
+              "already_claimed_by_you",
+              "claimed_by_another_agent",
+              "released",
+              "not_held",
+              "closed"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "status"
+        ]
       },
       "Task": {
         "type": "object",
@@ -6506,7 +6538,7 @@
           "Epics"
         ],
         "summary": "List epics",
-        "description": "List all epics for a project with optional status and milestone filters.",
+        "description": "List all epics for a project with optional status, milestone, and claim filters.",
         "parameters": [
           {
             "schema": {
@@ -6538,6 +6570,19 @@
             },
             "required": false,
             "name": "milestone",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "available",
+                "mine",
+                "all"
+              ]
+            },
+            "required": false,
+            "name": "claim",
             "in": "query"
           }
         ],
@@ -6663,7 +6708,7 @@
           "Epics"
         ],
         "summary": "Get epic",
-        "description": "Get an epic by ID with task summary.",
+        "description": "Get an epic by ID with task summary and claim_status.",
         "parameters": [
           {
             "schema": {
@@ -6732,7 +6777,7 @@
           "Epics"
         ],
         "summary": "Update epic",
-        "description": "Update epic fields.",
+        "description": "Update epic fields. AI agents must hold the claim. Transitioning to a terminal status (completed/cancelled) clears the claim.",
         "parameters": [
           {
             "schema": {
@@ -6803,6 +6848,36 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Claim denied — epic claimed by another agent or unclaimed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -6811,7 +6886,7 @@
           "Epics"
         ],
         "summary": "Archive epic",
-        "description": "Soft-delete an epic by setting its status to cancelled.",
+        "description": "Soft-delete an epic by setting its status to cancelled. AI agents must hold the claim.",
         "parameters": [
           {
             "schema": {
@@ -6872,6 +6947,36 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Claim denied — epic claimed by another agent or unclaimed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -6882,7 +6987,7 @@
           "Epics"
         ],
         "summary": "Claim epic",
-        "description": "Assign the current user as the epic owner.",
+        "description": "Atomically claim an epic for the caller. Returns a structured result without leaking other claimants' IDs.",
         "parameters": [
           {
             "schema": {
@@ -6897,14 +7002,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Epic claimed",
+            "description": "Claim attempt outcome",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "data": {
-                      "$ref": "#/components/schemas/Epic"
+                      "$ref": "#/components/schemas/EpicClaimResult"
                     }
                   },
                   "required": [
@@ -6943,36 +7048,6 @@
                 }
               }
             }
-          },
-          "409": {
-            "description": "Epic already claimed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ]
-                }
-              }
-            }
           }
         }
       }
@@ -6982,8 +7057,8 @@
         "tags": [
           "Epics"
         ],
-        "summary": "Release epic",
-        "description": "Clear the assignee from an epic.",
+        "summary": "Release epic claim",
+        "description": "Release the caller's claim on an epic. Humans can release any claim; AI agents only their own.",
         "parameters": [
           {
             "schema": {
@@ -6998,14 +7073,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Epic released",
+            "description": "Release attempt outcome",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "data": {
-                      "$ref": "#/components/schemas/Epic"
+                      "$ref": "#/components/schemas/EpicClaimResult"
                     }
                   },
                   "required": [

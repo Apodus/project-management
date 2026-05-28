@@ -13,3 +13,4 @@ data/
 .claude/worktrees/
 playwright-report/
 test-results/
+distribute.bat

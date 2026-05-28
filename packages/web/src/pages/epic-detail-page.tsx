@@ -27,9 +27,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { useEpic, useUpdateEpic } from "@/hooks/use-epics";
+import {
+  useEpic,
+  useUpdateEpic,
+  useClaimEpic,
+  useReleaseEpic,
+} from "@/hooks/use-epics";
 import { useTasks } from "@/hooks/use-tasks";
 import { useMilestones } from "@/hooks/use-milestones";
+import { useUsers } from "@/hooks/use-users";
+import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
 import {
   formatRelativeTime,
@@ -182,6 +189,11 @@ export function EpicDetailPage() {
 
   const { data: epic, isLoading, error, refetch } = useEpic(epicId);
   const updateEpic = useUpdateEpic();
+  const claimEpicMutation = useClaimEpic();
+  const releaseEpicMutation = useReleaseEpic();
+  const { data: currentUser } = useCurrentUser();
+  const { data: users } = useUsers();
+  const usersById = new Map((users ?? []).map((u) => [u.id, u.displayName] as const));
 
   // Fetch milestones for the dropdown
   const projectId = epic?.projectId ?? currentProjectId;
@@ -536,6 +548,38 @@ export function EpicDetailPage() {
                 ))}
               </SelectContent>
             </Select>
+          </MetadataField>
+
+          {/* Assignee / claim */}
+          <MetadataField label="Assignee">
+            {epic.assigneeId ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">
+                  {usersById.get(epic.assigneeId) ?? epic.assigneeId}
+                </span>
+                {(currentUser?.id === epic.assigneeId ||
+                  currentUser?.role === "admin") && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => epicId && releaseEpicMutation.mutate(epicId)}
+                    disabled={releaseEpicMutation.isPending}
+                    title="Release this epic so others can claim it"
+                  >
+                    Release
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => epicId && claimEpicMutation.mutate(epicId)}
+                disabled={claimEpicMutation.isPending}
+              >
+                Claim
+              </Button>
+            )}
           </MetadataField>
 
           {/* Milestone */}

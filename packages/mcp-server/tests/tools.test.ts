@@ -574,8 +574,8 @@ describe("MCP Tools", () => {
       expect(text).not.toMatch(/user[_-]/);
     });
 
-    it("reports proposal_closed for terminal proposals", async () => {
-      mockClaimProposal.mockResolvedValue({ ok: false, status: "proposal_closed" });
+    it("reports closed for terminal proposals", async () => {
+      mockClaimProposal.mockResolvedValue({ ok: false, status: "closed" });
 
       const result = await client.callTool({
         name: "pm_claim_proposal",

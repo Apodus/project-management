@@ -360,6 +360,18 @@ export async function getTaskActivity(
 export interface EpicFilters {
   status?: string;
   milestone?: string;
+  claim?: "available" | "mine" | "all";
+}
+
+export interface EpicClaimResult {
+  ok: boolean;
+  status:
+    | "claimed_by_you"
+    | "already_claimed_by_you"
+    | "claimed_by_another_agent"
+    | "released"
+    | "not_held"
+    | "closed";
 }
 
 export async function getEpics(
@@ -369,6 +381,7 @@ export async function getEpics(
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.milestone) params.set("milestone", filters.milestone);
+  if (filters?.claim) params.set("claim", filters.claim);
   const query = params.toString();
   return apiFetch<Epic[]>(
     `/projects/${projectId}/epics${query ? `?${query}` : ""}`,
@@ -386,6 +399,18 @@ export async function updateEpic(
   return apiFetch<Epic>(`/epics/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
+  });
+}
+
+export async function claimEpic(id: string): Promise<EpicClaimResult> {
+  return apiFetch<EpicClaimResult>(`/epics/${id}/claim`, {
+    method: "POST",
+  });
+}
+
+export async function releaseEpic(id: string): Promise<EpicClaimResult> {
+  return apiFetch<EpicClaimResult>(`/epics/${id}/release`, {
+    method: "POST",
   });
 }
 

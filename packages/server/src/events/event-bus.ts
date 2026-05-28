@@ -20,6 +20,8 @@ export const EVENT_NAMES = {
   EPIC_CREATED: "epic.created",
   EPIC_UPDATED: "epic.updated",
   EPIC_ARCHIVED: "epic.archived",
+  EPIC_CLAIMED: "epic.claimed",
+  EPIC_RELEASED: "epic.released",
 
   // Task events
   TASK_CREATED: "task.created",

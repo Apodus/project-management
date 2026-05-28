@@ -2,6 +2,7 @@ export * from "./common.js";
 export * from "./workspace.js";
 export * from "./user.js";
 export * from "./project.js";
+export * from "./claim.js";
 export * from "./proposal.js";
 export * from "./epic.js";
 export * from "./task.js";

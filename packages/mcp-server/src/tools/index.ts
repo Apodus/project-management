@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerProjectTools } from "./projects.js";
 import { registerTaskTools } from "./tasks.js";
 import { registerProposalTools } from "./proposals.js";
+import { registerEpicTools } from "./epics.js";
 import { registerSearchTools } from "./search.js";
 import { registerWorkflowTools } from "./workflow.js";
 import { registerWriteTools } from "./write.js";
@@ -16,6 +17,7 @@ export function registerAllTools(server: McpServer): void {
   registerProjectTools(server);
   registerTaskTools(server);
   registerProposalTools(server);
+  registerEpicTools(server);
   registerSearchTools(server);
   registerWorkflowTools(server);
   registerWriteTools(server);

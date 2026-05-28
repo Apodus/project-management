@@ -1,10 +1,20 @@
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, isNull, or } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import type { UserType } from "@pm/shared";
+import {
+  type ClaimResult,
+  type ClaimStatus,
+  type UserType,
+} from "@pm/shared";
 import { getDb, epics, proposals, tasks } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
-import { assertClaimOk } from "./proposal.service.js";
+import { assertClaimOk as assertProposalClaimOk } from "./proposal.service.js";
+import {
+  assertClaimOk as assertClaimOkRaw,
+  deriveClaimStatus,
+  type Actor,
+  type ClaimFilter,
+} from "./claim-helpers.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -36,6 +46,31 @@ export interface EpicTaskSummary {
   total: number;
   done: number;
   byStatus: Record<string, number>;
+}
+
+// ─── Claim helpers ────────────────────────────────────────────────
+
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "cancelled"]);
+
+/**
+ * Decorate an epic row with claim_status derived from the caller.
+ * Epics use `assigneeId` as the claim-holder field.
+ */
+function withClaimStatus<T extends { assigneeId?: string | null }>(
+  row: T,
+  caller?: { id: string } | null,
+): T & { claimStatus: ClaimStatus } {
+  return {
+    ...row,
+    claimStatus: deriveClaimStatus(row.assigneeId ?? null, caller),
+  };
+}
+
+function assertEpicClaimOk(
+  epic: { assigneeId?: string | null },
+  actor: Actor,
+): void {
+  assertClaimOkRaw(epic.assigneeId ?? null, actor, "epic");
 }
 
 // ─── Service functions ────────────────────────────────────────────
@@ -73,11 +108,16 @@ function getTaskSummary(epicId: string): EpicTaskSummary {
 
 /**
  * List epics for a project, with optional filters.
- * Includes task summary (count by status) for each epic.
+ * Includes task summary (count by status) and claim_status on each epic.
+ * The `claim` filter narrows by claim ownership relative to the caller:
+ *   - "available": unclaimed OR claimed by the caller
+ *   - "mine":      claimed by the caller
+ *   - "all":       no claim restriction (default)
  */
 export function list(
   projectId: string,
-  filters?: { status?: string; milestone?: string },
+  filters?: { status?: string; milestone?: string; claim?: ClaimFilter },
+  caller?: { id: string } | null,
 ) {
   const db = getDb();
 
@@ -90,22 +130,40 @@ export function list(
     conditions.push(eq(epics.milestoneId, filters.milestone));
   }
 
+  if (filters?.claim && filters.claim !== "all" && caller) {
+    if (filters.claim === "mine") {
+      conditions.push(eq(epics.assigneeId, caller.id));
+    } else {
+      // available
+      const availClause = or(
+        isNull(epics.assigneeId),
+        eq(epics.assigneeId, caller.id),
+      );
+      if (availClause) conditions.push(availClause);
+    }
+  }
+
   const epicList = db
     .select()
     .from(epics)
     .where(and(...conditions))
     .all();
 
-  return epicList.map((epic) => ({
-    ...epic,
-    taskSummary: getTaskSummary(epic.id),
-  }));
+  return epicList.map((epic) =>
+    withClaimStatus(
+      {
+        ...epic,
+        taskSummary: getTaskSummary(epic.id),
+      },
+      caller,
+    ),
+  );
 }
 
 /**
- * Get a single epic by ID with task summary. Throws 404 if not found.
+ * Get a single epic by ID with task summary and claim_status. Throws 404 if not found.
  */
-export function getById(id: string) {
+export function getById(id: string, caller?: { id: string } | null) {
   const db = getDb();
   const epic = db.select().from(epics).where(eq(epics.id, id)).get();
 
@@ -113,10 +171,13 @@ export function getById(id: string) {
     throw new AppError(404, "NOT_FOUND", `Epic not found: ${id}`);
   }
 
-  return {
-    ...epic,
-    taskSummary: getTaskSummary(epic.id),
-  };
+  return withClaimStatus(
+    {
+      ...epic,
+      taskSummary: getTaskSummary(epic.id),
+    },
+    caller,
+  );
 }
 
 /**
@@ -141,7 +202,7 @@ function getRawById(id: string) {
  */
 export function create(
   data: CreateEpicInput,
-  actor?: { id: string; type: UserType },
+  actor?: Actor,
 ) {
   const db = getDb();
 
@@ -159,7 +220,7 @@ export function create(
       );
     }
     if (actor) {
-      assertClaimOk(proposal, actor);
+      assertProposalClaimOk(proposal, actor);
     }
   }
 
@@ -184,7 +245,7 @@ export function create(
     })
     .run();
 
-  const result = getById(id);
+  const result = getById(id, actor);
 
   getEventBus().emit(EVENT_NAMES.EPIC_CREATED, {
     entity: result,
@@ -199,12 +260,18 @@ export function create(
 }
 
 /**
- * Update an epic's fields. Throws 404 if not found.
- * Automatically updates the `updatedAt` timestamp.
+ * Update an epic's fields. Throws 404 if not found, 409 if AI agent
+ * doesn't hold the claim. If the new status is terminal (completed/cancelled),
+ * the claim is auto-cleared.
  */
-export function update(id: string, data: UpdateEpicInput) {
-  // Verify the epic exists
-  getRawById(id);
+export function update(
+  id: string,
+  data: UpdateEpicInput,
+  actor?: Actor,
+) {
+  const existing = getRawById(id);
+  if (actor) assertEpicClaimOk(existing, actor);
+
   const db = getDb();
   const now = new Date().toISOString();
 
@@ -221,16 +288,20 @@ export function update(id: string, data: UpdateEpicInput) {
   if (data.targetDate !== undefined) values.targetDate = data.targetDate;
   if (data.sortOrder !== undefined) values.sortOrder = data.sortOrder;
 
+  if (data.status !== undefined && TERMINAL_STATUSES.has(data.status)) {
+    values.assigneeId = null;
+  }
+
   db.update(epics).set(values).where(eq(epics.id, id)).run();
 
-  const result = getById(id);
+  const result = getById(id, actor);
 
   getEventBus().emit(EVENT_NAMES.EPIC_UPDATED, {
     entity: result,
     entityType: "epic",
     entityId: id,
     projectId: result.projectId,
-    actorId: null,
+    actorId: actor?.id ?? null,
     timestamp: now,
   });
 
@@ -238,70 +309,121 @@ export function update(id: string, data: UpdateEpicInput) {
 }
 
 /**
- * Claim an epic — set assignee_id to the given user.
- * Throws 404 if epic not found, 409 if already claimed by another user.
+ * Claim an epic for an actor. Atomic via WHERE assignee_id IS NULL.
+ * Idempotent for the holder (returns already_claimed_by_you).
+ * Returns a ClaimResult — no claimant IDs leaked.
  */
-export function claimEpic(epicId: string, userId: string) {
-  const existing = getRawById(epicId);
+export function claim(id: string, actor: Actor): ClaimResult {
+  const db = getDb();
+  const epic = db.select().from(epics).where(eq(epics.id, id)).get();
 
-  if (existing.assigneeId && existing.assigneeId !== userId) {
-    throw new AppError(
-      409,
-      "ALREADY_CLAIMED",
-      `Epic is already claimed by another user`,
-    );
+  if (!epic) {
+    throw new AppError(404, "NOT_FOUND", `Epic not found: ${id}`);
   }
 
-  const db = getDb();
-  const now = new Date().toISOString();
+  if (TERMINAL_STATUSES.has(epic.status)) {
+    return { ok: false, status: "closed" };
+  }
 
-  db.update(epics)
-    .set({ assigneeId: userId, updatedAt: now })
-    .where(eq(epics.id, epicId))
+  if (epic.assigneeId === actor.id) {
+    return { ok: true, status: "already_claimed_by_you" };
+  }
+
+  if (epic.assigneeId && epic.assigneeId !== actor.id) {
+    return { ok: false, status: "claimed_by_another_agent" };
+  }
+
+  const now = new Date().toISOString();
+  const update = db
+    .update(epics)
+    .set({ assigneeId: actor.id, updatedAt: now })
+    .where(and(eq(epics.id, id), isNull(epics.assigneeId)))
     .run();
 
-  return getById(epicId);
+  if (update.changes === 0) {
+    return { ok: false, status: "claimed_by_another_agent" };
+  }
+
+  const fresh = db.select().from(epics).where(eq(epics.id, id)).get()!;
+
+  getEventBus().emit(EVENT_NAMES.EPIC_CLAIMED, {
+    entity: fresh,
+    entityType: "epic",
+    entityId: id,
+    projectId: epic.projectId,
+    actorId: actor.id,
+    timestamp: now,
+    changes: { assignee_id: { from: null, to: actor.id } },
+  });
+
+  return { ok: true, status: "claimed_by_you" };
 }
 
 /**
- * Release an epic — clear assignee_id.
- * Throws 404 if epic not found.
+ * Release a claim on an epic. Humans can release any claim; AI agents only their own.
  */
-export function releaseEpic(epicId: string) {
-  getRawById(epicId);
-
+export function release(id: string, actor: Actor): ClaimResult {
   const db = getDb();
-  const now = new Date().toISOString();
+  const epic = db.select().from(epics).where(eq(epics.id, id)).get();
 
+  if (!epic) {
+    throw new AppError(404, "NOT_FOUND", `Epic not found: ${id}`);
+  }
+
+  if (!epic.assigneeId) {
+    return { ok: false, status: "not_held" };
+  }
+
+  if (actor.type === "ai_agent" && epic.assigneeId !== actor.id) {
+    return { ok: false, status: "claimed_by_another_agent" };
+  }
+
+  const now = new Date().toISOString();
+  const previousClaimant = epic.assigneeId;
   db.update(epics)
     .set({ assigneeId: null, updatedAt: now })
-    .where(eq(epics.id, epicId))
-    .run();
-
-  return getById(epicId);
-}
-
-/**
- * Archive an epic (set status to "cancelled"). Throws 404 if not found.
- */
-export function archive(id: string) {
-  const existing = getRawById(id);
-  const db = getDb();
-  const now = new Date().toISOString();
-
-  db.update(epics)
-    .set({ status: "cancelled", updatedAt: now })
     .where(eq(epics.id, id))
     .run();
 
-  const result = getById(id);
+  const fresh = db.select().from(epics).where(eq(epics.id, id)).get()!;
+
+  getEventBus().emit(EVENT_NAMES.EPIC_RELEASED, {
+    entity: fresh,
+    entityType: "epic",
+    entityId: id,
+    projectId: epic.projectId,
+    actorId: actor.id,
+    timestamp: now,
+    changes: { assignee_id: { from: previousClaimant, to: null } },
+  });
+
+  return { ok: true, status: "released" };
+}
+
+/**
+ * Archive an epic (set status to "cancelled"). Throws 404 if not found, 409 if
+ * AI agent doesn't hold the claim. Clears any active claim.
+ */
+export function archive(id: string, actor?: Actor) {
+  const existing = getRawById(id);
+  if (actor) assertEpicClaimOk(existing, actor);
+
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  db.update(epics)
+    .set({ status: "cancelled", assigneeId: null, updatedAt: now })
+    .where(eq(epics.id, id))
+    .run();
+
+  const result = getById(id, actor);
 
   getEventBus().emit(EVENT_NAMES.EPIC_ARCHIVED, {
     entity: result,
     entityType: "epic",
     entityId: id,
     projectId: existing.projectId,
-    actorId: null,
+    actorId: actor?.id ?? null,
     timestamp: now,
     changes: { status: { from: existing.status, to: "cancelled" } },
     previousStatus: existing.status,

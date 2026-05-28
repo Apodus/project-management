@@ -18,6 +18,14 @@ import {
 } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
+import {
+  assertClaimOk as assertClaimOkRaw,
+  deriveClaimStatus,
+  type Actor as ClaimActor,
+  type ClaimFilter as ClaimFilterShared,
+} from "./claim-helpers.js";
+
+export { deriveClaimStatus } from "./claim-helpers.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -53,29 +61,12 @@ export interface TaskInput {
   epicIndex?: number; // index into the epics array to link to
 }
 
-export interface Actor {
-  id: string;
-  type: UserType;
-}
-
-export type ClaimFilter = "available" | "mine" | "all";
+export type Actor = ClaimActor;
+export type ClaimFilter = ClaimFilterShared;
 
 // ─── Claim helpers ────────────────────────────────────────────────
 
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "rejected"]);
-
-/**
- * Compute the claim_status enum relative to a caller.
- * Returns "unclaimed" when no caller is supplied (e.g. server-internal call).
- */
-export function deriveClaimStatus(
-  claimedBy: string | null | undefined,
-  caller?: { id: string } | null,
-): ClaimStatus {
-  if (!claimedBy) return "unclaimed";
-  if (caller && claimedBy === caller.id) return "claimed_by_you";
-  return "claimed_by_other";
-}
 
 /**
  * Decorate a proposal row with claim_status derived from the caller.
@@ -92,23 +83,14 @@ export function withClaimStatus<T extends { claimedBy?: string | null }>(
 
 /**
  * Enforce that an AI agent has the claim on a proposal before writing.
- * Humans always pass. AI agents must hold the claim (or no one does)? No — per the
- * approved design, AI agents must hold the claim. Unclaimed proposals reject writes
- * from AI agents; they must explicitly call `claim()` first.
+ * Humans always pass. AI agents must hold the claim — unclaimed proposals also
+ * reject AI-agent writes (they must call `claim()` first).
  */
 export function assertClaimOk(
   proposal: { claimedBy?: string | null },
   actor: Actor,
 ): void {
-  if (actor.type === "human") return;
-  if (proposal.claimedBy === actor.id) return;
-  throw new AppError(
-    409,
-    "CLAIM_DENIED",
-    proposal.claimedBy
-      ? "This proposal is claimed by another agent."
-      : "You have not claimed this proposal. Call claim first.",
-  );
+  assertClaimOkRaw(proposal.claimedBy ?? null, actor, "proposal");
 }
 
 // ─── Service functions ────────────────────────────────────────────
@@ -301,7 +283,7 @@ export function claim(id: string, actor: Actor): ClaimResult {
   }
 
   if (TERMINAL_STATUSES.has(proposal.status)) {
-    return { ok: false, status: "proposal_closed" };
+    return { ok: false, status: "closed" };
   }
 
   if (proposal.claimedBy === actor.id) {

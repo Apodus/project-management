@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { Milestone } from "lucide-react";
+import { Milestone, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProject } from "@/hooks/use-projects";
 import { useEpics } from "@/hooks/use-epics";
+import { useUsers } from "@/hooks/use-users";
 import { useProjectStore } from "@/stores/project-store";
 import {
   formatStatus,
@@ -34,9 +35,11 @@ const EPIC_STATUSES = ["draft", "active", "completed", "cancelled"] as const;
 
 function EpicCard({
   epic,
+  assigneeName,
   onClick,
 }: {
   epic: Epic;
+  assigneeName?: string;
   onClick: () => void;
 }) {
   const { total, done } = epic.taskSummary;
@@ -76,6 +79,16 @@ function EpicCard({
             No description
           </p>
         )}
+
+        {/* Assignee */}
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <User className="size-3" />
+          {epic.assigneeId ? (
+            <span className="truncate">{assigneeName ?? epic.assigneeId}</span>
+          ) : (
+            <span className="italic text-muted-foreground/60">Unclaimed</span>
+          )}
+        </div>
 
         {/* Progress bar */}
         <div className="space-y-1">
@@ -136,6 +149,9 @@ export function EpicListPage() {
     projectId,
     statusFilter && statusFilter !== "all" ? { status: statusFilter } : undefined,
   );
+
+  const { data: users } = useUsers();
+  const usersById = new Map((users ?? []).map((u) => [u.id, u.displayName] as const));
 
   function handleEpicClick(epicId: string) {
     navigate({
@@ -215,6 +231,7 @@ export function EpicListPage() {
             <EpicCard
               key={epic.id}
               epic={epic}
+              assigneeName={epic.assigneeId ? usersById.get(epic.assigneeId) : undefined}
               onClick={() => handleEpicClick(epic.id)}
             />
           ))}

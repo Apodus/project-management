@@ -194,7 +194,7 @@ export type ClaimResultStatus =
   | "claimed_by_another_agent"
   | "released"
   | "not_held"
-  | "proposal_closed";
+  | "closed";
 
 export interface ClaimResultData {
   ok: boolean;
@@ -748,11 +748,19 @@ export async function agentHeartbeat(): Promise<void> {
 export interface EpicSummary {
   id: string;
   projectId: string;
+  proposalId: string | null;
+  milestoneId: string | null;
+  assigneeId: string | null;
+  claimStatus?: ClaimStatusValue;
   name: string;
   description: string | null;
   status: string;
   priority: string;
-  assigneeId: string | null;
+  targetDate: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
   taskSummary: {
     total: number;
     done: number;
@@ -770,6 +778,41 @@ export interface CreateEpicData {
   targetDate?: string | null;
 }
 
+export async function listEpics(
+  projectId?: string,
+  filters?: { status?: string; milestone?: string; claim?: ClaimFilterValue },
+): Promise<EpicSummary[]> {
+  const params = {
+    status: filters?.status,
+    milestone: filters?.milestone,
+    claim: filters?.claim,
+  };
+  if (projectId) {
+    return apiRequest<EpicSummary[]>(
+      "GET",
+      `/projects/${encodeURIComponent(projectId)}/epics${qs(params)}`,
+    );
+  }
+  // Without projectId, aggregate across all projects
+  const projects = await listProjects();
+  const all: EpicSummary[] = [];
+  for (const project of projects) {
+    const epics = await apiRequest<EpicSummary[]>(
+      "GET",
+      `/projects/${encodeURIComponent(project.id)}/epics${qs(params)}`,
+    );
+    all.push(...epics);
+  }
+  return all;
+}
+
+export async function getEpic(epicId: string): Promise<EpicSummary> {
+  return apiRequest<EpicSummary>(
+    "GET",
+    `/epics/${encodeURIComponent(epicId)}`,
+  );
+}
+
 export async function createEpic(
   projectId: string,
   data: CreateEpicData,
@@ -781,15 +824,15 @@ export async function createEpic(
   );
 }
 
-export async function claimEpic(epicId: string): Promise<EpicSummary> {
-  return apiRequest<EpicSummary>(
+export async function claimEpic(epicId: string): Promise<ClaimResultData> {
+  return apiRequest<ClaimResultData>(
     "POST",
     `/epics/${encodeURIComponent(epicId)}/claim`,
   );
 }
 
-export async function releaseEpic(epicId: string): Promise<EpicSummary> {
-  return apiRequest<EpicSummary>(
+export async function releaseEpic(epicId: string): Promise<ClaimResultData> {
+  return apiRequest<ClaimResultData>(
     "POST",
     `/epics/${encodeURIComponent(epicId)}/release`,
   );

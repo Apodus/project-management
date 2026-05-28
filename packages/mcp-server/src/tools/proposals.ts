@@ -7,57 +7,12 @@ import {
   getProposal,
   listProposals,
   releaseProposal,
-  type ClaimResultData,
-  type ClaimStatusValue,
 } from "../api-client.js";
-
-// ---------------------------------------------------------------------------
-// Display helpers — translate enums into agent-friendly text
-// ---------------------------------------------------------------------------
-
-function claimStatusLabel(status: ClaimStatusValue | undefined): string {
-  switch (status) {
-    case "claimed_by_you":
-      return "claimed for you";
-    case "claimed_by_other":
-      return "claimed by another agent";
-    case "unclaimed":
-    case undefined:
-      return "available to claim";
-  }
-}
-
-function claimResultText(result: ClaimResultData, mode: "claim" | "release"): string {
-  if (mode === "claim") {
-    switch (result.status) {
-      case "claimed_by_you":
-        return "✓ Claimed — this proposal is yours to work on. You can now comment, transition, or implement it.";
-      case "already_claimed_by_you":
-        return "✓ You already hold this claim.";
-      case "claimed_by_another_agent":
-        return "⚠ This proposal is claimed by another agent. Pick a different one.";
-      case "proposal_closed":
-        return "⚠ This proposal is closed (completed or rejected) and can no longer be claimed.";
-      default:
-        return `Unexpected claim result: ${result.status}`;
-    }
-  }
-  // release
-  switch (result.status) {
-    case "released":
-      return "✓ Released. Other agents can now claim this proposal.";
-    case "not_held":
-      return "⚠ This proposal isn't currently claimed.";
-    case "claimed_by_another_agent":
-      return "⚠ You don't hold this claim — only the current claimant or a human can release it.";
-    default:
-      return `Unexpected release result: ${result.status}`;
-  }
-}
-
-function claimDeniedText(): string {
-  return "⚠ You haven't claimed this proposal. Call pm_claim_proposal first, or pick a different proposal.";
-}
+import {
+  claimDeniedText,
+  claimResultText,
+  claimStatusLabel,
+} from "./claim-display.js";
 
 // ---------------------------------------------------------------------------
 // Tools
@@ -187,7 +142,7 @@ export function registerProposalTools(server: McpServer): void {
         content: [
           {
             type: "text" as const,
-            text: claimResultText(result, "claim"),
+            text: claimResultText(result, "claim", "proposal"),
           },
         ],
       };
@@ -206,7 +161,7 @@ export function registerProposalTools(server: McpServer): void {
         content: [
           {
             type: "text" as const,
-            text: claimResultText(result, "release"),
+            text: claimResultText(result, "release", "proposal"),
           },
         ],
       };
@@ -255,7 +210,7 @@ export function registerProposalTools(server: McpServer): void {
       } catch (err) {
         if (err instanceof ApiError && err.code === "CLAIM_DENIED") {
           return {
-            content: [{ type: "text" as const, text: claimDeniedText() }],
+            content: [{ type: "text" as const, text: claimDeniedText("proposal", "pm_claim_proposal") }],
           };
         }
         throw err;

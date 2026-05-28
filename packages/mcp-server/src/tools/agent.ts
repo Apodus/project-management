@@ -1,92 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 import {
-  claimEpic,
-  releaseEpic,
-  listTasks,
-  listProposals,
   getAgentIdentity,
-  type EpicSummary,
+  listProposals,
+  listTasks,
 } from "../api-client.js";
 
 export function registerAgentTools(server: McpServer): void {
-  // ---- pm_claim_epic ----
-
-  server.tool(
-    "pm_claim_epic",
-    "Claim an unowned epic for focused work. Sets you as the epic assignee so other agents know you own it.",
-    {
-      epic_id: z.string().describe("The epic ID to claim"),
-    },
-    async ({ epic_id }) => {
-      const epic = await claimEpic(epic_id);
-
-      const sections: string[] = [
-        "Epic claimed successfully.",
-        "",
-        `**Epic:** ${epic.name}`,
-        `**ID:** ${epic.id}`,
-        `**Status:** ${epic.status}`,
-        `**Priority:** ${epic.priority}`,
-        `**Project:** ${epic.projectId}`,
-      ];
-
-      if (epic.description) {
-        sections.push("", "**Description:**", epic.description);
-      }
-
-      if (epic.taskSummary) {
-        sections.push(
-          "",
-          `**Tasks:** ${epic.taskSummary.total} total, ${epic.taskSummary.done} done`,
-        );
-        const statusParts = Object.entries(epic.taskSummary.byStatus)
-          .map(([status, count]) => `${status}: ${count}`)
-          .join(", ");
-        if (statusParts) {
-          sections.push(`**By status:** ${statusParts}`);
-        }
-      }
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: sections.join("\n"),
-          },
-        ],
-      };
-    },
-  );
-
-  // ---- pm_release_epic ----
-
-  server.tool(
-    "pm_release_epic",
-    "Release an epic when done working on it. Clears the assignee so other agents can claim it.",
-    {
-      epic_id: z.string().describe("The epic ID to release"),
-    },
-    async ({ epic_id }) => {
-      const epic = await releaseEpic(epic_id);
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: [
-              "Epic released.",
-              "",
-              `**Epic:** ${epic.name}`,
-              `**ID:** ${epic.id}`,
-              `**Status:** ${epic.status}`,
-            ].join("\n"),
-          },
-        ],
-      };
-    },
-  );
-
   // ---- pm_get_my_work ----
 
   server.tool(

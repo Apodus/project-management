@@ -2653,13 +2653,14 @@ export interface paths {
         };
         /**
          * List epics
-         * @description List all epics for a project with optional status and milestone filters.
+         * @description List all epics for a project with optional status, milestone, and claim filters.
          */
         get: {
             parameters: {
                 query?: {
                     status?: "draft" | "active" | "completed" | "cancelled";
                     milestone?: string;
+                    claim?: "available" | "mine" | "all";
                 };
                 header?: never;
                 path: {
@@ -2747,7 +2748,7 @@ export interface paths {
         };
         /**
          * Get epic
-         * @description Get an epic by ID with task summary.
+         * @description Get an epic by ID with task summary and claim_status.
          */
         get: {
             parameters: {
@@ -2791,7 +2792,7 @@ export interface paths {
         post?: never;
         /**
          * Archive epic
-         * @description Soft-delete an epic by setting its status to cancelled.
+         * @description Soft-delete an epic by setting its status to cancelled. AI agents must hold the claim.
          */
         delete: {
             parameters: {
@@ -2829,13 +2830,27 @@ export interface paths {
                         };
                     };
                 };
+                /** @description Claim denied — epic claimed by another agent or unclaimed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
             };
         };
         options?: never;
         head?: never;
         /**
          * Update epic
-         * @description Update epic fields.
+         * @description Update epic fields. AI agents must hold the claim. Transitioning to a terminal status (completed/cancelled) clears the claim.
          */
         patch: {
             parameters: {
@@ -2877,6 +2892,20 @@ export interface paths {
                         };
                     };
                 };
+                /** @description Claim denied — epic claimed by another agent or unclaimed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
             };
         };
         trace?: never;
@@ -2892,7 +2921,7 @@ export interface paths {
         put?: never;
         /**
          * Claim epic
-         * @description Assign the current user as the epic owner.
+         * @description Atomically claim an epic for the caller. Returns a structured result without leaking other claimants' IDs.
          */
         post: {
             parameters: {
@@ -2905,33 +2934,19 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Epic claimed */
+                /** @description Claim attempt outcome */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            data: components["schemas"]["Epic"];
+                            data: components["schemas"]["EpicClaimResult"];
                         };
                     };
                 };
                 /** @description Epic not found */
                 404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Epic already claimed */
-                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2962,8 +2977,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Release epic
-         * @description Clear the assignee from an epic.
+         * Release epic claim
+         * @description Release the caller's claim on an epic. Humans can release any claim; AI agents only their own.
          */
         post: {
             parameters: {
@@ -2976,14 +2991,14 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Epic released */
+                /** @description Release attempt outcome */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            data: components["schemas"]["Epic"];
+                            data: components["schemas"]["EpicClaimResult"];
                         };
                     };
                 };
@@ -6077,7 +6092,7 @@ export interface components {
         ClaimResult: {
             ok: boolean;
             /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "proposal_closed";
+            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed";
         };
         Epic: {
             id: string;
@@ -6085,6 +6100,8 @@ export interface components {
             proposalId: string | null;
             milestoneId: string | null;
             assigneeId: string | null;
+            /** @enum {string} */
+            claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
             name: string;
             description: string | null;
             status: string;
@@ -6126,6 +6143,11 @@ export interface components {
             milestoneId?: string | null;
             targetDate?: string | null;
             sortOrder?: number;
+        };
+        EpicClaimResult: {
+            ok: boolean;
+            /** @enum {string} */
+            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed";
         };
         Task: {
             id: string;

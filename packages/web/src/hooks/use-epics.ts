@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  claimEpic,
   getEpics,
   getEpic,
+  releaseEpic,
   updateEpic,
   type EpicFilters,
   type UpdateEpic,
@@ -42,6 +44,28 @@ export function useUpdateEpic() {
       queryClient.invalidateQueries({
         queryKey: epicKeys.detail(variables.id),
       });
+    },
+  });
+}
+
+export function useClaimEpic() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => claimEpic(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: epicKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: epicKeys.detail(id) });
+    },
+  });
+}
+
+export function useReleaseEpic() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => releaseEpic(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: epicKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: epicKeys.detail(id) });
     },
   });
 }
