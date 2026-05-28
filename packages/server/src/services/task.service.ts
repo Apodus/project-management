@@ -1,7 +1,16 @@
 import { eq, and, like, isNull, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { createId, isValidTaskTransition, getValidTaskTargets, findTaskTransitionPath } from "@pm/shared";
 import type { TaskStatus, EffortSize } from "@pm/shared";
-import { getDb, getRawDb, tasks, taskLabels, taskDependencies } from "../db/index.js";
+import {
+  getDb,
+  getRawDb,
+  tasks,
+  taskLabels,
+  taskDependencies,
+  epics,
+  projects,
+  users,
+} from "../db/index.js";
 import { AppError } from "../types.js";
 import type { AuthUser } from "../types.js";
 import * as dependencyService from "./dependency.service.js";
@@ -85,6 +94,121 @@ const PRIORITY_ORDER: Record<string, number> = {
   medium: 2,
   low: 3,
 };
+
+// ─── Enrichment ───────────────────────────────────────────────────
+
+interface TaskFKShape {
+  id: string;
+  projectId: string;
+  epicId: string | null;
+  parentTaskId: string | null;
+  assigneeId: string | null;
+  reporterId: string;
+}
+
+export type EnrichedFields = {
+  epicName: string | null;
+  projectName: string | null;
+  parentTaskTitle: string | null;
+  assigneeName: string | null;
+  assigneeType: string | null;
+  reporterName: string | null;
+  reporterType: string | null;
+};
+
+/**
+ * Batch-enrich tasks with the human-readable names of referenced epics,
+ * projects, parent tasks, assignees, and reporters. Single query per
+ * referenced table — safe for large pages.
+ */
+export function enrichTasks<T extends TaskFKShape>(
+  rawTasks: T[],
+): (T & EnrichedFields)[] {
+  if (rawTasks.length === 0) return [];
+  const db = getDb();
+
+  const epicIds = new Set<string>();
+  const projectIds = new Set<string>();
+  const parentIds = new Set<string>();
+  const userIds = new Set<string>();
+
+  for (const t of rawTasks) {
+    if (t.epicId) epicIds.add(t.epicId);
+    projectIds.add(t.projectId);
+    if (t.parentTaskId) parentIds.add(t.parentTaskId);
+    if (t.assigneeId) userIds.add(t.assigneeId);
+    if (t.reporterId) userIds.add(t.reporterId);
+  }
+
+  const epicMap = new Map<string, string>();
+  if (epicIds.size > 0) {
+    const rows = db
+      .select({ id: epics.id, name: epics.name })
+      .from(epics)
+      .where(inArray(epics.id, [...epicIds]))
+      .all();
+    for (const r of rows) epicMap.set(r.id, r.name);
+  }
+
+  const projectMap = new Map<string, string>();
+  if (projectIds.size > 0) {
+    const rows = db
+      .select({ id: projects.id, name: projects.name })
+      .from(projects)
+      .where(inArray(projects.id, [...projectIds]))
+      .all();
+    for (const r of rows) projectMap.set(r.id, r.name);
+  }
+
+  const parentMap = new Map<string, string>();
+  if (parentIds.size > 0) {
+    const rows = db
+      .select({ id: tasks.id, title: tasks.title })
+      .from(tasks)
+      .where(inArray(tasks.id, [...parentIds]))
+      .all();
+    for (const r of rows) parentMap.set(r.id, r.title);
+  }
+
+  const userMap = new Map<string, { displayName: string; type: string }>();
+  if (userIds.size > 0) {
+    const rows = db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        type: users.type,
+      })
+      .from(users)
+      .where(inArray(users.id, [...userIds]))
+      .all();
+    for (const r of rows) {
+      userMap.set(r.id, { displayName: r.displayName, type: r.type });
+    }
+  }
+
+  return rawTasks.map((t) => {
+    const assignee = t.assigneeId ? userMap.get(t.assigneeId) : null;
+    const reporter = userMap.get(t.reporterId);
+    return {
+      ...t,
+      epicName: t.epicId ? epicMap.get(t.epicId) ?? null : null,
+      projectName: projectMap.get(t.projectId) ?? null,
+      parentTaskTitle: t.parentTaskId
+        ? parentMap.get(t.parentTaskId) ?? null
+        : null,
+      assigneeName: assignee?.displayName ?? null,
+      assigneeType: assignee?.type ?? null,
+      reporterName: reporter?.displayName ?? null,
+      reporterType: reporter?.type ?? null,
+    };
+  });
+}
+
+export function enrichTask<T extends TaskFKShape>(
+  rawTask: T,
+): T & EnrichedFields {
+  return enrichTasks([rawTask])[0];
+}
 
 // ─── Service functions ────────────────────────────────────────────
 
@@ -232,7 +356,7 @@ export function list(projectId: string, filters?: TaskListFilters) {
     .all();
 
   return {
-    data,
+    data: enrichTasks(data),
     pagination: {
       page,
       perPage,
@@ -253,7 +377,7 @@ export function getById(id: string) {
     throw new AppError(404, "NOT_FOUND", `Task not found: ${id}`);
   }
 
-  return task;
+  return enrichTask(task);
 }
 
 /**
@@ -446,11 +570,12 @@ export function listSubtasks(parentTaskId: string) {
   getById(parentTaskId);
 
   const db = getDb();
-  return db
+  const rows = db
     .select()
     .from(tasks)
     .where(eq(tasks.parentTaskId, parentTaskId))
     .all();
+  return enrichTasks(rows);
 }
 
 // ─── Workflow engine ─────────────────────────────────────────────

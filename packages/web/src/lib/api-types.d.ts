@@ -6171,6 +6171,13 @@ export interface components {
             updatedAt: string;
             startedAt: string | null;
             completedAt: string | null;
+            epicName: string | null;
+            projectName: string | null;
+            parentTaskTitle: string | null;
+            assigneeName: string | null;
+            assigneeType: string | null;
+            reporterName: string | null;
+            reporterType: string | null;
         };
         CreateTask: {
             title: string;

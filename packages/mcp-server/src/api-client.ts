@@ -315,6 +315,7 @@ export async function addProposalComment(
 export interface TaskSummary {
   id: string;
   projectId: string;
+  proposalId: string | null;
   epicId: string | null;
   parentTaskId: string | null;
   title: string;
@@ -322,13 +323,25 @@ export interface TaskSummary {
   status: string;
   priority: string;
   type: string;
-  assignee: string | null;
+  assigneeId: string | null;
+  reporterId: string;
   estimatedEffort: string | null;
   dueDate: string | null;
   sortOrder: number;
   context: unknown;
+  gitBranch: string | null;
   createdAt: string;
   updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  // Server-enriched display names for foreign-key references.
+  epicName: string | null;
+  projectName: string | null;
+  parentTaskTitle: string | null;
+  assigneeName: string | null;
+  assigneeType: string | null;
+  reporterName: string | null;
+  reporterType: string | null;
 }
 
 export interface TaskFilters {

@@ -48,10 +48,11 @@ export function registerTaskTools(server: McpServer): void {
       });
 
       const text = tasks
-        .map(
-          (t) =>
-            `- [${t.priority.toUpperCase()}] **${t.title}**\n  ID: ${t.id}\n  Status: ${t.status} | Type: ${t.type}${t.assignee ? ` | Assignee: ${t.assignee}` : ""}${t.epicId ? ` | Epic: ${t.epicId}` : ""}`,
-        )
+        .map((t) => {
+          const assignee = t.assigneeName ?? t.assigneeId;
+          const epic = t.epicName ?? t.epicId;
+          return `- [${t.priority.toUpperCase()}] **${t.title}**\n  ID: ${t.id}\n  Status: ${t.status} | Type: ${t.type}${assignee ? ` | Assignee: ${assignee}` : ""}${epic ? ` | Epic: ${epic}` : ""}`;
+        })
         .join("\n\n");
 
       return {
@@ -81,14 +82,22 @@ export function registerTaskTools(server: McpServer): void {
         `**Status:** ${task.status}`,
         `**Priority:** ${task.priority}`,
         `**Type:** ${task.type}`,
-        `**Project:** ${task.projectId}`,
+        `**Project:** ${task.projectName ?? task.projectId}`,
       ];
 
-      if (task.epicId) sections.push(`**Epic:** ${task.epicId}`);
-      if (task.assignee) sections.push(`**Assignee:** ${task.assignee}`);
+      if (task.epicId) {
+        sections.push(`**Epic:** ${task.epicName ?? task.epicId}`);
+      }
+      if (task.assigneeId) {
+        sections.push(`**Assignee:** ${task.assigneeName ?? task.assigneeId}`);
+      }
       if (task.estimatedEffort) sections.push(`**Estimated Effort:** ${task.estimatedEffort}`);
       if (task.dueDate) sections.push(`**Due Date:** ${task.dueDate}`);
-      if (task.parentTaskId) sections.push(`**Parent Task:** ${task.parentTaskId}`);
+      if (task.parentTaskId) {
+        sections.push(
+          `**Parent Task:** ${task.parentTaskTitle ?? task.parentTaskId}`,
+        );
+      }
 
       sections.push("");
 

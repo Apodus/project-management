@@ -45,6 +45,16 @@ const taskSchema = z
     updatedAt: z.string(),
     startedAt: z.string().nullable(),
     completedAt: z.string().nullable(),
+    // Server-enriched display names for foreign-key references.
+    // Lets clients (especially MCP) talk about tasks by name without
+    // separate lookup calls.
+    epicName: z.string().nullable(),
+    projectName: z.string().nullable(),
+    parentTaskTitle: z.string().nullable(),
+    assigneeName: z.string().nullable(),
+    assigneeType: z.string().nullable(),
+    reporterName: z.string().nullable(),
+    reporterType: z.string().nullable(),
   })
   .openapi("Task");
 

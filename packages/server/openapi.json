@@ -1060,6 +1060,34 @@
           "completedAt": {
             "type": "string",
             "nullable": true
+          },
+          "epicName": {
+            "type": "string",
+            "nullable": true
+          },
+          "projectName": {
+            "type": "string",
+            "nullable": true
+          },
+          "parentTaskTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "assigneeName": {
+            "type": "string",
+            "nullable": true
+          },
+          "assigneeType": {
+            "type": "string",
+            "nullable": true
+          },
+          "reporterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "reporterType": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -1082,7 +1110,14 @@
           "createdAt",
           "updatedAt",
           "startedAt",
-          "completedAt"
+          "completedAt",
+          "epicName",
+          "projectName",
+          "parentTaskTitle",
+          "assigneeName",
+          "assigneeType",
+          "reporterName",
+          "reporterType"
         ]
       },
       "CreateTask": {

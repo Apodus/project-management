@@ -196,11 +196,15 @@ export function registerWorkflowTools(server: McpServer): void {
         `**Status:** ${task.status}`,
         `**Priority:** ${task.priority}`,
         `**Type:** ${task.type}`,
-        `**Project:** ${task.projectId}`,
+        `**Project:** ${task.projectName ?? task.projectId}`,
       ];
 
-      if (task.epicId) sections.push(`**Epic:** ${task.epicId}`);
-      if (task.assignee) sections.push(`**Assignee:** ${task.assignee}`);
+      if (task.epicId) {
+        sections.push(`**Epic:** ${task.epicName ?? task.epicId}`);
+      }
+      if (task.assigneeId) {
+        sections.push(`**Assignee:** ${task.assigneeName ?? task.assigneeId}`);
+      }
       if (task.estimatedEffort) sections.push(`**Estimated Effort:** ${task.estimatedEffort}`);
       if (task.dueDate) sections.push(`**Due Date:** ${task.dueDate}`);
 
@@ -250,7 +254,9 @@ export function registerWorkflowTools(server: McpServer): void {
         `**Type:** ${task.type}`,
       ];
 
-      if (task.assignee) sections.push(`**Assignee:** ${task.assignee}`);
+      if (task.assigneeId) {
+        sections.push(`**Assignee:** ${task.assigneeName ?? task.assigneeId}`);
+      }
 
       return {
         content: [

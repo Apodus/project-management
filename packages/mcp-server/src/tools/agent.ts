@@ -54,8 +54,9 @@ export function registerAgentTools(server: McpServer): void {
       if (myTasks.length > 0) {
         sections.push(`## In-Progress Tasks (${myTasks.length})`);
         for (const task of myTasks) {
+          const epic = task.epicName ?? task.epicId;
           sections.push(
-            `- [${task.priority.toUpperCase()}] **${task.title}** (${task.id})${task.epicId ? ` [Epic: ${task.epicId}]` : ""}`,
+            `- [${task.priority.toUpperCase()}] **${task.title}** (${task.id})${epic ? ` [Epic: ${epic}]` : ""}`,
           );
         }
         sections.push("");

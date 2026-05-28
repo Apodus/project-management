@@ -146,9 +146,11 @@ function MetadataField({
 function EpicTaskRow({
   task,
   onClick,
+  assigneeName,
 }: {
   task: Task;
   onClick: () => void;
+  assigneeName: string | undefined;
 }) {
   return (
     <TableRow className="cursor-pointer" onClick={onClick}>
@@ -172,7 +174,9 @@ function EpicTaskRow({
         </Badge>
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
-        {task.assigneeId ?? (
+        {task.assigneeId ? (
+          assigneeName ?? "Unknown User"
+        ) : (
           <span className="italic text-muted-foreground/50">Unassigned</span>
         )}
       </TableCell>
@@ -486,6 +490,11 @@ export function EpicDetailPage() {
                         key={task.id}
                         task={task}
                         onClick={() => handleTaskClick(task.id)}
+                        assigneeName={
+                          task.assigneeId
+                            ? usersById.get(task.assigneeId)
+                            : undefined
+                        }
                       />
                     ))}
                   </TableBody>

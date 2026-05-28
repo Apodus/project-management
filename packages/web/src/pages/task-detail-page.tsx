@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -52,6 +52,7 @@ import {
   useAddTaskComment,
 } from "@/hooks/use-tasks";
 import { useCreateTemplateFromTask } from "@/hooks/use-templates";
+import { useUsers } from "@/hooks/use-users";
 import { useProjectStore } from "@/stores/project-store";
 import {
   formatRelativeTime,
@@ -194,9 +195,15 @@ function MetadataField({
 
 // ---- Comment item ----
 
-function TaskCommentItem({ comment }: { comment: TaskComment }) {
-  const isAI =
-    comment.authorId.startsWith("ai-") || comment.authorId === "ai_agent";
+function TaskCommentItem({
+  comment,
+  userMap,
+}: {
+  comment: TaskComment;
+  userMap: Map<string, { displayName: string; type: string }>;
+}) {
+  const author = userMap.get(comment.authorId);
+  const isAI = author?.type === "ai_agent";
   const isHandoff = comment.commentType === "handoff";
   const metadata = comment.metadata as Record<string, unknown> | undefined;
 
@@ -224,7 +231,7 @@ function TaskCommentItem({ comment }: { comment: TaskComment }) {
             {isAI ? "AI" : "H"}
           </div>
           <span className="text-sm font-medium">
-            {isAI ? "AI Agent" : "Human Director"}
+            {author?.displayName ?? "Unknown User"}
           </span>
           {comment.commentType && comment.commentType !== "comment" && (
             <Badge
@@ -1130,8 +1137,19 @@ export function TaskDetailPage() {
   const { data: task, isLoading, error, refetch } = useTask(taskId);
   const { data: comments, isLoading: commentsLoading } =
     useTaskComments(taskId);
+  const { data: users } = useUsers();
   const updateTask = useUpdateTask();
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
+
+  const userMap = useMemo(() => {
+    const map = new Map<string, { displayName: string; type: string }>();
+    if (users) {
+      for (const u of users) {
+        map.set(u.id, { displayName: u.displayName, type: u.type });
+      }
+    }
+    return map;
+  }, [users]);
 
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
@@ -1355,7 +1373,11 @@ export function TaskDetailPage() {
             {!commentsLoading && comments && comments.length > 0 && (
               <div className="space-y-3">
                 {comments.map((comment) => (
-                  <TaskCommentItem key={comment.id} comment={comment} />
+                  <TaskCommentItem
+                    key={comment.id}
+                    comment={comment}
+                    userMap={userMap}
+                  />
                 ))}
               </div>
             )}
@@ -1485,7 +1507,9 @@ export function TaskDetailPage() {
           {/* Assignee (read-only display for now) */}
           <MetadataField label="Assignee">
             <span className="text-sm">
-              {task.assigneeId ?? (
+              {task.assigneeId ? (
+                userMap.get(task.assigneeId)?.displayName ?? "Unknown User"
+              ) : (
                 <span className="italic text-muted-foreground/60">
                   Unassigned
                 </span>

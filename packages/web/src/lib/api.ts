@@ -186,7 +186,6 @@ export async function addProposalComment(
   return apiFetch<Comment>(`/proposals/${id}/comments`, {
     method: "POST",
     body: JSON.stringify({
-      authorId: "human-director",
       body,
       ...(type ? { commentType: type } : {}),
     }),
@@ -277,7 +276,6 @@ export async function addTaskComment(
   return apiFetch<TaskComment>(`/tasks/${taskId}/comments`, {
     method: "POST",
     body: JSON.stringify({
-      authorId: "human-director",
       body,
       ...(type ? { commentType: type } : {}),
       ...(metadata ? { metadata } : {}),
