@@ -822,9 +822,13 @@ describe("Task Workflow API", () => {
     it("should block AI agent from changing priority when can_change_priority=false (default)", async () => {
       const project = createTestProject(testApp.db);
       const { user: agent, token: agentToken } = createTestAiAgent(testApp.db);
+      // Assign the task to the agent so they hold the task claim — the
+      // claim gate applies to AI-agent writes; without this the priority
+      // guardrail would never get a chance to run.
       const task = createTestTask(testApp.db, {
         projectId: project.id,
         reporterId: agent.id,
+        assigneeId: agent.id,
         priority: "medium",
       });
 
@@ -856,6 +860,7 @@ describe("Task Workflow API", () => {
       const task = createTestTask(testApp.db, {
         projectId: project.id,
         reporterId: agent.id,
+        assigneeId: agent.id,
         priority: "medium",
       });
 

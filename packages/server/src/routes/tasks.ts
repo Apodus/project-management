@@ -1,11 +1,13 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
+  CLAIM_RESULT_STATUSES,
+  CLAIM_STATUSES,
   TASK_STATUSES,
   PRIORITIES,
   TASK_TYPES,
   EFFORT_SIZES,
 } from "@pm/shared";
-import type { TaskStatus } from "@pm/shared";
+import type { TaskStatus, UserType } from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import * as taskService from "../services/task.service.js";
 
@@ -55,8 +57,42 @@ const taskSchema = z
     assigneeType: z.string().nullable(),
     reporterName: z.string().nullable(),
     reporterType: z.string().nullable(),
+    claimStatus: z.enum(CLAIM_STATUSES),
   })
   .openapi("Task");
+
+const claimResultSchema = z
+  .object({
+    ok: z.boolean(),
+    status: z.enum(CLAIM_RESULT_STATUSES),
+  })
+  .openapi("TaskClaimResult");
+
+const claimResultEnvelope = z.object({ data: claimResultSchema });
+
+const awarenessAssigneeSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  type: z.string().nullable(),
+});
+
+const awarenessInFlightSchema = z.object({
+  taskId: z.string(),
+  title: z.string(),
+  assignee: awarenessAssigneeSchema.nullable(),
+  gitBranch: z.string().nullable(),
+  startedAt: z.string().nullable(),
+});
+
+const awarenessSchema = z
+  .object({
+    label: z.string().nullable(),
+    inFlight: z.array(awarenessInFlightSchema),
+    total: z.number().int(),
+  })
+  .openapi("Awareness");
+
+const awarenessEnvelope = z.object({ data: awarenessSchema });
 
 const taskDataEnvelope = z.object({
   data: taskSchema,
@@ -205,6 +241,8 @@ const listTasksRoute = createRoute({
       epic: z.string().optional(),
       search: z.string().optional(),
       label: z.string().optional(),
+      label_name: z.string().optional(),
+      claim: z.enum(["available", "mine", "all"]).optional(),
       is_blocked: z.enum(["true", "false"]).optional(),
       sortBy: z
         .enum(["priority", "created_at", "updated_at", "due_date", "sort_order"])
@@ -443,6 +481,67 @@ const pickNextTaskRoute = createRoute({
   },
 });
 
+// ─── Claim / release / awareness routes ─────────────────────────
+
+const claimTaskRoute = createRoute({
+  method: "post",
+  path: "/api/v1/tasks/{id}/claim",
+  tags: ["Tasks"],
+  summary: "Claim task",
+  description:
+    "Atomically claim a task for the caller. Sets the caller as assignee. Returns a structured result without leaking other claimants' IDs.",
+  request: { params: z.object({ id: taskIdParam }) },
+  responses: {
+    200: {
+      description: "Claim outcome",
+      content: { "application/json": { schema: claimResultEnvelope } },
+    },
+    404: {
+      description: "Task not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const releaseTaskRoute = createRoute({
+  method: "post",
+  path: "/api/v1/tasks/{id}/release",
+  tags: ["Tasks"],
+  summary: "Release task claim",
+  description:
+    "Release the caller's claim. Humans can release any claim; AI agents only their own.",
+  request: { params: z.object({ id: taskIdParam }) },
+  responses: {
+    200: {
+      description: "Release outcome",
+      content: { "application/json": { schema: claimResultEnvelope } },
+    },
+    404: {
+      description: "Task not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const awarenessRoute = createRoute({
+  method: "get",
+  path: "/api/v1/projects/{projectId}/awareness",
+  tags: ["Tasks"],
+  summary: "Subsystem awareness check",
+  description:
+    "Return in-flight tasks for a project, optionally filtered to a label name. Used as a boundary-time check before touching a subsystem.",
+  request: {
+    params: z.object({ projectId: projectIdParam }),
+    query: z.object({ label: z.string().optional() }),
+  },
+  responses: {
+    200: {
+      description: "In-flight summary",
+      content: { "application/json": { schema: awarenessEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
@@ -452,20 +551,27 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   router.openapi(listTasksRoute, (c) => {
     const { projectId } = c.req.valid("param");
     const query = c.req.valid("query");
-    const result = taskService.list(projectId, {
-      status: query.status,
-      priority: query.priority,
-      type: query.type,
-      assignee: query.assignee,
-      epic: query.epic,
-      search: query.search,
-      label: query.label,
-      is_blocked: query.is_blocked,
-      sortBy: query.sortBy,
-      order: query.order,
-      page: query.page,
-      perPage: query.perPage,
-    });
+    const user = c.get("currentUser") as AuthUser | null;
+    const result = taskService.list(
+      projectId,
+      {
+        status: query.status,
+        priority: query.priority,
+        type: query.type,
+        assignee: query.assignee,
+        epic: query.epic,
+        search: query.search,
+        label: query.label,
+        labelName: query.label_name,
+        claim: query.claim,
+        is_blocked: query.is_blocked,
+        sortBy: query.sortBy,
+        order: query.order,
+        page: query.page,
+        perPage: query.perPage,
+      },
+      user ? { id: user.id } : null,
+    );
 
     return c.json(result, 200);
   });
@@ -499,7 +605,8 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   // GET /api/v1/tasks/:id
   router.openapi(getTaskRoute, (c) => {
     const { id } = c.req.valid("param");
-    const task = taskService.getById(id);
+    const user = c.get("currentUser") as AuthUser | null;
+    const task = taskService.getById(id, user ? { id: user.id } : null);
 
     return c.json({ data: task }, 200);
   });
@@ -517,7 +624,8 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   // DELETE /api/v1/tasks/:id
   router.openapi(deleteTaskRoute, (c) => {
     const { id } = c.req.valid("param");
-    const task = taskService.archive(id);
+    const actor = c.get("currentUser") as AuthUser | null;
+    const task = taskService.archive(id, actor ?? undefined);
 
     return c.json({ data: task }, 200);
   });
@@ -549,7 +657,11 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   // GET /api/v1/tasks/:id/subtasks
   router.openapi(listSubtasksRoute, (c) => {
     const { id } = c.req.valid("param");
-    const subtasks = taskService.listSubtasks(id);
+    const user = c.get("currentUser") as AuthUser | null;
+    const subtasks = taskService.listSubtasks(
+      id,
+      user ? { id: user.id } : null,
+    );
 
     return c.json(
       {
@@ -599,6 +711,36 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     );
 
     return c.json({ data: task }, 200);
+  });
+
+  // POST /api/v1/tasks/:id/claim
+  router.openapi(claimTaskRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("currentUser") as AuthUser;
+    const result = taskService.claim(id, {
+      id: user.id,
+      type: user.type as UserType,
+    });
+    return c.json({ data: result }, 200);
+  });
+
+  // POST /api/v1/tasks/:id/release
+  router.openapi(releaseTaskRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("currentUser") as AuthUser;
+    const result = taskService.release(id, {
+      id: user.id,
+      type: user.type as UserType,
+    });
+    return c.json({ data: result }, 200);
+  });
+
+  // GET /api/v1/projects/:projectId/awareness
+  router.openapi(awarenessRoute, (c) => {
+    const { projectId } = c.req.valid("param");
+    const { label } = c.req.valid("query");
+    const result = taskService.awareness(projectId, label ?? null);
+    return c.json({ data: result }, 200);
   });
 
   return router;

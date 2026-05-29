@@ -1,0 +1,37 @@
+{
+  "name": "@pm/integrator-ref",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "pm-integrator": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc --build && node scripts/add-shebang.mjs",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pm/shared": "workspace:*",
+    "commander": "^12.1.0",
+    "pino": "^9.5.0",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1",
+    "@types/node": "^22",
+    "drizzle-orm": "^0.45.2",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.7"
+  }
+}

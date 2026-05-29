@@ -594,6 +594,182 @@ describe("Projects API", () => {
     });
   });
 
+  // ── settings.integrator validation ────────────────────────────────
+  describe("settings.integrator validation", () => {
+    const validBaseSettings = {
+      ai_autonomy: {
+        can_self_assign: true,
+        can_create_subtasks: true,
+        can_create_tasks: false,
+        can_change_priority: false,
+        can_close_epics: false,
+        max_concurrent_tasks: 3,
+      },
+      workflow: {
+        statuses: ["backlog", "ready", "in_progress", "in_review", "done", "cancelled"],
+      },
+      git: {
+        branch_prefix: "feat/",
+        auto_link_branches: true,
+      },
+    };
+
+    it("creates a project without an integrator block", async () => {
+      const res = await authRequest(testApp.app, "POST", "/api/v1/projects", {
+        body: {
+          name: "P9-1",
+          settings: validBaseSettings,
+        },
+      });
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.settings?.integrator).toBeUndefined();
+    });
+
+    it("accepts integrator.enabled = false and applies defaults", async () => {
+      const res = await authRequest(testApp.app, "POST", "/api/v1/projects", {
+        body: {
+          name: "P9-2",
+          settings: {
+            ...validBaseSettings,
+            integrator: { enabled: false },
+          },
+        },
+      });
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.settings.integrator.enabled).toBe(false);
+      expect(body.data.settings.integrator.verify_timeout_sec).toBe(600);
+      expect(body.data.settings.integrator.git_remote).toBe("origin");
+      expect(body.data.settings.integrator.git_main_branch).toBe("main");
+    });
+
+    it("accepts a fully valid enabled integrator config and applies defaults", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      expect(body.data.settings.integrator.enabled).toBe(true);
+      expect(body.data.settings.integrator.verify_command).toBe("pnpm test");
+      expect(body.data.settings.integrator.worktree_root).toBe("/tmp/wt");
+      expect(body.data.settings.integrator.verify_timeout_sec).toBe(600);
+      expect(body.data.settings.integrator.git_remote).toBe("origin");
+      expect(body.data.settings.integrator.git_main_branch).toBe("main");
+    });
+
+    it("rejects integrator.enabled = true without verify_command", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: { enabled: true, worktree_root: "/tmp/wt" },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects integrator.enabled = true without worktree_root", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: { enabled: true, verify_command: "pnpm test" },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("round-trips a fully specified integrator config including non-default git fields", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "make verify",
+                verify_timeout_sec: 1200,
+                worktree_root: "/var/wt",
+                git_remote: "upstream",
+                git_main_branch: "trunk",
+                worktree_name: "game_one-int",
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      const i = body.data.settings.integrator;
+      expect(i.enabled).toBe(true);
+      expect(i.verify_command).toBe("make verify");
+      expect(i.verify_timeout_sec).toBe(1200);
+      expect(i.worktree_root).toBe("/var/wt");
+      expect(i.git_remote).toBe("upstream");
+      expect(i.git_main_branch).toBe("trunk");
+      expect(i.worktree_name).toBe("game_one-int");
+    });
+
+    it("rejects verify_timeout_sec < 1", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "x",
+                worktree_root: "/tmp",
+                verify_timeout_sec: 0,
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+  });
+
   // ── OpenAPI spec ──────────────────────────────────────────────────
   describe("OpenAPI spec", () => {
     it("should include project endpoints in the spec", async () => {

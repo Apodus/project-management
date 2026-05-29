@@ -353,6 +353,9 @@ export interface TaskFilters {
   type?: string;
   is_blocked?: boolean;
   search?: string;
+  label?: string;
+  label_name?: string;
+  claim?: ClaimFilterValue;
   sort?: string;
   limit?: number;
 }
@@ -380,6 +383,9 @@ export async function listTasks(filters: TaskFilters): Promise<TaskSummary[]> {
   if (filters.type) params.type = filters.type;
   if (filters.is_blocked !== undefined) params.is_blocked = String(filters.is_blocked);
   if (filters.search) params.search = filters.search;
+  if (filters.label) params.label = filters.label;
+  if (filters.label_name) params.label_name = filters.label_name;
+  if (filters.claim) params.claim = filters.claim;
   if (filters.sort) params.sortBy = filters.sort;
   if (filters.limit) params.perPage = filters.limit;
 
@@ -865,5 +871,280 @@ export async function getProjectTasks(
   return apiRequest<TaskSummary[]>(
     "GET",
     `/projects/${encodeURIComponent(projectId)}/tasks${qs(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Task Claim/Release/Awareness
+// ---------------------------------------------------------------------------
+
+export async function claimTask(taskId: string): Promise<ClaimResultData> {
+  return apiRequest<ClaimResultData>(
+    "POST",
+    `/tasks/${encodeURIComponent(taskId)}/claim`,
+  );
+}
+
+export async function releaseTask(taskId: string): Promise<ClaimResultData> {
+  return apiRequest<ClaimResultData>(
+    "POST",
+    `/tasks/${encodeURIComponent(taskId)}/release`,
+  );
+}
+
+export interface AwarenessAssignee {
+  id: string;
+  name: string | null;
+  type: string | null;
+}
+
+export interface AwarenessInFlightEntry {
+  taskId: string;
+  title: string;
+  assignee: AwarenessAssignee | null;
+  gitBranch: string | null;
+  startedAt: string | null;
+}
+
+export interface AwarenessData {
+  label: string | null;
+  inFlight: AwarenessInFlightEntry[];
+  total: number;
+}
+
+export async function awareness(
+  projectId: string,
+  label?: string,
+): Promise<AwarenessData> {
+  return apiRequest<AwarenessData>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/awareness${qs({ label })}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Merge Locks
+// ---------------------------------------------------------------------------
+
+export type MergeLockAcquireStatusValue = "held" | "queued" | "already_held";
+export type MergeLockHeartbeatStatusValue = "refreshed" | "not_holder";
+export type MergeLockReleaseStatusValue = "released" | "not_held" | "not_holder";
+
+export interface MergeLockAcquireData {
+  ok: boolean;
+  status: MergeLockAcquireStatusValue;
+  position?: number | null;
+  expiresAt?: string | null;
+}
+
+export interface MergeLockHeartbeatData {
+  ok: boolean;
+  status: MergeLockHeartbeatStatusValue;
+  expiresAt?: string | null;
+}
+
+export interface MergeLockReleaseData {
+  ok: boolean;
+  status: MergeLockReleaseStatusValue;
+  grantedTo?: string | null;
+}
+
+export interface MergeLockLandingIntent {
+  taskId?: string | null;
+  branch?: string | null;
+  commitSha?: string | null;
+  verifyCmd?: string | null;
+  worktreePath?: string | null;
+}
+
+export interface MergeLockView {
+  id: string;
+  projectId: string;
+  resource: string;
+  holder: "you" | "someone_else" | "none";
+  holderId: string | null;
+  acquiredAt: string | null;
+  heartbeatAt: string | null;
+  expiresAt: string | null;
+  landedSha: string | null;
+  landedAt: string | null;
+  taskId: string | null;
+  branch: string | null;
+  commitSha: string | null;
+  verifyCmd: string | null;
+  worktreePath: string | null;
+  abandonReason: string | null;
+  queueLength: number;
+  yourPosition: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function acquireMergeLock(
+  projectId: string,
+  resource: string,
+  intent?: MergeLockLandingIntent,
+): Promise<MergeLockAcquireData> {
+  return apiRequest<MergeLockAcquireData>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/merge-locks/${encodeURIComponent(resource)}/acquire`,
+    intent ?? {},
+  );
+}
+
+export async function heartbeatMergeLock(
+  projectId: string,
+  resource: string,
+): Promise<MergeLockHeartbeatData> {
+  return apiRequest<MergeLockHeartbeatData>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/merge-locks/${encodeURIComponent(resource)}/heartbeat`,
+  );
+}
+
+export async function releaseMergeLock(
+  projectId: string,
+  resource: string,
+  opts?: { landedSha?: string; reason?: string },
+): Promise<MergeLockReleaseData> {
+  const body: Record<string, string> = {};
+  if (opts?.landedSha) body.landedSha = opts.landedSha;
+  if (opts?.reason) body.reason = opts.reason;
+  return apiRequest<MergeLockReleaseData>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/merge-locks/${encodeURIComponent(resource)}/release`,
+    body,
+  );
+}
+
+export async function getMergeLock(
+  projectId: string,
+  resource: string,
+): Promise<MergeLockView> {
+  return apiRequest<MergeLockView>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/merge-locks/${encodeURIComponent(resource)}`,
+  );
+}
+
+export async function listMergeLocks(
+  projectId: string,
+): Promise<MergeLockView[]> {
+  return apiRequest<MergeLockView[]>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/merge-locks`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Merge Requests (Stage 2)
+// ---------------------------------------------------------------------------
+//
+// Single source of truth for status/category value-spaces lives in
+// @pm/shared (MERGE_REQUEST_STATUSES, MERGE_ATTEMPT_STATUSES,
+// MERGE_REJECT_CATEGORIES). We import the view types from there too so
+// the api-client never re-declares those unions.
+
+import type {
+  MergeRequestView,
+  MergeAttemptView,
+  MergeRequestStatus,
+} from "@pm/shared";
+
+// Re-export so MCP tool files can pull types from one place.
+export type {
+  MergeRequestView,
+  MergeAttemptView,
+  MergeRequestStatus,
+  MergeRejectCategory,
+} from "@pm/shared";
+
+export interface MergeRequestDetailView extends MergeRequestView {
+  attempts: MergeAttemptView[];
+}
+
+export interface MergeRequestSubmitBody {
+  resource?: string;
+  taskId?: string | null;
+  branch?: string | null;
+  commitSha?: string | null;
+  verifyCmd?: string | null;
+  worktreePath?: string | null;
+}
+
+export interface MergeRequestListFilters {
+  resource?: string;
+  status?: MergeRequestStatus;
+  taskId?: string;
+  page?: number;
+  perPage?: number;
+}
+
+/**
+ * Submit a new merge request — worker-facing. Returns the queued row.
+ */
+export async function submitMergeRequest(
+  projectId: string,
+  body: MergeRequestSubmitBody,
+): Promise<MergeRequestView> {
+  return apiRequest<MergeRequestView>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/merge-requests`,
+    body,
+  );
+}
+
+/**
+ * List merge requests for a project. apiRequest extracts .data; pagination is dropped.
+ */
+export async function listMergeRequests(
+  projectId: string,
+  filters?: MergeRequestListFilters,
+): Promise<MergeRequestView[]> {
+  const params: Record<string, string | number | boolean | undefined> = {};
+  if (filters?.resource) params.resource = filters.resource;
+  if (filters?.status) params.status = filters.status;
+  if (filters?.taskId) params.taskId = filters.taskId;
+  if (filters?.page) params.page = filters.page;
+  if (filters?.perPage) params.perPage = filters.perPage;
+  return apiRequest<MergeRequestView[]>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/merge-requests${qs(params)}`,
+  );
+}
+
+/**
+ * Get a single merge request with its attempts (most-recent first).
+ */
+export async function getMergeRequest(
+  requestId: string,
+): Promise<MergeRequestDetailView> {
+  return apiRequest<MergeRequestDetailView>(
+    "GET",
+    `/merge-requests/${encodeURIComponent(requestId)}`,
+  );
+}
+
+/**
+ * Cancel a queued merge request. Submitter or admin only.
+ */
+export async function cancelMergeRequest(
+  requestId: string,
+): Promise<MergeRequestView> {
+  return apiRequest<MergeRequestView>(
+    "POST",
+    `/merge-requests/${encodeURIComponent(requestId)}/cancel`,
+  );
+}
+
+/**
+ * Integrator picks up a queued request — queued → integrating.
+ */
+export async function pickupMergeRequest(
+  requestId: string,
+): Promise<MergeRequestView> {
+  return apiRequest<MergeRequestView>(
+    "POST",
+    `/merge-requests/${encodeURIComponent(requestId)}/pickup`,
   );
 }

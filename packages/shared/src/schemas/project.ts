@@ -20,11 +20,31 @@ export const gitSettingsSchema = z.object({
   auto_link_branches: z.boolean(),
 });
 
+export const integratorSettingsSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    verify_command: z.string().min(1).optional(),
+    verify_timeout_sec: z.number().int().min(1).default(600),
+    worktree_root: z.string().min(1).optional(),
+    git_remote: z.string().min(1).default("origin"),
+    git_main_branch: z.string().min(1).default("main"),
+    worktree_name: z.string().min(1).optional(),
+  })
+  .refine(
+    (v) => !v.enabled || (Boolean(v.verify_command) && Boolean(v.worktree_root)),
+    {
+      message:
+        "When integrator.enabled is true, verify_command and worktree_root are required and must be non-empty.",
+      path: ["enabled"],
+    },
+  );
+
 export const projectSettingsSchema = z
   .object({
     ai_autonomy: aiAutonomySettingsSchema,
     workflow: workflowSettingsSchema,
     git: gitSettingsSchema,
+    integrator: integratorSettingsSchema.optional(),
   })
   .nullable()
   .optional();

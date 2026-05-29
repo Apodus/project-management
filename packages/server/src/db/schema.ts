@@ -374,3 +374,174 @@ export const gitRefs = sqliteTable(
     index("idx_git_refs_branch").on(table.refType, table.refValue),
   ],
 );
+
+// ─── merge_locks ───────────────────────────────────────────────────
+// Per-project named coordination locks (e.g. resource = "main"). One
+// holder at a time per (project, resource); contending callers wait in
+// merge_lock_queue. Lease is TTL-based: heartbeat refreshes expires_at,
+// and any operation opportunistically sweeps a holder whose lease has
+// elapsed.
+export const mergeLocks = sqliteTable(
+  "merge_locks",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    resource: text("resource").notNull(),
+    holderId: text("holder_id").references(() => users.id),
+    acquiredAt: text("acquired_at"),
+    heartbeatAt: text("heartbeat_at"),
+    expiresAt: text("expires_at"),
+    landedSha: text("landed_sha"),
+    landedAt: text("landed_at"),
+    // Landing intent — what the holder is trying to land. Cleared on
+    // release/expire. All optional; some are project-shared (taskId,
+    // branch, commitSha, verifyCmd) and one is per-machine but useful
+    // when agents share a host (worktreePath).
+    taskId: text("task_id").references(() => tasks.id),
+    branch: text("branch"),
+    commitSha: text("commit_sha"),
+    verifyCmd: text("verify_cmd"),
+    worktreePath: text("worktree_path"),
+    // Set when the holder releases without landed_sha — gives observers
+    // and the next queue head context about why main hasn't moved.
+    abandonReason: text("abandon_reason"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_merge_locks_project_resource").on(
+      table.projectId,
+      table.resource,
+    ),
+    index("idx_merge_locks_holder").on(table.holderId),
+  ],
+);
+
+export const mergeLockQueue = sqliteTable(
+  "merge_lock_queue",
+  {
+    id: text("id").primaryKey(),
+    lockId: text("lock_id")
+      .notNull()
+      .references(() => mergeLocks.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    enqueuedAt: text("enqueued_at").notNull(),
+    notifiedAt: text("notified_at"),
+    // Landing intent carried while queued — copied onto the held lock
+    // row when the queue head advances.
+    taskId: text("task_id").references(() => tasks.id),
+    branch: text("branch"),
+    commitSha: text("commit_sha"),
+    verifyCmd: text("verify_cmd"),
+    worktreePath: text("worktree_path"),
+  },
+  (table) => [
+    index("idx_queue_lock_enqueued").on(table.lockId, table.enqueuedAt),
+    uniqueIndex("idx_queue_lock_user").on(table.lockId, table.userId),
+  ],
+);
+
+// ─── merge_requests ────────────────────────────────────────────────
+// Phase 7.1 Stage 2: worker-submitted merge requests. The worker calls
+// pm_request_merge and exits; a single integrator process per
+// (projectId, resource) lane picks the oldest queued request, rebases
+// onto live main, runs verify, and either lands or rejects.
+//
+// Lifecycle (full state machine in docs/design/phase-7.1-design.md §5.1):
+//   queued → integrating → landed | rejected
+//   queued → abandoned                 (submitter or admin cancel)
+//   integrating → abandoned            (admin force-cancel only)
+//   integrating → queued               (push-race or crash recovery — back-edge)
+export const mergeRequests = sqliteTable(
+  "merge_requests",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    resource: text("resource").notNull().default("main"),
+    submittedBy: text("submitted_by")
+      .notNull()
+      .references(() => users.id),
+    // taskId is nullable AND uses ON DELETE SET NULL so a request whose
+    // task gets deleted mid-flight still resolves cleanly. The auto
+    // side-effects (git_refs on land, merge_rejection comment on reject)
+    // are skipped when taskId is null at resolution time.
+    taskId: text("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    branch: text("branch"),
+    commitSha: text("commit_sha"),
+    verifyCmd: text("verify_cmd"),
+    worktreePath: text("worktree_path"),
+    // status enum lives in @pm/shared (MERGE_REQUEST_STATUSES) — added in
+    // Step 3. Default "queued" matches the initial-state convention.
+    status: text("status").notNull().default("queued"),
+    enqueuedAt: text("enqueued_at").notNull(),
+    pickedUpAt: text("picked_up_at"),
+    resolvedAt: text("resolved_at"),
+    landedSha: text("landed_sha"),
+    rejectCategory: text("reject_category"),
+    rejectReason: text("reject_reason"),
+    // JSON-encoded string[] — paths implicated in the failure.
+    failedFiles: text("failed_files", { mode: "json" }).$type<string[]>(),
+    logExcerpt: text("log_excerpt"),
+    logUrl: text("log_url"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_merge_requests_project_status").on(
+      table.projectId,
+      table.status,
+    ),
+    index("idx_merge_requests_resource_status").on(
+      table.projectId,
+      table.resource,
+      table.status,
+      table.enqueuedAt,
+    ),
+    index("idx_merge_requests_task").on(table.taskId),
+  ],
+);
+
+// ─── merge_attempts ────────────────────────────────────────────────
+// One row per rebase+verify cycle for a merge_request. The integrator
+// inserts a new row at status="pending" → flips to "running" → completes
+// as "passed" | "failed" | "cancelled". Attempt failure ≠ request
+// rejection — the integrator decides per outcome (see §5.2 of design).
+export const mergeAttempts = sqliteTable(
+  "merge_attempts",
+  {
+    id: text("id").primaryKey(),
+    requestId: text("request_id")
+      .notNull()
+      .references(() => mergeRequests.id),
+    attemptNumber: integer("attempt_number").notNull(),
+    baseSha: text("base_sha").notNull(),
+    treeSha: text("tree_sha"),
+    // status enum: pending/running/passed/failed/cancelled (Step 3).
+    status: text("status").notNull(),
+    startedAt: text("started_at"),
+    completedAt: text("completed_at"),
+    verifyDurationMs: integer("verify_duration_ms"),
+    // Same enum as merge_requests.rejectCategory (MERGE_REJECT_CATEGORIES).
+    failureCategory: text("failure_category"),
+    failureReason: text("failure_reason"),
+    failedFiles: text("failed_files", { mode: "json" }).$type<string[]>(),
+    logExcerpt: text("log_excerpt"),
+    logUrl: text("log_url"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    // UNIQUE structurally enforces monotonic numbering per request —
+    // defense-in-depth against caller-discipline bugs. Service uses
+    // MAX(attemptNumber)+1 within the same operation.
+    uniqueIndex("idx_merge_attempts_request_num").on(
+      table.requestId,
+      table.attemptNumber,
+    ),
+  ],
+);

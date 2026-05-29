@@ -13,3 +13,5 @@ export * from "./task-dependency.js";
 export * from "./activity-log.js";
 export * from "./git-ref.js";
 export * from "./milestone.js";
+export * from "./merge-lock.js";
+export * from "./merge-request.js";

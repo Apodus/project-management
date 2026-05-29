@@ -1,12 +1,13 @@
-import { eq, and, like, isNull, desc, asc, count, sql, inArray } from "drizzle-orm";
+import { eq, and, like, isNull, or, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { createId, isValidTaskTransition, getValidTaskTargets, findTaskTransitionPath } from "@pm/shared";
-import type { TaskStatus, EffortSize } from "@pm/shared";
+import type { ClaimResult, ClaimStatus, TaskStatus, EffortSize, UserType } from "@pm/shared";
 import {
   getDb,
   getRawDb,
   tasks,
   taskLabels,
   taskDependencies,
+  labels,
   epics,
   projects,
   users,
@@ -17,6 +18,12 @@ import * as dependencyService from "./dependency.service.js";
 import { computeChanges } from "./activity.service.js";
 import * as commentService from "./comment.service.js";
 import * as autonomyService from "./autonomy.service.js";
+import {
+  assertClaimOk as assertClaimOkRaw,
+  deriveClaimStatus,
+  type Actor as ClaimActor,
+  type ClaimFilter,
+} from "./claim-helpers.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -67,6 +74,8 @@ export interface TaskListFilters {
   type?: string;
   search?: string;
   label?: string; // label id — filter to tasks with this label attached
+  labelName?: string; // label name — resolved to id within the project scope
+  claim?: ClaimFilter; // "available" | "mine" | "all"
   is_blocked?: string; // "true" or "false"
   sortBy?: string; // priority, created_at, updated_at, due_date, sort_order
   order?: "asc" | "desc";
@@ -210,12 +219,67 @@ export function enrichTask<T extends TaskFKShape>(
   return enrichTasks([rawTask])[0];
 }
 
+// ─── Claim helpers ────────────────────────────────────────────────
+// Tasks use `assigneeId` as the claim holder, mirroring the epic
+// decision (see epic.service.ts). For AI agents, the assignee IS the
+// claim — writes require assigneeId === actor.id. Humans always pass.
+
+const CLAIM_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  "done",
+  "cancelled",
+]);
+
+export type Actor = ClaimActor;
+export { type ClaimFilter };
+
+export function withClaimStatus<T extends { assigneeId?: string | null }>(
+  row: T,
+  caller?: { id: string } | null,
+): T & { claimStatus: ClaimStatus } {
+  return {
+    ...row,
+    claimStatus: deriveClaimStatus(row.assigneeId ?? null, caller),
+  };
+}
+
+export function assertTaskClaimOk(
+  task: { assigneeId?: string | null },
+  actor: Actor,
+): void {
+  assertClaimOkRaw(task.assigneeId ?? null, actor, "task");
+}
+
+/**
+ * Resolve a label name to its id within a single project. Returns null
+ * if no matching label exists — callers should treat that as "no match"
+ * so the filter narrows to an empty result rather than silently
+ * matching everything.
+ */
+function resolveLabelIdByName(
+  projectId: string,
+  name: string,
+): string | null {
+  const db = getDb();
+  const row = db
+    .select({ id: labels.id })
+    .from(labels)
+    .where(and(eq(labels.projectId, projectId), eq(labels.name, name)))
+    .get();
+  return row?.id ?? null;
+}
+
 // ─── Service functions ────────────────────────────────────────────
 
 /**
  * List tasks for a project with rich filtering, sorting, and pagination.
+ * The optional `caller` is used to (a) resolve the `claim` filter
+ * relative to the caller and (b) decorate each task with `claimStatus`.
  */
-export function list(projectId: string, filters?: TaskListFilters) {
+export function list(
+  projectId: string,
+  filters?: TaskListFilters,
+  caller?: { id: string } | null,
+) {
   const db = getDb();
 
   const conditions: ReturnType<typeof eq>[] = [eq(tasks.projectId, projectId)];
@@ -270,13 +334,33 @@ export function list(projectId: string, filters?: TaskListFilters) {
   }
 
   // Label filter: tasks that have a specific label attached
-  if (filters?.label) {
+  let labelId = filters?.label;
+  if (!labelId && filters?.labelName) {
+    const resolved = resolveLabelIdByName(projectId, filters.labelName);
+    // If the name doesn't resolve, force an empty result.
+    labelId = resolved ?? "__no_match__";
+  }
+  if (labelId) {
     conditions.push(
       sql`${tasks.id} IN (
         SELECT ${taskLabels.taskId} FROM ${taskLabels}
-        WHERE ${taskLabels.labelId} = ${filters.label}
+        WHERE ${taskLabels.labelId} = ${labelId}
       )` as any,
     );
+  }
+
+  // Claim filter (relative to caller): "available" = unclaimed OR mine;
+  // "mine" = claimed by me; "all" = no restriction.
+  if (filters?.claim && filters.claim !== "all" && caller) {
+    if (filters.claim === "mine") {
+      conditions.push(eq(tasks.assigneeId, caller.id));
+    } else {
+      const availClause = or(
+        isNull(tasks.assigneeId),
+        eq(tasks.assigneeId, caller.id),
+      );
+      if (availClause) conditions.push(availClause as any);
+    }
   }
 
   // is_blocked filter: tasks with/without unresolved blocking dependencies
@@ -356,7 +440,7 @@ export function list(projectId: string, filters?: TaskListFilters) {
     .all();
 
   return {
-    data: enrichTasks(data),
+    data: enrichTasks(data).map((t) => withClaimStatus(t, caller ?? null)),
     pagination: {
       page,
       perPage,
@@ -368,8 +452,9 @@ export function list(projectId: string, filters?: TaskListFilters) {
 
 /**
  * Get a single task by ID. Throws 404 if not found.
+ * Optional `caller` is used to set `claimStatus` relative to the caller.
  */
-export function getById(id: string) {
+export function getById(id: string, caller?: { id: string } | null) {
   const db = getDb();
   const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
 
@@ -377,7 +462,7 @@ export function getById(id: string) {
     throw new AppError(404, "NOT_FOUND", `Task not found: ${id}`);
   }
 
-  return enrichTask(task);
+  return withClaimStatus(enrichTask(task), caller ?? null);
 }
 
 /**
@@ -416,7 +501,7 @@ export function create(data: CreateTaskInput, actor?: AuthUser) {
     })
     .run();
 
-  const result = getById(id);
+  const result = getById(id, actor ? { id: actor.id } : null);
 
   getEventBus().emit(EVENT_NAMES.TASK_CREATED, {
     entity: result,
@@ -448,6 +533,12 @@ export function update(id: string, data: UpdateTaskInput, actor?: AuthUser) {
   const existing = getById(id);
   const db = getDb();
   const now = new Date().toISOString();
+
+  // AI agents must hold the claim (be the assignee) to write to a task.
+  // Humans always pass. This mirrors proposals/epics.
+  if (actor) {
+    assertTaskClaimOk(existing, { id: actor.id, type: actor.type as UserType });
+  }
 
   // Check autonomy guardrails for priority changes by AI agents
   if (data.priority !== undefined && data.priority !== existing.priority && actor) {
@@ -489,7 +580,7 @@ export function update(id: string, data: UpdateTaskInput, actor?: AuthUser) {
 
   db.update(tasks).set(values).where(eq(tasks.id, id)).run();
 
-  const result = getById(id);
+  const result = getById(id, actor ? { id: actor.id } : null);
 
   const changes = computeChanges(
     existing as unknown as Record<string, unknown>,
@@ -517,7 +608,7 @@ export function update(id: string, data: UpdateTaskInput, actor?: AuthUser) {
 /**
  * Archive a task (set status to "cancelled"). Throws 404 if not found.
  */
-export function archive(id: string) {
+export function archive(id: string, actor?: AuthUser) {
   const existing = getById(id);
   const db = getDb();
   const now = new Date().toISOString();
@@ -527,7 +618,7 @@ export function archive(id: string) {
     .where(eq(tasks.id, id))
     .run();
 
-  const result = getById(id);
+  const result = getById(id, actor ? { id: actor.id } : null);
 
   getEventBus().emit(EVENT_NAMES.TASK_ARCHIVED, {
     entity: result,
@@ -565,7 +656,10 @@ export function createSubtask(parentTaskId: string, data: Omit<CreateTaskInput, 
 /**
  * List subtasks of a given task. The parent task must exist.
  */
-export function listSubtasks(parentTaskId: string) {
+export function listSubtasks(
+  parentTaskId: string,
+  caller?: { id: string } | null,
+) {
   // Verify parent exists
   getById(parentTaskId);
 
@@ -575,7 +669,7 @@ export function listSubtasks(parentTaskId: string) {
     .from(tasks)
     .where(eq(tasks.parentTaskId, parentTaskId))
     .all();
-  return enrichTasks(rows);
+  return enrichTasks(rows).map((t) => withClaimStatus(t, caller ?? null));
 }
 
 // ─── Workflow engine ─────────────────────────────────────────────
@@ -596,6 +690,11 @@ export function transition(
 ) {
   const existing = getById(taskId);
   const currentStatus = existing.status as TaskStatus;
+
+  // AI agents must hold the claim (be the assignee) to transition.
+  // Humans bypass the gate. Use pickNextTask for atomic "claim and
+  // start" — this gate only applies to direct transition calls.
+  assertTaskClaimOk(existing, { id: actor.id, type: actor.type as UserType });
 
   // Find transition path — auto-chain through intermediate statuses if needed
   const path = isValidTaskTransition(currentStatus, toStatus)
@@ -637,7 +736,7 @@ export function transition(
     db.update(tasks).set(values).where(eq(tasks.id, taskId)).run();
   }
 
-  const result = getById(taskId);
+  const result = getById(taskId, { id: actor.id });
 
   // Create a comment if provided
   if (comment) {
@@ -839,7 +938,7 @@ export function pickNextTask(actor: AuthUser, options?: PickNextOptions): Return
     return null;
   }
 
-  const claimedTask = getById(claimedId);
+  const claimedTask = getById(claimedId, { id: actor.id });
 
   // Log activity via event bus (after transaction committed)
   getEventBus().emit(EVENT_NAMES.TASK_STATUS_CHANGED, {
@@ -854,4 +953,152 @@ export function pickNextTask(actor: AuthUser, options?: PickNextOptions): Return
   });
 
   return claimedTask;
+}
+
+// ─── Claim / release ────────────────────────────────────────────
+
+/**
+ * Claim a task for an actor. Atomic via WHERE assignee_id IS NULL.
+ * Idempotent for the holder (returns already_claimed_by_you).
+ * Returns a ClaimResult — no claimant IDs leaked.
+ */
+export function claim(id: string, actor: Actor): ClaimResult {
+  const db = getDb();
+  const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
+
+  if (!task) {
+    throw new AppError(404, "NOT_FOUND", `Task not found: ${id}`);
+  }
+
+  if (CLAIM_TERMINAL_STATUSES.has(task.status)) {
+    return { ok: false, status: "closed" };
+  }
+
+  if (task.assigneeId === actor.id) {
+    return { ok: true, status: "already_claimed_by_you" };
+  }
+
+  if (task.assigneeId && task.assigneeId !== actor.id) {
+    return { ok: false, status: "claimed_by_another_agent" };
+  }
+
+  const now = new Date().toISOString();
+  const upd = db
+    .update(tasks)
+    .set({ assigneeId: actor.id, updatedAt: now })
+    .where(and(eq(tasks.id, id), isNull(tasks.assigneeId)))
+    .run();
+
+  if (upd.changes === 0) {
+    return { ok: false, status: "claimed_by_another_agent" };
+  }
+
+  const fresh = db.select().from(tasks).where(eq(tasks.id, id)).get()!;
+
+  getEventBus().emit(EVENT_NAMES.TASK_CLAIMED, {
+    entity: fresh,
+    entityType: "task",
+    entityId: id,
+    projectId: task.projectId,
+    actorId: actor.id,
+    timestamp: now,
+    changes: { assignee_id: { from: null, to: actor.id } },
+  });
+
+  return { ok: true, status: "claimed_by_you" };
+}
+
+/**
+ * Release a task claim. Humans can release any claim; AI agents only
+ * their own.
+ */
+export function release(id: string, actor: Actor): ClaimResult {
+  const db = getDb();
+  const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
+
+  if (!task) {
+    throw new AppError(404, "NOT_FOUND", `Task not found: ${id}`);
+  }
+
+  if (!task.assigneeId) {
+    return { ok: false, status: "not_held" };
+  }
+
+  if (actor.type === "ai_agent" && task.assigneeId !== actor.id) {
+    return { ok: false, status: "claimed_by_another_agent" };
+  }
+
+  const now = new Date().toISOString();
+  const previousAssignee = task.assigneeId;
+  db.update(tasks)
+    .set({ assigneeId: null, updatedAt: now })
+    .where(eq(tasks.id, id))
+    .run();
+
+  const fresh = db.select().from(tasks).where(eq(tasks.id, id)).get()!;
+
+  getEventBus().emit(EVENT_NAMES.TASK_RELEASED, {
+    entity: fresh,
+    entityType: "task",
+    entityId: id,
+    projectId: task.projectId,
+    actorId: actor.id,
+    timestamp: now,
+    changes: { assignee_id: { from: previousAssignee, to: null } },
+  });
+
+  return { ok: true, status: "released" };
+}
+
+// ─── Awareness ─────────────────────────────────────────────────
+
+export interface AwarenessInFlight {
+  taskId: string;
+  title: string;
+  assignee: {
+    id: string;
+    name: string | null;
+    type: string | null;
+  } | null;
+  gitBranch: string | null;
+  startedAt: string | null;
+}
+
+export interface AwarenessResult {
+  label: string | null;
+  inFlight: AwarenessInFlight[];
+  total: number;
+}
+
+/**
+ * Return the in-flight (status=in_progress) tasks in a project,
+ * optionally narrowed to those carrying a given label by name. This is
+ * the boundary query agents use to detect concurrent activity in a
+ * subsystem before starting work.
+ */
+export function awareness(
+  projectId: string,
+  labelName: string | null,
+): AwarenessResult {
+  // Project existence is enforced by upstream routes; the list call
+  // narrows safely even for unknown projects (empty result).
+  const result = list(projectId, {
+    status: "in_progress",
+    labelName: labelName ?? undefined,
+    perPage: 100,
+  });
+  const inFlight: AwarenessInFlight[] = result.data.map((t) => ({
+    taskId: t.id,
+    title: t.title,
+    assignee: t.assigneeId
+      ? {
+          id: t.assigneeId,
+          name: t.assigneeName,
+          type: t.assigneeType,
+        }
+      : null,
+    gitBranch: t.gitBranch,
+    startedAt: t.startedAt,
+  }));
+  return { label: labelName, inFlight, total: inFlight.length };
 }

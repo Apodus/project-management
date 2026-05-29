@@ -4,10 +4,13 @@ import {
   createTestProject,
   createTestUser,
   createTestTask,
+  createTestAiAgent,
   authRequest,
   type TestApp,
 } from "../utils.js";
 import { getEventBus, EVENT_NAMES, type EventPayload } from "../../src/events/event-bus.js";
+import * as mergeRequestSvc from "../../src/services/merge-request.service.js";
+import * as mergeAttemptSvc from "../../src/services/merge-attempt.service.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -333,6 +336,94 @@ describe("SSE Events API", () => {
         expect(data.entity_type).toBe("project");
         expect(data.action).toBe("created");
       }
+    });
+  });
+
+  // ── Phase 7.1: merge train events over SSE ───────────────────
+
+  describe("Phase 7.1 merge train events over SSE", () => {
+    it("streams merge.request.queued when a request is submitted via service", async () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${project.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      let submittedId = "";
+      setTimeout(() => {
+        const r = mergeRequestSvc.submit({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          branch: "feat/sse-stream",
+          commitSha: "deadbeef",
+        });
+        submittedId = r.id;
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 2, timeoutMs: 2000 });
+      const events = parseSSEEvents(text);
+
+      const queued = events.find((e) => e.event === "merge.request.queued");
+      expect(queued).toBeDefined();
+      const data = JSON.parse(queued!.data!);
+      expect(data.entity_type).toBe("merge_request");
+      expect(data.entity_id).toBe(submittedId);
+      expect(data.action).toBe("request.queued");
+      expect(data.actor.id).toBe(submitter.id);
+      expect(data.timestamp).toBeDefined();
+    });
+
+    it("streams the full integrating → attempt-started → landed sequence in order", async () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db).user;
+      const actor = { id: integrator.id, role: "member", type: "ai_agent" };
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${project.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      setTimeout(() => {
+        const r = mergeRequestSvc.submit({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          branch: "feat/full-cycle",
+        });
+        mergeRequestSvc.transitionToIntegrating(r.id, actor);
+        const att = mergeAttemptSvc.startAttempt(r.id, { baseSha: "base000" }, actor);
+        mergeAttemptSvc.completeAttempt(
+          att.id,
+          { status: "passed", treeSha: "tree111" },
+          actor,
+        );
+        mergeRequestSvc.land(r.id, { landedSha: "tree111" }, actor);
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 6, timeoutMs: 3000 });
+      const events = parseSSEEvents(text);
+
+      const mergeEvents = events
+        .filter((e) => e.event && e.event.startsWith("merge."))
+        .map((e) => e.event);
+
+      expect(mergeEvents).toEqual([
+        "merge.request.queued",
+        "merge.request.integrating",
+        "merge.attempt.started",
+        "merge.attempt.completed",
+        "merge.request.landed",
+      ]);
+
+      const landed = events.find((e) => e.event === "merge.request.landed")!;
+      const landedData = JSON.parse(landed.data!);
+      expect(landedData.entity_type).toBe("merge_request");
     });
   });
 });

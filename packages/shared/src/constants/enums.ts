@@ -56,13 +56,14 @@ export const COMMENT_TYPES = [
   "handoff",
   "review_note",
   "design_discussion",
+  "merge_rejection",
 ] as const;
 export type CommentType = (typeof COMMENT_TYPES)[number];
 
 export const DEPENDENCY_TYPES = ["blocks", "relates_to"] as const;
 export type DependencyType = (typeof DEPENDENCY_TYPES)[number];
 
-export const GIT_REF_TYPES = ["branch", "commit", "pull_request"] as const;
+export const GIT_REF_TYPES = ["branch", "commit", "pull_request", "landed_sha"] as const;
 export type GitRefType = (typeof GIT_REF_TYPES)[number];
 
 export const GIT_REF_STATUSES = ["open", "merged", "closed"] as const;

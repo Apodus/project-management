@@ -10,6 +10,7 @@ import {
   type TestApp,
 } from "../utils.js";
 import { createId } from "@pm/shared";
+import { labels, taskLabels } from "../../src/db/index.js";
 
 describe("Tasks API", () => {
   let testApp: TestApp;
@@ -1186,6 +1187,323 @@ describe("Tasks API", () => {
       );
       const getBody = await getRes.json();
       expect(getBody.data.parentTaskId).toBe(parentId);
+    });
+  });
+
+  // ── Claim / release ──────────────────────────────────────────────
+  describe("POST /api/v1/tasks/:id/claim and /release", () => {
+    it("claims an unassigned task and sets claimStatus to claimed_by_you", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/tasks/${task.id}/claim`,
+        { token: a.token },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.status).toBe("claimed_by_you");
+
+      const get = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/tasks/${task.id}`,
+        { token: a.token },
+      );
+      const got = await get.json();
+      expect(got.data.assigneeId).toBe(a.user.id);
+      expect(got.data.claimStatus).toBe("claimed_by_you");
+    });
+
+    it("is idempotent for the holder", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
+        token: a.token,
+      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/tasks/${task.id}/claim`,
+        { token: a.token },
+      );
+      const body = await res.json();
+      expect(body.data.status).toBe("already_claimed_by_you");
+    });
+
+    it("returns claimed_by_another_agent for a racer", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const b = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
+        token: a.token,
+      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/tasks/${task.id}/claim`,
+        { token: b.token },
+      );
+      const body = await res.json();
+      expect(body.data.ok).toBe(false);
+      expect(body.data.status).toBe("claimed_by_another_agent");
+    });
+
+    it("rejects AI-agent PATCH on a task they don't hold (CLAIM_DENIED)", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+        // assigneeId omitted — unclaimed
+      });
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/tasks/${task.id}`,
+        { token: a.token, body: { title: "renamed" } },
+      );
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error.code).toBe("CLAIM_DENIED");
+    });
+
+    it("allows AI-agent PATCH after claiming", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
+        token: a.token,
+      });
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/tasks/${task.id}`,
+        { token: a.token, body: { title: "renamed" } },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.title).toBe("renamed");
+    });
+
+    it("humans can write to unclaimed tasks without claiming", async () => {
+      const project = createTestProject(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: testApp.testUser.id,
+      });
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/tasks/${task.id}`,
+        { body: { title: "renamed by human" } },
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("release frees the slot for the holder", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
+        token: a.token,
+      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/tasks/${task.id}/release`,
+        { token: a.token },
+      );
+      const body = await res.json();
+      expect(body.data.status).toBe("released");
+    });
+
+    it("AI agent cannot release another agent's claim", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const b = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+        assigneeId: a.user.id,
+      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/tasks/${task.id}/release`,
+        { token: b.token },
+      );
+      const body = await res.json();
+      expect(body.data.ok).toBe(false);
+      expect(body.data.status).toBe("claimed_by_another_agent");
+    });
+
+    it("claim returns closed for terminal-status tasks", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+        status: "done",
+      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/tasks/${task.id}/claim`,
+        { token: a.token },
+      );
+      const body = await res.json();
+      expect(body.data.status).toBe("closed");
+    });
+  });
+
+  // ── claim filter on list ─────────────────────────────────────────
+  describe("GET /api/v1/projects/:projectId/tasks?claim=", () => {
+    it("'mine' returns only tasks claimed by caller", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const b = createTestAiAgent(testApp.db);
+      createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+        assigneeId: a.user.id,
+        title: "mine",
+      });
+      createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: b.user.id,
+        assigneeId: b.user.id,
+        title: "theirs",
+      });
+      createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+        title: "unassigned",
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/tasks?claim=mine`,
+        { token: a.token },
+      );
+      const body = await res.json();
+      expect(body.data.map((t: { title: string }) => t.title)).toEqual([
+        "mine",
+      ]);
+    });
+
+    it("'available' returns unassigned OR claimed by caller", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const b = createTestAiAgent(testApp.db);
+      createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+        assigneeId: a.user.id,
+        title: "mine",
+      });
+      createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: b.user.id,
+        assigneeId: b.user.id,
+        title: "theirs",
+      });
+      createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+        title: "free",
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/tasks?claim=available`,
+        { token: a.token },
+      );
+      const body = await res.json();
+      const titles = body.data
+        .map((t: { title: string }) => t.title)
+        .sort();
+      expect(titles).toEqual(["free", "mine"]);
+    });
+  });
+
+  // ── label-by-name filter ─────────────────────────────────────────
+  describe("GET /api/v1/projects/:projectId/tasks?label_name=", () => {
+    it("resolves label name to id within the project", async () => {
+      const project = createTestProject(testApp.db);
+      // Create a label and a labeled task
+      const labelId = createId();
+      testApp.db
+        .insert(labels)
+        .values({
+          id: labelId,
+          projectId: project.id,
+          name: "renderer",
+          color: null,
+          description: null,
+        })
+        .run();
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: testApp.testUser.id,
+        title: "labeled",
+      });
+      testApp.db
+        .insert(taskLabels)
+        .values({ taskId: task.id, labelId })
+        .run();
+      createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: testApp.testUser.id,
+        title: "unlabeled",
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/tasks?label_name=renderer`,
+      );
+      const body = await res.json();
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].title).toBe("labeled");
+    });
+
+    it("returns empty for an unknown label name (no cross-project leak)", async () => {
+      const project = createTestProject(testApp.db);
+      createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: testApp.testUser.id,
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/tasks?label_name=nonexistent`,
+      );
+      const body = await res.json();
+      expect(body.data).toEqual([]);
     });
   });
 });

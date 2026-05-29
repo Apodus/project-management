@@ -1,0 +1,39 @@
+{
+  "roadmap": "roadmaps/phase-7.1-worker-integrator-split.md",
+  "campaign": "phase-7.1-worker-integrator-split",
+  "status": "COMPLETE",
+  "started_at": "2026-05-29T00:00:00.000Z",
+  "completed_at": "2026-05-29T21:30:00.000Z",
+  "completed_steps": [
+    { "step": 1, "title": "Design doc", "outcome": "1109 lines.", "plan_revisions": 1 },
+    { "step": 2, "title": "DB schema + migration 0010", "outcome": "+2 tables.", "plan_revisions": 0 },
+    { "step": 3, "title": "Shared Zod schemas", "outcome": "+47 shared (258 total).", "plan_revisions": 0 },
+    { "step": 4, "title": "Service: requests + state machine", "outcome": "+36 (662→698).", "plan_revisions": 0 },
+    { "step": 5, "title": "Service: attempts + reject + side effects", "outcome": "+37 (698→724).", "plan_revisions": 1 },
+    { "step": 6, "title": "REST routes", "outcome": "+29 (724→753).", "plan_revisions": 0 },
+    { "step": 7, "title": "SSE events verification", "outcome": "+10 (753→763).", "plan_revisions": 0 },
+    { "step": 8, "title": "MCP tools", "outcome": "+4 MCP (97→101).", "plan_revisions": 0 },
+    { "step": 9, "title": "Per-project integrator config", "outcome": "+7 (763→770).", "plan_revisions": 0 },
+    { "step": 10, "title": "Reference integrator scaffold", "outcome": "+5 server (770→775), +9 integrator-ref, pickup endpoint.", "plan_revisions": 0 },
+    { "step": 11, "title": "Integration loop + tests", "outcome": "+5 server (775→780), +43 integrator-ref. reset-to-queued endpoint.", "plan_revisions": 1 },
+    { "step": 12, "title": "Full-stack E2E", "outcome": "4 flows pass. Caught+fixed real git-ops push bug (HEAD:branch).", "plan_revisions": 0 },
+    { "step": 13, "title": "Documentation", "outcome": "integrator-deployment.md (359 lines), design doc §8/§9 corrections, CLAUDE.md, README.", "plan_revisions": 0 }
+  ],
+  "current_step": null,
+  "final_gate": {
+    "build": "pass",
+    "typecheck": "pass (6/6 packages)",
+    "tests": "1187 passing (258 shared + 101 mcp + 780 server + 48 integrator-ref; 1 skipped)",
+    "lint": "no new campaign regressions (1 introduced error fixed; 58 server errors are pre-existing baseline, none in merge-train files)",
+    "committed": false,
+    "commit_note": "Left dirty for human review per project CLAUDE.md 'commit only when asked' (overrides campaign default). Tree also holds earlier uncommitted Stage 1 + task-claims + awareness work."
+  },
+  "plan_revisions_total": 4,
+  "open_issues": [
+    "Working tree uncommitted (intentional — awaiting human review/commit).",
+    "Pre-existing server lint baseline ~58 errors in untouched files (predate campaign).",
+    "loop.test.ts asserts outcome.kind only, not remote-main movement — could be strengthened (the E2E catches the gap).",
+    "integrator-ref vitest.config.ts sets fileParallelism:false so real-git/spawn tests don't starve under monorepo-wide concurrency."
+  ],
+  "dag_drift": []
+}

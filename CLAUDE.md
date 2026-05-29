@@ -108,6 +108,24 @@ project-management/
 - **Shared**: Zod schemas as the single source of truth for types across all packages. Exported as ESM.
 - All packages use TypeScript with strict mode enabled.
 
+## Merge train (worker / integrator split)
+
+Workers submit a merge request and walk away; a separate long-lived **integrator** process
+picks it up, rebases onto live main, runs the project's verify command in an isolated
+worktree, and either lands it (fast-forwards main, attaches a `landed_sha` git_ref to the
+linked task) or rejects it with a structured payload (auto-comment of type `merge_rejection`).
+Main is never broken — verify runs against a tree SHA before main fast-forwards.
+
+- **Architecture & contracts**: `docs/design/phase-7.1-design.md` (data model, state machines,
+  REST surface, SSE events, authz, failure catalog).
+- **Operator deployment guide**: `docs/integrator-deployment.md` (install, config, monitoring,
+  failure modes, single-machine layout).
+- **MCP tools** (worker-facing): `pm_request_merge`, `pm_list_merge_requests`,
+  `pm_get_merge_request`, `pm_cancel_merge_request`. The integrator-facing operations
+  (pickup, start/complete attempt, land, reject, reset-to-queued) are HTTP-only.
+- **Reference integrator**: `packages/integrator-ref` (`@pm/integrator-ref`, bin `pm-integrator`).
+  Deploy one process per `(project, resource)` lane.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:

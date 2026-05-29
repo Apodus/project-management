@@ -14,6 +14,7 @@ import type {
   aiAutonomySettingsSchema,
   workflowSettingsSchema,
   gitSettingsSchema,
+  integratorSettingsSchema,
   // Proposal
   selectProposalSchema,
   insertProposalSchema,
@@ -67,6 +68,7 @@ export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
 export type AiAutonomySettings = z.infer<typeof aiAutonomySettingsSchema>;
 export type WorkflowSettings = z.infer<typeof workflowSettingsSchema>;
 export type GitSettings = z.infer<typeof gitSettingsSchema>;
+export type IntegratorSettings = z.infer<typeof integratorSettingsSchema>;
 
 // --- Proposal ---
 export type Proposal = z.infer<typeof selectProposalSchema>;

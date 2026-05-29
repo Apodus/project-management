@@ -35,6 +35,28 @@ export const EVENT_NAMES = {
   COMMENT_CREATED: "comment.created",
   COMMENT_UPDATED: "comment.updated",
   COMMENT_DELETED: "comment.deleted",
+
+  // Task claim events
+  TASK_CLAIMED: "task.claimed",
+  TASK_RELEASED: "task.released",
+
+  // Merge lock events
+  MERGE_LOCK_ACQUIRED: "merge.lock.acquired",
+  MERGE_LOCK_QUEUED: "merge.lock.queued",
+  MERGE_LOCK_RELEASED: "merge.lock.released",
+  MERGE_LOCK_GRANTED: "merge.lock.granted",
+  MERGE_LOCK_EXPIRED: "merge.lock.expired",
+
+  // Merge request events (Phase 7.1 Stage 2 — request lifecycle)
+  MERGE_REQUEST_QUEUED: "merge.request.queued",
+  MERGE_REQUEST_INTEGRATING: "merge.request.integrating",
+  MERGE_REQUEST_LANDED: "merge.request.landed",
+  MERGE_REQUEST_REJECTED: "merge.request.rejected",
+  MERGE_REQUEST_ABANDONED: "merge.request.abandoned",
+
+  // Merge attempt events (Phase 7.1 Stage 2 — attempt lifecycle)
+  MERGE_ATTEMPT_STARTED: "merge.attempt.started",
+  MERGE_ATTEMPT_COMPLETED: "merge.attempt.completed",
 } as const;
 
 export type EventName = (typeof EVENT_NAMES)[keyof typeof EVENT_NAMES];

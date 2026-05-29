@@ -1,7 +1,59 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { PROJECT_STATUSES } from "@pm/shared";
+import { PROJECT_STATUSES, TASK_STATUSES } from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as projectService from "../services/project.service.js";
+
+// ─── Settings schemas (Zod 4 mirror of @pm/shared/projectSettingsSchema) ──
+// @pm/shared uses Zod 3, but @hono/zod-openapi requires Zod 4 schemas, so
+// the route body validation uses Zod 4 schemas here. Shape MUST match
+// @pm/shared/projectSettingsSchema. See packages/shared/src/schemas/project.ts.
+
+const aiAutonomySettingsSchema = z.object({
+  can_self_assign: z.boolean(),
+  can_create_subtasks: z.boolean(),
+  can_create_tasks: z.boolean(),
+  can_change_priority: z.boolean(),
+  can_close_epics: z.boolean(),
+  max_concurrent_tasks: z.number().int().min(1),
+});
+
+const workflowSettingsSchema = z.object({
+  statuses: z.array(z.enum(TASK_STATUSES)),
+});
+
+const gitSettingsSchema = z.object({
+  branch_prefix: z.string(),
+  auto_link_branches: z.boolean(),
+});
+
+const integratorSettingsSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    verify_command: z.string().min(1).optional(),
+    verify_timeout_sec: z.number().int().min(1).default(600),
+    worktree_root: z.string().min(1).optional(),
+    git_remote: z.string().min(1).default("origin"),
+    git_main_branch: z.string().min(1).default("main"),
+    worktree_name: z.string().min(1).optional(),
+  })
+  .refine(
+    (v) => !v.enabled || (Boolean(v.verify_command) && Boolean(v.worktree_root)),
+    {
+      message:
+        "When integrator.enabled is true, verify_command and worktree_root are required and must be non-empty.",
+      path: ["enabled"],
+    },
+  );
+
+const projectSettingsSchema = z
+  .object({
+    ai_autonomy: aiAutonomySettingsSchema,
+    workflow: workflowSettingsSchema,
+    git: gitSettingsSchema,
+    integrator: integratorSettingsSchema.optional(),
+  })
+  .nullable()
+  .optional();
 
 // ─── Response schemas ─────────────────────────────────────────────
 
@@ -61,7 +113,7 @@ const createProjectBody = z
     description: z.string().nullable().optional(),
     gitRepoUrl: z.string().nullable().optional(),
     status: z.enum(PROJECT_STATUSES).optional(),
-    settings: z.unknown().nullable().optional(),
+    settings: projectSettingsSchema,
     sortOrder: z.number().int().optional(),
   })
   .openapi("CreateProject");
@@ -72,7 +124,7 @@ const updateProjectBody = z
     description: z.string().nullable().optional(),
     gitRepoUrl: z.string().nullable().optional(),
     status: z.enum(PROJECT_STATUSES).optional(),
-    settings: z.unknown().nullable().optional(),
+    settings: projectSettingsSchema,
     sortOrder: z.number().int().optional(),
   })
   .openapi("UpdateProject");

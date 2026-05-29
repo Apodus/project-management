@@ -352,4 +352,52 @@ describe("Event Bus", () => {
       expect(createActivity).toBeDefined();
     });
   });
+
+  // ─── Phase 7.1 EVENT_NAMES additions ──────────────────────────
+
+  describe("Phase 7.1 EVENT_NAMES additions", () => {
+    it("MERGE_REQUEST_QUEUED = 'merge.request.queued'", () => {
+      expect(EVENT_NAMES.MERGE_REQUEST_QUEUED).toBe("merge.request.queued");
+    });
+
+    it("MERGE_REQUEST_INTEGRATING = 'merge.request.integrating'", () => {
+      expect(EVENT_NAMES.MERGE_REQUEST_INTEGRATING).toBe("merge.request.integrating");
+    });
+
+    it("MERGE_REQUEST_LANDED = 'merge.request.landed'", () => {
+      expect(EVENT_NAMES.MERGE_REQUEST_LANDED).toBe("merge.request.landed");
+    });
+
+    it("MERGE_REQUEST_REJECTED = 'merge.request.rejected'", () => {
+      expect(EVENT_NAMES.MERGE_REQUEST_REJECTED).toBe("merge.request.rejected");
+    });
+
+    it("MERGE_REQUEST_ABANDONED = 'merge.request.abandoned'", () => {
+      expect(EVENT_NAMES.MERGE_REQUEST_ABANDONED).toBe("merge.request.abandoned");
+    });
+
+    it("MERGE_ATTEMPT_STARTED = 'merge.attempt.started'", () => {
+      expect(EVENT_NAMES.MERGE_ATTEMPT_STARTED).toBe("merge.attempt.started");
+    });
+
+    it("MERGE_ATTEMPT_COMPLETED = 'merge.attempt.completed'", () => {
+      expect(EVENT_NAMES.MERGE_ATTEMPT_COMPLETED).toBe("merge.attempt.completed");
+    });
+
+    it("all 7 Phase 7.1 event names are present in EVENT_NAMES values", () => {
+      const values = Object.values(EVENT_NAMES) as string[];
+      const expected = [
+        "merge.request.queued",
+        "merge.request.integrating",
+        "merge.request.landed",
+        "merge.request.rejected",
+        "merge.request.abandoned",
+        "merge.attempt.started",
+        "merge.attempt.completed",
+      ];
+      for (const name of expected) {
+        expect(values).toContain(name);
+      }
+    });
+  });
 });

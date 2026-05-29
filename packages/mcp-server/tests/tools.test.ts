@@ -41,6 +41,18 @@ vi.mock("../src/api-client.js", () => ({
   createGitRef: vi.fn(),
   getProjectTasks: vi.fn(),
   checkUpdates: vi.fn(),
+  claimTask: vi.fn(),
+  releaseTask: vi.fn(),
+  awareness: vi.fn(),
+  acquireMergeLock: vi.fn(),
+  heartbeatMergeLock: vi.fn(),
+  releaseMergeLock: vi.fn(),
+  getMergeLock: vi.fn(),
+  listMergeLocks: vi.fn(),
+  submitMergeRequest: vi.fn(),
+  listMergeRequests: vi.fn(),
+  getMergeRequest: vi.fn(),
+  cancelMergeRequest: vi.fn(),
 }));
 
 // Import the mocked functions so we can configure them per test
@@ -67,6 +79,18 @@ const mockUpdateTask = vi.mocked(apiClient.updateTask);
 const mockCreateGitRef = vi.mocked(apiClient.createGitRef);
 const mockGetProjectTasks = vi.mocked(apiClient.getProjectTasks);
 const mockCheckUpdates = vi.mocked(apiClient.checkUpdates);
+const mockClaimTask = vi.mocked(apiClient.claimTask);
+const mockReleaseTask = vi.mocked(apiClient.releaseTask);
+const mockAwareness = vi.mocked(apiClient.awareness);
+const mockAcquireMergeLock = vi.mocked(apiClient.acquireMergeLock);
+const mockHeartbeatMergeLock = vi.mocked(apiClient.heartbeatMergeLock);
+const mockReleaseMergeLock = vi.mocked(apiClient.releaseMergeLock);
+const mockGetMergeLock = vi.mocked(apiClient.getMergeLock);
+const mockListMergeLocks = vi.mocked(apiClient.listMergeLocks);
+const mockSubmitMergeRequest = vi.mocked(apiClient.submitMergeRequest);
+const mockListMergeRequests = vi.mocked(apiClient.listMergeRequests);
+const mockGetMergeRequest = vi.mocked(apiClient.getMergeRequest);
+const mockCancelMergeRequest = vi.mocked(apiClient.cancelMergeRequest);
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -156,6 +180,30 @@ const sampleSearchResult = {
   excerpt: "Build the feature X as described...",
   rank: 1.5,
   projectId: "proj_001",
+};
+
+const sampleMergeRequest = {
+  id: "mreq_001",
+  projectId: "P1",
+  resource: "main",
+  submittedBy: "U_AGENT",
+  taskId: "T1",
+  branch: "feat/skin",
+  commitSha: "abc1234",
+  verifyCmd: null,
+  worktreePath: null,
+  status: "queued" as const,
+  enqueuedAt: "2026-05-29T14:21:03.412Z",
+  pickedUpAt: null,
+  resolvedAt: null,
+  landedSha: null,
+  rejectCategory: null,
+  rejectReason: null,
+  failedFiles: null,
+  logExcerpt: null,
+  logUrl: null,
+  createdAt: "2026-05-29T14:21:03.412Z",
+  updatedAt: "2026-05-29T14:21:03.412Z",
 };
 
 // ---------------------------------------------------------------------------
@@ -2116,6 +2164,381 @@ describe("MCP Tools", () => {
       } catch {
         // Expected — missing required task_id
       }
+    });
+  });
+
+  // ── Task claim / release / awareness ────────────────────────────
+  describe("task claim/release/awareness tools", () => {
+    it("pm_claim_task calls claimTask and renders the result", async () => {
+      mockClaimTask.mockResolvedValue({ ok: true, status: "claimed_by_you" });
+      const result = await client.callTool({
+        name: "pm_claim_task",
+        arguments: { task_id: "T1" },
+      });
+      expect(mockClaimTask).toHaveBeenCalledWith("T1");
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Claimed");
+    });
+
+    it("pm_release_task calls releaseTask", async () => {
+      mockReleaseTask.mockResolvedValue({ ok: true, status: "released" });
+      const result = await client.callTool({
+        name: "pm_release_task",
+        arguments: { task_id: "T1" },
+      });
+      expect(mockReleaseTask).toHaveBeenCalledWith("T1");
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Released");
+    });
+
+    it("pm_awareness_check reports clear when no one is in flight", async () => {
+      mockAwareness.mockResolvedValue({
+        label: "renderer",
+        inFlight: [],
+        total: 0,
+      });
+      const result = await client.callTool({
+        name: "pm_awareness_check",
+        arguments: { project_id: "P1", label: "renderer" },
+      });
+      expect(mockAwareness).toHaveBeenCalledWith("P1", "renderer");
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toMatch(/Clear/i);
+    });
+
+    it("pm_awareness_check surfaces in-flight agents with branches", async () => {
+      mockAwareness.mockResolvedValue({
+        label: "renderer",
+        inFlight: [
+          {
+            taskId: "T1",
+            title: "skinning",
+            assignee: { id: "U1", name: "Alpha", type: "ai_agent" },
+            gitBranch: "feat/skin",
+            startedAt: null,
+          },
+        ],
+        total: 1,
+      });
+      const result = await client.callTool({
+        name: "pm_awareness_check",
+        arguments: { project_id: "P1", label: "renderer" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Alpha");
+      expect(text).toContain("feat/skin");
+      expect(text).toContain("skinning");
+    });
+  });
+
+  // ── Merge lock tools ────────────────────────────────────────────
+  describe("merge lock tools", () => {
+    it("pm_acquire_merge_lock defaults resource to 'main'", async () => {
+      mockAcquireMergeLock.mockResolvedValue({
+        ok: true,
+        status: "held",
+        expiresAt: "2026-05-29T12:00:00.000Z",
+      });
+      const result = await client.callTool({
+        name: "pm_acquire_merge_lock",
+        arguments: { project_id: "P1" },
+      });
+      expect(mockAcquireMergeLock).toHaveBeenCalledWith("P1", "main", {
+        taskId: undefined,
+        branch: undefined,
+        commitSha: undefined,
+        verifyCmd: undefined,
+        worktreePath: undefined,
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Acquired");
+    });
+
+    it("pm_acquire_merge_lock forwards landing intent fields", async () => {
+      mockAcquireMergeLock.mockResolvedValue({
+        ok: true,
+        status: "held",
+        expiresAt: "2026-05-29T12:00:00.000Z",
+      });
+      await client.callTool({
+        name: "pm_acquire_merge_lock",
+        arguments: {
+          project_id: "P1",
+          task_id: "T1",
+          branch: "feat/skin",
+          commit_sha: "abc1234",
+          verify_cmd: "cargo test",
+          worktree_path: "D:\\work\\skin",
+        },
+      });
+      expect(mockAcquireMergeLock).toHaveBeenCalledWith("P1", "main", {
+        taskId: "T1",
+        branch: "feat/skin",
+        commitSha: "abc1234",
+        verifyCmd: "cargo test",
+        worktreePath: "D:\\work\\skin",
+      });
+    });
+
+    it("pm_acquire_merge_lock reports queue position", async () => {
+      mockAcquireMergeLock.mockResolvedValue({
+        ok: true,
+        status: "queued",
+        position: 2,
+      });
+      const result = await client.callTool({
+        name: "pm_acquire_merge_lock",
+        arguments: { project_id: "P1", resource: "main" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Queued");
+      expect(text).toContain("2");
+    });
+
+    it("pm_release_merge_lock forwards landed_sha", async () => {
+      mockReleaseMergeLock.mockResolvedValue({
+        ok: true,
+        status: "released",
+        grantedTo: "U2",
+      });
+      const result = await client.callTool({
+        name: "pm_release_merge_lock",
+        arguments: { project_id: "P1", landed_sha: "abc1234" },
+      });
+      expect(mockReleaseMergeLock).toHaveBeenCalledWith("P1", "main", {
+        landedSha: "abc1234",
+        reason: undefined,
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("abc1234");
+      expect(text).toContain("next queued agent");
+    });
+
+    it("pm_release_merge_lock abandons with a reason when no landed_sha", async () => {
+      mockReleaseMergeLock.mockResolvedValue({
+        ok: true,
+        status: "released",
+        grantedTo: null,
+      });
+      const result = await client.callTool({
+        name: "pm_release_merge_lock",
+        arguments: { project_id: "P1", reason: "build broke in skin.cpp" },
+      });
+      expect(mockReleaseMergeLock).toHaveBeenCalledWith("P1", "main", {
+        landedSha: undefined,
+        reason: "build broke in skin.cpp",
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Abandoned");
+      expect(text).toContain("build broke");
+    });
+
+    it("pm_heartbeat_merge_lock reports lapsed lease", async () => {
+      mockHeartbeatMergeLock.mockResolvedValue({
+        ok: false,
+        status: "not_holder",
+      });
+      const result = await client.callTool({
+        name: "pm_heartbeat_merge_lock",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toMatch(/no longer hold/i);
+    });
+
+    it("pm_get_merge_lock masks holder identity", async () => {
+      mockGetMergeLock.mockResolvedValue({
+        id: "L1",
+        projectId: "P1",
+        resource: "main",
+        holder: "someone_else",
+        holderId: null,
+        acquiredAt: "2026-05-29T11:00:00.000Z",
+        heartbeatAt: "2026-05-29T11:01:00.000Z",
+        expiresAt: "2026-05-29T11:06:00.000Z",
+        landedSha: null,
+        landedAt: null,
+        taskId: null,
+        branch: null,
+        commitSha: null,
+        verifyCmd: null,
+        worktreePath: null,
+        abandonReason: null,
+        queueLength: 1,
+        yourPosition: 1,
+        createdAt: "2026-05-29T10:00:00.000Z",
+        updatedAt: "2026-05-29T11:01:00.000Z",
+      });
+      const result = await client.callTool({
+        name: "pm_get_merge_lock",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("someone_else");
+      expect(text).toContain("Your position in queue: 1");
+    });
+
+    it("pm_list_merge_locks lists locks", async () => {
+      mockListMergeLocks.mockResolvedValue([
+        {
+          id: "L1",
+          projectId: "P1",
+          resource: "main",
+          holder: "you",
+          holderId: "U1",
+          acquiredAt: null,
+          heartbeatAt: null,
+          expiresAt: null,
+          landedSha: "abc",
+          landedAt: null,
+          taskId: null,
+          branch: null,
+          commitSha: null,
+          verifyCmd: null,
+          worktreePath: null,
+          abandonReason: null,
+          queueLength: 0,
+          yourPosition: null,
+          createdAt: "x",
+          updatedAt: "x",
+        },
+      ]);
+      const result = await client.callTool({
+        name: "pm_list_merge_locks",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("main");
+      expect(text).toContain("abc");
+    });
+  });
+
+  // ── Merge request tools (Stage 2) ───────────────────────────────
+  describe("merge request tools", () => {
+    it("pm_request_merge submits and reports queue position", async () => {
+      mockSubmitMergeRequest.mockResolvedValue(sampleMergeRequest);
+      mockListMergeRequests.mockResolvedValue([sampleMergeRequest]);
+
+      const result = await client.callTool({
+        name: "pm_request_merge",
+        arguments: {
+          project_id: "P1",
+          task_id: "T1",
+          branch: "feat/skin",
+          commit_sha: "abc1234",
+        },
+      });
+
+      expect(mockSubmitMergeRequest).toHaveBeenCalledWith("P1", {
+        resource: "main",
+        taskId: "T1",
+        branch: "feat/skin",
+        commitSha: "abc1234",
+        verifyCmd: undefined,
+        worktreePath: undefined,
+      });
+      expect(mockListMergeRequests).toHaveBeenCalledWith("P1", {
+        resource: "main",
+        status: "queued",
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("mreq_001");
+      expect(text).toContain("queued");
+      expect(text).toContain("Queue position: 1 of 1");
+      expect(text).toContain("merge.request.landed");
+    });
+
+    it("pm_list_merge_requests renders rows with queue positions", async () => {
+      mockListMergeRequests.mockResolvedValue([
+        { ...sampleMergeRequest, id: "mreq_A", status: "integrating" },
+        { ...sampleMergeRequest, id: "mreq_B", status: "queued" },
+        { ...sampleMergeRequest, id: "mreq_C", status: "queued" },
+      ]);
+
+      const result = await client.callTool({
+        name: "pm_list_merge_requests",
+        arguments: { project_id: "P1", resource: "main" },
+      });
+
+      expect(mockListMergeRequests).toHaveBeenCalledWith("P1", {
+        resource: "main",
+        status: undefined,
+        taskId: undefined,
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("mreq_A");
+      expect(text).toContain("integrating");
+      expect(text).toContain("queued (position 1)");
+      expect(text).toContain("queued (position 2)");
+      expect(text).toContain("by U_AGENT");
+    });
+
+    it("pm_get_merge_request surfaces rejection envelope prominently", async () => {
+      mockGetMergeRequest.mockResolvedValue({
+        ...sampleMergeRequest,
+        status: "rejected",
+        resolvedAt: "2026-05-29T14:24:48.902Z",
+        rejectCategory: "build_failed",
+        rejectReason: "cargo build --workspace failed: 3 errors\nin crates/renderer",
+        failedFiles: ["crates/renderer/src/skinned.rs", "crates/renderer/src/lib.rs"],
+        logExcerpt: "error[E0599]: ...",
+        logUrl: "file:///tmp/logs/attempt01.log",
+        attempts: [
+          {
+            id: "att_1",
+            requestId: "mreq_001",
+            attemptNumber: 1,
+            baseSha: "2c8f1d9",
+            treeSha: null,
+            status: "failed",
+            startedAt: "2026-05-29T14:21:05Z",
+            completedAt: "2026-05-29T14:24:48Z",
+            verifyDurationMs: 223000,
+            failureCategory: "build_failed",
+            failureReason: "cargo build --workspace failed: 3 errors",
+            failedFiles: ["crates/renderer/src/skinned.rs"],
+            logExcerpt: null,
+            logUrl: "file:///tmp/logs/attempt01.log",
+            createdAt: "2026-05-29T14:21:05Z",
+          },
+        ],
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_request",
+        arguments: { request_id: "mreq_001" },
+      });
+
+      expect(mockGetMergeRequest).toHaveBeenCalledWith("mreq_001");
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("REJECTED");
+      expect(text).toContain("REJECTION (build_failed)");
+      expect(text).toContain("cargo build --workspace failed: 3 errors");
+      expect(text).toContain("crates/renderer/src/skinned.rs");
+      expect(text).toContain("file:///tmp/logs/attempt01.log");
+      expect(text).toContain("Attempts (1)");
+      expect(text).toContain("#1");
+      expect(text).toContain("failed");
+      expect(text).toContain("base=2c8f1d9");
+    });
+
+    it("pm_cancel_merge_request reports new status", async () => {
+      mockCancelMergeRequest.mockResolvedValue({
+        ...sampleMergeRequest,
+        status: "abandoned",
+        resolvedAt: "2026-05-29T14:22:50.000Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_cancel_merge_request",
+        arguments: { request_id: "mreq_001" },
+      });
+
+      expect(mockCancelMergeRequest).toHaveBeenCalledWith("mreq_001");
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("mreq_001");
+      expect(text).toContain("abandoned");
+      expect(text).toContain("2026-05-29T14:22:50.000Z");
     });
   });
 });
