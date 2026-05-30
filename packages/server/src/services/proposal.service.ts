@@ -21,8 +21,10 @@ import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 import {
   assertClaimOk as assertClaimOkRaw,
   deriveClaimStatus,
+  forceClaim as forceClaimShared,
   type Actor as ClaimActor,
   type ClaimFilter as ClaimFilterShared,
+  type ForceClaimResult,
 } from "./claim-helpers.js";
 
 export { deriveClaimStatus } from "./claim-helpers.js";
@@ -372,6 +374,27 @@ export function release(id: string, actor: Actor): ClaimResult {
   });
 
   return { ok: true, status: "released" };
+}
+
+/**
+ * Force-claim (take over) a proposal claim — reason-required + audited.
+ * Delegates to the shared helper (the DRY home for the authz/reason/audit
+ * logic). The proposal holds its claim in `claimedBy` (vs assigneeId for
+ * task/epic).
+ */
+export function forceClaim(
+  id: string,
+  actor: Actor,
+  opts: { reason: string; newAssigneeId?: string | null },
+): ForceClaimResult {
+  return forceClaimShared(id, actor, opts, {
+    table: proposals,
+    holderKey: "claimedBy",
+    holderJsonKey: "claimed_by",
+    terminalStatuses: TERMINAL_STATUSES,
+    eventName: EVENT_NAMES.PROPOSAL_CLAIM_FORCED,
+    entityType: "proposal",
+  });
 }
 
 /**

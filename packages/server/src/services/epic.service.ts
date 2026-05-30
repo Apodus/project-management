@@ -12,8 +12,10 @@ import { assertClaimOk as assertProposalClaimOk } from "./proposal.service.js";
 import {
   assertClaimOk as assertClaimOkRaw,
   deriveClaimStatus,
+  forceClaim as forceClaimShared,
   type Actor,
   type ClaimFilter,
+  type ForceClaimResult,
 } from "./claim-helpers.js";
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -398,6 +400,25 @@ export function release(id: string, actor: Actor): ClaimResult {
   });
 
   return { ok: true, status: "released" };
+}
+
+/**
+ * Force-claim (take over) an epic claim — reason-required + audited. Delegates
+ * to the shared helper (the DRY home for the authz/reason/audit logic).
+ */
+export function forceClaim(
+  id: string,
+  actor: Actor,
+  opts: { reason: string; newAssigneeId?: string | null },
+): ForceClaimResult {
+  return forceClaimShared(id, actor, opts, {
+    table: epics,
+    holderKey: "assigneeId",
+    holderJsonKey: "assignee_id",
+    terminalStatuses: TERMINAL_STATUSES,
+    eventName: EVENT_NAMES.EPIC_CLAIM_FORCED,
+    entityType: "epic",
+  });
 }
 
 /**

@@ -43,6 +43,9 @@ vi.mock("../src/api-client.js", () => ({
   checkUpdates: vi.fn(),
   claimTask: vi.fn(),
   releaseTask: vi.fn(),
+  forceClaimTask: vi.fn(),
+  forceClaimEpic: vi.fn(),
+  forceClaimProposal: vi.fn(),
   awareness: vi.fn(),
   acquireMergeLock: vi.fn(),
   heartbeatMergeLock: vi.fn(),
@@ -85,6 +88,9 @@ const mockGetProjectTasks = vi.mocked(apiClient.getProjectTasks);
 const mockCheckUpdates = vi.mocked(apiClient.checkUpdates);
 const mockClaimTask = vi.mocked(apiClient.claimTask);
 const mockReleaseTask = vi.mocked(apiClient.releaseTask);
+const mockForceClaimTask = vi.mocked(apiClient.forceClaimTask);
+const mockForceClaimEpic = vi.mocked(apiClient.forceClaimEpic);
+const mockForceClaimProposal = vi.mocked(apiClient.forceClaimProposal);
 const mockAwareness = vi.mocked(apiClient.awareness);
 const mockAcquireMergeLock = vi.mocked(apiClient.acquireMergeLock);
 const mockHeartbeatMergeLock = vi.mocked(apiClient.heartbeatMergeLock);
@@ -669,6 +675,82 @@ describe("MCP Tools", () => {
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("don't hold this claim");
+    });
+  });
+
+  describe("pm_force_claim_task", () => {
+    it("calls forceClaimTask with (id, reason, undefined) and renders no-leak text", async () => {
+      mockForceClaimTask.mockResolvedValue({
+        ok: true,
+        status: "force_claimed",
+        previousHolder: "user_secret_A",
+        newHolder: "user_B",
+      });
+
+      const result = await client.callTool({
+        name: "pm_force_claim_task",
+        arguments: { task_id: "task_001", reason: "my session identity flipped" },
+      });
+
+      expect(mockForceClaimTask).toHaveBeenCalledWith(
+        "task_001",
+        "my session identity flipped",
+        undefined,
+      );
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Force-claimed");
+      // No-leak: the displaced holder's id must never appear in the render.
+      expect(text).not.toContain("user_secret_A");
+    });
+  });
+
+  describe("pm_force_claim_epic", () => {
+    it("calls forceClaimEpic with (id, reason, undefined) and renders no-leak text", async () => {
+      mockForceClaimEpic.mockResolvedValue({
+        ok: true,
+        status: "force_claimed",
+        previousHolder: "user_secret_A",
+        newHolder: "user_B",
+      });
+
+      const result = await client.callTool({
+        name: "pm_force_claim_epic",
+        arguments: { epic_id: "epic_001", reason: "recovering my stranded epic" },
+      });
+
+      expect(mockForceClaimEpic).toHaveBeenCalledWith(
+        "epic_001",
+        "recovering my stranded epic",
+        undefined,
+      );
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Force-claimed");
+      expect(text).not.toContain("user_secret_A");
+    });
+  });
+
+  describe("pm_force_claim_proposal", () => {
+    it("calls forceClaimProposal with (id, reason, undefined) and renders no-leak text", async () => {
+      mockForceClaimProposal.mockResolvedValue({
+        ok: true,
+        status: "force_claimed",
+        previousHolder: "user_secret_A",
+        newHolder: "user_B",
+      });
+
+      const result = await client.callTool({
+        name: "pm_force_claim_proposal",
+        arguments: { proposal_id: "prop_001", reason: "recovering my stranded proposal" },
+      });
+
+      expect(mockForceClaimProposal).toHaveBeenCalledWith(
+        "prop_001",
+        "recovering my stranded proposal",
+        undefined,
+      );
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Force-claimed");
+      expect(text).not.toContain("user_secret_A");
     });
   });
 

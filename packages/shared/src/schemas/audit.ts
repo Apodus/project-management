@@ -17,6 +17,8 @@ export const AUDIT_ACTIONS = [
   // ── Natural train actions (ai_agent integrator actions, §2.5) ──
   "land",
   "reject",
+  // ── Force-claim (reason-required claim takeover) ──
+  "force_claim",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -27,6 +29,10 @@ export const AUDIT_TARGET_TYPES = [
   "merge_group",
   "merge_lock",
   "train",
+  // ── Force-claim targets (claim takeover) ──
+  "task",
+  "epic",
+  "proposal",
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 

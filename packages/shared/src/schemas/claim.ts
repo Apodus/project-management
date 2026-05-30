@@ -7,6 +7,7 @@ export const CLAIM_RESULT_STATUSES = [
   "released",
   "not_held",
   "closed",
+  "force_claimed",
 ] as const;
 export type ClaimResultStatus = (typeof CLAIM_RESULT_STATUSES)[number];
 

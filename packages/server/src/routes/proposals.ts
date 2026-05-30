@@ -132,6 +132,22 @@ const claimResultSchema = z
 
 const claimResultEnvelope = z.object({ data: claimResultSchema });
 
+const forceClaimBody = z
+  .object({
+    reason: z.string().min(1).max(2048),
+    newAssigneeId: z.string().optional(),
+  })
+  .openapi("ForceClaimProposal");
+
+const forceClaimResultEnvelope = z.object({
+  data: z.object({
+    ok: z.boolean(),
+    status: z.literal("force_claimed"),
+    previousHolder: z.string(),
+    newHolder: z.string(),
+  }),
+});
+
 const errorEnvelope = z.object({
   error: z.object({
     code: z.string(),
@@ -477,6 +493,47 @@ const claimProposalRoute = createRoute({
   },
 });
 
+const forceClaimProposalRoute = createRoute({
+  method: "post",
+  path: "/api/v1/proposals/{id}/force-claim",
+  tags: ["Proposals"],
+  summary: "Force-claim proposal (takeover)",
+  description:
+    "Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.",
+  request: {
+    params: z.object({ id: proposalIdParam }),
+    body: {
+      content: { "application/json": { schema: forceClaimBody } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Force-claim outcome",
+      content: { "application/json": { schema: forceClaimResultEnvelope } },
+    },
+    400: {
+      description: "Validation error (empty reason)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Forbidden (non-human targeting another agent)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Proposal or target user not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Proposal closed / not associated with a project",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 const releaseProposalRoute = createRoute({
   method: "post",
   path: "/api/v1/proposals/{id}/release",
@@ -667,6 +724,20 @@ export function createProposalRoutes(): OpenAPIHono<{
       id: user!.id,
       type: user!.type as UserType,
     });
+
+    return c.json({ data: result }, 200);
+  });
+
+  // POST /api/v1/proposals/:id/force-claim
+  router.openapi(forceClaimProposalRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const user = c.get("currentUser");
+    const result = proposalService.forceClaim(
+      id,
+      { id: user!.id, type: user!.type as UserType },
+      { reason: body.reason, newAssigneeId: body.newAssigneeId },
+    );
 
     return c.json({ data: result }, 200);
   });

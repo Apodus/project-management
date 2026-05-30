@@ -20,7 +20,12 @@ describe("AUDIT_ACTIONS", () => {
       "force_reject",
       "land",
       "reject",
+      "force_claim",
     ]);
+  });
+
+  it("includes force_claim", () => {
+    expect(AUDIT_ACTIONS).toContain("force_claim");
   });
 });
 
@@ -31,7 +36,16 @@ describe("AUDIT_TARGET_TYPES", () => {
       "merge_group",
       "merge_lock",
       "train",
+      "task",
+      "epic",
+      "proposal",
     ]);
+  });
+
+  it("includes task/epic/proposal (force-claim targets)", () => {
+    expect(AUDIT_TARGET_TYPES).toContain("task");
+    expect(AUDIT_TARGET_TYPES).toContain("epic");
+    expect(AUDIT_TARGET_TYPES).toContain("proposal");
   });
 });
 
@@ -95,8 +109,20 @@ describe("auditLogSchema", () => {
 
   it("rejects an unknown target type", () => {
     expect(() =>
-      auditLogSchema.parse({ ...validRow, targetType: "task" }),
+      auditLogSchema.parse({ ...validRow, targetType: "comment" }),
     ).toThrow();
+  });
+
+  it("accepts a force_claim/task row", () => {
+    const forceClaimRow = {
+      ...validRow,
+      action: "force_claim" as const,
+      targetType: "task" as const,
+      reason: "my session identity flipped",
+      metadataBefore: { assignee_id: VALID_ULID },
+      metadataAfter: { assignee_id: VALID_ULID },
+    };
+    expect(auditLogSchema.parse(forceClaimRow)).toEqual(forceClaimRow);
   });
 
   it("rejects a missing projectId", () => {

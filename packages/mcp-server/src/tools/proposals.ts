@@ -4,6 +4,7 @@ import {
   ApiError,
   addProposalComment,
   claimProposal,
+  forceClaimProposal,
   getProposal,
   listProposals,
   releaseProposal,
@@ -12,6 +13,7 @@ import {
   claimDeniedText,
   claimResultText,
   claimStatusLabel,
+  forceClaimResultText,
 } from "./claim-display.js";
 
 // ---------------------------------------------------------------------------
@@ -143,6 +145,36 @@ export function registerProposalTools(server: McpServer): void {
           {
             type: "text" as const,
             text: claimResultText(result, "claim", "proposal"),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "pm_force_claim_proposal",
+    "Take over an existing claim (reason required, audited). Self-recovery when your session identity changed.",
+    {
+      proposal_id: z.string(),
+      reason: z
+        .string()
+        .describe(
+          "Why you are taking over this claim (required, recorded in the audit log)",
+        ),
+      assignee_id: z
+        .string()
+        .optional()
+        .describe(
+          "Target user id — only a human director may target another agent; omit to claim for yourself",
+        ),
+    },
+    async ({ proposal_id, reason, assignee_id }) => {
+      const result = await forceClaimProposal(proposal_id, reason, assignee_id);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: forceClaimResultText(result, "proposal"),
           },
         ],
       };

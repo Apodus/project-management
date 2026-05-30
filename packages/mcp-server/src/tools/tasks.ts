@@ -3,11 +3,12 @@ import { z } from "zod";
 import {
   awareness,
   claimTask,
+  forceClaimTask,
   getTask,
   listTasks,
   releaseTask,
 } from "../api-client.js";
-import { claimResultText } from "./claim-display.js";
+import { claimResultText, forceClaimResultText } from "./claim-display.js";
 
 export function registerTaskTools(server: McpServer): void {
   server.tool(
@@ -159,6 +160,38 @@ export function registerTaskTools(server: McpServer): void {
           {
             type: "text" as const,
             text: claimResultText(result, "claim", "task"),
+          },
+        ],
+      };
+    },
+  );
+
+  // ---- pm_force_claim_task ----
+
+  server.tool(
+    "pm_force_claim_task",
+    "Take over an existing claim (reason required, audited). Self-recovery when your session identity changed.",
+    {
+      task_id: z.string(),
+      reason: z
+        .string()
+        .describe(
+          "Why you are taking over this claim (required, recorded in the audit log)",
+        ),
+      assignee_id: z
+        .string()
+        .optional()
+        .describe(
+          "Target user id — only a human director may target another agent; omit to claim for yourself",
+        ),
+    },
+    async ({ task_id, reason, assignee_id }) => {
+      const result = await forceClaimTask(task_id, reason, assignee_id);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: forceClaimResultText(result, "task"),
           },
         ],
       };

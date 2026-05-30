@@ -54,11 +54,28 @@ const claimResultSchema = z
       "released",
       "not_held",
       "closed",
+      "force_claimed",
     ]),
   })
   .openapi("EpicClaimResult");
 
 const claimResultEnvelope = z.object({ data: claimResultSchema });
+
+const forceClaimBody = z
+  .object({
+    reason: z.string().min(1).max(2048),
+    newAssigneeId: z.string().optional(),
+  })
+  .openapi("ForceClaimEpic");
+
+const forceClaimResultEnvelope = z.object({
+  data: z.object({
+    ok: z.boolean(),
+    status: z.literal("force_claimed"),
+    previousHolder: z.string(),
+    newHolder: z.string(),
+  }),
+});
 
 const errorEnvelope = z.object({
   error: z.object({
@@ -257,6 +274,47 @@ const claimEpicRoute = createRoute({
   },
 });
 
+const forceClaimEpicRoute = createRoute({
+  method: "post",
+  path: "/api/v1/epics/{id}/force-claim",
+  tags: ["Epics"],
+  summary: "Force-claim epic (takeover)",
+  description:
+    "Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.",
+  request: {
+    params: z.object({ id: epicIdParam }),
+    body: {
+      content: { "application/json": { schema: forceClaimBody } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Force-claim outcome",
+      content: { "application/json": { schema: forceClaimResultEnvelope } },
+    },
+    400: {
+      description: "Validation error (empty reason)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Forbidden (non-human targeting another agent)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Epic or target user not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Epic closed / not associated with a project",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 const releaseEpicRoute = createRoute({
   method: "post",
   path: "/api/v1/epics/{id}/release",
@@ -364,6 +422,20 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
       id: user.id,
       type: user.type as UserType,
     });
+
+    return c.json({ data: result }, 200);
+  });
+
+  // POST /api/v1/epics/:id/force-claim
+  router.openapi(forceClaimEpicRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const user = c.get("currentUser") as AuthUser;
+    const result = epicService.forceClaim(
+      id,
+      { id: user.id, type: user.type as UserType },
+      { reason: body.reason, newAssigneeId: body.newAssigneeId },
+    );
 
     return c.json({ data: result }, 200);
   });

@@ -1,4 +1,8 @@
-import type { ClaimResultData, ClaimStatusValue } from "../api-client.js";
+import type {
+  ClaimResultData,
+  ClaimStatusValue,
+  ForceClaimResultData,
+} from "../api-client.js";
 
 /**
  * Render a claim_status enum as agent-friendly text.
@@ -49,6 +53,18 @@ export function claimResultText(
     default:
       return `Unexpected release result: ${result.status}`;
   }
+}
+
+/**
+ * Render a force-claim (takeover) result as agent-friendly text. MUST NOT
+ * interpolate `previousHolder` — the displaced holder's identity is recorded in
+ * the audit log, never leaked to the new claimant.
+ */
+export function forceClaimResultText(
+  _result: ForceClaimResultData,
+  entity: string,
+): string {
+  return `✓ Force-claimed — this ${entity} is now yours. The previous holder was displaced (recorded in the audit log).`;
 }
 
 /**

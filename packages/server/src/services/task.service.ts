@@ -21,8 +21,10 @@ import * as autonomyService from "./autonomy.service.js";
 import {
   assertClaimOk as assertClaimOkRaw,
   deriveClaimStatus,
+  forceClaim as forceClaimShared,
   type Actor as ClaimActor,
   type ClaimFilter,
+  type ForceClaimResult,
 } from "./claim-helpers.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 
@@ -1048,6 +1050,25 @@ export function release(id: string, actor: Actor): ClaimResult {
   });
 
   return { ok: true, status: "released" };
+}
+
+/**
+ * Force-claim (take over) a task claim — reason-required + audited. Delegates
+ * to the shared helper (the DRY home for the authz/reason/audit logic).
+ */
+export function forceClaim(
+  id: string,
+  actor: Actor,
+  opts: { reason: string; newAssigneeId?: string | null },
+): ForceClaimResult {
+  return forceClaimShared(id, actor, opts, {
+    table: tasks,
+    holderKey: "assigneeId",
+    holderJsonKey: "assignee_id",
+    terminalStatuses: CLAIM_TERMINAL_STATUSES,
+    eventName: EVENT_NAMES.TASK_CLAIM_FORCED,
+    entityType: "task",
+  });
 }
 
 // ─── Awareness ─────────────────────────────────────────────────

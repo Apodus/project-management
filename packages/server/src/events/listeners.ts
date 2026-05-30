@@ -35,12 +35,19 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.PROPOSAL_PLANNED:
       return "status_changed";
 
-    // Assigned events
+    // Assigned events. Force-claim (takeover) events also map here — the
+    // distinct accountability is the audit_log force_claim action; activity_log
+    // stays in its existing vocabulary (no novel "force_claimed" action).
     case EVENT_NAMES.TASK_ASSIGNED:
+    case EVENT_NAMES.TASK_CLAIMED:
+    case EVENT_NAMES.TASK_RELEASED:
     case EVENT_NAMES.PROPOSAL_CLAIMED:
     case EVENT_NAMES.PROPOSAL_RELEASED:
     case EVENT_NAMES.EPIC_CLAIMED:
     case EVENT_NAMES.EPIC_RELEASED:
+    case EVENT_NAMES.TASK_CLAIM_FORCED:
+    case EVENT_NAMES.EPIC_CLAIM_FORCED:
+    case EVENT_NAMES.PROPOSAL_CLAIM_FORCED:
       return "assigned";
 
     // Commented events

@@ -40,6 +40,11 @@ export const EVENT_NAMES = {
   TASK_CLAIMED: "task.claimed",
   TASK_RELEASED: "task.released",
 
+  // Force-claim events (reason-required claim takeover)
+  TASK_CLAIM_FORCED: "task.claim_forced",
+  EPIC_CLAIM_FORCED: "epic.claim_forced",
+  PROPOSAL_CLAIM_FORCED: "proposal.claim_forced",
+
   // Merge lock events
   MERGE_LOCK_ACQUIRED: "merge.lock.acquired",
   MERGE_LOCK_QUEUED: "merge.lock.queued",

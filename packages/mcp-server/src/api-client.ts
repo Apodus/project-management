@@ -194,11 +194,19 @@ export type ClaimResultStatus =
   | "claimed_by_another_agent"
   | "released"
   | "not_held"
-  | "closed";
+  | "closed"
+  | "force_claimed";
 
 export interface ClaimResultData {
   ok: boolean;
   status: ClaimResultStatus;
+}
+
+export interface ForceClaimResultData {
+  ok: boolean;
+  status: "force_claimed";
+  previousHolder: string;
+  newHolder: string;
 }
 
 export interface CommentData {
@@ -263,6 +271,18 @@ export async function releaseProposal(proposalId: string): Promise<ClaimResultDa
   return apiRequest<ClaimResultData>(
     "POST",
     `/proposals/${encodeURIComponent(proposalId)}/release`,
+  );
+}
+
+export async function forceClaimProposal(
+  proposalId: string,
+  reason: string,
+  assigneeId?: string,
+): Promise<ForceClaimResultData> {
+  return apiRequest<ForceClaimResultData>(
+    "POST",
+    `/proposals/${encodeURIComponent(proposalId)}/force-claim`,
+    { reason, newAssigneeId: assigneeId },
   );
 }
 
@@ -857,6 +877,18 @@ export async function releaseEpic(epicId: string): Promise<ClaimResultData> {
   );
 }
 
+export async function forceClaimEpic(
+  epicId: string,
+  reason: string,
+  assigneeId?: string,
+): Promise<ForceClaimResultData> {
+  return apiRequest<ForceClaimResultData>(
+    "POST",
+    `/epics/${encodeURIComponent(epicId)}/force-claim`,
+    { reason, newAssigneeId: assigneeId },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Typed API functions — Project Tasks (for board resource)
 // ---------------------------------------------------------------------------
@@ -889,6 +921,18 @@ export async function releaseTask(taskId: string): Promise<ClaimResultData> {
   return apiRequest<ClaimResultData>(
     "POST",
     `/tasks/${encodeURIComponent(taskId)}/release`,
+  );
+}
+
+export async function forceClaimTask(
+  taskId: string,
+  reason: string,
+  assigneeId?: string,
+): Promise<ForceClaimResultData> {
+  return apiRequest<ForceClaimResultData>(
+    "POST",
+    `/tasks/${encodeURIComponent(taskId)}/force-claim`,
+    { reason, newAssigneeId: assigneeId },
   );
 }
 

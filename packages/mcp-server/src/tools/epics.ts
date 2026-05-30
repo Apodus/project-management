@@ -2,11 +2,16 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   claimEpic,
+  forceClaimEpic,
   getEpic,
   listEpics,
   releaseEpic,
 } from "../api-client.js";
-import { claimResultText, claimStatusLabel } from "./claim-display.js";
+import {
+  claimResultText,
+  claimStatusLabel,
+  forceClaimResultText,
+} from "./claim-display.js";
 
 export function registerEpicTools(server: McpServer): void {
   // ---- pm_list_epics ----
@@ -141,6 +146,38 @@ export function registerEpicTools(server: McpServer): void {
           {
             type: "text" as const,
             text: claimResultText(result, "claim", "epic"),
+          },
+        ],
+      };
+    },
+  );
+
+  // ---- pm_force_claim_epic ----
+
+  server.tool(
+    "pm_force_claim_epic",
+    "Take over an existing claim (reason required, audited). Self-recovery when your session identity changed.",
+    {
+      epic_id: z.string(),
+      reason: z
+        .string()
+        .describe(
+          "Why you are taking over this claim (required, recorded in the audit log)",
+        ),
+      assignee_id: z
+        .string()
+        .optional()
+        .describe(
+          "Target user id — only a human director may target another agent; omit to claim for yourself",
+        ),
+    },
+    async ({ epic_id, reason, assignee_id }) => {
+      const result = await forceClaimEpic(epic_id, reason, assignee_id);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: forceClaimResultText(result, "epic"),
           },
         ],
       };
