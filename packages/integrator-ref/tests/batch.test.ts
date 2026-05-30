@@ -20,9 +20,18 @@ import type { MergeAttemptView, MergeRequestView } from "@pm/shared";
 import { createGitOps, type GitOps } from "../src/git-ops.js";
 import { createWorktreePool } from "../src/worktree-pool.js";
 import { createLogger } from "../src/logger.js";
-import { runBatchOnce, type BatchDeps, type BatchEvent } from "../src/batch.js";
+import {
+  runBatchOnce,
+  runGroupLaneOnce,
+  type BatchDeps,
+  type BatchEvent,
+  type GroupLaneDeps,
+  type RunBatchLoopDeps,
+} from "../src/batch.js";
 import { reclaimStrandedRequests } from "../src/recovery.js";
+import { buildHeartbeat } from "../src/heartbeat.js";
 import { PmApiError, type PmClient } from "../src/pm-client.js";
+import type { RepoLane } from "../src/group-integration.js";
 
 function hasGit(): boolean {
   try {
@@ -71,6 +80,25 @@ interface FakeState {
   integratorId?: string;
   /** Shared single-holder lock (two integrators contend on the same store). */
   sharedLock?: SharedLock;
+  // ── Phase 7.4 (Step 12) observability fakes ──
+  /**
+   * The train control state getTrainState returns. Mutable mid-drain so the
+   * no-abort test can flip running→paused while a member is verifying. A
+   * function form lets the fake compute the state per-call (e.g. running on the
+   * first call, paused after).
+   */
+  trainState?: "running" | "paused" | (() => "running" | "paused");
+  /** When set, getTrainState THROWS — exercises the fail-open path. */
+  trainStateThrows?: boolean;
+  /** Recorded heartbeat payloads (postHeartbeat). */
+  heartbeats?: unknown[];
+  // ── Group-lane pause-test fakes ──
+  /** Forming groups listMergeGroups returns. */
+  formingGroups?: { id: string }[];
+  /** Members getMergeGroup returns for the forming group. */
+  groupMembers?: MergeRequestView[];
+  /** Open incidents listMergeIncidents returns (drives recovery + the lock). */
+  openIncidents?: { id: string }[];
 }
 
 function nowIso(): string {
@@ -214,6 +242,48 @@ function makeFakeClient(state: FakeState): PmClient {
       r.pickedUpAt = null;
       state.calls.push("resetToQueued");
       return r;
+    },
+    async getTrainState(
+      _projectId: string,
+      resource: string,
+    ): Promise<{ state: string; resource: string }> {
+      state.calls.push("getTrainState");
+      if (state.trainStateThrows) {
+        throw new PmApiError(500, "INTERNAL", "train state read failed");
+      }
+      const ts =
+        typeof state.trainState === "function"
+          ? state.trainState()
+          : (state.trainState ?? "running");
+      return { state: ts, resource };
+    },
+    async postHeartbeat(
+      _projectId: string,
+      payload: unknown,
+    ): Promise<unknown> {
+      state.calls.push("postHeartbeat");
+      state.heartbeats?.push(payload);
+      return {};
+    },
+    // ── Phase 7.3 group surface (used by the group-lane pause tests) ──
+    async listMergeGroups(): Promise<unknown[]> {
+      state.calls.push("listMergeGroups");
+      return state.formingGroups ?? [];
+    },
+    async listMergeIncidents(): Promise<unknown[]> {
+      state.calls.push("listMergeIncidents");
+      return state.openIncidents ?? [];
+    },
+    async getMergeGroup(groupId: string): Promise<unknown> {
+      state.calls.push("getMergeGroup");
+      const g = (state.formingGroups ?? []).find(
+        (x) => (x as { id: string }).id === groupId,
+      );
+      return { ...(g as object), members: state.groupMembers ?? [] };
+    },
+    async markGroupIntegrating(): Promise<unknown> {
+      state.calls.push("markGroupIntegrating");
+      return {};
     },
   };
   return fake as unknown as PmClient;
@@ -388,7 +458,10 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(req.status).toBe("landed");
     expect(state.lockHeld).toBe(false);
     // Byte-identical to runOnce for N=1: acquire IS before pickup in both.
-    expect(state.calls).toEqual([
+    // Phase 7.4 (Step 12) interleaves per-pass `getTrainState` pause-checks into
+    // the call log (a read-side gate, never a merge op); filter them out so the
+    // MERGE-operation ordering is what's asserted.
+    expect(state.calls.filter((c) => c !== "getTrainState")).toEqual([
       "acquireLock",
       "pickup",
       "startAttempt",
@@ -1703,5 +1776,364 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       batchId: "batch-tag",
       speculativePosition: 0,
     });
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Phase 7.4 Step 12: pause (no-abort) + fail-open.
+  // ───────────────────────────────────────────────────────────────────
+
+  it("Step 12 paused → no batch admission (no pickup / acquireLock / startAttempt)", async () => {
+    const root = path.join(tmpRoot, "wt-s12-paused");
+    const req = makeRequest({
+      id: "req-p1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      trainState: "paused",
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+
+    const outcome = await runBatchOnce(deps);
+
+    // Top-of-pass pause-check returns idle BEFORE the lock — no batch started.
+    expect(outcome.kind).toBe("idle");
+    expect(req.status).toBe("queued");
+    expect(state.calls).toContain("getTrainState");
+    expect(state.calls).not.toContain("acquireLock");
+    expect(state.calls).not.toContain("pickup");
+    expect(state.calls).not.toContain("startAttempt");
+    expect(deps.pool.leasedCount).toBe(0);
+  });
+
+  it("Step 12 resume → the same request is picked up + lands", async () => {
+    const root = path.join(tmpRoot, "wt-s12-resume");
+    const req = makeRequest({
+      id: "req-p2",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      trainState: "running",
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(state.calls).toContain("pickup");
+    expect(state.calls).toContain("land");
+  });
+
+  it("Step 12 NO-ABORT: in-flight member completes under mid-drain pause; 2nd request never picked up", async () => {
+    const root = path.join(tmpRoot, "wt-s12-noabort");
+    // Member 0 runs a slow verify (so it is still in flight when pause flips).
+    const reqA = makeRequest({
+      id: "req-na1",
+      branch: "feature/clean",
+      verifyCmd: SLEEP_300,
+      enqueuedAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    const reqB = makeRequest({
+      id: "req-na2",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok",
+      enqueuedAt: nowIso(),
+    });
+    // Train reads RUNNING for the top-of-batch check + the first drain pass's
+    // admit (so member 0 is admitted + verifying), then PAUSED for every later
+    // pass — flipping pause mid-drain while member 0 is in flight.
+    let tsCalls = 0;
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      trainState: () => {
+        tsCalls += 1;
+        return tsCalls <= 2 ? "running" : "paused";
+      },
+    };
+    // size-1 pool: member 0 holds the only slot while verifying, so member 1
+    // can't even be considered until member 0 lands — and by then pause is set.
+    const deps = await depsFor(state, { worktreeRoot: root, parallelism: 1 });
+
+    const outcome = await runBatchOnce(deps);
+
+    // The batch DRAINED (not aborted): member 0 — already integrating — STILL
+    // LANDS. The no-abort invariant: pause gates ONLY the admission edge.
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("landed");
+    expect(state.calls).toContain("land");
+    // The 2nd request was NEVER picked up (pause stopped NEW admission).
+    expect(reqB.status).toBe("queued");
+    expect(state.calls.filter((c) => c === "pickup").length).toBe(1);
+    // The lane lock was acquired once and RELEASED on drain (not stranded).
+    expect(state.calls.filter((c) => c === "acquireLock").length).toBe(1);
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+    expect(state.lockHeld).toBe(false);
+    expect(deps.pool.leasedCount).toBe(0);
+  }, 20_000);
+
+  it("Step 12 fail-open: getTrainState throws → batch proceeds to pickup + land (no wedge)", async () => {
+    const root = path.join(tmpRoot, "wt-s12-failopen");
+    const req = makeRequest({
+      id: "req-fo1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      trainStateThrows: true,
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+
+    const outcome = await runBatchOnce(deps);
+
+    // A getTrainState error is FAIL-OPEN (treated as running) — the batch must
+    // not wedge: it picks up + lands exactly as a running lane.
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(state.calls).toContain("pickup");
+    expect(state.calls).toContain("land");
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Step 12: group lane honors pause.
+  // ───────────────────────────────────────────────────────────────────
+
+  // A RepoLane whose pool is exhausted (acquire → null), so recoverOrphanedInner
+  // defers cleanly without any real git. Lets the group-pause tests prove the
+  // CONTROL FLOW (forming suppressed / recovery reached) without a real repo.
+  function exhaustedLane(role: "inner" | "outer"): RepoLane {
+    return {
+      role,
+      name: `${role}-repo`,
+      acquire: () => null,
+      release: () => {},
+      gitOps: () => ({}) as unknown as GitOps,
+      gitlinkPath: role === "inner" ? "vendor/inner" : undefined,
+      resolveRefInClone: async () => null,
+    };
+  }
+
+  function groupLaneDeps(): GroupLaneDeps {
+    return {
+      innerLane: exhaustedLane("inner"),
+      outerLane: exhaustedLane("outer"),
+      integratorId: undefined,
+      innerLogsDir: undefined,
+      outerLogsDir: undefined,
+    };
+  }
+
+  async function groupDepsFor(
+    state: FakeState,
+    worktreeRoot: string,
+  ): Promise<RunBatchLoopDeps> {
+    const base = await depsFor(state, { worktreeRoot });
+    return {
+      ...base,
+      groupLane: groupLaneDeps(),
+      waitForWork: async () => {},
+      shouldContinue: () => true,
+    };
+  }
+
+  it("Step 12 group + paused + NO incident → no_group (markGroupIntegrating NOT called)", async () => {
+    const root = path.join(tmpRoot, "wt-s12-grp-paused");
+    const state: FakeState = {
+      requests: [],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      trainState: "paused",
+      formingGroups: [{ id: "grp-1" }],
+      groupMembers: [makeRequest({ id: "gm-1", branch: "feature/clean" })],
+      openIncidents: [],
+    };
+    const deps = await groupDepsFor(state, root);
+
+    const outcome = await runGroupLaneOnce(deps);
+
+    // Forming group is suppressed while paused; no incidents → nothing to do.
+    expect(outcome.kind).toBe("no_group");
+    // The group was NEVER picked up (no lock, no group integration).
+    expect(state.calls).not.toContain("markGroupIntegrating");
+    expect(state.calls).not.toContain("acquireLock");
+  });
+
+  it("Step 12 group + paused + OPEN incident → recovery runs; forming group NOT integrated", async () => {
+    const root = path.join(tmpRoot, "wt-s12-grp-recovery");
+    const state: FakeState = {
+      requests: [],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      trainState: "paused",
+      formingGroups: [{ id: "grp-2" }],
+      groupMembers: [makeRequest({ id: "gm-2", branch: "feature/clean" })],
+      openIncidents: [{ id: "inc-1" }],
+    };
+    const deps = await groupDepsFor(state, root);
+
+    const outcome = await runGroupLaneOnce(deps);
+
+    // An open incident drives the lane lock even while paused: the recovery
+    // sweep STILL runs (it is the no-abort drain of in-flight cross-repo work).
+    // The lane was locked + the recovery-only pass returned `recovered`.
+    expect(outcome.kind).toBe("recovered");
+    expect(state.calls).toContain("acquireLock");
+    expect(state.calls).toContain("releaseLock");
+    // recoverOrphanedInner re-listed open incidents (the recovery path was
+    // reached) — the count call + the recovery call both fire.
+    expect(
+      state.calls.filter((c) => c === "listMergeIncidents").length,
+    ).toBeGreaterThanOrEqual(2);
+    // The forming group was NOT integrated (suppressed while paused).
+    expect(state.calls).not.toContain("getMergeGroup");
+    expect(state.calls).not.toContain("markGroupIntegrating");
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Step 12: heartbeat payload + fire-and-forget.
+  // ───────────────────────────────────────────────────────────────────
+
+  it("Step 12 buildHeartbeat: integrating status + pool + in-flight + version", () => {
+    const hb = buildHeartbeat({
+      resource: "main",
+      pool: { size: 3, leasedCount: 1 },
+      inFlight: { requests: 1, batches: 1, groups: 0 },
+      version: "1.2.3",
+    });
+    expect(hb).toEqual({
+      resource: "main",
+      status: "integrating",
+      pool_utilization: { size: 3, leased: 1 },
+      in_flight: { requests: 1, batches: 1, groups: 0 },
+      version: "1.2.3",
+    });
+  });
+
+  it("Step 12 buildHeartbeat: empty in-flight → idle status", () => {
+    const hb = buildHeartbeat({
+      resource: "main",
+      pool: { size: 2, leasedCount: 0 },
+      inFlight: { requests: 0, batches: 0, groups: 0 },
+      version: "1.2.3",
+    });
+    expect(hb.status).toBe("idle");
+    expect(hb.in_flight).toEqual({ requests: 0, batches: 0, groups: 0 });
+
+    // A group in flight (batches 0) still reports integrating.
+    const grp = buildHeartbeat({
+      resource: "main",
+      pool: { size: 2, leasedCount: 1 },
+      inFlight: { requests: 0, batches: 0, groups: 1 },
+      version: "1.2.3",
+    });
+    expect(grp.status).toBe("integrating");
+  });
+
+  it("Step 12 heartbeat fire-and-forget: a rejecting postHeartbeat does NOT throw", async () => {
+    // The emit pattern index.ts uses: .catch swallows a rejected POST so a
+    // failed heartbeat NEVER breaks the loop. Replicate it here against a
+    // rejecting client and assert it neither throws nor rejects.
+    const rejectingClient = {
+      postHeartbeat: async () => {
+        throw new Error("network down");
+      },
+    } as unknown as PmClient;
+    let warned = false;
+    const emit = (): void => {
+      rejectingClient
+        .postHeartbeat("proj-1", buildHeartbeat({
+          resource: "main",
+          pool: { size: 1, leasedCount: 0 },
+          inFlight: { requests: 0, batches: 0, groups: 0 },
+          version: "0.0.0",
+        }))
+        .catch(() => {
+          warned = true;
+        });
+    };
+    expect(() => emit()).not.toThrow();
+    // Let the rejected promise settle so the .catch runs.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(warned).toBe(true);
+  });
+
+  it("Step 12 inFlight counters: set during drain, reset to 0 in finally", async () => {
+    const root = path.join(tmpRoot, "wt-s12-counters");
+    const req = makeRequest({
+      id: "req-cnt1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      trainState: "running",
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    const inFlight = { requests: 0, batches: 0, groups: 0 };
+    deps.inFlight = inFlight;
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    // Drained cleanly → counters reset to 0 in the finally (status can't stick).
+    expect(inFlight).toEqual({ requests: 0, batches: 0, groups: 0 });
+  });
+
+  it("Step 12 inFlight counters reset even when the batch THROWS", async () => {
+    const root = path.join(tmpRoot, "wt-s12-counters-throw");
+    const req = makeRequest({
+      id: "req-cnt2",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      trainState: "running",
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    const inFlight = { requests: 0, batches: 0, groups: 0 };
+    deps.inFlight = inFlight;
+    // Force a throw INSIDE the drain (after the lock + batches=1 are set) by
+    // making listMergeRequests throw on the admit-phase re-list. The first call
+    // (top of runBatchOnce) must succeed so the lock is acquired and batches=1.
+    let listCalls = 0;
+    const realList = deps.pmClient.listMergeRequests.bind(deps.pmClient);
+    deps.pmClient.listMergeRequests = (async (...a: Parameters<typeof realList>) => {
+      listCalls += 1;
+      if (listCalls >= 2) throw new Error("boom in admit re-list");
+      return realList(...a);
+    }) as typeof realList;
+
+    const outcome = await runBatchOnce(deps);
+
+    // The throw is caught and surfaced as `error`, and the finally reset the
+    // counters so the heartbeat status can't stick "integrating".
+    expect(outcome.kind).toBe("error");
+    expect(inFlight).toEqual({ requests: 0, batches: 0, groups: 0 });
   });
 });

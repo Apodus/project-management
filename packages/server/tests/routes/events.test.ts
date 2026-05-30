@@ -572,7 +572,10 @@ describe("SSE Events API", () => {
         );
       }, 50);
 
-      const text = await readSSEStream(res, { maxEvents: 8, timeoutMs: 3000 });
+      // Phase 7.4: landGroup now also emits one audit.recorded per landed
+      // member (additive). Widen the capture window so the targeted group
+      // lifecycle events still fall inside it.
+      const text = await readSSEStream(res, { maxEvents: 12, timeoutMs: 3000 });
       const events = parseSSEEvents(text);
 
       const started = events.find((e) => e.event === "merge.group.started");
@@ -620,7 +623,9 @@ describe("SSE Events API", () => {
         );
       }, 50);
 
-      const text = await readSSEStream(res, { maxEvents: 4, timeoutMs: 3000 });
+      // Phase 7.4: rejectGroup now also emits one audit.recorded per rejected
+      // member (additive). Widen the capture window.
+      const text = await readSSEStream(res, { maxEvents: 8, timeoutMs: 3000 });
       const events = parseSSEEvents(text);
 
       const rejected = events.find((e) => e.event === "merge.group.rejected");

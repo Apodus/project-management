@@ -11,6 +11,11 @@ import {
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
 import { attachLandedRef, type Actor } from "./merge-request.service.js";
+import {
+  emitAuditRecorded,
+  record as recordAudit,
+  type AuditLogView,
+} from "./audit.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -624,6 +629,10 @@ export function landGroup(
     role?: string;
     gitRefId: string | null;
   }> = [];
+  // Phase 7.4 §2.5: one `land` audit row per landed member, written inside
+  // the SAME txn (additive, INSERT-only). Accumulated here, emitted per-member
+  // after commit (mirroring the MERGE_GROUP_MEMBER_LANDED loop).
+  const auditViews: AuditLogView[] = [];
 
   const db = getDb();
   db.transaction((tx) => {
@@ -666,6 +675,32 @@ export function landGroup(
         now,
       });
 
+      const before = { status: "integrating", landedSha: null };
+      const after = { status: "landed", landedSha: m.landedSha };
+      const auditId = recordAudit(tx, {
+        projectId: member.projectId,
+        actorId: actor.id,
+        action: "land",
+        targetType: "merge_request",
+        targetId: m.requestId,
+        reason: null,
+        before,
+        after,
+        now,
+      });
+      auditViews.push({
+        id: auditId,
+        projectId: member.projectId,
+        actorId: actor.id,
+        action: "land",
+        targetType: "merge_request",
+        targetId: m.requestId,
+        reason: null,
+        metadataBefore: before,
+        metadataAfter: after,
+        createdAt: now,
+      });
+
       landed.push({
         requestId: m.requestId,
         landedSha: m.landedSha,
@@ -682,7 +717,11 @@ export function landGroup(
 
   const updated = readGroupOrThrow(id);
 
-  // Emit AFTER commit — per-member landed events, then the group landed.
+  // Emit AFTER commit — per-member audit, then per-member landed events,
+  // then the group landed.
+  for (const av of auditViews) {
+    emitAuditRecorded(av.id, av.projectId, actor.id, av);
+  }
   for (const m of landed) {
     emit(EVENT_NAMES.MERGE_GROUP_MEMBER_LANDED, updated, actor.id, {
       groupId: id,
@@ -745,6 +784,21 @@ export function rejectGroup(
   const db = getDb();
   const now = new Date().toISOString();
 
+  // Phase 7.4 §2.5: read the non-terminal members BEFORE the bulk reject so
+  // we can write one `reject` audit row per affected member (additive,
+  // INSERT-only, inside the same txn). Emitted after commit.
+  const affectedMembers = db
+    .select()
+    .from(mergeRequests)
+    .where(
+      and(
+        eq(mergeRequests.groupId, id),
+        inArray(mergeRequests.status, ["queued", "integrating"]),
+      ),
+    )
+    .all() as MergeRequestRow[];
+  const auditViews: AuditLogView[] = [];
+
   db.transaction((tx) => {
     tx.update(mergeRequests)
       .set({
@@ -762,6 +816,37 @@ export function rejectGroup(
       )
       .run();
 
+    for (const member of affectedMembers) {
+      const before = { status: member.status };
+      const after = {
+        status: "rejected",
+        ...(body.category ? { rejectCategory: body.category } : {}),
+      };
+      const auditId = recordAudit(tx, {
+        projectId: member.projectId,
+        actorId: actor.id,
+        action: "reject",
+        targetType: "merge_request",
+        targetId: member.id,
+        reason: null,
+        before,
+        after,
+        now,
+      });
+      auditViews.push({
+        id: auditId,
+        projectId: member.projectId,
+        actorId: actor.id,
+        action: "reject",
+        targetType: "merge_request",
+        targetId: member.id,
+        reason: null,
+        metadataBefore: before,
+        metadataAfter: after,
+        createdAt: now,
+      });
+    }
+
     tx.update(mergeRequestGroups)
       .set({
         state: "rejected",
@@ -774,6 +859,9 @@ export function rejectGroup(
   });
 
   const updated = readGroupOrThrow(id);
+  for (const av of auditViews) {
+    emitAuditRecorded(av.id, av.projectId, actor.id, av);
+  }
   emit(EVENT_NAMES.MERGE_GROUP_REJECTED, updated, actor.id, {
     groupId: id,
     outcome: "rejected",

@@ -29,6 +29,7 @@
   "devDependencies": {
     "@hono/node-server": "^1",
     "@types/node": "^22",
+    "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.2",
     "tsx": "^4",
     "typescript": "^5",

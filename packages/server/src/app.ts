@@ -29,6 +29,9 @@ import { createMergeRequestRoutes } from "./routes/merge-requests.js";
 import { createMergeBatchRoutes } from "./routes/merge-batches.js";
 import { createMergeGroupRoutes } from "./routes/merge-groups.js";
 import { createMergeIncidentRoutes } from "./routes/merge-incidents.js";
+import { createIntegratorHealthRoutes } from "./routes/integrator-health.js";
+import { createTrainRoutes } from "./routes/train.js";
+import { createAuditRoutes } from "./routes/audit.js";
 import { initializeEventListeners } from "./events/index.js";
 import type { AppVariables } from "./types.js";
 
@@ -108,6 +111,9 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
   app.route("/", createMergeBatchRoutes());
   app.route("/", createMergeGroupRoutes());
   app.route("/", createMergeIncidentRoutes());
+  app.route("/", createIntegratorHealthRoutes());
+  app.route("/", createTrainRoutes());
+  app.route("/", createAuditRoutes());
 
   // ── Health endpoint ───────────────────────────────────────────────
   const healthRoute = createRoute({

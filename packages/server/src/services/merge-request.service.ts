@@ -22,6 +22,13 @@ import {
   cancelOpenAttempts,
   emitAttemptCompleted,
 } from "./merge-attempt.service.js";
+import {
+  emitAuditRecorded,
+  list as listAudit,
+  record as recordAudit,
+  type AuditLogView,
+} from "./audit.service.js";
+import { list as listIncidents } from "./merge-incident.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -500,6 +507,181 @@ export function getById(id: string): MergeRequestWithAttempts {
   return { ...toView(row), attempts };
 }
 
+// ─── Timeline (design §5.7 / §8.3) ────────────────────────────────
+
+/**
+ * One chronological entry in a request's timeline. Every event carries an ISO
+ * `at` timestamp (used for the ascending sort) + a `kind` discriminator. All
+ * timestamps the timeline reads were written via `new Date().toISOString()`
+ * (ISO-8601 `Z`), so a lexical string compare on `at` IS chronological — we
+ * deliberately never mix in a SQLite `datetime()` value (whose space-separated
+ * format is not lexically comparable to the stored ISO strings).
+ */
+export interface TimelineEvent {
+  at: string;
+  kind:
+    | "queued"
+    | "integrating"
+    | "landed"
+    | "rejected"
+    | "abandoned"
+    | "attempt"
+    | "audit"
+    | "incident";
+  // attempt fields
+  attemptNumber?: number;
+  baseSha?: string | null;
+  treeSha?: string | null;
+  status?: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  failureCategory?: string | null;
+  logExcerpt?: string | null;
+  logUrl?: string | null;
+  // terminal-milestone fields
+  landedSha?: string | null;
+  rejectCategory?: string | null;
+  rejectReason?: string | null;
+  // audit fields
+  action?: string;
+  actorId?: string;
+  reason?: string | null;
+  metadataBefore?: Record<string, unknown> | null;
+  metadataAfter?: Record<string, unknown> | null;
+  // incident fields
+  type?: string;
+  orphanedSha?: string;
+  state?: string;
+  openedAt?: string;
+  resolvedAt?: string | null;
+  resolution?: unknown;
+}
+
+export interface TimelineResult {
+  request: MergeRequestView;
+  events: TimelineEvent[];
+}
+
+/**
+ * Compose the ordered state history of a request (design §5.7 / §8.3) from four
+ * heterogeneous sources, then sort ASCENDING by `at`:
+ *   1. Request milestones (the row): enqueued→queued; pickedUp→integrating;
+ *      resolved→terminal (landed/rejected/abandoned, tagged by status).
+ *   2. Attempts (mergeAttempts ASC by attemptNumber): each a `verifying→…`
+ *      segment with its log pointers; sort ts = startedAt ?? createdAt.
+ *   3. Audit rows targeting this request (land/reject/force_land/force_reject):
+ *      actorId, reason, before/after; sort ts = createdAt.
+ *   4. Incident (if the request was orphaned): the merge_incident whose
+ *      innerRequestId === id; sort ts = openedAt. No index on innerRequestId,
+ *      so list the project's incidents and filter in JS (the cheap path).
+ */
+export function getTimeline(id: string): TimelineResult {
+  const row = readRequestOrThrow(id);
+  const db = getDb();
+  const events: TimelineEvent[] = [];
+
+  // 1. Request milestones.
+  events.push({ at: row.enqueuedAt, kind: "queued" });
+  if (row.pickedUpAt !== null) {
+    events.push({ at: row.pickedUpAt, kind: "integrating" });
+  }
+  if (row.resolvedAt !== null) {
+    if (row.status === "landed") {
+      events.push({
+        at: row.resolvedAt,
+        kind: "landed",
+        landedSha: row.landedSha,
+      });
+    } else if (row.status === "rejected") {
+      events.push({
+        at: row.resolvedAt,
+        kind: "rejected",
+        rejectCategory: row.rejectCategory,
+        rejectReason: row.rejectReason,
+      });
+    } else if (row.status === "abandoned") {
+      events.push({ at: row.resolvedAt, kind: "abandoned" });
+    }
+  }
+
+  // 2. Attempts (ASC by attemptNumber).
+  const attemptRows = db
+    .select()
+    .from(mergeAttempts)
+    .where(eq(mergeAttempts.requestId, id))
+    .orderBy(asc(mergeAttempts.attemptNumber))
+    .all() as Array<{
+    attemptNumber: number;
+    baseSha: string;
+    treeSha: string | null;
+    status: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    failureCategory: string | null;
+    logExcerpt: string | null;
+    logUrl: string | null;
+    createdAt: string;
+  }>;
+  for (const a of attemptRows) {
+    events.push({
+      at: a.startedAt ?? a.createdAt,
+      kind: "attempt",
+      attemptNumber: a.attemptNumber,
+      baseSha: a.baseSha,
+      treeSha: a.treeSha,
+      status: a.status,
+      startedAt: a.startedAt,
+      completedAt: a.completedAt,
+      failureCategory: a.failureCategory,
+      logExcerpt: a.logExcerpt,
+      logUrl: a.logUrl,
+    });
+  }
+
+  // 3. Audit rows targeting this request.
+  const audit = listAudit({
+    projectId: row.projectId,
+    targetType: "merge_request",
+    targetId: id,
+    perPage: 200,
+  });
+  for (const e of audit.data) {
+    events.push({
+      at: e.createdAt,
+      kind: "audit",
+      action: e.action,
+      actorId: e.actorId,
+      reason: e.reason,
+      metadataBefore: e.metadataBefore,
+      metadataAfter: e.metadataAfter,
+    });
+  }
+
+  // 4. Incident (orphaned-inner). No index on innerRequestId — list the
+  // project's incidents and filter in JS (the cheap, project-scoped path).
+  const incidents = listIncidents(row.projectId).filter(
+    (inc) => inc.innerRequestId === id,
+  );
+  for (const inc of incidents) {
+    events.push({
+      at: inc.openedAt,
+      kind: "incident",
+      type: inc.type,
+      orphanedSha: inc.orphanedSha,
+      state: inc.state,
+      openedAt: inc.openedAt,
+      resolvedAt: inc.resolvedAt,
+      resolution: inc.resolution,
+    });
+  }
+
+  // Sort ASCENDING by `at` — all sources use ISO-8601 `Z`, so the lexical
+  // string compare is chronological across the heterogeneous sources.
+  events.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
+
+  return { request: toView(row), events };
+}
+
 /**
  * Submitter (or admin) cancel — queued → abandoned.
  *
@@ -737,6 +919,11 @@ export function land(
 
   const now = new Date().toISOString();
   let gitRefId: string | null = null;
+  // Phase 7.4 §2.5: the natural land writes one audit row inside the SAME
+  // txn (additive, INSERT-only, on the proceed path only — the idempotent
+  // noop above returns before this). Captured here, emitted after commit.
+  let auditId: string | null = null;
+  let auditView: AuditLogView | null = null;
 
   const db = getDb();
   db.transaction((tx) => {
@@ -757,6 +944,32 @@ export function land(
       resource: row.resource,
       now,
     });
+
+    const before = { status: "integrating", landedSha: null };
+    const after = { status: "landed", landedSha: body.landedSha };
+    auditId = recordAudit(tx, {
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "land",
+      targetType: "merge_request",
+      targetId: id,
+      reason: null,
+      before,
+      after,
+      now,
+    });
+    auditView = {
+      id: auditId,
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "land",
+      targetType: "merge_request",
+      targetId: id,
+      reason: null,
+      metadataBefore: before,
+      metadataAfter: after,
+      createdAt: now,
+    };
   });
 
   const updated = readRequestOrThrow(id);
@@ -764,6 +977,9 @@ export function land(
     landedSha: body.landedSha,
     gitRefId,
   });
+  if (auditId !== null && auditView !== null) {
+    emitAuditRecorded(auditId, row.projectId, actor.id, auditView);
+  }
   return toView(updated);
 }
 
@@ -812,6 +1028,10 @@ export function reject(
 
   const now = new Date().toISOString();
   let commentId: string | null = null;
+  // Phase 7.4 §2.5: the natural reject writes one audit row inside the SAME
+  // txn (additive, proceed path only). Emitted after commit.
+  let auditId: string | null = null;
+  let auditView: AuditLogView | null = null;
 
   db.transaction((tx) => {
     tx.update(mergeRequests)
@@ -858,6 +1078,32 @@ export function reject(
         })
         .run();
     }
+
+    const before = { status: "integrating" };
+    const after = { status: "rejected", rejectCategory: body.category };
+    auditId = recordAudit(tx, {
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "reject",
+      targetType: "merge_request",
+      targetId: id,
+      reason: null,
+      before,
+      after,
+      now,
+    });
+    auditView = {
+      id: auditId,
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "reject",
+      targetType: "merge_request",
+      targetId: id,
+      reason: null,
+      metadataBefore: before,
+      metadataAfter: after,
+      createdAt: now,
+    };
   });
 
   const updated = readRequestOrThrow(id);
@@ -870,5 +1116,8 @@ export function reject(
     logExcerpt: body.logExcerpt ?? null,
     logUrl: body.logUrl ?? null,
   });
+  if (auditId !== null && auditView !== null) {
+    emitAuditRecorded(auditId, row.projectId, actor.id, auditView);
+  }
   return toView(updated);
 }

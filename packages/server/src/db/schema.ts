@@ -673,3 +673,170 @@ export const mergeIncidents = sqliteTable(
     ),
   ],
 );
+
+// ─── audit_log ─────────────────────────────────────────────────────
+// Phase 7.4 (§2): the dedicated, append-only accountability record of
+// "who did what to the train and why." Action-centric (NOT entity-centric
+// like activity_log): every break-glass override (pause/resume/
+// force_release_lock/force_land/force_reject) AND every natural land/reject
+// writes exactly one row, in the same db.transaction as the state change it
+// records. Immutable by construction — there is deliberately NO updatedAt and
+// the service exports no update/delete (an audit row is written once, never
+// mutated). PM-owned; survives the integrator process that performed the act.
+export const auditLog = sqliteTable(
+  "audit_log",
+  {
+    id: text("id").primaryKey(),
+    // The lane scope. Audit is always project-scoped. NOT nullable.
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    // The HUMAN (override) or ai_agent (natural land/reject) who performed
+    // the action — the accountability datum. NOT nullable.
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => users.id),
+    // The action taxonomy (§2.3). Enum AUDIT_ACTIONS (local to
+    // audit.service for Step 2; hoisted to @pm/shared in Step 8). Stored as
+    // text; the enum is the validation gate.
+    action: text("action").notNull(),
+    // What the action targeted: "merge_request" | "merge_lock" | "train"
+    // | "merge_group". Enum AUDIT_TARGET_TYPES.
+    targetType: text("target_type").notNull(),
+    // The target's identifier (a merge_requests.id, a lock resource name, a
+    // group id, or the resource for a train-level action). NOT an FK —
+    // targets are heterogeneous (a resource name is not a row id).
+    targetId: text("target_id").notNull(),
+    // Free-text reason. Required for force_land/force_reject (enforced in the
+    // service); optional/null for the rest.
+    reason: text("reason"),
+    // Structured snapshot of the target's relevant fields BEFORE the action.
+    metadataBefore: text("metadata_before", { mode: "json" }).$type<
+      Record<string, unknown>
+    >(),
+    // Structured snapshot AFTER.
+    metadataAfter: text("metadata_after", { mode: "json" }).$type<
+      Record<string, unknown>
+    >(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    // Query-by-time-window within a project (the audit-log view default).
+    index("idx_audit_log_project_created").on(
+      table.projectId,
+      table.createdAt,
+    ),
+    // Query-by-actor (the "everything this operator did" view).
+    index("idx_audit_log_actor").on(table.actorId, table.createdAt),
+    // Query-by-target (the per-request / lock / lane history view).
+    index("idx_audit_log_target").on(
+      table.targetType,
+      table.targetId,
+      table.createdAt,
+    ),
+  ],
+);
+
+// ─── integrator_health ─────────────────────────────────────────────
+// Phase 7.4 (§3): the dedicated heartbeat / liveness channel. The
+// integrator POSTs a periodic heartbeat (status + worktree-pool utilization
+// + in-flight counts + version) regardless of whether it holds a lane lock,
+// so liveness is observable even when the integrator is IDLE (holds no
+// lock) — exactly when lock-derived freshness is blind (§3.1). One row per
+// (project, resource) lane (the lock/health cardinality). The unique index
+// makes the heartbeat an upsert (insert-if-absent, else update lastSeenAt +
+// the denormalized payload). Staleness of lastSeenAt is computed ON-READ
+// (§3.4) and raises train.integrator_unhealthy edge-triggered via
+// unhealthyNotified. PM-owned; survives integrator crashes.
+export const integratorHealth = sqliteTable(
+  "integrator_health",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    resource: text("resource").notNull().default("main"),
+    // The integrator user (ai_agent) that last heartbeated this lane. ON
+    // DELETE SET NULL so a deleted integrator user doesn't cascade away the
+    // health row.
+    integratorId: text("integrator_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // The heartbeat's status ("idle" | "integrating").
+    status: text("status").notNull(),
+    // Pool utilization, denormalized from the heartbeat payload.
+    poolSize: integer("pool_size"),
+    poolLeased: integer("pool_leased"),
+    // In-flight counts, denormalized.
+    inFlightRequests: integer("in_flight_requests").notNull().default(0),
+    inFlightBatches: integer("in_flight_batches").notNull().default(0),
+    inFlightGroups: integer("in_flight_groups").notNull().default(0),
+    version: text("version"),
+    // THE liveness datum — the ISO timestamp of the most recent heartbeat.
+    // Staleness of this is train.integrator_unhealthy (§3.4).
+    lastSeenAt: text("last_seen_at").notNull(),
+    // Tracks whether we have ALREADY raised integrator_unhealthy for the
+    // current stale episode, so on-read detection (§3.4) fires exactly ONCE
+    // per stale→healthy→stale cycle (edge-triggered, not level-triggered).
+    // Reset to false on the next fresh heartbeat.
+    unhealthyNotified: integer("unhealthy_notified", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_integrator_health_project_resource").on(
+      table.projectId,
+      table.resource,
+    ),
+  ],
+);
+
+// ─── train_state ───────────────────────────────────────────────────
+// Phase 7.4 (§4.1): the per-(project, resource) lane pause/resume control
+// state. "running" | "paused", default "running". A human writes it via the
+// pause/resume break-glass overrides; the integrator reads it on every poll
+// to decide whether to admit NEW work (pause = stop new pickups, finish
+// in-flight — §4.2). NOT a project-settings column: it is operational control
+// state, per-resource, mutated by an override and read on every poll. One row
+// per lane (the lock/health cardinality). Lazy-created on first read/write
+// (the getOrCreateLock idiom). The unique index makes the upsert race-safe.
+// stuckNotified / abandonNotified are edge-trigger debounce flags for the
+// on-read alerts (§7.3) — each fires once per breach episode. PM-owned.
+export const trainState = sqliteTable(
+  "train_state",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    resource: text("resource").notNull().default("main"),
+    // "running" | "paused". Enum TRAIN_STATES in @pm/shared. Default "running".
+    state: text("state").notNull().default("running"),
+    // The actor who last paused/resumed, and when — a denormalized convenience
+    // for the dashboard read ("paused by alice 4m ago"); the audit row is the
+    // canonical record. ON DELETE SET NULL so a deleted user doesn't cascade.
+    changedBy: text("changed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reason: text("reason"),
+    changedAt: text("changed_at"),
+    // Edge-trigger debounce flags for the on-read alerts (§7.3). Each is set
+    // true when its alert fires and reset to false when the condition clears.
+    stuckNotified: integer("stuck_notified", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    abandonNotified: integer("abandon_notified", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_train_state_project_resource").on(
+      table.projectId,
+      table.resource,
+    ),
+  ],
+);

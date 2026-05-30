@@ -39,6 +39,26 @@ describe("loadConfig", () => {
     expect(config.gitRepoUrl).toBe("https://github.com/test/repo.git");
     expect(config.parallelism).toBe(1);
     expect(config.linkedRepos).toEqual([]);
+    // Phase 7.4 §3.6: heartbeat cadence defaults to 30s when absent.
+    expect(config.heartbeatIntervalSec).toBe(30);
+  });
+
+  it("surfaces heartbeat_interval_sec override (Phase 7.4 §3.6)", async () => {
+    const withHeartbeat: ProjectDetail = {
+      ...enabledProject,
+      settings: {
+        integrator: {
+          ...enabledProject.settings!.integrator!,
+          heartbeat_interval_sec: 10,
+        },
+      },
+    };
+    const config = await loadConfig(
+      { project: "p1" },
+      { PM_API_TOKEN: "t" } as never,
+      stubClient(withHeartbeat),
+    );
+    expect(config.heartbeatIntervalSec).toBe(10);
   });
 
   it("reads parallelism override from integrator settings", async () => {

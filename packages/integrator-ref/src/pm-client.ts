@@ -17,6 +17,9 @@ import type {
   MergeIncidentView,
   MergeIncidentType,
   MergeIncidentState,
+  IntegratorHeartbeat,
+  IntegratorHealthView,
+  TrainStateView,
 } from "@pm/shared";
 // Type-only import (avoids a runtime circular import with batch.ts).
 import type { BatchEvent } from "./batch.js";
@@ -47,6 +50,12 @@ export interface IntegratorSettings {
   git_main_branch?: string;
   worktree_name?: string;
   parallelism?: number;
+  /**
+   * Phase 7.4 §3.6: the integrator heartbeat cadence in seconds (default 30).
+   * The integrator POSTs a heartbeat on this interval; PM's HEALTH_STALE_MS is
+   * derived as this × 3 (§3.4).
+   */
+  heartbeat_interval_sec?: number;
   linked_repos?: {
     name: string;
     path: string;
@@ -139,6 +148,38 @@ export class PmClient {
   // ── Project ────────────────────────────────────────────────────────
   getProject(projectId: string): Promise<ProjectDetail> {
     return this.request<ProjectDetail>("GET", `/projects/${encodeURIComponent(projectId)}`);
+  }
+
+  // ── Phase 7.4 observability: heartbeat + train state ────────────────
+  /**
+   * POST a periodic integrator heartbeat (§3.2/§3.6). The payload ALWAYS carries
+   * the resource explicitly (the schema defaults it to "main", but the integrator
+   * is authoritative about its own lane). Returns the derived health view. The
+   * caller fires this and-forgets — a failed POST must NEVER break the loop.
+   */
+  postHeartbeat(
+    projectId: string,
+    payload: IntegratorHeartbeat,
+  ): Promise<IntegratorHealthView> {
+    return this.request<IntegratorHealthView>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/integrator/heartbeat`,
+      payload,
+    );
+  }
+
+  /**
+   * GET the train control state for a lane (§4.2 / §8.6). The integrator reads
+   * this as a soft, read-side admission gate: `state === "paused"` → admit no new
+   * work. The poll is the correctness floor; the train.paused/resumed SSE events
+   * are the latency hint. A read failure is treated FAIL-OPEN by the caller (the
+   * lane lock + PM transitions + the force-* overrides are the hard safety).
+   */
+  getTrainState(projectId: string, resource: string): Promise<TrainStateView> {
+    return this.request<TrainStateView>(
+      "GET",
+      `/projects/${encodeURIComponent(projectId)}/train/state?resource=${encodeURIComponent(resource)}`,
+    );
   }
 
   // ── Merge request lifecycle ────────────────────────────────────────

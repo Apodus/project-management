@@ -237,6 +237,63 @@ describe("Merge Requests API", () => {
     });
   });
 
+  // ─── C2. GET timeline ────────────────────────────────────────────
+  describe("GET /api/v1/merge-requests/:id/timeline", () => {
+    it("200 with auth: returns the request + ordered events", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const requestId = await submitRequest(project.id, agent.token);
+      forceIntegrating(requestId);
+      await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/attempts`,
+        { token: agent.token, body: { baseSha: "base1234" } },
+      );
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/merge-requests/${requestId}/timeline`,
+        { token: agent.token },
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.request.id).toBe(requestId);
+      expect(Array.isArray(json.data.events)).toBe(true);
+      const kinds = json.data.events.map((e: { kind: string }) => e.kind);
+      expect(kinds).toContain("queued");
+      expect(kinds).toContain("integrating");
+      expect(kinds).toContain("attempt");
+      // ascending by `at`
+      const ats = json.data.events.map((e: { at: string }) => e.at);
+      const sorted = [...ats].sort();
+      expect(ats).toEqual(sorted);
+    });
+
+    it("404 when request does not exist", async () => {
+      const agent = createTestAiAgent(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/merge-requests/01HNONEXISTENTREQ00000/timeline`,
+        { token: agent.token },
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("401 when unauthenticated", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const requestId = await submitRequest(project.id, agent.token);
+      const res = await testApp.app.request(
+        `/api/v1/merge-requests/${requestId}/timeline`,
+        { method: "GET" },
+      );
+      expect(res.status).toBe(401);
+    });
+  });
+
   // ─── D. POST cancel ──────────────────────────────────────────────
   describe("POST /api/v1/merge-requests/:id/cancel", () => {
     it("200 when called by the submitter", async () => {

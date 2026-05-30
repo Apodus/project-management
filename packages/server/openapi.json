@@ -365,6 +365,42 @@
                       ]
                     },
                     "default": []
+                  },
+                  "heartbeat_interval_sec": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "default": 30
+                  },
+                  "slo": {
+                    "type": "object",
+                    "properties": {
+                      "target_p95_time_to_land_sec": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "target_verify_success_rate": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "target_abandon_rate": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    }
+                  }
+                }
+              },
+              "webhooks": {
+                "type": "object",
+                "properties": {
+                  "discord_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "alerts_enabled": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -555,6 +591,42 @@
                       ]
                     },
                     "default": []
+                  },
+                  "heartbeat_interval_sec": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "default": 30
+                  },
+                  "slo": {
+                    "type": "object",
+                    "properties": {
+                      "target_p95_time_to_land_sec": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "target_verify_success_rate": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "target_abandon_rate": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    }
+                  }
+                }
+              },
+              "webhooks": {
+                "type": "object",
+                "properties": {
+                  "discord_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "alerts_enabled": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -3355,6 +3427,138 @@
           "createdAt"
         ]
       },
+      "MergeRequestTimeline": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/MergeRequest"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MergeRequestTimelineEvent"
+            }
+          }
+        },
+        "required": [
+          "request",
+          "events"
+        ]
+      },
+      "MergeRequestTimelineEvent": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "integrating",
+              "landed",
+              "rejected",
+              "abandoned",
+              "attempt",
+              "audit",
+              "incident"
+            ]
+          },
+          "attemptNumber": {
+            "type": "integer"
+          },
+          "baseSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "treeSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "failureCategory": {
+            "type": "string",
+            "nullable": true
+          },
+          "logExcerpt": {
+            "type": "string",
+            "nullable": true
+          },
+          "logUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "landedSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectCategory": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "action": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "metadataBefore": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "metadataAfter": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "type": {
+            "type": "string"
+          },
+          "orphanedSha": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "openedAt": {
+            "type": "string"
+          },
+          "resolvedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "resolution": {
+            "nullable": true
+          }
+        },
+        "required": [
+          "at",
+          "kind"
+        ]
+      },
       "MergeRequestPickup": {
         "type": "object",
         "properties": {
@@ -4140,6 +4344,861 @@
         },
         "required": [
           "mode"
+        ]
+      },
+      "IntegratorHealth": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "healthy": {
+            "type": "boolean"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "staleness_ms": {
+            "type": "number",
+            "nullable": true
+          },
+          "pool_size": {
+            "type": "number",
+            "nullable": true
+          },
+          "pool_leased": {
+            "type": "number",
+            "nullable": true
+          },
+          "in_flight_requests": {
+            "type": "number"
+          },
+          "in_flight_batches": {
+            "type": "number"
+          },
+          "in_flight_groups": {
+            "type": "number"
+          },
+          "version": {
+            "type": "string",
+            "nullable": true
+          },
+          "integrator_id": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "resource",
+          "status",
+          "healthy",
+          "last_seen_at",
+          "staleness_ms",
+          "pool_size",
+          "pool_leased",
+          "in_flight_requests",
+          "in_flight_batches",
+          "in_flight_groups",
+          "version",
+          "integrator_id"
+        ]
+      },
+      "IntegratorHeartbeat": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "integrating"
+            ]
+          },
+          "pool_utilization": {
+            "type": "object",
+            "properties": {
+              "size": {
+                "type": "integer"
+              },
+              "leased": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "size",
+              "leased"
+            ]
+          },
+          "in_flight": {
+            "type": "object",
+            "properties": {
+              "requests": {
+                "type": "integer",
+                "default": 0
+              },
+              "batches": {
+                "type": "integer",
+                "default": 0
+              },
+              "groups": {
+                "type": "integer",
+                "default": 0
+              }
+            },
+            "default": {
+              "requests": 0,
+              "batches": 0,
+              "groups": 0
+            }
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "status",
+          "pool_utilization",
+          "version"
+        ]
+      },
+      "TrainState": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "changedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "changedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "resource",
+          "state",
+          "changedBy",
+          "reason",
+          "changedAt",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "TrainPause": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 2048
+          }
+        }
+      },
+      "TrainResume": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 2048
+          }
+        }
+      },
+      "ForceReleaseResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "priorHolderId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "ok",
+          "resource",
+          "priorHolderId"
+        ]
+      },
+      "ForceReleaseLock": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 2048
+          }
+        }
+      },
+      "ForceMergeRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "submittedBy": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string",
+            "nullable": true
+          },
+          "branch": {
+            "type": "string",
+            "nullable": true
+          },
+          "commitSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifyCmd": {
+            "type": "string",
+            "nullable": true
+          },
+          "worktreePath": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          },
+          "enqueuedAt": {
+            "type": "string"
+          },
+          "pickedUpAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "resolvedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "landedSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectCategory": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "failedFiles": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "logExcerpt": {
+            "type": "string",
+            "nullable": true
+          },
+          "logUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "resource",
+          "submittedBy",
+          "taskId",
+          "branch",
+          "commitSha",
+          "verifyCmd",
+          "worktreePath",
+          "status",
+          "enqueuedAt",
+          "pickedUpAt",
+          "resolvedAt",
+          "landedSha",
+          "rejectCategory",
+          "rejectReason",
+          "failedFiles",
+          "logExcerpt",
+          "logUrl",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ForceLand": {
+        "type": "object",
+        "properties": {
+          "landedSha": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "example": "abc1234"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "example": "hotfix for prod outage; verify infra down"
+          }
+        },
+        "required": [
+          "landedSha",
+          "reason"
+        ]
+      },
+      "ForceReject": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "example": "obsoleted by a newer request; clearing the lane"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "TrainMetrics": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string"
+          },
+          "queue_depth": {
+            "type": "number"
+          },
+          "in_flight": {
+            "type": "number"
+          },
+          "time_to_land": {
+            "type": "object",
+            "properties": {
+              "p50_ms": {
+                "type": "number",
+                "nullable": true
+              },
+              "p95_ms": {
+                "type": "number",
+                "nullable": true
+              },
+              "p99_ms": {
+                "type": "number",
+                "nullable": true
+              },
+              "sample_size": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "p50_ms",
+              "p95_ms",
+              "p99_ms",
+              "sample_size"
+            ]
+          },
+          "verify_success_rate": {
+            "type": "object",
+            "properties": {
+              "ratio": {
+                "type": "number",
+                "nullable": true
+              },
+              "passed": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "ratio",
+              "passed",
+              "total"
+            ]
+          },
+          "abandon_rate": {
+            "type": "object",
+            "properties": {
+              "ratio": {
+                "type": "number",
+                "nullable": true
+              },
+              "abandoned": {
+                "type": "number"
+              },
+              "resolved": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "ratio",
+              "abandoned",
+              "resolved"
+            ]
+          },
+          "pool_utilization": {
+            "type": "object",
+            "properties": {
+              "size": {
+                "type": "number",
+                "nullable": true
+              },
+              "leased": {
+                "type": "number",
+                "nullable": true
+              },
+              "ratio": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "required": [
+              "size",
+              "leased",
+              "ratio"
+            ]
+          },
+          "health": {
+            "type": "object",
+            "properties": {
+              "resource": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "healthy": {
+                "type": "boolean"
+              },
+              "last_seen_at": {
+                "type": "string",
+                "nullable": true
+              },
+              "staleness_ms": {
+                "type": "number",
+                "nullable": true
+              },
+              "pool_size": {
+                "type": "number",
+                "nullable": true
+              },
+              "pool_leased": {
+                "type": "number",
+                "nullable": true
+              },
+              "in_flight_requests": {
+                "type": "number"
+              },
+              "in_flight_batches": {
+                "type": "number"
+              },
+              "in_flight_groups": {
+                "type": "number"
+              },
+              "version": {
+                "type": "string",
+                "nullable": true
+              },
+              "integrator_id": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "resource",
+              "status",
+              "healthy",
+              "last_seen_at",
+              "staleness_ms",
+              "pool_size",
+              "pool_leased",
+              "in_flight_requests",
+              "in_flight_batches",
+              "in_flight_groups",
+              "version",
+              "integrator_id"
+            ]
+          },
+          "slo": {
+            "type": "object",
+            "properties": {
+              "p95_time_to_land": {
+                "type": "object",
+                "properties": {
+                  "target_sec": {
+                    "type": "number"
+                  },
+                  "target": {
+                    "type": "number"
+                  },
+                  "measured_ms": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "measured": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "compliant": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "compliant"
+                ]
+              },
+              "verify_success_rate": {
+                "type": "object",
+                "properties": {
+                  "target_sec": {
+                    "type": "number"
+                  },
+                  "target": {
+                    "type": "number"
+                  },
+                  "measured_ms": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "measured": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "compliant": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "compliant"
+                ]
+              },
+              "abandon_rate": {
+                "type": "object",
+                "properties": {
+                  "target_sec": {
+                    "type": "number"
+                  },
+                  "target": {
+                    "type": "number"
+                  },
+                  "measured_ms": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "measured": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "compliant": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "compliant"
+                ]
+              },
+              "overall_compliant": {
+                "type": "boolean",
+                "nullable": true
+              }
+            },
+            "required": [
+              "overall_compliant"
+            ]
+          },
+          "window_hours": {
+            "type": "number"
+          },
+          "computed_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "queue_depth",
+          "in_flight",
+          "time_to_land",
+          "verify_success_rate",
+          "abandon_rate",
+          "pool_utilization",
+          "health",
+          "slo",
+          "window_hours",
+          "computed_at"
+        ]
+      },
+      "TrainInFlight": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "project_id": {
+                  "type": "string"
+                },
+                "resource": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "submitted_by": {
+                  "type": "string"
+                },
+                "integrator_id": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "resolved_at": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "resolution_reason": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "project_id",
+                "resource",
+                "state",
+                "submitted_by",
+                "integrator_id",
+                "resolved_at",
+                "resolution_reason",
+                "created_at",
+                "updated_at"
+              ]
+            }
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "group_id": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "status": {
+                  "type": "string"
+                },
+                "enqueued_at": {
+                  "type": "string"
+                },
+                "picked_up_at": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "attempt": {
+                  "type": "object",
+                  "nullable": true,
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "base_sha": {
+                      "type": "string"
+                    },
+                    "tree_sha": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "started_at": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "base_sha",
+                    "tree_sha",
+                    "started_at"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "group_id",
+                "status",
+                "enqueued_at",
+                "picked_up_at",
+                "attempt"
+              ]
+            }
+          }
+        },
+        "required": [
+          "groups",
+          "members"
+        ]
+      },
+      "AuditLogList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditLogEntry"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "number"
+              },
+              "page": {
+                "type": "number"
+              },
+              "perPage": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "total",
+              "page",
+              "perPage"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "pagination"
+        ]
+      },
+      "AuditLogEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "targetType": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "metadataBefore": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "metadataAfter": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "actorId",
+          "action",
+          "targetType",
+          "targetId",
+          "reason",
+          "metadataBefore",
+          "metadataAfter",
+          "createdAt"
         ]
       }
     },
@@ -14670,6 +15729,107 @@
         }
       }
     },
+    "/api/v1/merge-requests/{id}/timeline": {
+      "get": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Get a merge request's ordered timeline",
+        "description": "Returns the request plus its chronological state history (design §5.7): the queued/integrating/terminal milestones, every attempt with its log pointers + failureCategory, the land/reject/force_land/force_reject audit rows, and any orphaned-inner incident. Events are ordered ascending by timestamp. Any authenticated user may read.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request + ordered events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequestTimeline"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/merge-requests/{id}/cancel": {
       "post": {
         "tags": [
@@ -18416,6 +19576,1667 @@
           },
           "409": {
             "description": "Invalid transition from current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/integrator/heartbeat": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Integrator posts a liveness heartbeat",
+        "description": "The integrator POSTs a periodic heartbeat (status + worktree-pool utilization + in-flight counts + version) for a (project, resource) lane; PM upserts the integrator_health row (design §3.5). Integrator (ai_agent) only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegratorHeartbeat"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Heartbeat recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/IntegratorHealth"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator (ai_agent) only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/integrator/health": {
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Read a lane's integrator health",
+        "description": "Returns the on-read integrator health for a (project, resource) lane: derived staleness_ms + healthy flag + the denormalized heartbeat payload (design §3.4). This read fires the train.integrator_unhealthy edge when the lane is stale. Any authenticated user.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "main"
+            },
+            "required": false,
+            "name": "resource",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The lane health view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/IntegratorHealth"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/train/pause": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Pause the train (admin break-glass)",
+        "description": "Admin override: stop the integrator admitting NEW work for a (project, resource) lane; in-flight members finish cleanly (design §4.3.1). Idempotent no-op (no duplicate audit) when already paused. Writes one `pause` audit row.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainPause"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Train paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TrainState"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/train/resume": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Resume the train (admin break-glass)",
+        "description": "Admin override: re-enable NEW pickups for a (project, resource) lane (design §4.3.2). Idempotent no-op (no audit) when already running. Writes one `resume` audit row.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainResume"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Train resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TrainState"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-locks/{resource}/force-release": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Force-release a stuck merge lock (admin break-glass)",
+        "description": "Admin override: HARD-clear a stuck lane lock without waiting for the lease TTL sweep (design §4.3.3). Does NOT promote the queue head and does NOT touch in-flight merge_requests. Writes one `force_release_lock` audit row + emits merge.lock.released.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "main"
+            },
+            "required": true,
+            "name": "resource",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForceReleaseLock"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lock force-released",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ForceReleaseResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/force-land": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Force-land a request without verify (admin break-glass — THE R1 override)",
+        "description": "Admin override: land an `integrating` request WITHOUT verify (design §4.3.4) — the deliberate, recorded human bypass of the verify-gate. Admin-only, reason-required (both 400 if absent/empty). Grouped members → 409. Records the operator-asserted landedSha; does NOT run git (PM-state vs git-remote divergence is by design). Writes one prominently-recorded `force_land` audit row.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForceLand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Force-landed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ForceMergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (missing/empty reason or landedSha)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Merge request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Grouped member or invalid transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/force-reject": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Force-reject a stuck request (admin break-glass)",
+        "description": "Admin override: reject a stuck `integrating` request on policy grounds (design §4.3.5). Admin-only, reason-required (400 if empty). Writes the merge_rejection comment + one `force_reject` audit row.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForceReject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Force-rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ForceMergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (missing/empty reason)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Merge request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/train/state": {
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Read a lane's train (pause/resume) state",
+        "description": "Returns the (project, resource) lane's running/paused control state (design §4.1). Lazy-creates the row defaulting to running. Any authenticated user.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "main"
+            },
+            "required": false,
+            "name": "resource",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The train state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TrainState"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/train/metrics": {
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Read the on-read metric bundle for a lane",
+        "description": "Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "main"
+            },
+            "required": false,
+            "name": "resource",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The metric bundle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TrainMetrics"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/train/in-flight": {
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Read the in-flight composition for a lane",
+        "description": "Returns the lane's `integrating` merge requests with each one's latest attempt + groupId, plus the forming/integrating group rows (design §5.3). The server does NOT compute speculativePosition/batchId — the dashboard enriches those from the SSE stream. Any authenticated user.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "main"
+            },
+            "required": false,
+            "name": "resource",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The in-flight composition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TrainInFlight"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/audit-log": {
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Query the break-glass audit log (admin-only)",
+        "description": "Returns the project's append-only audit log — who did what to the train and why (design §2 / §8.4). Filterable by actor (userId), action, targetType, targetId, and a from/to createdAt window; ordered newest-first, paginated (page/perPage, default 1/50, max 200). Admin-only: audit records operator/admin-tier accountability data.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "userId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pause",
+                "resume",
+                "force_release_lock",
+                "force_land",
+                "force_reject",
+                "land",
+                "reject"
+              ]
+            },
+            "required": false,
+            "name": "action",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "merge_request",
+                "merge_group",
+                "merge_lock",
+                "train"
+              ]
+            },
+            "required": false,
+            "name": "targetType",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "targetId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "2026-05-29T00:00:00.000Z"
+            },
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "2026-05-30T00:00:00.000Z"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "perPage",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The audit log page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditLogList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
             "content": {
               "application/json": {
                 "schema": {

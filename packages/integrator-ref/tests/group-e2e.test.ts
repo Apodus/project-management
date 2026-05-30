@@ -781,7 +781,17 @@ describe.skipIf(!RUN)("group E2E (d) — un-reconcilable orphan stays open", () 
     const Ri = await h.innerBareMainSha();
     expect(incident.orphanedSha).toBe(Ri);
 
-    const g1Final = await h.getGroup(g1.id);
+    // De-flake (Step 13): the integrator writes the open incident and the
+    // group's partially_landed transition as TWO separate writes — under CPU
+    // contention the incident can be visible BEFORE the group transition
+    // commits. Poll the group until it reaches partially_landed (bounded ~30s,
+    // mirroring flow c's incident-poll idiom) instead of reading once.
+    let g1Final = await h.getGroup(g1.id);
+    const stateDeadline = Date.now() + 30_000;
+    while (g1Final.state !== "partially_landed" && Date.now() < stateDeadline) {
+      await sleep(200);
+      g1Final = await h.getGroup(g1.id);
+    }
     expect(g1Final.state).toBe("partially_landed");
 
     // 2) Out-of-band: bump the OUTER gitlink to a DIVERGENT inner SHA C (a branch

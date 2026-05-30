@@ -17,3 +17,6 @@ export * from "./merge-lock.js";
 export * from "./merge-request.js";
 export * from "./merge-group.js";
 export * from "./merge-incident.js";
+export * from "./audit.js";
+export * from "./train.js";
+export * from "./observability.js";

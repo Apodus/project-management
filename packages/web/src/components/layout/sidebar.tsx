@@ -13,6 +13,7 @@ import {
   Milestone,
   HelpCircle,
   Settings,
+  TrainFront,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,12 @@ function getNavItems(projectId: string | null): NavItem[] {
       icon: Flag,
       href: projectId ? `${base}/milestones` : "/projects",
       matchPath: "/milestones",
+    },
+    {
+      label: "Train",
+      icon: TrainFront,
+      href: projectId ? `${base}/train` : "/projects",
+      matchPath: "/train",
     },
     {
       label: "Activity",

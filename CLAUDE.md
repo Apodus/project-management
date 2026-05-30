@@ -117,9 +117,10 @@ linked task) or rejects it with a structured payload (auto-comment of type `merg
 Main is never broken — verify runs against a tree SHA before main fast-forwards.
 
 - **Architecture & contracts**: `docs/design/phase-7.1-design.md` (data model, state machines,
-  REST surface, SSE events, authz, failure catalog).
+  REST surface, SSE events, authz, failure catalog); `phase-7.2` (speculative batching),
+  `phase-7.3` (cross-repo atomicity), `phase-7.4` (observability + break-glass).
 - **Operator deployment guide**: `docs/integrator-deployment.md` (install, config, monitoring,
-  failure modes, single-machine layout).
+  failure modes, single-machine layout; §15 = observability + break-glass).
 - **MCP tools** (worker-facing): `pm_request_merge`, `pm_list_merge_requests`,
   `pm_get_merge_request`, `pm_cancel_merge_request`. The integrator-facing operations
   (pickup, start/complete attempt, land, reject, reset-to-queued) are HTTP-only.
@@ -160,6 +161,33 @@ declared per project in `settings.integrator.linked_repos` (`[{ name, path, role
 gitlink_parent?, gitlink_path? }]`; default `[]` = single-repo, byte-identical to 7.2). Worker MCP
 tools: `pm_request_merge_group`, `pm_get_merge_group`, `pm_list_merge_incidents`,
 `pm_get_merge_incident`. Full spec: `docs/design/phase-7.3-design.md`.
+
+**Observability + break-glass (Phase 7.4).** The train is legible, accountable, recoverable, and
+self-alerting. A human-facing **dashboard** (`/projects/{id}/train`), a **per-request timeline**
+(`GET /api/v1/merge-requests/{id}/timeline`, ordered from request + attempts + audit + incident),
+and an admin-only **audit + break-glass controls** view (`/projects/{id}/train/audit`). On-read
+**metrics** (`GET train/metrics` + `GET train/in-flight`): queue depth, in-flight composition,
+24h time-to-land p50/p95/p99, verify-success/abandon rates, pool utilization, embedded health, and
+per-project **SLO** compliance (`settings.integrator.slo`, recorded not enforced). Three PM tables:
+`audit_log` (append-only, action-centric — 7 actions: `land`/`reject`/`pause`/`resume`/
+`force_release_lock`/`force_land`/`force_reject`), `integrator_health` (per-lane heartbeat upsert,
+fixed 90s staleness), `train_state` (per-lane running/paused + alert latches). The **five admin
+break-glass overrides** — all HUMAN admin-only (not `ai_agent`), each writing exactly one audit row
+in the same transaction as its state change: `pause` (stop new pickups, finish in-flight) / `resume`
+/ `force-release-lock` (`POST .../merge-locks/{resource}/force-release`, hard-clears, no queue
+promotion) / **`force-land`** (`POST /api/v1/merge-requests/{id}/force-land` — THE R1 override: lands
+WITHOUT verify, reason-required, records the operator-asserted `landedSha`, **PM never runs git so
+the operator must advance remote `main` separately**, grouped member → 409) / `force-reject`
+(reason-required). The **integrator health channel**: the integrator POSTs `POST .../integrator/
+heartbeat` (ai_agent) every `heartbeat_interval_sec` (default 30); `GET .../integrator/health` shows
+freshness. **Dual alerts** for `train.stuck` (oldest-queued > 600s AND in-flight 0 AND not paused) /
+`train.abandon_rate_high` (24h ratio > 0.3 AND resolved ≥ 5) / `train.integrator_unhealthy`
+(heartbeat > 90s stale) — edge-triggered on-read (no sweep), delivered BOTH in-app (SSE banner) AND
+out-of-band to Discord (`settings.webhooks.discord_url`). **Pause** is read-side on the integrator
+(fail-open): it stops NEW admission and finishes in-flight; recovery still runs while paused. New SSE
+events: `train.paused/resumed/stuck/abandon_rate_high/integrator_unhealthy` + `audit.recorded`. No
+new MCP tools (the overrides are human operator actions). Full spec: `docs/design/phase-7.4-design.md`;
+operator guide: `docs/integrator-deployment.md` §15.
 
 ### Production Deployment
 

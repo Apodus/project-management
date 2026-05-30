@@ -3045,6 +3045,8 @@ export interface paths {
                     epic?: string;
                     search?: string;
                     label?: string;
+                    label_name?: string;
+                    claim?: "available" | "mine" | "all";
                     is_blocked?: "true" | "false";
                     sortBy?: "priority" | "created_at" | "updated_at" | "due_date" | "sort_order";
                     order?: "asc" | "desc";
@@ -3535,6 +3537,165 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim task
+         * @description Atomically claim a task for the caller. Sets the caller as assignee. Returns a structured result without leaking other claimants' IDs.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Claim outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["TaskClaimResult"];
+                        };
+                    };
+                };
+                /** @description Task not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release task claim
+         * @description Release the caller's claim. Humans can release any claim; AI agents only their own.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Release outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["TaskClaimResult"];
+                        };
+                    };
+                };
+                /** @description Task not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/awareness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Subsystem awareness check
+         * @description Return in-flight tasks for a project, optionally filtered to a label name. Used as a boundary-time check before touching a subsystem.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    label?: string;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description In-flight summary */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Awareness"];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5866,6 +6027,3872 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/merge-locks/{resource}/acquire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acquire merge lock
+         * @description Atomically acquire the named lock for the caller, or join the FIFO queue if held. Idempotent for the current holder. Optionally attach landing intent (taskId / branch / commitSha / verifyCmd / worktreePath) — all optional, used for observability while held or queued.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                    resource: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MergeLockAcquire"];
+                };
+            };
+            responses: {
+                /** @description Acquire outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeLockAcquireResult"];
+                        };
+                    };
+                };
+                /** @description Validation error (e.g. taskId not in this project) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project or referenced task not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-locks/{resource}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh merge lock lease
+         * @description Refresh the holder's lease. Returns not_holder if the caller doesn't currently hold the lock (e.g. lease already swept).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                    resource: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Heartbeat outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeLockHeartbeatResult"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-locks/{resource}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release merge lock
+         * @description Release the lock and promote the queue head. If landedSha is provided, the release event carries it as the 'main moved' announcement. If landedSha is omitted and a reason is given, the release is an abandon — the reason is stored on the lock so the next holder can see why main hasn't moved (e.g. 'verify failed: skinned_renderer.cpp API drift').
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                    resource: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MergeLockRelease"];
+                };
+            };
+            responses: {
+                /** @description Release outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeLockReleaseResult"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-locks/{resource}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get merge lock state
+         * @description Return the current state of the lock. Holder identity is reported relative to the caller as 'you' / 'someone_else' / 'none'.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                    resource: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current lock state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeLock"];
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-locks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List merge locks
+         * @description List all known locks for a project (one per resource name).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of locks */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeLock"][];
+                            pagination: {
+                                total: number;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List merge requests in a project
+         * @description Returns requests for the project ordered by enqueuedAt ASC. Optional filters: resource, status, taskId. Paginated.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    resource?: string;
+                    status?: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "orphaned";
+                    taskId?: string;
+                    ungrouped?: "true" | "false";
+                    page?: number;
+                    perPage?: number;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Filtered list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequest"][];
+                            pagination: {
+                                total: number;
+                                page: number;
+                                perPage: number;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Submit a merge request
+         * @description Worker submits a request to land branch/commitSha into the named lane (defaults to 'main'). Returns the queued row. The integrator process picks it up asynchronously; subscribe to merge.request.* SSE events for the outcome.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeRequestSubmit"];
+                };
+            };
+            responses: {
+                /** @description Queued request */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequest"];
+                        };
+                    };
+                };
+                /** @description Validation error (e.g. taskId not in this project) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project or task not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a merge request with attempts
+         * @description Returns the request plus all attempts (most-recent first).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Request + attempts */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequestDetail"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a merge request's ordered timeline
+         * @description Returns the request plus its chronological state history (design §5.7): the queued/integrating/terminal milestones, every attempt with its log pointers + failureCategory, the land/reject/force_land/force_reject audit rows, and any orphaned-inner incident. Events are ordered ascending by timestamp. Any authenticated user may read.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Request + ordered events */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequestTimeline"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a queued merge request
+         * @description Submitter or admin cancels a queued request (queued → abandoned). 409 if the request is integrating or already terminal (use force-cancel for integrating).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Abandoned */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequest"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Only the submitter or an admin may cancel */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid transition from current state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/pickup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator picks up a queued request
+         * @description queued → integrating. Sets pickedUpAt and emits merge.request.integrating. Integrator (ai_agent) only. 409 from any non-queued state (no idempotent case — re-pickup throws). Optional batchId/speculativePosition tag the emitted SSE frame.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MergeRequestPickup"];
+                };
+            };
+            responses: {
+                /** @description Picked up */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequest"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not in 'queued' state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/reset-to-queued": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator resets a stuck integrating request back to queued
+         * @description integrating → queued. Used for crash recovery and post-verify push-race retry. Cancels any open attempts. Integrator (ai_agent) only. Returns 409 if not in 'integrating'.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeRequestResetToQueued"];
+                };
+            };
+            responses: {
+                /** @description Re-queued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequest"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not in 'integrating' state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/force-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin force-cancel any non-terminal request
+         * @description Admin override: forces queued OR integrating → abandoned. The integrator discovers this on its next land/reject/completeAttempt call (which returns 409 INVALID_TRANSITION).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MergeRequestForceCancel"];
+                };
+            };
+            responses: {
+                /** @description Abandoned */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequest"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admins only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid transition (terminal) */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator starts a new attempt
+         * @description Records baseSha and creates a running attempt row.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeAttemptStart"];
+                };
+            };
+            responses: {
+                /** @description Attempt started */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeAttempt"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not in 'integrating' state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-attempts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Integrator completes an attempt
+         * @description Discriminated on status: passed requires treeSha; failed requires failureCategory + failureReason; cancelled requires only status.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeAttemptComplete"];
+                };
+            };
+            responses: {
+                /** @description Attempt completed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeAttempt"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Attempt not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Attempt not in 'running' state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/land": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator lands the request
+         * @description integrating → landed. Transactionally creates a git_refs row of type 'landed_sha' if the request is linked to a task. Idempotent on landed → landed.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeRequestLand"];
+                };
+            };
+            responses: {
+                /** @description Landed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequest"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not in 'integrating' state, or it is a grouped member that must land via its group (GROUPED_MEMBER) */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator rejects the request
+         * @description integrating → rejected. Transactionally creates a 'merge_rejection' comment on the linked task with structured metadata. Idempotent on rejected → rejected.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeRequestReject"];
+                };
+            };
+            responses: {
+                /** @description Rejected */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequest"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not in 'integrating' state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-batches/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator relays a batch-marker event
+         * @description Thin relay (design §13.2): the integrator POSTs one of four batch markers (started / member_landed / member_invalidated / completed); PM re-emits it on the merge.batch.* SSE stream and persists NOTHING. Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeBatchEvent"];
+                };
+            };
+            responses: {
+                /** @description Accepted and re-emitted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List merge groups in a project
+         * @description Returns groups for the project ordered by createdAt asc. Optional filters: state, resource.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    state?: "forming" | "integrating" | "landed" | "rejected" | "partially_landed";
+                    resource?: string;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Filtered list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeGroup"][];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create a merge group from queued requests
+         * @description Worker submits >=2 already-queued, ungrouped merge requests as one atomic unit (state 'forming'). The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeGroupCreate"];
+                };
+            };
+            responses: {
+                /** @description Forming group with members */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeGroupDetail"];
+                        };
+                    };
+                };
+                /** @description Validation error (e.g. <2 members) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project or member request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description A member is not queued or is already grouped */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a merge group with members
+         * @description Returns the group plus all member requests (ordered by enqueuedAt asc).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Group + members */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeGroupDetail"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-groups/{id}/pickup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator picks up a forming group
+         * @description forming → integrating. Flips every queued member to integrating in one txn and emits merge.group.started. Integrator (ai_agent) only. 409 from any non-forming state.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MergeGroupPickup"];
+                };
+            };
+            responses: {
+                /** @description Picked up */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeGroupDetail"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group not in 'forming' state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-groups/{id}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator resets a stranded integrating group
+         * @description integrating → forming (stranded-group recovery, §9 finding 2 / §6.4). Atomically resets the group to forming AND every integrating member back to queued. Integrator (ai_agent) only. REFUSES a group that is not integrating (409) or that has an open incident (409, the corruption fence — a real orphan is recovered by rollforward, not reset). Idempotent on forming → forming.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MergeGroupReset"];
+                };
+            };
+            responses: {
+                /** @description Reset to forming */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeGroupDetail"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group not integrating, or has an open incident (corruption fence) */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-groups/{id}/land": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator atomically lands the whole group
+         * @description integrating → landed. Lands every member (status landed, landedSha, landed_sha git_ref per linked task) and the group in one txn. Integrator (ai_agent) only. Idempotent on landed → landed.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeGroupLand"];
+                };
+            };
+            responses: {
+                /** @description Landed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeGroupDetail"];
+                        };
+                    };
+                };
+                /** @description Validation error (e.g. member not in group) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group or member not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group not in 'integrating' state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-groups/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject the whole group
+         * @description forming → rejected OR integrating → rejected. Rejects every non-terminal member in one txn. Integrator (ai_agent), an admin, or the submitter may reject. Idempotent on rejected → rejected.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeGroupReject"];
+                };
+            };
+            responses: {
+                /** @description Rejected */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeGroupDetail"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Only the submitter, an admin, or the integrator */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid transition from current state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-groups/{id}/partially-land": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator marks the group partially landed
+         * @description integrating → partially_landed. Outer-push-fail-after-inner-land: sets the group row only (member states are set by the orphan + outer reject). Integrator (ai_agent) only. Idempotent on partially_landed.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeGroupPartiallyLand"];
+                };
+            };
+            responses: {
+                /** @description Partially landed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeGroupDetail"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Group not in 'integrating' state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/orphan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator orphans an inner group member
+         * @description member integrating → orphaned. Sets the inner member to the 'orphaned' outcome (the inner main landed but the outer gitlink was not updated). Integrator (ai_agent) only. 409 if the request is not a group member or not integrating.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeRequestOrphan"];
+                };
+            };
+            responses: {
+                /** @description Orphaned member */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeGroupMember"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Request not a group member or not 'integrating' */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List merge incidents in a project
+         * @description Returns incidents for the project ordered by openedAt asc. Optional filters: state, type, groupId.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    state?: "open" | "auto_resolved" | "human_resolved";
+                    type?: "orphaned_inner";
+                    groupId?: string;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Filtered list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeIncident"][];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Integrator opens an orphaned-inner incident
+         * @description Durable PM record that inner main landed at orphanedSha but the outer gitlink was NOT updated. Atomically inserts the incident (state 'open') and, when taskId is set, a merge_incident comment. Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeIncidentOpen"];
+                };
+            };
+            responses: {
+                /** @description Opened incident */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeIncident"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-incidents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a merge incident
+         * @description Returns the incident row including its resolution (null while open).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Incident */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeIncident"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Incident not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-incidents/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a merge incident
+         * @description open → auto_resolved (auto-rollforward, ai_agent only) OR open → human_resolved (manual, admin only). The authz split is deliberate. Idempotent on same-terminal resolve.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeIncidentResolve"];
+                };
+            };
+            responses: {
+                /** @description Resolved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeIncident"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description auto requires ai_agent; human requires admin */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Incident not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid transition from current state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/integrator/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator posts a liveness heartbeat
+         * @description The integrator POSTs a periodic heartbeat (status + worktree-pool utilization + in-flight counts + version) for a (project, resource) lane; PM upserts the integrator_health row (design §3.5). Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["IntegratorHeartbeat"];
+                };
+            };
+            responses: {
+                /** @description Heartbeat recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["IntegratorHealth"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/integrator/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a lane's integrator health
+         * @description Returns the on-read integrator health for a (project, resource) lane: derived staleness_ms + healthy flag + the denormalized heartbeat payload (design §3.4). This read fires the train.integrator_unhealthy edge when the lane is stale. Any authenticated user.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    resource?: string;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The lane health view */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["IntegratorHealth"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/train/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause the train (admin break-glass)
+         * @description Admin override: stop the integrator admitting NEW work for a (project, resource) lane; in-flight members finish cleanly (design §4.3.1). Idempotent no-op (no duplicate audit) when already paused. Writes one `pause` audit row.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TrainPause"];
+                };
+            };
+            responses: {
+                /** @description Train paused */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["TrainState"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/train/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume the train (admin break-glass)
+         * @description Admin override: re-enable NEW pickups for a (project, resource) lane (design §4.3.2). Idempotent no-op (no audit) when already running. Writes one `resume` audit row.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TrainResume"];
+                };
+            };
+            responses: {
+                /** @description Train resumed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["TrainState"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-locks/{resource}/force-release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force-release a stuck merge lock (admin break-glass)
+         * @description Admin override: HARD-clear a stuck lane lock without waiting for the lease TTL sweep (design §4.3.3). Does NOT promote the queue head and does NOT touch in-flight merge_requests. Writes one `force_release_lock` audit row + emits merge.lock.released.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                    resource: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ForceReleaseLock"];
+                };
+            };
+            responses: {
+                /** @description Lock force-released */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["ForceReleaseResult"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/force-land": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force-land a request without verify (admin break-glass — THE R1 override)
+         * @description Admin override: land an `integrating` request WITHOUT verify (design §4.3.4) — the deliberate, recorded human bypass of the verify-gate. Admin-only, reason-required (both 400 if absent/empty). Grouped members → 409. Records the operator-asserted landedSha; does NOT run git (PM-state vs git-remote divergence is by design). Writes one prominently-recorded `force_land` audit row.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ForceLand"];
+                };
+            };
+            responses: {
+                /** @description Force-landed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["ForceMergeRequest"];
+                        };
+                    };
+                };
+                /** @description Validation error (missing/empty reason or landedSha) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Merge request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Grouped member or invalid transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-requests/{id}/force-reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force-reject a stuck request (admin break-glass)
+         * @description Admin override: reject a stuck `integrating` request on policy grounds (design §4.3.5). Admin-only, reason-required (400 if empty). Writes the merge_rejection comment + one `force_reject` audit row.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ForceReject"];
+                };
+            };
+            responses: {
+                /** @description Force-rejected */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["ForceMergeRequest"];
+                        };
+                    };
+                };
+                /** @description Validation error (missing/empty reason) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Merge request not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/train/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a lane's train (pause/resume) state
+         * @description Returns the (project, resource) lane's running/paused control state (design §4.1). Lazy-creates the row defaulting to running. Any authenticated user.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    resource?: string;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The train state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["TrainState"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/train/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the on-read metric bundle for a lane
+         * @description Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability).
+         */
+        get: {
+            parameters: {
+                query?: {
+                    resource?: string;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The metric bundle */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["TrainMetrics"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/train/in-flight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the in-flight composition for a lane
+         * @description Returns the lane's `integrating` merge requests with each one's latest attempt + groupId, plus the forming/integrating group rows (design §5.3). The server does NOT compute speculativePosition/batchId — the dashboard enriches those from the SSE stream. Any authenticated user.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    resource?: string;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The in-flight composition */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["TrainInFlight"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/audit-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Query the break-glass audit log (admin-only)
+         * @description Returns the project's append-only audit log — who did what to the train and why (design §2 / §8.4). Filterable by actor (userId), action, targetType, targetId, and a from/to createdAt window; ordered newest-first, paginated (page/perPage, default 1/50, max 200). Admin-only: audit records operator/admin-tier accountability data.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    userId?: string;
+                    action?: "pause" | "resume" | "force_release_lock" | "force_land" | "force_reject" | "land" | "reject";
+                    targetType?: "merge_request" | "merge_group" | "merge_lock" | "train";
+                    targetId?: string;
+                    from?: string;
+                    to?: string;
+                    page?: number;
+                    perPage?: number;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The audit log page */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuditLogList"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -5963,7 +9990,59 @@ export interface components {
             gitRepoUrl?: string | null;
             /** @enum {string} */
             status?: "active" | "paused" | "archived" | "completed";
-            settings?: unknown;
+            settings?: {
+                ai_autonomy: {
+                    can_self_assign: boolean;
+                    can_create_subtasks: boolean;
+                    can_create_tasks: boolean;
+                    can_change_priority: boolean;
+                    can_close_epics: boolean;
+                    max_concurrent_tasks: number;
+                };
+                workflow: {
+                    statuses: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
+                };
+                git: {
+                    branch_prefix: string;
+                    auto_link_branches: boolean;
+                };
+                integrator?: {
+                    /** @default false */
+                    enabled: boolean;
+                    verify_command?: string;
+                    /** @default 600 */
+                    verify_timeout_sec: number;
+                    worktree_root?: string;
+                    /** @default origin */
+                    git_remote: string;
+                    /** @default main */
+                    git_main_branch: string;
+                    worktree_name?: string;
+                    /** @default 1 */
+                    parallelism: number;
+                    /** @default [] */
+                    linked_repos: {
+                        name: string;
+                        path: string;
+                        /** @enum {string} */
+                        role: "inner" | "outer";
+                        gitlink_parent?: string;
+                        gitlink_path?: string;
+                    }[];
+                    /** @default 30 */
+                    heartbeat_interval_sec: number;
+                    slo?: {
+                        target_p95_time_to_land_sec?: number;
+                        target_verify_success_rate?: number;
+                        target_abandon_rate?: number;
+                    };
+                };
+                webhooks?: {
+                    /** Format: uri */
+                    discord_url?: string;
+                    alerts_enabled?: boolean;
+                };
+            } | null;
             sortOrder?: number;
         };
         UpdateProject: {
@@ -5972,7 +10051,59 @@ export interface components {
             gitRepoUrl?: string | null;
             /** @enum {string} */
             status?: "active" | "paused" | "archived" | "completed";
-            settings?: unknown;
+            settings?: {
+                ai_autonomy: {
+                    can_self_assign: boolean;
+                    can_create_subtasks: boolean;
+                    can_create_tasks: boolean;
+                    can_change_priority: boolean;
+                    can_close_epics: boolean;
+                    max_concurrent_tasks: number;
+                };
+                workflow: {
+                    statuses: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
+                };
+                git: {
+                    branch_prefix: string;
+                    auto_link_branches: boolean;
+                };
+                integrator?: {
+                    /** @default false */
+                    enabled: boolean;
+                    verify_command?: string;
+                    /** @default 600 */
+                    verify_timeout_sec: number;
+                    worktree_root?: string;
+                    /** @default origin */
+                    git_remote: string;
+                    /** @default main */
+                    git_main_branch: string;
+                    worktree_name?: string;
+                    /** @default 1 */
+                    parallelism: number;
+                    /** @default [] */
+                    linked_repos: {
+                        name: string;
+                        path: string;
+                        /** @enum {string} */
+                        role: "inner" | "outer";
+                        gitlink_parent?: string;
+                        gitlink_path?: string;
+                    }[];
+                    /** @default 30 */
+                    heartbeat_interval_sec: number;
+                    slo?: {
+                        target_p95_time_to_land_sec?: number;
+                        target_verify_success_rate?: number;
+                        target_abandon_rate?: number;
+                    };
+                };
+                webhooks?: {
+                    /** Format: uri */
+                    discord_url?: string;
+                    alerts_enabled?: boolean;
+                };
+            } | null;
             sortOrder?: number;
         };
         ProjectStats: {
@@ -6070,7 +10201,7 @@ export interface components {
         AddProposalComment: {
             body: string;
             /** @enum {string} */
-            commentType?: "comment" | "progress_update" | "decision" | "question" | "handoff" | "review_note" | "design_discussion";
+            commentType?: "comment" | "progress_update" | "decision" | "question" | "handoff" | "review_note" | "design_discussion" | "merge_rejection" | "merge_incident";
         };
         ImplementProposal: {
             /** @default [] */
@@ -6178,6 +10309,8 @@ export interface components {
             assigneeType: string | null;
             reporterName: string | null;
             reporterType: string | null;
+            /** @enum {string} */
+            claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
         };
         CreateTask: {
             title: string;
@@ -6272,6 +10405,26 @@ export interface components {
             to_status: "backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled";
             comment?: string;
         };
+        TaskClaimResult: {
+            ok: boolean;
+            /** @enum {string} */
+            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed";
+        };
+        Awareness: {
+            label: string | null;
+            inFlight: {
+                taskId: string;
+                title: string;
+                assignee: {
+                    id: string;
+                    name: string | null;
+                    type: string | null;
+                } | null;
+                gitBranch: string | null;
+                startedAt: string | null;
+            }[];
+            total: number;
+        };
         TaskComment: {
             id: string;
             taskId: string | null;
@@ -6286,7 +10439,7 @@ export interface components {
         CreateTaskComment: {
             body: string;
             /** @enum {string} */
-            commentType?: "comment" | "progress_update" | "decision" | "question" | "handoff" | "review_note" | "design_discussion";
+            commentType?: "comment" | "progress_update" | "decision" | "question" | "handoff" | "review_note" | "design_discussion" | "merge_rejection" | "merge_incident";
             metadata?: {
                 [key: string]: unknown;
             } | null;
@@ -6391,7 +10544,7 @@ export interface components {
         };
         CreateGitRef: {
             /** @enum {string} */
-            refType: "branch" | "commit" | "pull_request";
+            refType: "branch" | "commit" | "pull_request" | "landed_sha";
             refValue: string;
             url?: string | null;
             title?: string | null;
@@ -6403,7 +10556,7 @@ export interface components {
         };
         UpdateGitRef: {
             /** @enum {string} */
-            refType?: "branch" | "commit" | "pull_request";
+            refType?: "branch" | "commit" | "pull_request" | "landed_sha";
             refValue?: string;
             url?: string | null;
             title?: string | null;
@@ -6510,6 +10663,558 @@ export interface components {
         CreateTemplateFromTask: {
             name: string;
             description?: string;
+        };
+        MergeLockAcquireResult: {
+            ok: boolean;
+            /** @enum {string} */
+            status: "held" | "queued" | "already_held";
+            position?: number | null;
+            expiresAt?: string | null;
+        };
+        MergeLockAcquire: {
+            taskId?: string | null;
+            branch?: string | null;
+            commitSha?: string | null;
+            verifyCmd?: string | null;
+            worktreePath?: string | null;
+        };
+        MergeLockHeartbeatResult: {
+            ok: boolean;
+            /** @enum {string} */
+            status: "refreshed" | "not_holder";
+            expiresAt?: string | null;
+        };
+        MergeLockReleaseResult: {
+            ok: boolean;
+            /** @enum {string} */
+            status: "released" | "not_held" | "not_holder";
+            grantedTo?: string | null;
+        };
+        MergeLockRelease: {
+            /** @example abc1234 */
+            landedSha?: string | null;
+            /** @example verify failed: skinned_renderer.cpp API drift */
+            reason?: string | null;
+        };
+        MergeLock: {
+            id: string;
+            projectId: string;
+            resource: string;
+            /** @enum {string} */
+            holder: "you" | "someone_else" | "none";
+            holderId: string | null;
+            acquiredAt: string | null;
+            heartbeatAt: string | null;
+            expiresAt: string | null;
+            landedSha: string | null;
+            landedAt: string | null;
+            taskId: string | null;
+            branch: string | null;
+            commitSha: string | null;
+            verifyCmd: string | null;
+            worktreePath: string | null;
+            abandonReason: string | null;
+            queueLength: number;
+            yourPosition: number | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        MergeRequest: {
+            id: string;
+            projectId: string;
+            resource: string;
+            submittedBy: string;
+            taskId: string | null;
+            branch: string | null;
+            commitSha: string | null;
+            verifyCmd: string | null;
+            worktreePath: string | null;
+            /** @enum {string} */
+            status: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "orphaned";
+            enqueuedAt: string;
+            pickedUpAt: string | null;
+            resolvedAt: string | null;
+            landedSha: string | null;
+            /** @enum {string|null} */
+            rejectCategory: "conflict" | "build_failed" | "test_failed" | "lint_failed" | "verify_timeout" | "policy" | "other" | null;
+            rejectReason: string | null;
+            failedFiles: string[] | null;
+            logExcerpt: string | null;
+            logUrl: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        MergeRequestSubmit: {
+            /** @default main */
+            resource: string;
+            taskId?: string | null;
+            branch?: string | null;
+            commitSha?: string | null;
+            verifyCmd?: string | null;
+            worktreePath?: string | null;
+        };
+        MergeRequestDetail: components["schemas"]["MergeRequest"] & {
+            attempts: components["schemas"]["MergeAttempt"][];
+        };
+        MergeAttempt: {
+            id: string;
+            requestId: string;
+            attemptNumber: number;
+            baseSha: string;
+            treeSha: string | null;
+            /** @enum {string} */
+            status: "pending" | "running" | "passed" | "failed" | "cancelled";
+            startedAt: string | null;
+            completedAt: string | null;
+            verifyDurationMs: number | null;
+            /** @enum {string|null} */
+            failureCategory: "conflict" | "build_failed" | "test_failed" | "lint_failed" | "verify_timeout" | "policy" | "other" | null;
+            failureReason: string | null;
+            failedFiles: string[] | null;
+            logExcerpt: string | null;
+            logUrl: string | null;
+            createdAt: string;
+        };
+        MergeRequestTimeline: {
+            request: components["schemas"]["MergeRequest"];
+            events: components["schemas"]["MergeRequestTimelineEvent"][];
+        };
+        MergeRequestTimelineEvent: {
+            at: string;
+            /** @enum {string} */
+            kind: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "attempt" | "audit" | "incident";
+            attemptNumber?: number;
+            baseSha?: string | null;
+            treeSha?: string | null;
+            status?: string;
+            startedAt?: string | null;
+            completedAt?: string | null;
+            failureCategory?: string | null;
+            logExcerpt?: string | null;
+            logUrl?: string | null;
+            landedSha?: string | null;
+            rejectCategory?: string | null;
+            rejectReason?: string | null;
+            action?: string;
+            actorId?: string;
+            reason?: string | null;
+            metadataBefore?: {
+                [key: string]: unknown;
+            } | null;
+            metadataAfter?: {
+                [key: string]: unknown;
+            } | null;
+            type?: string;
+            orphanedSha?: string;
+            state?: string;
+            openedAt?: string;
+            resolvedAt?: string | null;
+            resolution?: unknown;
+        };
+        MergeRequestPickup: {
+            batchId?: string;
+            speculativePosition?: number;
+        };
+        MergeRequestResetToQueued: {
+            reason: string;
+        };
+        MergeRequestForceCancel: {
+            reason?: string;
+        };
+        MergeAttemptStart: {
+            baseSha: string;
+            batchId?: string;
+            speculativePosition?: number;
+        };
+        MergeAttemptComplete: {
+            /** @enum {string} */
+            status: "passed";
+            treeSha: string;
+        } | {
+            /** @enum {string} */
+            status: "failed";
+            /** @enum {string} */
+            failureCategory: "conflict" | "build_failed" | "test_failed" | "lint_failed" | "verify_timeout" | "policy" | "other";
+            failureReason: string;
+            failedFiles?: string[];
+            logExcerpt?: string;
+            logUrl?: string;
+        } | {
+            /** @enum {string} */
+            status: "cancelled";
+        };
+        MergeRequestLand: {
+            landedSha: string;
+        };
+        MergeRequestReject: {
+            /** @enum {string} */
+            category: "conflict" | "build_failed" | "test_failed" | "lint_failed" | "verify_timeout" | "policy" | "other";
+            reason: string;
+            failedFiles?: string[];
+            logExcerpt?: string;
+            logUrl?: string;
+        };
+        MergeBatchEvent: {
+            /** @enum {string} */
+            type: "started";
+            batchId: string;
+            resource: string;
+            memberCount: number;
+            memberRequestIds: string[];
+        } | {
+            /** @enum {string} */
+            type: "member_landed";
+            batchId: string;
+            requestId: string;
+            speculativePosition: number;
+            landedSha: string;
+        } | {
+            /** @enum {string} */
+            type: "member_invalidated";
+            batchId: string;
+            requestId: string;
+            speculativePosition: number;
+            reason: string;
+            failedPredecessorRequestId: string;
+        } | {
+            /** @enum {string} */
+            type: "completed";
+            batchId: string;
+            landed: number;
+            rejected: number;
+            invalidated: number;
+        };
+        MergeGroupDetail: components["schemas"]["MergeGroup"] & {
+            members: components["schemas"]["MergeGroupMember"][];
+        };
+        MergeGroupMember: {
+            id: string;
+            projectId: string;
+            resource: string;
+            submittedBy: string;
+            taskId: string | null;
+            branch: string | null;
+            commitSha: string | null;
+            verifyCmd: string | null;
+            worktreePath: string | null;
+            status: string;
+            enqueuedAt: string;
+            pickedUpAt: string | null;
+            resolvedAt: string | null;
+            landedSha: string | null;
+            rejectCategory: string | null;
+            rejectReason: string | null;
+            failedFiles: string[] | null;
+            logExcerpt: string | null;
+            logUrl: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        MergeGroup: {
+            id: string;
+            projectId: string;
+            resource: string;
+            /** @enum {string} */
+            state: "forming" | "integrating" | "landed" | "rejected" | "partially_landed";
+            submittedBy: string;
+            integratorId: string | null;
+            resolvedAt: string | null;
+            resolutionReason: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        MergeGroupCreate: {
+            /** @default main */
+            resource: string;
+            memberRequestIds: string[];
+        };
+        MergeGroupPickup: {
+            integratorId?: string;
+        };
+        MergeGroupReset: {
+            reason?: string;
+        };
+        MergeGroupLand: {
+            members: {
+                requestId: string;
+                landedSha: string;
+                role?: string;
+            }[];
+        };
+        MergeGroupReject: {
+            reason: string;
+            category?: string;
+        };
+        MergeGroupPartiallyLand: {
+            reason: string;
+            incidentId?: string;
+        };
+        MergeRequestOrphan: {
+            orphanedSha: string;
+        };
+        MergeIncident: {
+            id: string;
+            projectId: string;
+            groupId: string | null;
+            /** @enum {string} */
+            type: "orphaned_inner";
+            innerRepo: string;
+            orphanedSha: string;
+            outerRepo: string;
+            innerRequestId: string | null;
+            taskId: string | null;
+            /** @enum {string} */
+            state: "open" | "auto_resolved" | "human_resolved";
+            openedAt: string;
+            resolvedAt: string | null;
+            resolution: {
+                /** @enum {string} */
+                mode: "auto_rollforward" | "human";
+                outerLandedSha?: string;
+                resolvedByGroupId?: string;
+                note?: string;
+            } | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        MergeIncidentOpen: {
+            /**
+             * @default orphaned_inner
+             * @enum {string}
+             */
+            type: "orphaned_inner";
+            innerRepo: string;
+            orphanedSha: string;
+            outerRepo: string;
+            groupId?: string | null;
+            innerRequestId?: string | null;
+            taskId?: string | null;
+        };
+        MergeIncidentResolve: {
+            /** @enum {string} */
+            mode: "auto_rollforward" | "human";
+            outerLandedSha?: string;
+            resolvedByGroupId?: string;
+            note?: string;
+        };
+        IntegratorHealth: {
+            resource: string;
+            status: string;
+            healthy: boolean;
+            last_seen_at: string | null;
+            staleness_ms: number | null;
+            pool_size: number | null;
+            pool_leased: number | null;
+            in_flight_requests: number;
+            in_flight_batches: number;
+            in_flight_groups: number;
+            version: string | null;
+            integrator_id: string | null;
+        };
+        IntegratorHeartbeat: {
+            /** @default main */
+            resource: string;
+            /** @enum {string} */
+            status: "idle" | "integrating";
+            pool_utilization: {
+                size: number;
+                leased: number;
+            };
+            /**
+             * @default {
+             *       "requests": 0,
+             *       "batches": 0,
+             *       "groups": 0
+             *     }
+             */
+            in_flight: {
+                /** @default 0 */
+                requests: number;
+                /** @default 0 */
+                batches: number;
+                /** @default 0 */
+                groups: number;
+            };
+            version: string;
+        };
+        TrainState: {
+            id: string;
+            projectId: string;
+            resource: string;
+            state: string;
+            changedBy: string | null;
+            reason: string | null;
+            changedAt: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        TrainPause: {
+            /** @default main */
+            resource: string;
+            reason?: string | null;
+        };
+        TrainResume: {
+            /** @default main */
+            resource: string;
+            reason?: string | null;
+        };
+        ForceReleaseResult: {
+            ok: boolean;
+            resource: string;
+            priorHolderId: string | null;
+        };
+        ForceReleaseLock: {
+            reason?: string | null;
+        };
+        ForceMergeRequest: {
+            id: string;
+            projectId: string;
+            resource: string;
+            submittedBy: string;
+            taskId: string | null;
+            branch: string | null;
+            commitSha: string | null;
+            verifyCmd: string | null;
+            worktreePath: string | null;
+            status: string;
+            enqueuedAt: string;
+            pickedUpAt: string | null;
+            resolvedAt: string | null;
+            landedSha: string | null;
+            rejectCategory: string | null;
+            rejectReason: string | null;
+            failedFiles: string[] | null;
+            logExcerpt: string | null;
+            logUrl: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        ForceLand: {
+            /** @example abc1234 */
+            landedSha: string;
+            /** @example hotfix for prod outage; verify infra down */
+            reason: string;
+        };
+        ForceReject: {
+            /** @example obsoleted by a newer request; clearing the lane */
+            reason: string;
+        };
+        TrainMetrics: {
+            resource: string;
+            queue_depth: number;
+            in_flight: number;
+            time_to_land: {
+                p50_ms: number | null;
+                p95_ms: number | null;
+                p99_ms: number | null;
+                sample_size: number;
+            };
+            verify_success_rate: {
+                ratio: number | null;
+                passed: number;
+                total: number;
+            };
+            abandon_rate: {
+                ratio: number | null;
+                abandoned: number;
+                resolved: number;
+            };
+            pool_utilization: {
+                size: number | null;
+                leased: number | null;
+                ratio: number | null;
+            };
+            health: {
+                resource: string;
+                status: string;
+                healthy: boolean;
+                last_seen_at: string | null;
+                staleness_ms: number | null;
+                pool_size: number | null;
+                pool_leased: number | null;
+                in_flight_requests: number;
+                in_flight_batches: number;
+                in_flight_groups: number;
+                version: string | null;
+                integrator_id: string | null;
+            };
+            slo: {
+                p95_time_to_land?: {
+                    target_sec?: number;
+                    target?: number;
+                    measured_ms?: number | null;
+                    measured?: number | null;
+                    compliant: boolean;
+                };
+                verify_success_rate?: {
+                    target_sec?: number;
+                    target?: number;
+                    measured_ms?: number | null;
+                    measured?: number | null;
+                    compliant: boolean;
+                };
+                abandon_rate?: {
+                    target_sec?: number;
+                    target?: number;
+                    measured_ms?: number | null;
+                    measured?: number | null;
+                    compliant: boolean;
+                };
+                overall_compliant: boolean | null;
+            };
+            window_hours: number;
+            computed_at: string;
+        };
+        TrainInFlight: {
+            groups: {
+                id: string;
+                project_id: string;
+                resource: string;
+                state: string;
+                submitted_by: string;
+                integrator_id: string | null;
+                resolved_at: string | null;
+                resolution_reason: string | null;
+                created_at: string;
+                updated_at: string;
+            }[];
+            members: {
+                id: string;
+                group_id: string | null;
+                status: string;
+                enqueued_at: string;
+                picked_up_at: string | null;
+                attempt: {
+                    status: string;
+                    base_sha: string;
+                    tree_sha: string | null;
+                    started_at: string | null;
+                } | null;
+            }[];
+        };
+        AuditLogList: {
+            data: components["schemas"]["AuditLogEntry"][];
+            pagination: {
+                total: number;
+                page: number;
+                perPage: number;
+            };
+        };
+        AuditLogEntry: {
+            id: string;
+            projectId: string;
+            actorId: string;
+            action: string;
+            targetType: string;
+            targetId: string;
+            reason: string | null;
+            metadataBefore: {
+                [key: string]: unknown;
+            } | null;
+            metadataAfter: {
+                [key: string]: unknown;
+            } | null;
+            createdAt: string;
         };
     };
     responses: never;

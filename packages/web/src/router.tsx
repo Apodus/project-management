@@ -20,6 +20,9 @@ import { SetupPage } from "@/pages/setup-page";
 import { TaskDetailPage } from "@/pages/task-detail-page";
 import { TaskListPage } from "@/pages/task-list-page";
 import { BoardPage } from "@/pages/board-page";
+import { TrainDashboardPage } from "@/pages/train-dashboard-page";
+import { TrainAuditPage } from "@/pages/train-audit-page";
+import { MergeRequestTimelinePage } from "@/pages/merge-request-timeline-page";
 import { UsersPage } from "@/pages/settings/users-page";
 import { BackupPage } from "@/pages/settings/backup-page";
 import { TemplatesPage } from "@/pages/settings/templates-page";
@@ -176,6 +179,20 @@ const projectMilestonesRoute = createRoute({
   component: MilestonesPage,
 });
 
+// /projects/$projectId/train — merge train dashboard
+const projectTrainRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/train",
+  component: TrainDashboardPage,
+});
+
+// /projects/$projectId/train/audit — break-glass controls + audit log (admin-only)
+const projectTrainAuditRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/train/audit",
+  component: TrainAuditPage,
+});
+
 // /proposals/$proposalId — proposal detail
 const proposalDetailRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
@@ -195,6 +212,13 @@ const epicDetailRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/epics/$epicId",
   component: EpicDetailPage,
+});
+
+// /merge-requests/$requestId/timeline — per-request merge timeline
+const mergeRequestTimelineRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/merge-requests/$requestId/timeline",
+  component: MergeRequestTimelinePage,
 });
 
 // /settings/users — user management
@@ -247,11 +271,14 @@ const routeTree = rootRoute.addChildren([
       projectEpicListRoute,
       projectActivityRoute,
       projectMilestonesRoute,
+      projectTrainRoute,
+      projectTrainAuditRoute,
       projectAutomationRoute,
     ]),
     proposalDetailRoute,
     taskDetailRoute,
     epicDetailRoute,
+    mergeRequestTimelineRoute,
     settingsUsersRoute,
     settingsBackupRoute,
     settingsTemplatesRoute,

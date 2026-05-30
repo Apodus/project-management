@@ -7,6 +7,7 @@ import { projectKeys } from "./use-projects";
 import { proposalKeys } from "./use-proposals";
 import { taskKeys } from "./use-tasks";
 import { epicKeys } from "./use-epics";
+import { trainKeys } from "./use-train";
 import { useConnectionStore } from "@/stores/connection-store";
 
 // ─── SSE event payload shape ─────────────────────────────────────
@@ -23,7 +24,9 @@ interface SSEPayload {
 
 // ─── Query key invalidation map ──────────────────────────────────
 
-function getInvalidationKeys(eventType: string): readonly (readonly unknown[])[] {
+export function getInvalidationKeys(
+  eventType: string,
+): readonly (readonly unknown[])[] {
   const prefix = eventType.split(".")[0];
   switch (prefix) {
     case "project":
@@ -37,6 +40,14 @@ function getInvalidationKeys(eventType: string): readonly (readonly unknown[])[]
     case "comment":
       // Comments affect both task and proposal detail queries
       return [taskKeys.all, proposalKeys.all, activityKeys.all];
+    case "train":
+      return [trainKeys.all];
+    case "merge":
+      // merge.* events move the queue / in-flight composition → refresh train.
+      return [trainKeys.all];
+    case "audit":
+      // audit.recorded → the audit query lives under trainKeys.all → refresh live.
+      return [trainKeys.all];
     default:
       return [];
   }
@@ -45,9 +56,29 @@ function getInvalidationKeys(eventType: string): readonly (readonly unknown[])[]
 // ─── Toast notifications for key events ──────────────────────────
 
 function maybeShowToast(eventType: string, payload: SSEPayload): void {
+  // ── Merge-train health alerts (§7a in-app alert) ──────────────
+  if (eventType === "train.integrator_unhealthy") {
+    toast.warning("Integrator unhealthy", {
+      description: "The merge train integrator stopped reporting in.",
+    });
+    return;
+  }
+  if (eventType === "train.stuck") {
+    toast.warning("Merge train stuck", {
+      description: "A merge request has been integrating longer than expected.",
+    });
+    return;
+  }
+  if (eventType === "train.abandon_rate_high") {
+    toast.warning("High abandon rate", {
+      description: "Merge requests are being abandoned faster than usual.",
+    });
+    return;
+  }
+
   const titleLabel = payload.entity_title
     ? `'${payload.entity_title}'`
-    : `${payload.entity_id.slice(-6)}`;
+    : `${payload.entity_id?.slice(-6) ?? ""}`;
 
   if (
     eventType === "task.status_changed" &&
@@ -170,6 +201,22 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       "comment.created",
       "comment.updated",
       "comment.deleted",
+      // Merge train — lifecycle (queue / in-flight composition changes)
+      "merge.request.landed",
+      "merge.request.rejected",
+      "merge.batch.formed",
+      "merge.batch.landed",
+      "merge.batch.rejected",
+      "merge.group.landed",
+      "merge.group.rejected",
+      // Merge train — observability alerts
+      "train.paused",
+      "train.resumed",
+      "train.integrator_unhealthy",
+      "train.stuck",
+      "train.abandon_rate_high",
+      // Break-glass audit — an R1-override was recorded → refresh the audit log.
+      "audit.recorded",
     ];
 
     const handleEvent = (eventType: string) => (e: MessageEvent) => {

@@ -896,6 +896,196 @@ describe("Projects API", () => {
       );
       expect(res.status).toBe(400);
     });
+
+    // ── slo + heartbeat_interval_sec (Phase 7.4 §6.1) ──────────────
+    it("accepts a fully specified slo block and round-trips it", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+                slo: {
+                  target_p95_time_to_land_sec: 600,
+                  target_verify_success_rate: 0.9,
+                  target_abandon_rate: 0.1,
+                },
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      expect(body.data.settings.integrator.slo).toEqual({
+        target_p95_time_to_land_sec: 600,
+        target_verify_success_rate: 0.9,
+        target_abandon_rate: 0.1,
+      });
+    });
+
+    it("defaults slo to undefined and heartbeat_interval_sec to 30 when omitted", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      expect(body.data.settings.integrator.slo).toBeUndefined();
+      expect(body.data.settings.integrator.heartbeat_interval_sec).toBe(30);
+    });
+
+    it("rejects slo.target_verify_success_rate > 1 (proves the Zod-4 mirror validates)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+                slo: { target_verify_success_rate: 1.5 },
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects slo.target_abandon_rate < 0", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+                slo: { target_abandon_rate: -0.1 },
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects heartbeat_interval_sec < 5", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+                heartbeat_interval_sec: 1,
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── settings.webhooks validation (Phase 7.4 §7.2 — the Zod-4 mirror) ──
+  describe("settings.webhooks validation", () => {
+    const validBaseSettings = {
+      ai_autonomy: {
+        can_self_assign: true,
+        can_create_subtasks: true,
+        can_create_tasks: false,
+        can_change_priority: false,
+        can_close_epics: false,
+        max_concurrent_tasks: 3,
+      },
+      workflow: {
+        statuses: ["backlog", "ready", "in_progress", "in_review", "done", "cancelled"],
+      },
+      git: { branch_prefix: "feat/", auto_link_branches: true },
+    };
+
+    it("round-trips a valid discord_url + alerts_enabled through PATCH → GET", async () => {
+      const project = createTestProject(testApp.db);
+      const url = "https://discord.com/api/webhooks/123456/abcdef";
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              webhooks: { discord_url: url, alerts_enabled: true },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      // Proves the mirror does NOT strip discord_url.
+      expect(body.data.settings.webhooks.discord_url).toBe(url);
+      expect(body.data.settings.webhooks.alerts_enabled).toBe(true);
+    });
+
+    it("rejects a non-URL discord_url with 400 (the Zod-4 mirror validates)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              webhooks: { discord_url: "not-a-url" },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
   });
 
   // ── OpenAPI spec ──────────────────────────────────────────────────

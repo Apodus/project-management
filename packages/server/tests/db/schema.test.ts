@@ -22,6 +22,8 @@ import {
   mergeRequests,
   mergeRequestGroups,
   mergeIncidents,
+  auditLog,
+  trainState,
 } from "../../src/db/index.js";
 import type { AppDatabase } from "../../src/db/index.js";
 
@@ -47,7 +49,7 @@ describe("Database schema", () => {
 
   // ── Table existence ──────────────────────────────────────────────
   describe("table existence", () => {
-    it("should create all 24 tables", () => {
+    it("should create all 27 tables", () => {
       const db = setupDb();
       const tableNames = db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' AND name NOT LIKE '%_fts%' ORDER BY name`,
@@ -60,10 +62,12 @@ describe("Database schema", () => {
         "activity_log",
         "agent_claims",
         "agent_pools",
+        "audit_log",
         "automation_rules",
         "comments",
         "epics",
         "git_refs",
+        "integrator_health",
         "labels",
         "merge_attempts",
         "merge_incidents",
@@ -79,6 +83,7 @@ describe("Database schema", () => {
         "task_labels",
         "tasks",
         "templates",
+        "train_state",
         "users",
         "workspaces",
       ].sort();
@@ -122,6 +127,11 @@ describe("Database schema", () => {
         "idx_merge_incidents_group",
         "idx_merge_incidents_open",
         "idx_merge_requests_group",
+        "idx_audit_log_project_created",
+        "idx_audit_log_actor",
+        "idx_audit_log_target",
+        "idx_integrator_health_project_resource",
+        "idx_train_state_project_resource",
       ].sort();
 
       for (const idx of expected) {
@@ -724,6 +734,219 @@ describe("Database schema", () => {
         .get();
       expect(request).toBeDefined();
       expect(request!.groupId).toBeNull();
+    });
+  });
+
+  // ── Audit log (Phase 7.4) ────────────────────────────────────────
+  describe("audit log", () => {
+    let db: AppDatabase;
+    let userId: string;
+    let projectId: string;
+
+    beforeEach(() => {
+      db = setupDb();
+      const workspaceId = db.select().from(workspaces).all()[0].id;
+      const ts = now();
+
+      userId = createId();
+      db.insert(users)
+        .values({
+          id: userId,
+          username: "auditor",
+          displayName: "Audit User",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      projectId = createId();
+      db.insert(projects)
+        .values({
+          id: projectId,
+          workspaceId,
+          name: "Audit Project",
+          slug: "audit-project",
+          createdAt: ts,
+          updatedAt: ts,
+          createdBy: userId,
+        })
+        .run();
+    });
+
+    it("should round-trip json metadata before/after as objects and a null reason", () => {
+      const id = createId();
+      const ts = now();
+      const before = { status: "integrating", landedSha: null };
+      const after = { status: "landed", landedSha: "ff00", overridden: true };
+      db.insert(auditLog)
+        .values({
+          id,
+          projectId,
+          actorId: userId,
+          action: "land",
+          targetType: "merge_request",
+          targetId: createId(),
+          reason: null,
+          metadataBefore: before,
+          metadataAfter: after,
+          createdAt: ts,
+        })
+        .run();
+
+      const result = db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.id, id))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.action).toBe("land");
+      expect(result!.targetType).toBe("merge_request");
+      expect(result!.reason).toBeNull();
+      // JSON columns round-trip as objects (not strings).
+      expect(result!.metadataBefore).toEqual(before);
+      expect(result!.metadataAfter).toEqual(after);
+    });
+
+    it("should reject an audit row with an invalid project_id (FK enforced)", () => {
+      const ts = now();
+      expect(() => {
+        db.insert(auditLog)
+          .values({
+            id: createId(),
+            projectId: "nonexistent",
+            actorId: userId,
+            action: "pause",
+            targetType: "train",
+            targetId: "main",
+            createdAt: ts,
+          })
+          .run();
+      }).toThrow();
+    });
+
+    it("should reject an audit row with an invalid actor_id (FK enforced)", () => {
+      const ts = now();
+      expect(() => {
+        db.insert(auditLog)
+          .values({
+            id: createId(),
+            projectId,
+            actorId: "nonexistent",
+            action: "pause",
+            targetType: "train",
+            targetId: "main",
+            createdAt: ts,
+          })
+          .run();
+      }).toThrow();
+    });
+  });
+
+  // ── Train state (Phase 7.4) ──────────────────────────────────────
+  describe("train state", () => {
+    let db: AppDatabase;
+    let userId: string;
+    let projectId: string;
+
+    beforeEach(() => {
+      db = setupDb();
+      const workspaceId = db.select().from(workspaces).all()[0].id;
+      const ts = now();
+
+      userId = createId();
+      db.insert(users)
+        .values({
+          id: userId,
+          username: "trainop",
+          displayName: "Train Operator",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      projectId = createId();
+      db.insert(projects)
+        .values({
+          id: projectId,
+          workspaceId,
+          name: "Train Project",
+          slug: "train-project",
+          createdAt: ts,
+          updatedAt: ts,
+          createdBy: userId,
+        })
+        .run();
+    });
+
+    it("should insert a train_state row with default state=running and resource=main", () => {
+      const id = createId();
+      const ts = now();
+      db.insert(trainState)
+        .values({ id, projectId, createdAt: ts, updatedAt: ts })
+        .run();
+
+      const result = db
+        .select()
+        .from(trainState)
+        .where(eq(trainState.id, id))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.state).toBe("running");
+      expect(result!.resource).toBe("main");
+      expect(result!.changedBy).toBeNull();
+      expect(result!.stuckNotified).toBe(false);
+      expect(result!.abandonNotified).toBe(false);
+    });
+
+    it("should reject a duplicate (project, resource) lane (unique index)", () => {
+      const ts = now();
+      db.insert(trainState)
+        .values({ id: createId(), projectId, createdAt: ts, updatedAt: ts })
+        .run();
+      expect(() => {
+        db.insert(trainState)
+          .values({ id: createId(), projectId, createdAt: ts, updatedAt: ts })
+          .run();
+      }).toThrow();
+    });
+
+    it("should SET NULL on changed_by when the user is deleted", () => {
+      const ts = now();
+      // A distinct operator (not the project creator) so the delete is clean.
+      const opId = createId();
+      db.insert(users)
+        .values({
+          id: opId,
+          username: "op2",
+          displayName: "Operator 2",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const id = createId();
+      db.insert(trainState)
+        .values({
+          id,
+          projectId,
+          state: "paused",
+          changedBy: opId,
+          changedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      db.delete(users).where(eq(users.id, opId)).run();
+
+      const result = db
+        .select()
+        .from(trainState)
+        .where(eq(trainState.id, id))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.changedBy).toBeNull();
+      expect(result!.state).toBe("paused");
     });
   });
 

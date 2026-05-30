@@ -85,6 +85,27 @@
       "when": 1780704000000,
       "tag": "0011_merge_request_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1780790400000,
+      "tag": "0012_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1780876800000,
+      "tag": "0013_integrator_health",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1780963200000,
+      "tag": "0014_train_state",
+      "breakpoints": true
     }
   ]
 }

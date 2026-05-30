@@ -45,6 +45,14 @@ const integratorSettingsSchema = z
     worktree_name: z.string().min(1).optional(),
     parallelism: z.number().int().min(1).default(1),
     linked_repos: z.array(linkedRepoSchema).default([]),
+    heartbeat_interval_sec: z.number().int().min(5).default(30),
+    slo: z
+      .object({
+        target_p95_time_to_land_sec: z.number().int().min(1).optional(),
+        target_verify_success_rate: z.number().min(0).max(1).optional(),
+        target_abandon_rate: z.number().min(0).max(1).optional(),
+      })
+      .optional(),
   })
   .refine(
     (v) => !v.enabled || (Boolean(v.verify_command) && Boolean(v.worktree_root)),
@@ -55,12 +63,20 @@ const integratorSettingsSchema = z
     },
   );
 
+// Zod-4 mirror of @pm/shared/webhooksSettingsSchema (§7.2). MUST stay
+// identical to the canonical shape or PATCH silently strips discord_url.
+const webhooksSettingsSchema = z.object({
+  discord_url: z.string().url().optional(),
+  alerts_enabled: z.boolean().optional(),
+});
+
 const projectSettingsSchema = z
   .object({
     ai_autonomy: aiAutonomySettingsSchema,
     workflow: workflowSettingsSchema,
     git: gitSettingsSchema,
     integrator: integratorSettingsSchema.optional(),
+    webhooks: webhooksSettingsSchema.optional(),
   })
   .nullable()
   .optional();

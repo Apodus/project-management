@@ -11,6 +11,7 @@ import { runBatchLoop, type GroupLaneDeps } from "./batch.js";
 import type { RepoLane } from "./group-integration.js";
 import { chaosFailOuterPushOnce } from "./chaos.js";
 import type { GitOps, PushResult } from "./git-ops.js";
+import { buildHeartbeat } from "./heartbeat.js";
 
 async function main(): Promise<void> {
   const program = new Command()
@@ -26,6 +27,9 @@ async function main(): Promise<void> {
     .parse(process.argv);
 
   const args = program.opts() as CliArgs & { pollIntervalSec?: string };
+  // Phase 7.4 §3.2: the integrator's package version, reported on every
+  // heartbeat. Commander's no-arg .version() returns the configured string.
+  const version = program.version() ?? "0.0.0";
   const logger = createLogger(
     args.logLevel ?? process.env.PM_LOG_LEVEL ?? "info",
   );
@@ -104,6 +108,14 @@ async function main(): Promise<void> {
     gitMainBranch: cfg.gitMainBranch,
   });
   const makeGitOps = (p: string) => createGitOps(simpleGit(p));
+
+  // ── Phase 7.4 §3.2 (Step 12): the shared in-flight counters + heartbeat. ──
+  // A single mutable object threaded into the batch + group lane deps; the
+  // single-threaded loop mutates it synchronously. The heartbeat reads it to
+  // derive `status` and the `in_flight` payload. Created here so the boot beat
+  // (below, after ensureAll) reports the true idle state.
+  const inFlight = { requests: 0, batches: 0, groups: 0 };
+
   try {
     // gc() removes stale slot clones from a previous run with a larger pool;
     // ensureAll() clones any missing slot. On-disk clones are reused across
@@ -249,6 +261,30 @@ async function main(): Promise<void> {
     }
   }
 
+  // ── Phase 7.4 §3.5/§3.6 (Step 12): the health heartbeat. ──
+  // The integrator POSTs a heartbeat on a fixed interval REGARDLESS of whether
+  // it holds a lock or is idle (the dedicated-channel design, §3.1) — PM tracks
+  // last-seen per (project, resource) and raises integrator_unhealthy on a stale
+  // beat. This is INDEPENDENT of the lock heartbeat (which only runs during a
+  // batch). One boot beat fires immediately so "last heard" is fresh the moment
+  // the integrator comes up; the timer then re-beats every heartbeatIntervalSec.
+  // Fire-and-forget: a failed heartbeat POST must NEVER break / reject into the
+  // loop. We swallow the promise with .catch and never await it.
+  const emitHeartbeat = (): void => {
+    pmClient
+      .postHeartbeat(
+        cfg.projectId,
+        buildHeartbeat({ resource: cfg.resource, pool, inFlight, version }),
+      )
+      .catch((e) => logger.warn(`heartbeat post failed: ${String(e)}`));
+  };
+  emitHeartbeat(); // boot beat
+  const heartbeatTimer = setInterval(
+    emitHeartbeat,
+    cfg.heartbeatIntervalSec * 1000,
+  );
+  heartbeatTimer.unref?.();
+
   // ── SSE subscriber (latency hint; poll is the correctness floor). ──
   const sub = createSseSubscriber({
     baseUrl: pmUrl,
@@ -285,6 +321,9 @@ async function main(): Promise<void> {
       gitRemote: cfg.gitRemote,
       gitMainBranch: cfg.gitMainBranch,
       groupLane,
+      // Phase 7.4 §3.2: the shared in-flight counters the batch + group lane
+      // mutate; the heartbeat reads them to mint the in_flight payload + status.
+      inFlight,
       // Telemetry sink: post each batch marker to the PM relay endpoint. This is
       // a SYNCHRONOUS void handler that swallows its promise — a failed telemetry
       // POST must NEVER reject into / crash the drain loop, so we `.catch` it and
@@ -310,6 +349,7 @@ async function main(): Promise<void> {
   );
 
   sub.stop();
+  clearInterval(heartbeatTimer); // Phase 7.4 §3.6: no leaked heartbeat timer.
   logger.info("Integrator stopped cleanly");
   process.exit(0);
 }

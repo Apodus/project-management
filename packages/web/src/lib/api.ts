@@ -24,6 +24,15 @@ export type Epic = components["schemas"]["Epic"];
 export type CreateEpic = components["schemas"]["CreateEpic"];
 export type UpdateEpic = components["schemas"]["UpdateEpic"];
 export type TaskDependency = components["schemas"]["TaskDependency"];
+export type TrainMetrics = components["schemas"]["TrainMetrics"];
+export type TrainInFlight = components["schemas"]["TrainInFlight"];
+export type IntegratorHealth = components["schemas"]["IntegratorHealth"];
+export type TrainState = components["schemas"]["TrainState"];
+export type MergeRequest = components["schemas"]["MergeRequest"];
+export type MergeRequestTimeline =
+  components["schemas"]["MergeRequestTimeline"];
+export type MergeRequestTimelineEvent =
+  components["schemas"]["MergeRequestTimelineEvent"];
 
 // ---- API client ----
 
@@ -835,6 +844,159 @@ export async function forceReleaseAgent(userId: string): Promise<void> {
     method: "POST",
     body: JSON.stringify({ userId }),
   });
+}
+
+// ---- Merge Train API (read-only observability) ----
+
+export async function getTrainState(projectId: string): Promise<TrainState> {
+  return apiFetch<TrainState>(`/projects/${projectId}/train/state`);
+}
+
+export async function getTrainMetrics(
+  projectId: string,
+  resource?: string,
+): Promise<TrainMetrics> {
+  const params = new URLSearchParams();
+  if (resource) params.set("resource", resource);
+  const query = params.toString();
+  return apiFetch<TrainMetrics>(
+    `/projects/${projectId}/train/metrics${query ? `?${query}` : ""}`,
+  );
+}
+
+export async function getTrainInFlight(
+  projectId: string,
+  resource?: string,
+): Promise<TrainInFlight> {
+  const params = new URLSearchParams();
+  if (resource) params.set("resource", resource);
+  const query = params.toString();
+  return apiFetch<TrainInFlight>(
+    `/projects/${projectId}/train/in-flight${query ? `?${query}` : ""}`,
+  );
+}
+
+export async function getIntegratorHealth(
+  projectId: string,
+  resource?: string,
+): Promise<IntegratorHealth> {
+  const params = new URLSearchParams();
+  if (resource) params.set("resource", resource);
+  const query = params.toString();
+  return apiFetch<IntegratorHealth>(
+    `/projects/${projectId}/integrator/health${query ? `?${query}` : ""}`,
+  );
+}
+
+export async function getMergeRequestTimeline(
+  id: string,
+): Promise<MergeRequestTimeline> {
+  return apiFetch<MergeRequestTimeline>(`/merge-requests/${id}/timeline`);
+}
+
+// ---- Break-glass / Audit API (admin R1-override surface) ----
+
+export type AuditLogEntry = components["schemas"]["AuditLogEntry"];
+export type ForceMergeRequest = components["schemas"]["ForceMergeRequest"];
+export type ForceReleaseResult = components["schemas"]["ForceReleaseResult"];
+export type ForceLand = components["schemas"]["ForceLand"];
+export type ForceReject = components["schemas"]["ForceReject"];
+
+export interface AuditFilters {
+  userId?: string;
+  action?: AuditLogEntry["action"];
+  targetType?: AuditLogEntry["targetType"];
+  targetId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  perPage?: number;
+}
+
+export interface PaginatedAudit {
+  data: AuditLogEntry[];
+  pagination: {
+    total: number;
+    page: number;
+    perPage: number;
+  };
+}
+
+export async function getAuditLog(
+  projectId: string,
+  filters?: AuditFilters,
+): Promise<PaginatedAudit> {
+  const params = new URLSearchParams();
+  if (filters?.userId) params.set("userId", filters.userId);
+  if (filters?.action) params.set("action", filters.action);
+  if (filters?.targetType) params.set("targetType", filters.targetType);
+  if (filters?.targetId) params.set("targetId", filters.targetId);
+  if (filters?.from) params.set("from", filters.from);
+  if (filters?.to) params.set("to", filters.to);
+  if (filters?.page) params.set("page", String(filters.page));
+  if (filters?.perPage) params.set("perPage", String(filters.perPage));
+  const query = params.toString();
+  return apiFetch<PaginatedAudit>(
+    `/projects/${projectId}/audit-log${query ? `?${query}` : ""}`,
+    { rawResponse: true },
+  );
+}
+
+export async function pauseTrain(
+  projectId: string,
+  body?: { resource?: string; reason?: string | null },
+): Promise<TrainState> {
+  return apiFetch<TrainState>(`/projects/${projectId}/train/pause`, {
+    method: "POST",
+    body: JSON.stringify({ resource: "main", ...body }),
+  });
+}
+
+export async function resumeTrain(
+  projectId: string,
+  body?: { resource?: string; reason?: string | null },
+): Promise<TrainState> {
+  return apiFetch<TrainState>(`/projects/${projectId}/train/resume`, {
+    method: "POST",
+    body: JSON.stringify({ resource: "main", ...body }),
+  });
+}
+
+export async function forceReleaseLock(
+  projectId: string,
+  resource: string,
+  body?: { reason?: string | null },
+): Promise<ForceReleaseResult> {
+  return apiFetch<ForceReleaseResult>(
+    `/projects/${projectId}/merge-locks/${resource}/force-release`,
+    {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+}
+
+export async function forceLand(
+  requestId: string,
+  body: { landedSha: string; reason: string },
+): Promise<ForceMergeRequest> {
+  return apiFetch<ForceMergeRequest>(`/merge-requests/${requestId}/force-land`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function forceReject(
+  requestId: string,
+  body: { reason: string },
+): Promise<ForceMergeRequest> {
+  return apiFetch<ForceMergeRequest>(
+    `/merge-requests/${requestId}/force-reject`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 // ---- Automation Rules API ----

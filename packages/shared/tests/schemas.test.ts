@@ -348,6 +348,26 @@ describe("projectSettingsSchema", () => {
   it("accepts undefined settings", () => {
     expect(projectSettingsSchema.parse(undefined)).toBeUndefined();
   });
+
+  it("accepts a webhooks block with a valid discord_url + alerts_enabled", () => {
+    const withWebhooks = {
+      ...validSettings,
+      webhooks: {
+        discord_url: "https://discord.com/api/webhooks/123/abc",
+        alerts_enabled: true,
+      },
+    };
+    expect(projectSettingsSchema.parse(withWebhooks)).toEqual(withWebhooks);
+  });
+
+  it("rejects a non-URL discord_url", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        webhooks: { discord_url: "not-a-url" },
+      }),
+    ).toThrow();
+  });
 });
 
 describe("aiAutonomySettingsSchema", () => {

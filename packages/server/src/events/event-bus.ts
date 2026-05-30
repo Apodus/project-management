@@ -74,6 +74,23 @@ export const EVENT_NAMES = {
   MERGE_INCIDENT_OPENED: "merge.incident.opened",
   MERGE_INCIDENT_AUTO_RESOLVED: "merge.incident.auto_resolved",
   MERGE_INCIDENT_HUMAN_RESOLVED: "merge.incident.human_resolved",
+
+  // Audit log events (Phase 7.4 §2.6 — PM-owned, emitted by audit.service
+  // after each immutable audit write commits)
+  AUDIT_RECORDED: "audit.recorded",
+
+  // Train control + alert events (Phase 7.4 §9 — observability + break-glass).
+  // Only the integrator-health alert is wired in Step 3; train.paused/resumed
+  // + train.stuck/abandon_rate_high arrive in Steps 4/7. onAll auto-forwards
+  // these to the SSE stream — no routes/events.ts edit needed.
+  TRAIN_INTEGRATOR_UNHEALTHY: "train.integrator_unhealthy",
+  TRAIN_PAUSED: "train.paused",
+  TRAIN_RESUMED: "train.resumed",
+  // On-read, edge-triggered alerts (Step 7 — §7.3). Evaluated in
+  // metrics.service.checkAlerts; both ride the SSE stream (onAll) AND drive
+  // the outbound Discord listener (events/alerts-listener.ts).
+  TRAIN_STUCK: "train.stuck",
+  TRAIN_ABANDON_RATE_HIGH: "train.abandon_rate_high",
 } as const;
 
 export type EventName = (typeof EVENT_NAMES)[keyof typeof EVENT_NAMES];

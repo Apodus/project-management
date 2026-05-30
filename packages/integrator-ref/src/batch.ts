@@ -211,6 +211,49 @@ export interface BatchDeps {
    * here; Step 7 wires this to the PM relay endpoint. No-op when absent.
    */
   onBatchEvent?: (event: BatchEvent) => void;
+  /**
+   * PHASE 7.4 §3.2 (Step 12): the shared, MUTABLE in-flight counters the
+   * heartbeat (`index.ts`) reads to mint the `in_flight` payload + derive
+   * `status`. The single-threaded loop mutates this synchronously (no races):
+   * `runBatchOnce` sets `batches=1` after the lock is held and recomputes
+   * `requests` each drain pass; `runGroupLaneOnce` sets `groups=1` while
+   * integrating. BOTH reset their fields to 0 in their `finally` so a throw can
+   * never leave the status stuck "integrating". Absent (tests) → no-op.
+   */
+  inFlight?: { requests: number; batches: number; groups: number };
+}
+
+// ─── Pause read-side gate (Phase 7.4 §4.2, Step 12) ───────────────
+//
+// Pause is a SOFT read-side gate the integrator honors before admitting NEW
+// work — it is NOT a PM-enforced block. The hard safety is elsewhere: the lane
+// lock (single-owner, 7.2 §9), the PM state transitions, and the admin force-*
+// overrides (§4.3). This gate ONLY stops new admission; an in-flight batch/group
+// drains to completion and releases its lock as usual (the no-abort invariant).
+//
+// FAIL-OPEN: a failed getTrainState returns `false` (treat as running). A paused
+// train that the integrator can't read is far less dangerous than a wedged train
+// that can't make progress because a transient GET error read as "paused" — and
+// the hard safety above still holds. So a read error never gates admission.
+async function isPaused(deps: {
+  pmClient: PmClient;
+  projectId: string;
+  resource: string;
+  logger: Logger;
+}): Promise<boolean> {
+  try {
+    const state = await deps.pmClient.getTrainState(
+      deps.projectId,
+      deps.resource,
+    );
+    return state.state === "paused";
+  } catch (err) {
+    deps.logger.debug(
+      { err: errMessage(err) },
+      "getTrainState failed; treating as running (fail-open)",
+    );
+    return false;
+  }
 }
 
 export interface RunBatchLoopDeps extends BatchDeps {
@@ -834,6 +877,18 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
   }
   if (queued.length === 0) return { kind: "idle" };
 
+  // 1b. PAUSE GATE (Phase 7.4 §4.2, Step 12) — read ONCE per pass, at the
+  //     top, BEFORE the lock + any pickup. There is no batch in flight yet at
+  //     this point (the lock is not held, nothing is admitted), so returning
+  //     `idle` here strands NOTHING — it simply declines to START a new batch
+  //     while paused. The per-member admit gate below reuses this same flag so
+  //     pause is evaluated per-pass, NOT per-member.
+  const paused = await isPaused(deps);
+  if (paused) {
+    logger.info({ resource }, "Train paused; skipping new batch admission");
+    return { kind: "idle" };
+  }
+
   // 2. Acquire the lane lock ONCE for the whole batch (design §9.1). Built
   //    from the representative first member's intent. OUTSIDE the try block so
   //    a failed/unavailable acquire never enters the finally release.
@@ -905,6 +960,12 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
 
   const ctx: BatchCtx = { landed: [], rejected: [], requeued: [] };
 
+  // PHASE 7.4 §3.2 (Step 12): the lock is held → a batch is now in flight. The
+  // heartbeat reads these counters to derive status="integrating". `requests`
+  // is recomputed each drain pass (members still holding a worktree). BOTH are
+  // reset to 0 in the FINALLY so a throw can't leave the status stuck.
+  if (deps.inFlight) deps.inFlight.batches = 1;
+
   // Request ids already admitted into THIS drain — so the FIFO-head re-list
   // doesn't re-admit a member that is still `integrating` (pickup flips the PM
   // status off `queued`, but a re-listed snapshot taken before that may still
@@ -953,11 +1014,27 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
         }
       }
 
+      // PHASE 7.4 §4.2 NO-ABORT GATE (Step 12): re-read pause ONCE per drain
+      // pass (NOT per-member). If the train was paused MID-DRAIN, this pass
+      // stops admitting NEW members — but the rest of the loop is UNTOUCHED:
+      // tryLand still lands the already-admitted members, the in-flight verifies
+      // still settle via Promise.race, and the FINALLY still releases the lock.
+      // That is the whole no-abort invariant: pause gates ONLY the admission
+      // edge; in-flight work drains and the lock releases on drain.
+      const pausedThisPass = await isPaused(deps);
+
       // ── ADMIT phase ──────────────────────────────────────────────
       let admittedThisPass = 0;
       for (;;) {
         const wt = pool.acquire();
         if (!wt) break; // backpressure: no idle slot → stop admitting for now
+        // NO-ABORT GATE: a paused train admits NOTHING new — release the slot we
+        // just leased and stop the admit loop. We break (not short-circuit
+        // runBatchOnce) so the drain below still lands/settles in-flight members.
+        if (pausedThisPass) {
+          pool.release(wt);
+          break;
+        }
         const list = await pmClient.listMergeRequests(projectId, {
           resource,
           status: "queued",
@@ -1014,6 +1091,20 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
         .filter((m) => m.verify)
         .map((m) => (m.verify as VerifyHandle).done);
 
+      // PHASE 7.4 §3.2 (Step 12): recompute the heartbeat's in-flight request
+      // count each drain pass — members that are non-terminal AND still hold a
+      // worktree (admitted, not yet landed/failed/invalidated). The heartbeat
+      // reads this between passes to report how many requests are integrating.
+      if (deps.inFlight) {
+        deps.inFlight.requests = batch.members.filter(
+          (m) =>
+            m.worktree !== null &&
+            m.state !== "landed" &&
+            m.state !== "failed" &&
+            m.state !== "invalidated",
+        ).length;
+      }
+
       if (inFlight.length === 0) {
         // Nothing is verifying. Loop again only if this pass made forward
         // progress that may have UNBLOCKED more admission — either it admitted
@@ -1044,6 +1135,15 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     );
     return { kind: "error", message: errMessage(err) };
   } finally {
+    // PHASE 7.4 §3.2 (Step 12): the batch has drained (or threw) — clear the
+    // in-flight counters so the heartbeat reports `status: "idle"` again. MUST
+    // run in the finally: a batch that THROWS must still reset, else the status
+    // sticks "integrating" forever after a single error.
+    if (deps.inFlight) {
+      deps.inFlight.batches = 0;
+      deps.inFlight.requests = 0;
+    }
+
     // 5. Release the lane lock exactly once on any post-acquire exit (§9.3).
     const lastLanded = ctx.landed.at(-1);
     if (lastLanded) {
@@ -1476,18 +1576,44 @@ export async function runGroupLaneOnce(
     logger.warn({ err: errMessage(err) }, "listMergeIncidents failed (group lane)");
     return { kind: "error", message: errMessage(err) };
   }
-  if (!forming && openIncidentCount === 0) return { kind: "no_group" };
 
-  // 2. If a group is forming, bind its members (needed for the lock
-  //    representative + the integration call). For a recovery-only pass there is
-  //    no group; the lock uses a recovery-marker representative.
+  // PHASE 7.4 §4.2 PAUSE GATE (Step 12) — read ONCE near the top. Pause
+  // SUPPRESSES the forming group (it is NEW admission of a cross-repo unit) but
+  // does NOT suppress incident-driven recovery: an open orphaned-inner incident
+  // is IN-FLIGHT cross-repo work (a half-landed group), and the rollforward
+  // sweep is the no-abort drain of it — it MUST still run while paused. So a
+  // paused lane keeps `openIncidentCount` driving the lock, but treats the
+  // forming group as if absent (`formingToIntegrate === undefined`).
+  const paused = await isPaused(deps);
+  const formingToIntegrate = paused ? undefined : forming;
+  if (paused && forming) {
+    logger.info(
+      { resource, groupId: forming.id },
+      "Train paused; skipping new forming-group admission (recovery still runs)",
+    );
+  }
+
+  // No admissible forming group AND no open incident → nothing to do this pass.
+  // (While paused this is reached when the ONLY work was a forming group: the
+  // group is suppressed and there are no incidents → no lock, no group pickup.)
+  if (!formingToIntegrate && openIncidentCount === 0) {
+    return { kind: "no_group" };
+  }
+
+  // 2. If a group is forming AND the lane is NOT paused, bind its members
+  //    (needed for the lock representative + the integration call). For a
+  //    recovery-only pass — OR a paused lane where the forming group is
+  //    suppressed (`formingToIntegrate === undefined`) — there is no `group`, so
+  //    the run becomes a recovery-only pass: the lock is taken (driven by the
+  //    open incidents), recoverOrphanedInner runs, and the forming group is NOT
+  //    integrated (markGroupIntegrating/runGroupIntegration never fire).
   let group: Awaited<ReturnType<typeof pmClient.getMergeGroup>> | undefined;
-  if (forming) {
+  if (formingToIntegrate) {
     try {
-      group = await pmClient.getMergeGroup(forming.id);
+      group = await pmClient.getMergeGroup(formingToIntegrate.id);
     } catch (err) {
       logger.warn(
-        { groupId: forming.id, err: errMessage(err) },
+        { groupId: formingToIntegrate.id, err: errMessage(err) },
         "getMergeGroup failed",
       );
       return { kind: "error", message: errMessage(err) };
@@ -1569,11 +1695,17 @@ export async function runGroupLaneOnce(
       },
     );
 
-    // Recovery-only pass (no forming group): the lane lock was taken solely to
-    // sweep incidents. Return `recovered` so runBatchLoop treats it as work-done.
+    // Recovery-only pass (no forming group, or a paused-suppressed one): the
+    // lane lock was taken solely to sweep incidents. Return `recovered` so
+    // runBatchLoop treats it as work-done.
     if (!group) {
       return { kind: "recovered", recovery };
     }
+
+    // PHASE 7.4 §3.2 (Step 12): a group is now integrating — reflect it in the
+    // heartbeat in-flight counter (reset to 0 in the finally below so a throw
+    // can't leave status stuck "integrating").
+    if (deps.inFlight) deps.inFlight.groups = 1;
 
     const outcome = await runGroupIntegration(
       { id: group.id, members: group.members },
@@ -1614,6 +1746,11 @@ export async function runGroupLaneOnce(
     );
     return { kind: "error", message: errMessage(err) };
   } finally {
+    // PHASE 7.4 §3.2 (Step 12): the group step is done (or threw) — clear the
+    // in-flight group counter so the heartbeat reports idle again. MUST run in
+    // the finally so a throw can't leave the status stuck "integrating".
+    if (deps.inFlight) deps.inFlight.groups = 0;
+
     // On a clean land, release the lock with the outer landedSha (Ro); else a
     // plain reason-based release.
     if (landResult?.kind === "landed") {

@@ -27,6 +27,48 @@ export function formatRelativeTime(dateString: string): string {
 }
 
 /**
+ * Format a duration in milliseconds as "9m 0s" / "1h 3m" / "47s".
+ * Returns "—" for null/undefined (backend returns null for empty data sets).
+ */
+export function formatDurationMs(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return "—";
+  const totalSeconds = Math.floor(ms / 1000);
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
+
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (totalMinutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+/**
+ * Format a 0..1 ratio as a percentage ("92%").
+ * Returns "—" for null/undefined (e.g. a rate with a zero-sized sample).
+ */
+export function formatPercent(ratio: number | null | undefined): string {
+  if (ratio == null || !Number.isFinite(ratio)) return "—";
+  return `${Math.round(ratio * 100)}%`;
+}
+
+/**
+ * Format a staleness duration (ms since last heartbeat) as "47s ago" / "3m ago".
+ * Returns "—" for null/undefined (no heartbeat ever recorded).
+ */
+export function formatFreshness(stalenessMs: number | null | undefined): string {
+  if (stalenessMs == null || !Number.isFinite(stalenessMs)) return "—";
+  const totalSeconds = Math.max(0, Math.floor(stalenessMs / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s ago`;
+  const minutes = Math.floor(totalSeconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+/**
  * Map a proposal/project status to a display-friendly badge variant + color class.
  */
 export function getStatusColor(status: string): string {

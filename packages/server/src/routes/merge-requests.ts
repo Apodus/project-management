@@ -66,6 +66,63 @@ const mergeRequestDataEnvelope = z.object({ data: mergeRequestSchema });
 const mergeRequestDetailEnvelope = z.object({ data: mergeRequestDetailSchema });
 const mergeAttemptDataEnvelope = z.object({ data: mergeAttemptSchema });
 
+// ─── Timeline schemas (design §5.7 / §8.3) ────────────────────────
+// The per-request timeline is the ordered state history composed PM-side from
+// the request milestones + every attempt + the audit rows targeting it + any
+// orphaned-inner incident. camelCase on the wire (the merge-requests.ts
+// convention) — landedSha/enqueuedAt, NOT the snake_case train.ts shape.
+const timelineEventSchema = z
+  .object({
+    at: z.string(),
+    kind: z.enum([
+      "queued",
+      "integrating",
+      "landed",
+      "rejected",
+      "abandoned",
+      "attempt",
+      "audit",
+      "incident",
+    ]),
+    // attempt
+    attemptNumber: z.number().int().optional(),
+    baseSha: z.string().nullable().optional(),
+    treeSha: z.string().nullable().optional(),
+    status: z.string().optional(),
+    startedAt: z.string().nullable().optional(),
+    completedAt: z.string().nullable().optional(),
+    failureCategory: z.string().nullable().optional(),
+    logExcerpt: z.string().nullable().optional(),
+    logUrl: z.string().nullable().optional(),
+    // terminal milestones
+    landedSha: z.string().nullable().optional(),
+    rejectCategory: z.string().nullable().optional(),
+    rejectReason: z.string().nullable().optional(),
+    // audit
+    action: z.string().optional(),
+    actorId: z.string().optional(),
+    reason: z.string().nullable().optional(),
+    metadataBefore: z.record(z.string(), z.unknown()).nullable().optional(),
+    metadataAfter: z.record(z.string(), z.unknown()).nullable().optional(),
+    // incident
+    type: z.string().optional(),
+    orphanedSha: z.string().optional(),
+    state: z.string().optional(),
+    openedAt: z.string().optional(),
+    resolvedAt: z.string().nullable().optional(),
+    resolution: z.unknown().optional(),
+  })
+  .openapi("MergeRequestTimelineEvent");
+
+const timelineSchema = z
+  .object({
+    request: mergeRequestSchema,
+    events: z.array(timelineEventSchema),
+  })
+  .openapi("MergeRequestTimeline");
+
+const timelineEnvelope = z.object({ data: timelineSchema });
+
 const mergeRequestListEnvelope = z.object({
   data: z.array(mergeRequestSchema),
   pagination: z.object({
@@ -229,6 +286,21 @@ const getRoute = createRoute({
   request: { params: z.object({ id: requestIdParam }) },
   responses: {
     200: { description: "Request + attempts", content: { "application/json": { schema: mergeRequestDetailEnvelope } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
+    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
+  },
+});
+
+const timelineRoute = createRoute({
+  method: "get",
+  path: "/api/v1/merge-requests/{id}/timeline",
+  tags: ["Merge Requests"],
+  summary: "Get a merge request's ordered timeline",
+  description:
+    "Returns the request plus its chronological state history (design §5.7): the queued/integrating/terminal milestones, every attempt with its log pointers + failureCategory, the land/reject/force_land/force_reject audit rows, and any orphaned-inner incident. Events are ordered ascending by timestamp. Any authenticated user may read.",
+  request: { params: z.object({ id: requestIdParam }) },
+  responses: {
+    200: { description: "Request + ordered events", content: { "application/json": { schema: timelineEnvelope } } },
     401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
     404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
   },
@@ -446,6 +518,13 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
     requireUser(c.get("currentUser") as AuthUser | null);
     const detail = requestSvc.getById(id);
     return c.json({ data: detail }, 200);
+  });
+
+  router.openapi(timelineRoute, (c) => {
+    const { id } = c.req.valid("param");
+    requireUser(c.get("currentUser") as AuthUser | null);
+    const timeline = requestSvc.getTimeline(id);
+    return c.json({ data: timeline }, 200);
   });
 
   router.openapi(cancelRoute, (c) => {

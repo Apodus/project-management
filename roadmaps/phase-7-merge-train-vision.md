@@ -115,6 +115,8 @@ By month six the train is operating game_one in production: 3–5 parallel specu
 
 ## Phase 7.4 — Month 4: Observability + Break-Glass
 
+**Status**: **Shipped** (2026-05-30). Three PM-owned tables — `audit_log` (append-only, action-centric, 7 actions), `integrator_health` (per-lane heartbeat upsert, 90s staleness), `train_state` (per-lane running/paused + alert latches). The five admin break-glass overrides (`pause`/`resume`/`force-release-lock`/`force-land` — the R1 verify-gate override — /`force-reject`), each writing exactly one audit row in the same transaction as its state change. A dedicated integrator heartbeat channel (POST `integrator/heartbeat`, GET `integrator/health`). On-read metrics (queue/in-flight/p50-p95-p99 time-to-land/verify-success/abandon/pool-util/health/SLO) + per-request timeline + per-project SLO config. Dual alert delivery — in-app SSE/banner PLUS a new outbound Discord webhook — for `train.stuck`/`train.abandon_rate_high`/`train.integrator_unhealthy`, edge-triggered on-read (no sweep). The web train dashboard, timeline, and admin audit + break-glass controls. The reference integrator emits heartbeats and honors pause (fail-open, finishes in-flight). See `docs/design/phase-7.4-design.md` (incl. §14 implementation deviations) and the deployment guide §15.
+
 **Goal**: A human can answer "what's wrong with the train" in 60 seconds from the dashboard. When something is genuinely stuck, humans can unwedge it without database surgery.
 
 **Why now**: After Months 1–3 the train is doing real work, and it will get stuck in ways we didn't predict. Without observability and override controls, every incident requires a developer with source-code knowledge. We can't ship a system that depends on its authors to operate.

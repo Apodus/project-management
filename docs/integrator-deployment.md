@@ -562,3 +562,125 @@ Every row preserves the prime invariant: **outer `main` is never advanced to a g
 ### 14.7 Worker flow (MCP)
 
 A worker submits each repo's change as a normal merge request (`pm_request_merge`, giving each member a `branch`/`commit_sha` and `verify_cmd`), then binds them with `pm_request_merge_group` (`member_request_ids`, ≥2, all already-queued and ungrouped). The group lands or fails atomically; the worker subscribes to `merge.group.landed` / `merge.group.rejected` with the returned group id. `pm_get_merge_group` reports the group + member statuses.
+
+---
+
+## 15. Observability + Break-glass (Phase 7.4)
+
+Phase 7.4 makes the train **legible** (a dashboard that answers "what's wrong" in 60 seconds), **recoverable** by a human via the UI (five break-glass overrides — no DB surgery, no SSH), **accountable** (a dedicated audit log), and **self-alerting** (three `train.*` alerts delivered both in-app and out-of-band to Discord). This section is the operator-facing summary; the authoritative spec is `docs/design/phase-7.4-design.md` (incl. §14 implementation deviations). Three new PM-owned tables back it: `audit_log`, `integrator_health`, and `train_state` (all one-row-per-`(project, resource)`-lane except `audit_log`, which is append-only rows).
+
+### 15.1 The dashboard
+
+A human-facing web dashboard, reachable in the SPA at:
+
+- **`/projects/{projectId}/train`** — the train dashboard: queue depth, in-flight batches/groups with per-member state, integrator heartbeat freshness ("last heard 47s ago"), recent lands/rejects, last-24h time-to-land p50/p95/p99, verify success rate, abandon rate, worktree-pool utilization, and SLO compliance per lane.
+- **`/projects/{projectId}/train/audit`** — the audit-log view + the break-glass controls (admin-gated UI; the pause/resume/force-* buttons render only for admins).
+- The **per-request timeline** (queued → integrating → every verify attempt with its log link → landed/rejected/orphaned/overridden) is a component reachable from the dashboard's in-flight/recent rows, backed by `GET /api/v1/merge-requests/{id}/timeline`.
+
+All dashboard reads are **read-only observability** (`requireAuth` — any authenticated user can view), EXCEPT the audit log (`requireAdmin`). Only the overrides are gated to admins. The dashboard data APIs:
+
+| Method | Path | Authz |
+|---|---|---|
+| GET | `/api/v1/projects/{projectId}/train/metrics?resource=` | `requireAuth` |
+| GET | `/api/v1/projects/{projectId}/train/in-flight?resource=` | `requireAuth` |
+| GET | `/api/v1/projects/{projectId}/integrator/health?resource=` | `requireAuth` |
+| GET | `/api/v1/projects/{projectId}/train/state?resource=` | `requireAuth` |
+| GET | `/api/v1/merge-requests/{id}/timeline` | `requireAuth` |
+| GET | `/api/v1/projects/{projectId}/audit-log` (filters: `userId`, `action`, `targetType`, `targetId`, `from`, `to`, `page`, `perPage`) | `requireAuth && requireAdmin` |
+
+Metrics are computed **on-read** (no rollup table, no background job) — always fresh. The 24h window is a JS-computed ISO cutoff. Reading the metrics or health GET also drives the on-read alert evaluation (§15.4) as a side effect.
+
+### 15.2 Integrator heartbeat + health channel
+
+The integrator POSTs a **liveness heartbeat** on a fixed interval **regardless of whether it holds a lane lock or is idle** — this is the dedicated health channel that works exactly when lock-derived freshness is blind (an idle integrator holds no lock). PM upserts one `integrator_health` row per lane and tracks `last_seen_at`.
+
+- **Endpoint:** `POST /api/v1/projects/{projectId}/integrator/heartbeat` — **integrator (`ai_agent`) only** (403 for any other caller). Body (snake_case): `{ resource?, status: "idle"|"integrating", pool_utilization: { size, leased }, in_flight?: { requests, batches, groups }, version }`. The reference integrator wires this automatically: one beat fires immediately on boot (so "last heard" is fresh the moment it comes up), then every `heartbeat_interval_sec` on a timer. Fire-and-forget — a failed heartbeat POST never breaks the integrator loop.
+- **Config:** `settings.integrator.heartbeat_interval_sec` (default `30`, min `5`). This sets the integrator's emit cadence.
+- **Staleness:** PM's freshness threshold is a fixed **`HEALTH_STALE_MS = 90s`** (the default 30s interval × 3 tolerance = two missed beats of slack). A lane whose `now - last_seen_at > 90s` is reported `healthy: false`; a lane that has never heartbeated reports `status: "never_seen"`, `last_seen_at: null` (distinguishing "never started" from "died"). Staleness is computed **on-read** in `GET integrator/health` and in the metrics GET (which embeds the health view) — there is no background sweep. (Note: `heartbeat_interval_sec` is consumed by the integrator's emit cadence; PM's 90s staleness threshold is currently fixed and does not yet read the per-project override.)
+
+The dashboard renders "last heard Ns ago" from the derived `staleness_ms`, greying the pool-utilization numbers when the heartbeat is stale (they are only as fresh as the last beat).
+
+### 15.3 The five break-glass overrides
+
+All five are **admin-only HUMAN operator actions** (gated on the existing `admin` role via `requireAdmin` — NOT the `ai_agent` integrator gate; there is no `operator` role yet — that is Phase 7.6). **Every override writes exactly one `audit_log` row in the same database transaction as its state change** — the audit row is the accountability record and is the one thing that is never skipped.
+
+| Override | Endpoint | Body | Reason | What it does |
+|---|---|---|---|---|
+| **Pause** | `POST /api/v1/projects/{projectId}/train/pause` | `{ resource?, reason? }` | optional | Sets the lane `paused`. The integrator stops admitting NEW work; in-flight members finish cleanly (§15.5). Idempotent no-op (no duplicate audit) when already paused. |
+| **Resume** | `POST /api/v1/projects/{projectId}/train/resume` | `{ resource?, reason? }` | optional | Sets the lane `running`. Idempotent no-op (no audit) when already running. |
+| **Force-release lock** | `POST /api/v1/projects/{projectId}/merge-locks/{resource}/force-release` | `{ reason? }` | optional | HARD-clears a stuck lane lock (for a dead integrator, without waiting out the 5-min lease TTL). Does NOT promote the queue head and does NOT touch in-flight merge_requests. Emits the existing `merge.lock.released` (with `forced: true`). |
+| **Force-land** | `POST /api/v1/merge-requests/{id}/force-land` | `{ landedSha, reason }` | **REQUIRED** (400 if empty) | **THE R1 override** — see §15.3.1. |
+| **Force-reject** | `POST /api/v1/merge-requests/{id}/force-reject` | `{ reason }` | **REQUIRED** (400 if empty) | Rejects a stuck `integrating` request on policy grounds (e.g. an integrator died mid-verify and you want the lane to clear rather than wait for crash-recovery to re-queue it). Completes/synthesizes the attempt as `failed`/`policy`, posts the `merge_rejection` comment, writes one `force_reject` audit row. |
+
+The seven audit actions recorded across the system are: `pause`, `resume`, `force_release_lock`, `force_land`, `force_reject` (the five overrides) plus `land` and `reject` (the integrator's natural verified outcomes — so the audit log is a complete record, not just overrides). Every audit row carries: `actor`, `action`, `target_type` (`merge_request`/`merge_lock`/`train`/`merge_group`), `target_id`, `reason`, `metadata_before`/`metadata_after`, and a timestamp. The audit log is **append-only** (no update, no delete; the table has no `updatedAt`) and queryable by user / action / target / time-window. Each override also emits `audit.recorded` on the SSE stream so the dashboard's audit view updates live.
+
+#### 15.3.1 Force-land — the R1 verify-gate override (the single most dangerous control)
+
+Force-land is the ONE place the "verify before fast-forward" invariant is **deliberately overridden by a named human**. It lands an `integrating` request **WITHOUT running verify**.
+
+- **Admin-only + reason-required** (both 400 if absent/empty). The reason is the load-bearing accountability datum — *why* a human bypassed verify.
+- **Precondition:** the request must be `integrating` (force-landing `landed` is an idempotent 200 no-op; `queued`/`rejected`/`abandoned` → 409). A **grouped member → 409** (a cross-repo group member can only land via the group, never individually).
+- **What it does:** completes (or synthesizes, if none is open) the request's attempt as `passed` with an `overridden` marker, sets the request `landed` with the operator-supplied `landedSha`, attaches the `landed_sha` git_ref to the linked task — **identical durable side-effects to a normal land**, the ONLY difference being that no verify gated it — and writes the mandatory `force_land` audit row (the sole record that R1 was bypassed, by whom, and why). Emits `merge.request.landed` with `overridden: true` so the dashboard badges it as a force-land.
+- **CRITICAL operator contract — PM records landed; the operator advances git separately.** Force-land does **NOT push to git**. Like the normal land, PM only records the PM-side `landedSha` it was given; **PM never runs git** (only the integrator does). The `landedSha` in the body is the operator's **assertion** of the SHA `main` is (or will be) at. Therefore PM-state and the git remote can diverge: PM says `landed` regardless of whether remote `main` actually points at that SHA. **A force-land is only correct after (or paired with) the operator manually fast-forwarding the remote `main` to the asserted `landedSha`.** PM cannot and does not verify the remote advanced. In practice, pair force-land with **force-release-lock** or **pause** to stop a live integrator racing your manual push.
+
+### 15.4 Alerts — dual delivery (in-app SSE/banner + outbound Discord)
+
+Three `train.*` alert events fire **edge-triggered, on-read** (once per breach episode; re-arm when the condition clears). There is no background sweep — evaluation happens when a dashboard metrics/health read runs (and the integrator's heartbeat POST re-arms its own lane's health latch). **Accepted tradeoff:** a dead integrator with nobody watching the dashboard delays the unhealthy alert until the next read of a metrics/health path.
+
+| Event | Trigger |
+|---|---|
+| `train.integrator_unhealthy` | The lane's heartbeat is stale: `now - last_seen_at > 90s` (`HEALTH_STALE_MS`). |
+| `train.stuck` | Oldest `queued` request's age `> 600s` (10 min) **AND** in-flight `== 0` **AND** the lane is **not paused** (a paused train is held, not stuck). |
+| `train.abandon_rate_high` | 24h abandon ratio `> 0.3` **AND** resolved-request sample `>= 5` (don't alert on 1-of-1). |
+
+Each alert is delivered **two ways**, both firing once per episode in lockstep:
+
+- **(a) In-app:** the `train.*` event rides the existing `/api/v1/events` SSE stream; the dashboard raises a banner (`train.integrator_unhealthy` flashes the health panel red; `train.stuck`/`train.abandon_rate_high` raise a warning).
+- **(b) Out-of-band Discord:** a minimal outbound webhook listener POSTs a Discord-shaped `{ content }` message to the project's configured webhook URL. Fire-and-forget — a failed Discord POST never affects the read that emitted the alert.
+
+**Config** (`settings.webhooks`, sibling of `settings.integrator`):
+
+```json
+{
+  "settings": {
+    "webhooks": {
+      "discord_url": "https://discord.com/api/webhooks/.../...",
+      "alerts_enabled": true
+    }
+  }
+}
+```
+
+`discord_url` is the Discord webhook URL the three alerts POST to (a non-Discord endpoint that accepts the same `{ content }` shape works too, but Discord is the documented default). `alerts_enabled` defaults to on — set it `false` to silence the outbound POST without removing the URL. With no `discord_url` configured, only the in-app (SSE/banner) half fires.
+
+### 15.5 Pause semantics
+
+> **Pause means: the integrator stops picking up NEW work, but finishes the in-flight batch/group cleanly. It is NOT a kill.**
+
+The integrator reads the lane's `train_state` (`GET train/state`) **before admitting any new request** — once per drain pass, not per member. While `paused`:
+
+- It admits NOTHING new — no new batch starts, no new lock is acquired, the lane drains to idle and stays parked.
+- Members already admitted to the in-flight batch/group **continue to completion** (verify → land/reject), and the lane lock releases on drain exactly as if the queue were empty (the no-abort invariant).
+- **Recovery still runs while paused:** an open orphaned-inner incident is in-flight cross-repo work, so its rollforward sweep keeps running — only NEW forming-group admission is suppressed.
+
+The read is **fail-open**: if the integrator can't reach `GET train/state` (transient error), it treats the lane as running. A paused train it can't read is far less dangerous than a wedged train that can't progress because a transient GET error read as "paused". The integrator polls train-state at its poll cadence and additionally consumes `train.paused`/`train.resumed` SSE events as a latency hint (poll remains the correctness floor).
+
+### 15.6 SLO config (recorded, not enforced)
+
+Per-project SLO targets are recorded under `settings.integrator.slo` and surfaced as compliance verdicts on the dashboard. Nothing acts on a breach (enforcement is a later phase). All three targets are individually optional:
+
+```json
+{
+  "settings": {
+    "integrator": {
+      "slo": {
+        "target_p95_time_to_land_sec": 600,
+        "target_verify_success_rate": 0.9,
+        "target_abandon_rate": 0.1
+      }
+    }
+  }
+}
+```
+
+Compliance is computed on-read as part of the metrics bundle: measured p95 ≤ target (seconds), measured verify-success ≥ target, measured abandon ≤ target. A dimension with no configured target (or no measured data) is omitted; `overall_compliant` is the AND of the configured dimensions, or null when none are set. SLO targets are written via the existing `PATCH /api/v1/projects/{id}` (no new endpoint) — nest them in `settings.integrator.slo`.

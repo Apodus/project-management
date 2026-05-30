@@ -39,6 +39,14 @@ export const integratorSettingsSchema = z
     worktree_name: z.string().min(1).optional(),
     parallelism: z.number().int().min(1).default(1),
     linked_repos: z.array(linkedRepoSchema).default([]),
+    heartbeat_interval_sec: z.number().int().min(5).default(30),
+    slo: z
+      .object({
+        target_p95_time_to_land_sec: z.number().int().min(1).optional(),
+        target_verify_success_rate: z.number().min(0).max(1).optional(),
+        target_abandon_rate: z.number().min(0).max(1).optional(),
+      })
+      .optional(),
   })
   .refine(
     (v) => !v.enabled || (Boolean(v.verify_command) && Boolean(v.worktree_root)),
@@ -49,12 +57,22 @@ export const integratorSettingsSchema = z
     },
   );
 
+// Per-project outbound alert webhook config (Phase 7.4 §7.2). A Discord
+// webhook URL the three train.* alerts are POSTed to (half (b) of dual
+// delivery). alerts_enabled defaults to "on" — set false to silence the
+// outbound POST without removing the URL.
+export const webhooksSettingsSchema = z.object({
+  discord_url: z.string().url().optional(),
+  alerts_enabled: z.boolean().optional(),
+});
+
 export const projectSettingsSchema = z
   .object({
     ai_autonomy: aiAutonomySettingsSchema,
     workflow: workflowSettingsSchema,
     git: gitSettingsSchema,
     integrator: integratorSettingsSchema.optional(),
+    webhooks: webhooksSettingsSchema.optional(),
   })
   .nullable()
   .optional();

@@ -9,6 +9,7 @@ import {
   type TestApp,
 } from "../utils.js";
 import {
+  auditLog,
   comments,
   gitRefs,
   mergeAttempts,
@@ -692,6 +693,44 @@ describe("merge-request service", () => {
       expect(refs).toHaveLength(1);
     });
 
+    it("writes exactly one audit_log row (action land) on the proceed path", () => {
+      const { r, actor } = setupIntegrating(testApp);
+      svc.land(r.id, { landedSha: "ff1122" }, actor);
+
+      const rows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, r.id))
+        .all();
+      expect(rows).toHaveLength(1);
+      const a = rows[0];
+      expect(a.action).toBe("land");
+      expect(a.targetType).toBe("merge_request");
+      expect(a.actorId).toBe(actor.id);
+      expect(a.reason).toBeNull();
+      expect(a.metadataBefore).toEqual({
+        status: "integrating",
+        landedSha: null,
+      });
+      expect(a.metadataAfter).toEqual({
+        status: "landed",
+        landedSha: "ff1122",
+      });
+    });
+
+    it("idempotent second land writes NO second audit row", () => {
+      const { r, actor } = setupIntegrating(testApp);
+      svc.land(r.id, { landedSha: "sha1" }, actor);
+      svc.land(r.id, { landedSha: "sha1" }, actor);
+
+      const rows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, r.id))
+        .all();
+      expect(rows).toHaveLength(1);
+    });
+
     it("from queued → 409 INVALID_TRANSITION", () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestUser(testApp.db);
@@ -842,6 +881,28 @@ describe("merge-request service", () => {
       );
       expect(out.rejectCategory).toBe("other");
       expect(listener.mock.calls[0][0].entity.commentId).toBeNull();
+    });
+
+    it("writes exactly one audit_log row (action reject) on the proceed path", () => {
+      const { r, actor } = setupIntegrating(testApp);
+      svc.reject(r.id, { category: "build_failed", reason: "boom" }, actor);
+
+      const rows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, r.id))
+        .all();
+      expect(rows).toHaveLength(1);
+      const a = rows[0];
+      expect(a.action).toBe("reject");
+      expect(a.targetType).toBe("merge_request");
+      expect(a.actorId).toBe(actor.id);
+      expect(a.reason).toBeNull();
+      expect(a.metadataBefore).toEqual({ status: "integrating" });
+      expect(a.metadataAfter).toEqual({
+        status: "rejected",
+        rejectCategory: "build_failed",
+      });
     });
 
     it("idempotent: second reject on rejected returns row, no new event, no duplicate comment", () => {

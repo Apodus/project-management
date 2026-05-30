@@ -21,6 +21,12 @@ export interface IntegratorConfig {
   gitMainBranch: string;
   gitRepoUrl: string;
   parallelism: number;
+  /**
+   * Phase 7.4 §3.6: heartbeat cadence in seconds. The integrator POSTs a health
+   * heartbeat every `heartbeatIntervalSec` seconds (plus one boot beat). Default
+   * 30s — PM's 90s HEALTH_STALE_MS (§3.4) gives two missed beats of slack.
+   */
+  heartbeatIntervalSec: number;
   linkedRepos: {
     name: string;
     path: string;
@@ -114,6 +120,7 @@ export async function loadConfig(
     gitMainBranch: ic.git_main_branch ?? "main",
     gitRepoUrl,
     parallelism: ic.parallelism ?? 1,
+    heartbeatIntervalSec: ic.heartbeat_interval_sec ?? 30,
     linkedRepos: (ic.linked_repos ?? []).map((r) => ({
       name: r.name,
       path: r.path,
