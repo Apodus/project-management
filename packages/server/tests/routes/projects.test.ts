@@ -1026,6 +1026,154 @@ describe("Projects API", () => {
       );
       expect(res.status).toBe(400);
     });
+
+    // ── Phase 7.5 verify_steps DAG + cache config (design §2.1/§8.1) ──
+    const patchIntegrator = (project: { id: string }, integrator: unknown) =>
+      authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: { settings: { ...validBaseSettings, integrator } },
+      });
+
+    it("accepts a valid DAG + cache config (200) and round-trips it with defaults applied", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm verify",
+        worktree_root: "/tmp/wt",
+        cache_enabled: true,
+        cache_mode: "shadow",
+        verify_steps: [
+          { id: "format", command: "pnpm format:check" },
+          { id: "lint", command: "pnpm lint", depends_on: ["format"] },
+          { id: "typecheck", command: "pnpm typecheck", depends_on: ["format"] },
+          { id: "unit", command: "pnpm test", depends_on: ["lint", "typecheck"] },
+        ],
+      });
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      const i = body.data.settings.integrator;
+      expect(i.cache_enabled).toBe(true);
+      expect(i.cache_mode).toBe("shadow");
+      expect(i.verify_steps).toHaveLength(4);
+      expect(i.verify_steps[3]).toEqual({
+        id: "unit",
+        command: "pnpm test",
+        depends_on: ["lint", "typecheck"],
+        cache_key_inputs: [],
+      });
+    });
+
+    it("defaults verify_steps to [], cache_enabled false, cache_mode off when omitted", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+      });
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      const i = body.data.settings.integrator;
+      expect(i.verify_steps).toEqual([]);
+      expect(i.cache_enabled).toBe(false);
+      expect(i.cache_mode).toBe("off");
+    });
+
+    it("backward-compat: enabled + verify_command only (no steps) still passes (200)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("extended refine: enabled + verify_steps (no verify_command) now passes (200)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        worktree_root: "/tmp/wt",
+        verify_steps: [{ id: "unit", command: "pnpm test" }],
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("rejects a 2-cycle (a->b, b->a) with 400 (proves the Zod-4 mirror validates)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        verify_steps: [
+          { id: "a", command: "x", depends_on: ["b"] },
+          { id: "b", command: "y", depends_on: ["a"] },
+        ],
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a 3-cycle (a->b->c->a) with 400", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        verify_steps: [
+          { id: "a", command: "x", depends_on: ["c"] },
+          { id: "b", command: "y", depends_on: ["a"] },
+          { id: "c", command: "z", depends_on: ["b"] },
+        ],
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a self-loop (a->a) with 400", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        verify_steps: [{ id: "a", command: "x", depends_on: ["a"] }],
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a dangling depends_on reference with 400", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        verify_steps: [{ id: "a", command: "x", depends_on: ["ghost"] }],
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a duplicate verify_steps id with 400", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        verify_steps: [
+          { id: "a", command: "x" },
+          { id: "a", command: "y" },
+        ],
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects an invalid cache_mode with 400", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        cache_mode: "maybe",
+      });
+      expect(res.status).toBe(400);
+    });
   });
 
   // ── settings.webhooks validation (Phase 7.4 §7.2 — the Zod-4 mirror) ──

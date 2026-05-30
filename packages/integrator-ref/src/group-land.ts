@@ -110,7 +110,14 @@ export async function landAssembledGroup(
   const { pmClient, logger, gitRemote, gitMainBranch } = deps;
   const { groupId, projectId, ready, innerRepoName, outerRepoName } = args;
   const asm = ready.assembled;
-  const { innerMember, outerMember, innerAttemptId, outerAttemptId } = ready;
+  const {
+    innerMember,
+    outerMember,
+    innerAttemptId,
+    outerAttemptId,
+    innerSteps,
+    outerSteps,
+  } = ready;
   const Mi = asm.baseInnerSha;
   const Mo = asm.baseOuterSha;
 
@@ -179,10 +186,14 @@ export async function landAssembledGroup(
       await pmClient.completeAttempt(innerAttemptId, {
         status: "passed",
         treeSha: innerLandedSha,
+        // PHASE 7.5 FOLDED-FIX M1: the inner repo's pipeline steps from the
+        // assembled verify (threaded via ready_to_land — out of scope here).
+        steps: innerSteps ?? undefined,
       });
       await pmClient.completeAttempt(outerAttemptId, {
         status: "passed",
         treeSha: outerLandedSha,
+        steps: outerSteps ?? undefined,
       });
       await pmClient.landGroup(groupId, {
         members: [
@@ -209,6 +220,8 @@ export async function landAssembledGroup(
     await pmClient.completeAttempt(innerAttemptId, {
       status: "passed",
       treeSha: innerLandedSha,
+      // PHASE 7.5 FOLDED-FIX M1: the inner repo's pipeline steps (it passed verify).
+      steps: innerSteps ?? undefined,
     });
     // b. inner member → orphaned (group-land-family op).
     await pmClient.markInnerOrphaned(innerMember.id, innerLandedSha);

@@ -122,6 +122,58 @@ describe("merge-request timeline (design §5.7)", () => {
     expect(ii).toBeLessThan(li);
   });
 
+  it("Phase 7.5: per-step results surface under the attempt event", () => {
+    const project = createTestProject(testApp.db);
+    const submitter = createTestUser(testApp.db);
+    const actor = agentActor();
+
+    const r = requestSvc.submit({
+      projectId: project.id,
+      submittedBy: submitter.id,
+      branch: "feat/steps",
+    });
+    requestSvc.transitionToIntegrating(r.id, actor);
+
+    // attempt WITH steps
+    const a1 = attemptSvc.startAttempt(r.id, { baseSha: "base1" }, actor);
+    const steps = [
+      {
+        stepId: "lint",
+        outcome: "pass" as const,
+        cached: true,
+        durationMs: 0,
+        treeSha: "treeA",
+        stepConfigSha: "cfg-lint",
+      },
+      {
+        stepId: "unit",
+        outcome: "pass" as const,
+        cached: false,
+        durationMs: 9000,
+        treeSha: "treeA",
+        stepConfigSha: "cfg-unit",
+      },
+    ];
+    attemptSvc.completeAttempt(
+      a1.id,
+      { status: "passed", treeSha: "treeA", steps },
+      actor,
+    );
+
+    // a second attempt WITHOUT steps stays degraded-to-7.4 (steps null)
+    const a2 = attemptSvc.startAttempt(r.id, { baseSha: "base2" }, actor);
+    attemptSvc.completeAttempt(a2.id, { status: "cancelled" }, actor);
+
+    const timeline = requestSvc.getTimeline(r.id);
+    const attempts = timeline.events.filter((e) => e.kind === "attempt");
+    const withSteps = attempts.find((e) => e.status === "passed");
+    expect(withSteps).toBeDefined();
+    expect(withSteps!.steps).toEqual(steps);
+    const cancelled = attempts.find((e) => e.status === "cancelled");
+    expect(cancelled).toBeDefined();
+    expect(cancelled!.steps ?? null).toBeNull();
+  });
+
   it("force-land: timeline contains the force_land audit entry (admin actor + reason) + the overridden attempt", () => {
     const project = createTestProject(testApp.db);
     const submitter = createTestUser(testApp.db);

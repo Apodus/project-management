@@ -21,9 +21,15 @@ import { pathToFileURL } from "node:url";
 import type { Logger } from "./logger.js";
 import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
-import type { MergeRequestView } from "@pm/shared";
+import type {
+  CacheMode,
+  MergeRequestView,
+  VerifyStep,
+  VerifyStepResult,
+} from "@pm/shared";
 import { type PmClient } from "./pm-client.js";
 import { categorize, classifyVerifyFailure } from "./categorize.js";
+import { runPipeline, toVerifyStepResults } from "./verify-pipeline.js";
 import { isApiError, errMessage } from "./loop.js";
 import {
   runGroupIntegration,
@@ -97,6 +103,16 @@ export interface Member {
    * treated as REAL (reject + suffix-invalidate).
    */
   retryCount: number;
+  /**
+   * PHASE 7.5 (design §7.3): the per-step pipeline results from this member's
+   * most recent verify pass, mapped to the wire VerifyStepResult[] shape. The
+   * pipeline runs in runVerifyTask but the passing completeAttempt fires at
+   * land, so the slot bridges that gap. Null at admission / until the first
+   * pipeline pass settles. Single slot is correct for single-repo: a verified
+   * member never re-runs runPipeline before land, and a transient-fail completes
+   * its own attempt synchronously with its run's steps before any overwrite.
+   */
+  steps: VerifyStepResult[] | null;
   /**
    * The in-flight rebase+verify task for this member (null until launched and
    * again once it settles — the settled task clears this in a `finally`). The
@@ -205,6 +221,22 @@ export interface BatchDeps {
    * ([1000, 5000, 15000] → 1s / 5s / 15s).
    */
   retryBackoffMs?: number[];
+  /**
+   * PHASE 7.5 Step 5: the project's verify_steps DAG (design §2.1/§8.1). When
+   * present AND non-empty, `runVerifyTask` runs the DAG via `runPipeline`
+   * instead of the single `verify_command`. Empty / absent → the synthetic
+   * single-step fallback over `verifyCommand` (byte-identical to 7.4).
+   */
+  verifySteps?: VerifyStep[];
+  /**
+   * PHASE 7.5 Step 6 (design §4.2/§4.3): the verify-cache kill-switch + mode.
+   * When `cacheEnabled` is true AND `cacheMode !== "off"`, the pipeline runs
+   * cache-aware (lookup/record/shadow, §5.3); otherwise it is the byte-identical
+   * off-path. Absent/false → no cache (the shipped default). Threaded into BOTH
+   * the single-repo runVerifyTask cache ctx and the group lane's per-repo ctx.
+   */
+  cacheEnabled?: boolean;
+  cacheMode?: CacheMode;
   /**
    * STEP-7 SEAM (design §13.2): optional batch-marker sink. Step 6 emits the
    * four markers (`started`/`member_landed`/`member_invalidated`/`completed`)
@@ -334,10 +366,6 @@ import type { WorktreePool } from "./worktree-pool.js";
 
 function logUrlFor(logsDir: string, attemptId: string): string {
   return pathToFileURL(path.join(logsDir, `${attemptId}.log`)).href;
-}
-
-function logPathFor(logsDir: string, attemptId: string): string {
-  return path.join(logsDir, `${attemptId}.log`);
 }
 
 function summaryLine(text: string): string {
@@ -585,6 +613,9 @@ export async function onMemberFailed(
         failedFiles: cat.failedFiles,
         logExcerpt: excerpt,
         logUrl,
+        // PHASE 7.5: the failing pipeline pass's per-step results (the fail-fast
+        // short-circuit is visible — later steps absent). undefined pre-verify.
+        steps: member.steps ?? undefined,
       });
     }
     await pmClient.rejectMergeRequest(requestId, {
@@ -831,6 +862,9 @@ export async function landMember(
     await deps.pmClient.completeAttempt(member.attemptId, {
       status: "passed",
       treeSha: push.pushedSha,
+      // PHASE 7.5: the per-step results captured at verify time (the slot bridges
+      // runVerifyTask → land). undefined on a 7.4 / cache-off-no-steps path.
+      steps: member.steps ?? undefined,
     });
   }
   await deps.pmClient.landMergeRequest(member.request.id, push.pushedSha);
@@ -1232,6 +1266,7 @@ async function admitAndRebase(
     attemptId: null,
     predecessorChain: [],
     retryCount: 0,
+    steps: null,
     verify: null,
   };
   // STEP-6 CASCADE-RACE FIX: do NOT push the member into `batch.members` with an
@@ -1402,29 +1437,100 @@ async function runVerifyTask(
     //    and thus `signal` — is stable across iterations. A transient failure
     //    under cap re-runs ONLY runVerify (same base, same worktree, NO re-rebase)
     //    after an abortable backoff. ──
+    // PHASE 7.5 Step 5: the verify steps for this member. A non-empty project
+    // verify_steps DAG runs via runPipeline; otherwise the synthetic single step
+    // over `verifyCommand` reproduces the exact 7.4 single-command behavior
+    // (including the bare today log path). Built once — stable across retries.
+    const steps: VerifyStep[] =
+      deps.verifySteps && deps.verifySteps.length > 0
+        ? deps.verifySteps
+        : [
+            {
+              id: "verify",
+              command: verifyCommand,
+              depends_on: [],
+              cache_key_inputs: [],
+            },
+          ];
+
+    // PHASE 7.5 Step 6: build the cache ctx ONCE outside the retry loop — the
+    // tree sha is STABLE across retries (a transient retry does NOT re-rebase;
+    // the worktree still holds the same rebased tree). CLARIFICATION A:
+    // member.rebasedTreeSha is the rebased HEAD = a COMMIT sha (rebaseOnto returns
+    // `git rev-parse HEAD`), which carries a committer timestamp → it is NOT a
+    // valid content-addressed cache key (it differs on every re-assembly). So we
+    // derive the actual TREE sha (`<commit>^{tree}`, content-addressed / stable)
+    // for the cache key. Cache is engaged only when enabled AND mode !== "off".
+    const cacheOn = (deps.cacheEnabled ?? false) && (deps.cacheMode ?? "off") !== "off";
+    let cacheCtx:
+      | {
+          enabled: true;
+          mode: CacheMode;
+          pmClient: PmClient;
+          projectId: string;
+          resource: string;
+          treeSha: string;
+          requestId: string;
+        }
+      | undefined;
+    if (cacheOn) {
+      // member.rebasedTreeSha is set before this task runs (state === "verifying"
+      // only after batch.ts:1351). Derive the content-addressed tree sha.
+      const treeSha = await gitOps.resolveRef(
+        `${member.rebasedTreeSha as string}^{tree}`,
+      );
+      cacheCtx = {
+        enabled: true,
+        mode: deps.cacheMode as CacheMode,
+        pmClient: deps.pmClient,
+        projectId: deps.projectId,
+        resource: deps.resource,
+        treeSha,
+        requestId: member.request.id,
+      };
+    }
+
     for (;;) {
       // attemptId changes across retries (each retry starts a fresh attempt), so
-      // the log path is recomputed per iteration.
-      const logPath = logPathFor(wt.logsDir, member.attemptId as string);
-
-      const verify = await gitOps.runVerify(
-        verifyCommand,
-        deps.verifyTimeoutSec * 1000,
-        { cwd: wt.path, logPath, signal },
-      );
+      // the log path basis (logsDir + attemptId) is forwarded per iteration; the
+      // per-step path is minted INSIDE runPipeline (FOLDED-FIX-1).
+      const pipeline = await runPipeline(steps, {
+        gitOps,
+        cwd: wt.path,
+        verifyTimeoutSec: deps.verifyTimeoutSec,
+        // The member-level signal (NOT passed to runVerify directly): runPipeline
+        // mints a FRESH per-pass child from it each iteration, so a transient
+        // retry's runPipeline call RE-RUNS rather than seeing a fired controller.
+        signal,
+        logsDir: wt.logsDir,
+        attemptId: member.attemptId as string,
+        // PHASE 7.5 Step 6: the cache ctx (undefined → off-path, byte-identical
+        // Step 5). Stable across retries (built once above; same tree/config).
+        cache: cacheCtx,
+        logger: deps.logger,
+      });
 
       // BAIL-GUARD (FIX 2): a suffix invalidation may have killed this verify
       // while it ran. If so, state is already "invalidated" (set synchronously
       // by invalidateSuffix before any await) — bail without touching it. (Cast
       // defeats TS narrowing: `member.state` is mutated via an aliased reference
-      // across the `runVerify` await, so its static type here is stale.)
+      // across the `runPipeline` await, so its static type here is stale.)
       if (member.state !== "verifying") return;
 
-      if (verify.exitCode === 0 && !verify.timedOut) {
+      // PHASE 7.5 (design §7.3): capture this pass's per-step results on the
+      // member so the verdict's completeAttempt carries them — for the passing
+      // path that fires later at LAND (the slot bridges runVerifyTask → land);
+      // for the transient-fail/real-fail paths below it carries this run's steps.
+      member.steps = toVerifyStepResults(pipeline.steps);
+
+      if (pipeline.outcome === "pass") {
         member.state = "verified";
         return;
       }
 
+      // A real VerifyResult — the SAME shape the single-command path branched on
+      // (the captured failing-step trigger, never an abort-casualty).
+      const verify = pipeline.failingStep!.verify;
       const disposition = classifyVerifyFailure(verify);
       if (disposition === "real" || member.retryCount >= maxVerifyRetries) {
         // Real failure, OR transient but the cap is reached → reject + suffix
@@ -1458,6 +1564,7 @@ async function runVerifyTask(
           status: "failed",
           failureCategory: "other",
           failureReason: "transient verify failure; retrying",
+          steps: member.steps ?? undefined,
         });
       }
       // member.retryCount is already incremented (1-based) above; index
@@ -1719,6 +1826,11 @@ export async function runGroupLaneOnce(
         integratorId: groupLane.integratorId,
         innerLogsDir: groupLane.innerLogsDir,
         outerLogsDir: groupLane.outerLogsDir,
+        // PHASE 7.5 Step 6 (§6): per-repo cache config + the lane key.
+        projectId,
+        resource,
+        cacheEnabled: deps.cacheEnabled,
+        cacheMode: deps.cacheMode,
       },
     );
 

@@ -64,6 +64,21 @@ export type CommentType = (typeof COMMENT_TYPES)[number];
 export const DEPENDENCY_TYPES = ["blocks", "relates_to"] as const;
 export type DependencyType = (typeof DEPENDENCY_TYPES)[number];
 
+// Phase 7.5 — verify cache mode (design §2/§4.3). Per-project cache_mode
+// governs how the verify cache is used when cache_enabled is true:
+//   off    — never look up, never write (inert; same as cache_enabled:false)
+//   on     — hit skips the run and reuses the verdict; miss runs + records
+//   shadow — always run, compare the real verdict to the cached one (emit
+//            verify.cache_mismatch on a discrepancy), ALWAYS use the real verdict
+export const CACHE_MODES = ["off", "on", "shadow"] as const;
+export type CacheMode = (typeof CACHE_MODES)[number];
+
+// Phase 7.5 — the binary verify verdict stored in verify_cache (design §2/§3.1).
+// Named VerifyResultValue (NOT VerifyResult) to avoid colliding with the
+// integrator-ref VerifyResult INTERFACE (git-ops.ts).
+export const VERIFY_RESULTS = ["pass", "fail"] as const;
+export type VerifyResultValue = (typeof VERIFY_RESULTS)[number];
+
 export const GIT_REF_TYPES = ["branch", "commit", "pull_request", "landed_sha"] as const;
 export type GitRefType = (typeof GIT_REF_TYPES)[number];
 

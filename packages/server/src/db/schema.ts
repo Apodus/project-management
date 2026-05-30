@@ -6,6 +6,7 @@ import {
   uniqueIndex,
   primaryKey,
 } from "drizzle-orm/sqlite-core";
+import type { VerifyStepResult } from "@pm/shared";
 
 // ─── workspaces ────────────────────────────────────────────────────
 export const workspaces = sqliteTable("workspaces", {
@@ -541,6 +542,10 @@ export const mergeAttempts = sqliteTable(
     failedFiles: text("failed_files", { mode: "json" }).$type<string[]>(),
     logExcerpt: text("log_excerpt"),
     logUrl: text("log_url"),
+    // Phase 7.5: per-step pipeline results (additive, nullable). Null on all
+    // 7.1-7.4 attempts (no backfill). Feeds the per-request timeline only;
+    // the metric per_step derives from verify_cache (design §7.1).
+    steps: text("steps", { mode: "json" }).$type<VerifyStepResult[]>(),
     createdAt: text("created_at").notNull(),
   },
   (table) => [
@@ -837,6 +842,61 @@ export const trainState = sqliteTable(
     uniqueIndex("idx_train_state_project_resource").on(
       table.projectId,
       table.resource,
+    ),
+  ],
+);
+
+// ─── verify_cache ───────────────────────────────────────────────────
+// Phase 7.5 (§3.1): the PM-owned verify-result cache. One row per distinct
+// (project, resource, tree_sha, step_id, step_config_sha) tuple — a verify
+// step's pass/fail verdict for an exact tree + an exact step config. The
+// integrator queries this before a step (a HIT skips the run and reuses the
+// verdict) and records it after a real run. The cache key is STRICT (§3.2):
+// the lookup is a single equality probe on the unique index — ANY tree-content
+// OR step-config change is a different key → a MISS. There is no fuzzy/prefix
+// match, so no stale row can ever false-pass a verify that would really fail.
+// Content-addressed (tree_sha is a git tree hash) → a row is correct forever
+// for its key, so NO TTL / no eviction in 7.5 (§3.5). hit_count / last_hit_at
+// drive the cache-hit-rate + time-saved metrics (§7.2). PM-owned, durable;
+// survives integrator restarts and is shared across integrators on a lane.
+export const verifyCache = sqliteTable(
+  "verify_cache",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    resource: text("resource").notNull().default("main"),
+    // ── The strict cache key (§3.2) ──
+    treeSha: text("tree_sha").notNull(), // the rebased tree the step verified
+    stepId: text("step_id").notNull(), // the verify_steps[].id this verdict is for
+    stepConfigSha: text("step_config_sha").notNull(), // §3.3 — hash of the step's verdict-affecting config
+    // ── The verdict ──
+    result: text("result").notNull(), // "pass" | "fail" (VERIFY_RESULTS enum, @pm/shared)
+    durationMs: integer("duration_ms"), // the real run's duration (for time-saved metrics §7)
+    logExcerpt: text("log_excerpt"), // a short tail of the run log
+    logUrl: text("log_url"), // pointer to the full log (integrator-supplied)
+    // ── Bookkeeping ──
+    createdAt: text("created_at").notNull(), // when this verdict was first recorded
+    lastHitAt: text("last_hit_at"), // last time this row served a hit (null until first hit)
+    hitCount: integer("hit_count").notNull().default(0), // number of skips this row has served
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    // THE lookup index — also the strict-key uniqueness guarantee (§3.2, §4.1).
+    uniqueIndex("idx_verify_cache_key").on(
+      table.projectId,
+      table.resource,
+      table.treeSha,
+      table.stepId,
+      table.stepConfigSha,
+    ),
+    // Dashboard / debug GET (§8.4) + the cache-hit-rate metric (§7): recent
+    // rows per lane (the metrics path).
+    index("idx_verify_cache_project_resource_created").on(
+      table.projectId,
+      table.resource,
+      table.createdAt,
     ),
   ],
 );

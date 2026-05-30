@@ -91,6 +91,26 @@ function seededTimeline(): MergeRequestTimeline {
         treeSha: "dddd4444",
         logExcerpt: "all tests passed\nverify ok",
         logUrl: null,
+        // Phase 7.5: per-step pipeline results on THIS attempt only (others
+        // stay absent → the degrades-to-7.4 path is exercised too).
+        steps: [
+          {
+            stepId: "lint",
+            outcome: "pass",
+            cached: true,
+            durationMs: 0,
+            treeSha: "dddd4444",
+            stepConfigSha: "cfg-lint",
+          },
+          {
+            stepId: "unit",
+            outcome: "pass",
+            cached: false,
+            durationMs: 11000,
+            treeSha: "dddd4444",
+            stepConfigSha: "cfg-unit",
+          },
+        ],
       },
       {
         at: t(5),
@@ -193,6 +213,25 @@ describe("MergeRequestTimelinePage — seeded multi-attempt", () => {
     expect(link).toHaveAttribute("href", "https://logs.example/attempt-1");
     // attempt 2 has no logUrl → an excerpt <details> instead
     expect(screen.getByText("Log excerpt")).toBeInTheDocument();
+  });
+
+  it("renders per-step rows under an attempt with steps (Phase 7.5)", () => {
+    render(<MergeRequestTimelinePage />);
+    // step ids from attempt #2's steps[].
+    expect(screen.getByText("lint")).toBeInTheDocument();
+    expect(screen.getByText("unit")).toBeInTheDocument();
+    // a cache "hit" chip on the cached step.
+    expect(screen.getByText("hit")).toBeInTheDocument();
+    // the uncached step's duration (11000ms → "11s").
+    expect(screen.getByText("11s")).toBeInTheDocument();
+  });
+
+  it("degrades to the 7.4 view for attempts WITHOUT steps", () => {
+    render(<MergeRequestTimelinePage />);
+    // Attempt 1 carries no steps → no step ids/chips for it; only the failing
+    // attempt's log link + category render (asserted above). A "hit" chip must
+    // come solely from attempt #2 (exactly one cached step in the fixtures).
+    expect(screen.getAllByText("hit").length).toBe(1);
   });
 
   it("surfaces the force_land override accountability (actor + reason)", () => {

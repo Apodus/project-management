@@ -9801,6 +9801,392 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/verify-cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List recent verify-cache rows (debug / dashboard)
+         * @description Returns the project's verify_cache rows, newest-first by created_at, paginated (page/perPage, default 1/50, max 200), with optional resource/step_id/result filters (design §8.4). Any authenticated user — a cache row is operational telemetry (a tree SHA + a verdict + hit counts), NOT admin-tier accountability data, so it parallels the metrics GET (requireAuth), not the audit log (requireAdmin).
+         */
+        get: {
+            parameters: {
+                query?: {
+                    resource?: string;
+                    step_id?: string;
+                    result?: "pass" | "fail";
+                    page?: number;
+                    perPage?: number;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The verify-cache page */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VerifyCacheList"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/verify-cache/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator probes the verify cache (strict 5-tuple)
+         * @description The integrator probes the exact (project, resource, tree_sha, step_id, step_config_sha) key BEFORE running a step (design §3.2/§8.5). A HIT bumps hit_count/last_hit_at server-side (PM-owned, §8.5) and returns the cached verdict; a MISS returns data:null. Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VerifyCacheLookup"];
+                };
+            };
+            responses: {
+                /** @description The cached row (hit) or null (miss) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["VerifyCacheRow"] & unknown;
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/verify-cache/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator records a verify verdict (write-or-update)
+         * @description The integrator records the verdict for a (project, resource, tree_sha, step_id, step_config_sha) key AFTER running a step — an upsert on the unique key that PRESERVES hit_count/last_hit_at/created_at on a re-record (the shadow self-heal, §8.5/§4.4). Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VerifyCacheRecord"];
+                };
+            };
+            responses: {
+                /** @description The recorded row */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["VerifyCacheRow"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/verify-cache/mismatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Integrator relays a shadow-mode cache mismatch
+         * @description Thin relay (design §9): in shadow mode, when the real run disagrees with a cached verdict, the integrator POSTs the mismatch; PM re-emits it on the verify.cache_mismatch SSE stream and persists NOTHING (the durable record is the re-recorded corrected row + the metric count, §4.4/§9). Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VerifyCacheMismatch"];
+                };
+            };
+            responses: {
+                /** @description Accepted and re-emitted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/audit-log": {
         parameters: {
             query?: never;
@@ -10031,6 +10417,23 @@ export interface components {
                     }[];
                     /** @default 30 */
                     heartbeat_interval_sec: number;
+                    /** @default false */
+                    cache_enabled: boolean;
+                    /**
+                     * @default off
+                     * @enum {string}
+                     */
+                    cache_mode: "off" | "on" | "shadow";
+                    /** @default [] */
+                    verify_steps: {
+                        id: string;
+                        command: string;
+                        /** @default [] */
+                        depends_on: string[];
+                        /** @default [] */
+                        cache_key_inputs: string[];
+                        timeout_sec?: number;
+                    }[];
                     slo?: {
                         target_p95_time_to_land_sec?: number;
                         target_verify_success_rate?: number;
@@ -10092,6 +10495,23 @@ export interface components {
                     }[];
                     /** @default 30 */
                     heartbeat_interval_sec: number;
+                    /** @default false */
+                    cache_enabled: boolean;
+                    /**
+                     * @default off
+                     * @enum {string}
+                     */
+                    cache_mode: "off" | "on" | "shadow";
+                    /** @default [] */
+                    verify_steps: {
+                        id: string;
+                        command: string;
+                        /** @default [] */
+                        depends_on: string[];
+                        /** @default [] */
+                        cache_key_inputs: string[];
+                        timeout_sec?: number;
+                    }[];
                     slo?: {
                         target_p95_time_to_land_sec?: number;
                         target_verify_success_rate?: number;
@@ -10773,7 +11193,18 @@ export interface components {
             failedFiles: string[] | null;
             logExcerpt: string | null;
             logUrl: string | null;
+            steps?: components["schemas"]["VerifyStepResult"][] | null;
             createdAt: string;
+        };
+        VerifyStepResult: {
+            stepId: string;
+            /** @enum {string} */
+            outcome: "pass" | "fail";
+            cached: boolean;
+            durationMs: number;
+            treeSha: string;
+            stepConfigSha: string;
+            logUrl?: string;
         };
         MergeRequestTimeline: {
             request: components["schemas"]["MergeRequest"];
@@ -10792,6 +11223,7 @@ export interface components {
             failureCategory?: string | null;
             logExcerpt?: string | null;
             logUrl?: string | null;
+            steps?: components["schemas"]["VerifyStepResult"][] | null;
             landedSha?: string | null;
             rejectCategory?: string | null;
             rejectReason?: string | null;
@@ -10830,6 +11262,7 @@ export interface components {
             /** @enum {string} */
             status: "passed";
             treeSha: string;
+            steps?: components["schemas"]["VerifyStepResult"][];
         } | {
             /** @enum {string} */
             status: "failed";
@@ -10839,6 +11272,7 @@ export interface components {
             failedFiles?: string[];
             logExcerpt?: string;
             logUrl?: string;
+            steps?: components["schemas"]["VerifyStepResult"][];
         } | {
             /** @enum {string} */
             status: "cancelled";
@@ -11162,6 +11596,25 @@ export interface components {
                 };
                 overall_compliant: boolean | null;
             };
+            verify: {
+                cache_enabled: boolean;
+                cache_mode: string;
+                cache_hit_rate: {
+                    ratio: number | null;
+                    hits: number;
+                    lookups: number;
+                };
+                time_saved_ms: number;
+                per_step: {
+                    step_id: string;
+                    runs: number;
+                    cached: number;
+                    pass_rate: number | null;
+                    avg_duration_ms: number | null;
+                    fail_count: number;
+                }[];
+                cache_mismatches: number;
+            };
             window_hours: number;
             computed_at: string;
         };
@@ -11191,6 +11644,63 @@ export interface components {
                     started_at: string | null;
                 } | null;
             }[];
+        };
+        VerifyCacheList: {
+            data: components["schemas"]["VerifyCacheRow"][];
+            pagination: {
+                total: number;
+                page: number;
+                perPage: number;
+            };
+        };
+        VerifyCacheRow: {
+            id: string;
+            projectId: string;
+            resource: string;
+            treeSha: string;
+            stepId: string;
+            stepConfigSha: string;
+            /** @enum {string} */
+            result: "pass" | "fail";
+            durationMs: number | null;
+            logExcerpt: string | null;
+            logUrl: string | null;
+            createdAt: string;
+            lastHitAt: string | null;
+            hitCount: number;
+            updatedAt: string;
+        };
+        VerifyCacheLookup: {
+            /** @default main */
+            resource: string;
+            treeSha: string;
+            stepId: string;
+            stepConfigSha: string;
+        };
+        VerifyCacheRecord: {
+            /** @default main */
+            resource: string;
+            treeSha: string;
+            stepId: string;
+            stepConfigSha: string;
+            /** @enum {string} */
+            result: "pass" | "fail";
+            durationMs?: number | null;
+            logExcerpt?: string | null;
+            logUrl?: string | null;
+        };
+        VerifyCacheMismatch: {
+            /** @default main */
+            resource: string;
+            treeSha: string;
+            stepId: string;
+            stepConfigSha: string;
+            /** @enum {string} */
+            cachedResult: "pass" | "fail";
+            /** @enum {string} */
+            realResult: "pass" | "fail";
+            requestId?: string;
+            attemptId?: string;
         };
         AuditLogList: {
             data: components["schemas"]["AuditLogEntry"][];

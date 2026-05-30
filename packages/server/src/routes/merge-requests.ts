@@ -12,6 +12,21 @@ import { assertMemberLandableViaGroup } from "../services/merge-group.service.js
 
 // ─── Response schemas ─────────────────────────────────────────────
 
+// Zod-4 mirror of @pm/shared verifyStepResultSchema (Phase 7.5). One verify
+// pipeline step's outcome, carried on the attempt detail + timeline + the
+// completeAttempt body. See the redeclaration note on the body schemas below.
+const verifyStepResultMirror = z
+  .object({
+    stepId: z.string(),
+    outcome: z.enum(["pass", "fail"]),
+    cached: z.boolean(),
+    durationMs: z.number(),
+    treeSha: z.string(),
+    stepConfigSha: z.string(),
+    logUrl: z.string().optional(),
+  })
+  .openapi("VerifyStepResult");
+
 const mergeRequestSchema = z
   .object({
     id: z.string(),
@@ -54,6 +69,7 @@ const mergeAttemptSchema = z
     failedFiles: z.array(z.string()).nullable(),
     logExcerpt: z.string().nullable(),
     logUrl: z.string().nullable(),
+    steps: z.array(verifyStepResultMirror).nullable().optional(),
     createdAt: z.string(),
   })
   .openapi("MergeAttempt");
@@ -94,6 +110,7 @@ const timelineEventSchema = z
     failureCategory: z.string().nullable().optional(),
     logExcerpt: z.string().nullable().optional(),
     logUrl: z.string().nullable().optional(),
+    steps: z.array(verifyStepResultMirror).nullable().optional(),
     // terminal milestones
     landedSha: z.string().nullable().optional(),
     rejectCategory: z.string().nullable().optional(),
@@ -229,6 +246,7 @@ const completeAttemptBody = z
     z.object({
       status: z.literal("passed"),
       treeSha: z.string().min(1),
+      steps: z.array(verifyStepResultMirror).optional(),
     }),
     z.object({
       status: z.literal("failed"),
@@ -237,6 +255,7 @@ const completeAttemptBody = z
       failedFiles: z.array(z.string()).optional(),
       logExcerpt: z.string().optional(),
       logUrl: z.string().optional(),
+      steps: z.array(verifyStepResultMirror).optional(),
     }),
     z.object({ status: z.literal("cancelled") }),
   ])

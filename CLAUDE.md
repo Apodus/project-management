@@ -118,7 +118,8 @@ Main is never broken — verify runs against a tree SHA before main fast-forward
 
 - **Architecture & contracts**: `docs/design/phase-7.1-design.md` (data model, state machines,
   REST surface, SSE events, authz, failure catalog); `phase-7.2` (speculative batching),
-  `phase-7.3` (cross-repo atomicity), `phase-7.4` (observability + break-glass).
+  `phase-7.3` (cross-repo atomicity), `phase-7.4` (observability + break-glass),
+  `phase-7.5` (smart verification).
 - **Operator deployment guide**: `docs/integrator-deployment.md` (install, config, monitoring,
   failure modes, single-machine layout; §15 = observability + break-glass).
 - **MCP tools** (worker-facing): `pm_request_merge`, `pm_list_merge_requests`,
@@ -147,7 +148,7 @@ Workers submit each repo's change as a normal merge request, then bind them into
 assembles the multi-repo state (inner rebased to `Ri` + outer gitlink committed to `Ri` + the inner
 sources materialized into the outer working tree), runs per-repo verify concurrently (AND-combined),
 and lands **inner-first then outer**. If the inner push fails the whole group rejects cleanly (outer
-never touched); if the outer push fails *after* the inner landed, the inner commit is marked
+never touched); if the outer push fails _after_ the inner landed, the inner commit is marked
 `orphaned` and a durable **incident** (`orphaned_inner`) is opened so the divergence is detectable
 from PM alone (no SSH into the host). Recovery is **auto-rollforward**: a later integration rolls the
 outer gitlink forward to absorb the orphaned SHA via a verify-gated fast-forward push (when the
@@ -189,9 +190,38 @@ events: `train.paused/resumed/stuck/abandon_rate_high/integrator_unhealthy` + `a
 new MCP tools (the overrides are human operator actions). Full spec: `docs/design/phase-7.4-design.md`;
 operator guide: `docs/integrator-deployment.md` §15.
 
+**Smart verification (Phase 7.5).** Verify stops being a fixed cost via two levers: a multi-step
+verify **DAG** (cheap-first, fail-fast, independent steps parallel) and a PM-owned **verify-result
+cache**. The DAG is `settings.integrator.verify_steps: [{id, command, depends_on?, cache_key_inputs?,
+timeout_sec?}]` (canonical Zod-3 in `@pm/shared` + the route-local Zod-4 mirror, the established
+split); config-time validation rejects duplicate ids / dangling `depends_on` / cycles (Kahn's) as
+`400`s; empty/absent → a single synthetic `verify` step running `verify_command` = byte-identical
+7.2/7.3/7.4. The pipeline runs INSIDE `runVerifyTask` (the scheduler — admit/rebase/land/suffix/retry/
+kill — is UNCHANGED); cross-repo runs the pipeline per repo, AND-combined; group orphan-recovery runs
+cache-OFF. The cache is PM-owned `verify_cache` with a strict 5-tuple key `(project_id, resource,
+tree_sha, step_id, step_config_sha)` — content-addressed (`tree_sha` is `resolveRef("<commit>^{tree}")`,
+NOT the commit sha; `step_config_sha = sha256` over `{command, cache_key_inputs sorted}`), no fuzzy
+match, no TTL. A `cache_enabled` kill-switch (**default `false`**) + `cache_mode: off|on|shadow`
+(**default `off`**) govern it: **off** = inert (byte-identical to pre-7.5); **on** = HIT skips the
+step + reuses the verdict / MISS runs + records; **shadow** = ALWAYS runs the real step + compares to
+any cached row + emits `verify.cache_mismatch` on a discrepancy + ALWAYS uses the REAL verdict (the
+false-pass detector + self-heal). **The honest limitation:** in `on` the cache is only as correct as
+the operator's declared `cache_key_inputs` — an UNDECLARED out-of-tree input CAN false-pass; shadow is
+the detector, so the discipline is **shadow → observe zero mismatches → on**. Cache I/O is best-effort
+non-fatal (a lookup throw → MISS; a record/emit throw → warn + continue; never fails a member or blocks
+a land). Observability: a per-step **timeline** (`merge_attempts.steps`, camelCase
+`{stepId, outcome, cached, durationMs, treeSha, stepConfigSha, logUrl?}`) + a `verify` metrics
+sub-block (snake_case cache-hit-rate / time-saved / per-step) + a debug `GET /api/v1/projects/{id}/
+verify-cache` (any authenticated user). Integrator-only (`ai_agent`): `POST .../verify-cache/lookup`,
+`/record`, `/mismatch`. **No new worker MCP tools** (the cache is HTTP-only, like 7.4) and no new env
+var (config lives in `settings.integrator`, set via `PATCH /projects/{id}`). New tables: `verify_cache`
+(0015), `merge_attempts.steps` nullable JSON (0016). New event: `verify.cache_mismatch`. Full spec:
+`docs/design/phase-7.5-design.md`; operator guide: `docs/integrator-deployment.md` §16.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:
+
 - Serves the REST API on `/api/v1/*`
 - Serves the SSE event stream on `/api/v1/events`
 - Serves the pre-built React SPA on `/*` (with SPA fallback for client-side routing)
@@ -225,6 +255,7 @@ Replace `/path/to/project-management` with the absolute path to this project. `P
 ### Available MCP Tools
 
 The MCP server exposes tools for:
+
 - **Projects**: List, create, and manage projects
 - **Proposals**: List, create, discuss, and transition proposals
 - **Tasks**: List, get, create, and update tasks
@@ -235,17 +266,17 @@ The MCP server exposes tools for:
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NODE_ENV` | (none) | Set to `production` for production mode |
-| `PM_PORT` | `3000` | Server port |
-| `PM_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` for LAN access) |
-| `PM_DB_PATH` | `./data/pm.db` | SQLite database file path |
-| `PM_SESSION_SECRET` | (generated) | Session signing secret |
-| `PM_LOG_LEVEL` | `info` | Logging verbosity |
-| `PM_WEB_DIST_PATH` | (auto-resolved) | Override path to web dist directory |
-| `PM_API_URL` | `http://localhost:3000` | MCP server: API base URL |
-| `PM_API_TOKEN` | (none) | MCP server: API authentication token |
+| Variable            | Default                 | Description                             |
+| ------------------- | ----------------------- | --------------------------------------- |
+| `NODE_ENV`          | (none)                  | Set to `production` for production mode |
+| `PM_PORT`           | `3000`                  | Server port                             |
+| `PM_HOST`           | `127.0.0.1`             | Bind address (`0.0.0.0` for LAN access) |
+| `PM_DB_PATH`        | `./data/pm.db`          | SQLite database file path               |
+| `PM_SESSION_SECRET` | (generated)             | Session signing secret                  |
+| `PM_LOG_LEVEL`      | `info`                  | Logging verbosity                       |
+| `PM_WEB_DIST_PATH`  | (auto-resolved)         | Override path to web dist directory     |
+| `PM_API_URL`        | `http://localhost:3000` | MCP server: API base URL                |
+| `PM_API_TOKEN`      | (none)                  | MCP server: API authentication token    |
 
 See `.env.example` for a template.
 

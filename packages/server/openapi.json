@@ -371,6 +371,60 @@
                     "minimum": 5,
                     "default": 30
                   },
+                  "cache_enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "cache_mode": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "on",
+                      "shadow"
+                    ],
+                    "default": "off"
+                  },
+                  "verify_steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "command": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "depends_on": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "cache_key_inputs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "timeout_sec": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "command"
+                      ]
+                    },
+                    "default": []
+                  },
                   "slo": {
                     "type": "object",
                     "properties": {
@@ -596,6 +650,60 @@
                     "type": "integer",
                     "minimum": 5,
                     "default": 30
+                  },
+                  "cache_enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "cache_mode": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "on",
+                      "shadow"
+                    ],
+                    "default": "off"
+                  },
+                  "verify_steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "command": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "depends_on": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "cache_key_inputs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "timeout_sec": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "command"
+                      ]
+                    },
+                    "default": []
                   },
                   "slo": {
                     "type": "object",
@@ -3405,6 +3513,13 @@
             "type": "string",
             "nullable": true
           },
+          "steps": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "$ref": "#/components/schemas/VerifyStepResult"
+            }
+          },
           "createdAt": {
             "type": "string"
           }
@@ -3425,6 +3540,44 @@
           "logExcerpt",
           "logUrl",
           "createdAt"
+        ]
+      },
+      "VerifyStepResult": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          },
+          "cached": {
+            "type": "boolean"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "treeSha": {
+            "type": "string"
+          },
+          "stepConfigSha": {
+            "type": "string"
+          },
+          "logUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stepId",
+          "outcome",
+          "cached",
+          "durationMs",
+          "treeSha",
+          "stepConfigSha"
         ]
       },
       "MergeRequestTimeline": {
@@ -3497,6 +3650,13 @@
           "logUrl": {
             "type": "string",
             "nullable": true
+          },
+          "steps": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "$ref": "#/components/schemas/VerifyStepResult"
+            }
           },
           "landedSha": {
             "type": "string",
@@ -3625,6 +3785,12 @@
               "treeSha": {
                 "type": "string",
                 "minLength": 1
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/VerifyStepResult"
+                }
               }
             },
             "required": [
@@ -3668,6 +3834,12 @@
               },
               "logUrl": {
                 "type": "string"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/VerifyStepResult"
+                }
               }
             },
             "required": [
@@ -4969,6 +5141,87 @@
               "overall_compliant"
             ]
           },
+          "verify": {
+            "type": "object",
+            "properties": {
+              "cache_enabled": {
+                "type": "boolean"
+              },
+              "cache_mode": {
+                "type": "string"
+              },
+              "cache_hit_rate": {
+                "type": "object",
+                "properties": {
+                  "ratio": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "hits": {
+                    "type": "number"
+                  },
+                  "lookups": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "ratio",
+                  "hits",
+                  "lookups"
+                ]
+              },
+              "time_saved_ms": {
+                "type": "number"
+              },
+              "per_step": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "step_id": {
+                      "type": "string"
+                    },
+                    "runs": {
+                      "type": "number"
+                    },
+                    "cached": {
+                      "type": "number"
+                    },
+                    "pass_rate": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "avg_duration_ms": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "fail_count": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "step_id",
+                    "runs",
+                    "cached",
+                    "pass_rate",
+                    "avg_duration_ms",
+                    "fail_count"
+                  ]
+                }
+              },
+              "cache_mismatches": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "cache_enabled",
+              "cache_mode",
+              "cache_hit_rate",
+              "time_saved_ms",
+              "per_step",
+              "cache_mismatches"
+            ]
+          },
           "window_hours": {
             "type": "number"
           },
@@ -4986,6 +5239,7 @@
           "pool_utilization",
           "health",
           "slo",
+          "verify",
           "window_hours",
           "computed_at"
         ]
@@ -5109,6 +5363,236 @@
         "required": [
           "groups",
           "members"
+        ]
+      },
+      "VerifyCacheList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VerifyCacheRow"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "number"
+              },
+              "page": {
+                "type": "number"
+              },
+              "perPage": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "total",
+              "page",
+              "perPage"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "pagination"
+        ]
+      },
+      "VerifyCacheRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "treeSha": {
+            "type": "string"
+          },
+          "stepId": {
+            "type": "string"
+          },
+          "stepConfigSha": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          },
+          "durationMs": {
+            "type": "number",
+            "nullable": true
+          },
+          "logExcerpt": {
+            "type": "string",
+            "nullable": true
+          },
+          "logUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lastHitAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "hitCount": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "resource",
+          "treeSha",
+          "stepId",
+          "stepConfigSha",
+          "result",
+          "durationMs",
+          "logExcerpt",
+          "logUrl",
+          "createdAt",
+          "lastHitAt",
+          "hitCount",
+          "updatedAt"
+        ]
+      },
+      "VerifyCacheLookup": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "treeSha": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stepId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stepConfigSha": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "treeSha",
+          "stepId",
+          "stepConfigSha"
+        ]
+      },
+      "VerifyCacheRecord": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "treeSha": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stepId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stepConfigSha": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          },
+          "durationMs": {
+            "type": "integer",
+            "nullable": true
+          },
+          "logExcerpt": {
+            "type": "string",
+            "nullable": true
+          },
+          "logUrl": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "treeSha",
+          "stepId",
+          "stepConfigSha",
+          "result"
+        ]
+      },
+      "VerifyCacheMismatch": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "treeSha": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stepId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stepConfigSha": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cachedResult": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          },
+          "realResult": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          },
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "attemptId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "treeSha",
+          "stepId",
+          "stepConfigSha",
+          "cachedResult",
+          "realResult"
         ]
       },
       "AuditLogList": {
@@ -20996,6 +21480,678 @@
           },
           "401": {
             "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/verify-cache": {
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "List recent verify-cache rows (debug / dashboard)",
+        "description": "Returns the project's verify_cache rows, newest-first by created_at, paginated (page/perPage, default 1/50, max 200), with optional resource/step_id/result filters (design §8.4). Any authenticated user — a cache row is operational telemetry (a tree SHA + a verdict + hit counts), NOT admin-tier accountability data, so it parallels the metrics GET (requireAuth), not the audit log (requireAdmin).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "main"
+            },
+            "required": false,
+            "name": "resource",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "lint"
+            },
+            "required": false,
+            "name": "step_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail"
+              ]
+            },
+            "required": false,
+            "name": "result",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "perPage",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The verify-cache page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyCacheList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/verify-cache/lookup": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Integrator probes the verify cache (strict 5-tuple)",
+        "description": "The integrator probes the exact (project, resource, tree_sha, step_id, step_config_sha) key BEFORE running a step (design §3.2/§8.5). A HIT bumps hit_count/last_hit_at server-side (PM-owned, §8.5) and returns the cached verdict; a MISS returns data:null. Integrator (ai_agent) only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyCacheLookup"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The cached row (hit) or null (miss)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/VerifyCacheRow"
+                        },
+                        {
+                          "nullable": true
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator (ai_agent) only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/verify-cache/record": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Integrator records a verify verdict (write-or-update)",
+        "description": "The integrator records the verdict for a (project, resource, tree_sha, step_id, step_config_sha) key AFTER running a step — an upsert on the unique key that PRESERVES hit_count/last_hit_at/created_at on a re-record (the shadow self-heal, §8.5/§4.4). Integrator (ai_agent) only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyCacheRecord"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The recorded row",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/VerifyCacheRow"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator (ai_agent) only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/verify-cache/mismatch": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Integrator relays a shadow-mode cache mismatch",
+        "description": "Thin relay (design §9): in shadow mode, when the real run disagrees with a cached verdict, the integrator POSTs the mismatch; PM re-emits it on the verify.cache_mismatch SSE stream and persists NOTHING (the durable record is the re-recorded corrected row + the metric count, §4.4/§9). Integrator (ai_agent) only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyCacheMismatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted and re-emitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator (ai_agent) only",
             "content": {
               "application/json": {
                 "schema": {

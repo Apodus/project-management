@@ -271,6 +271,56 @@ describe("Merge Requests API", () => {
       expect(ats).toEqual(sorted);
     });
 
+    it("Phase 7.5: per-step results surface under the attempt event", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const requestId = await submitRequest(project.id, agent.token);
+      forceIntegrating(requestId);
+      const startRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/attempts`,
+        { token: agent.token, body: { baseSha: "base1234" } },
+      );
+      const attemptId = (await startRes.json()).data.id;
+      const steps = [
+        {
+          stepId: "unit",
+          outcome: "fail",
+          cached: false,
+          durationMs: 42300,
+          treeSha: "tree9",
+          stepConfigSha: "cfg-unit",
+        },
+      ];
+      await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/merge-attempts/${attemptId}`,
+        {
+          token: agent.token,
+          body: {
+            status: "failed",
+            failureCategory: "test_failed",
+            failureReason: "unit failed",
+            steps,
+          },
+        },
+      );
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/merge-requests/${requestId}/timeline`,
+        { token: agent.token },
+      );
+      const json = await res.json();
+      const attempt = json.data.events.find(
+        (e: { kind: string }) => e.kind === "attempt",
+      );
+      expect(attempt.steps).toEqual(steps);
+    });
+
     it("404 when request does not exist", async () => {
       const agent = createTestAiAgent(testApp.db);
       const res = await authRequest(
@@ -596,6 +646,48 @@ describe("Merge Requests API", () => {
       const json = await res.json();
       expect(json.data.status).toBe("passed");
       expect(json.data.treeSha).toBe("tree1234");
+    });
+
+    it("Phase 7.5: passed + steps[] round-trips through the detail GET", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const requestId = await submitRequest(project.id, agent.token);
+      forceIntegrating(requestId);
+      const startRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/attempts`,
+        { token: agent.token, body: { baseSha: "base0001" } },
+      );
+      const attemptId = (await startRes.json()).data.id;
+      const steps = [
+        {
+          stepId: "lint",
+          outcome: "pass",
+          cached: true,
+          durationMs: 0,
+          treeSha: "tree1234",
+          stepConfigSha: "cfg-lint",
+        },
+      ];
+      const completeRes = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/merge-attempts/${attemptId}`,
+        { token: agent.token, body: { status: "passed", treeSha: "tree1234", steps } },
+      );
+      expect(completeRes.status).toBe(200);
+      expect((await completeRes.json()).data.steps).toEqual(steps);
+
+      // FOLDED-FIX C3: the detail response must surface the persisted steps.
+      const detailRes = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/merge-requests/${requestId}`,
+        { token: agent.token },
+      );
+      const detail = await detailRes.json();
+      expect(detail.data.attempts[0].steps).toEqual(steps);
     });
 
     it("400 when status=passed is missing treeSha", async () => {

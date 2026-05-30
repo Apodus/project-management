@@ -4,11 +4,14 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  Database,
   Gauge,
   Layers,
   PauseCircle,
   ShieldAlert,
   TrainFront,
+  Timer,
+  Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -466,6 +469,151 @@ function SloSection({ projectId }: { projectId: string }) {
   );
 }
 
+// ─── Verify cache + per-step section (Phase 7.5) ─────────────────
+
+function VerifyCacheSection({ projectId }: { projectId: string }) {
+  const { data: metrics, isLoading } = useTrainMetrics(projectId);
+
+  if (isLoading) {
+    return (
+      <Card className="py-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Verify Cache
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-8 w-48" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const verify = metrics?.verify;
+  if (!verify) return null;
+
+  // Default deployment: cache disabled → a muted notice, no metric cards.
+  if (!verify.cache_enabled) {
+    return (
+      <Card className="py-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Verify Cache
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center py-6">
+          <Database className="mb-2 size-8 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">Verify cache disabled</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const hr = verify.cache_hit_rate;
+
+  return (
+    <Card className="py-4">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Verify Cache
+          </CardTitle>
+          <Badge variant="secondary" className="text-[10px]">
+            {verify.cache_mode === "shadow"
+              ? "Shadow"
+              : verify.cache_mode === "on"
+                ? "On"
+                : "Off"}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <MetricCard
+            label="Cache hit rate"
+            value={formatPercent(hr.ratio)}
+            icon={Zap}
+            sub={`${hr.hits}/${hr.lookups} lookups`}
+          />
+          <MetricCard
+            label="Time saved"
+            value={formatDurationMs(verify.time_saved_ms)}
+            icon={Timer}
+          />
+          <Card className="py-4">
+            <CardContent className="flex items-center gap-3">
+              <div
+                className={cn(
+                  "flex size-10 items-center justify-center rounded-lg",
+                  verify.cache_mismatches > 0
+                    ? "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                <AlertTriangle className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <p
+                  className={cn(
+                    "text-2xl font-bold tabular-nums",
+                    verify.cache_mismatches > 0 &&
+                      "text-red-600 dark:text-red-400",
+                  )}
+                >
+                  {verify.cache_mismatches}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  Cache mismatches
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {verify.per_step.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Step</TableHead>
+                <TableHead>Runs</TableHead>
+                <TableHead>Cached</TableHead>
+                <TableHead>Pass rate</TableHead>
+                <TableHead>Avg duration</TableHead>
+                <TableHead>Failures</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {verify.per_step.map((step) => (
+                <TableRow key={step.step_id}>
+                  <TableCell className="font-mono text-xs">
+                    {step.step_id}
+                  </TableCell>
+                  <TableCell className="tabular-nums">{step.runs}</TableCell>
+                  <TableCell className="tabular-nums">{step.cached}</TableCell>
+                  <TableCell className="tabular-nums">
+                    {formatPercent(step.pass_rate)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {formatDurationMs(step.avg_duration_ms)}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      "tabular-nums",
+                      step.fail_count > 0 && "text-red-600 dark:text-red-400",
+                    )}
+                  >
+                    {step.fail_count}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────────
 
 export function TrainDashboardPage() {
@@ -500,6 +648,9 @@ export function TrainDashboardPage() {
 
       {/* Metric cards */}
       <MetricsSection projectId={projectId} />
+
+      {/* Verify cache + per-step metrics */}
+      <VerifyCacheSection projectId={projectId} />
 
       {/* Health + SLO */}
       <div className="grid gap-6 lg:grid-cols-2">

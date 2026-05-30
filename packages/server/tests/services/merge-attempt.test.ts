@@ -119,6 +119,73 @@ describe("merge-attempt service", () => {
       expect(listener).toHaveBeenCalledTimes(1);
     });
 
+    it("passed WITH steps: persists steps[] on the view (Phase 7.5)", () => {
+      const { req, actor } = pickUp(testApp);
+      const a = attemptSvc.startAttempt(req.id, { baseSha: "b" }, actor);
+      const steps = [
+        {
+          stepId: "lint",
+          outcome: "pass" as const,
+          cached: true,
+          durationMs: 0,
+          treeSha: "tree1",
+          stepConfigSha: "cfg-lint",
+        },
+        {
+          stepId: "unit",
+          outcome: "pass" as const,
+          cached: false,
+          durationMs: 4200,
+          treeSha: "tree1",
+          stepConfigSha: "cfg-unit",
+          logUrl: "file:///tmp/unit.log",
+        },
+      ];
+      const done = attemptSvc.completeAttempt(
+        a.id,
+        { status: "passed", treeSha: "tree1", steps },
+        actor,
+      );
+      expect(done.steps).toEqual(steps);
+    });
+
+    it("passed WITHOUT steps: steps column is null (7.1-7.4 compat)", () => {
+      const { req, actor } = pickUp(testApp);
+      const a = attemptSvc.startAttempt(req.id, { baseSha: "b" }, actor);
+      const done = attemptSvc.completeAttempt(
+        a.id,
+        { status: "passed", treeSha: "tree1" },
+        actor,
+      );
+      expect(done.steps).toBeNull();
+    });
+
+    it("failed WITH steps: persists the failing pipeline pass (Phase 7.5)", () => {
+      const { req, actor } = pickUp(testApp);
+      const a = attemptSvc.startAttempt(req.id, { baseSha: "b" }, actor);
+      const steps = [
+        {
+          stepId: "lint",
+          outcome: "fail" as const,
+          cached: false,
+          durationMs: 1200,
+          treeSha: "tree2",
+          stepConfigSha: "cfg-lint",
+        },
+      ];
+      const done = attemptSvc.completeAttempt(
+        a.id,
+        {
+          status: "failed",
+          failureCategory: "lint_failed",
+          failureReason: "eslint",
+          steps,
+        },
+        actor,
+      );
+      expect(done.steps).toEqual(steps);
+    });
+
     it("failed: records failureCategory + payload", () => {
       const { req, actor } = pickUp(testApp);
       const a = attemptSvc.startAttempt(req.id, { baseSha: "b" }, actor);

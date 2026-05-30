@@ -1,3 +1,4 @@
+import type { CacheMode, VerifyStep } from "@pm/shared";
 import type { PmClient, ProjectDetail } from "./pm-client.js";
 
 export class ConfigError extends Error {
@@ -14,6 +15,19 @@ export interface IntegratorConfig {
   token: string;
   logLevel: string;
   verifyCommand: string;
+  /**
+   * Phase 7.5 §2.1: the verify_steps DAG. Empty `[]` → the synthetic single-step
+   * fallback over `verifyCommand` (byte-identical to 7.4). Non-empty → the
+   * pipeline executor runs the DAG.
+   */
+  verifySteps: VerifyStep[];
+  /**
+   * Phase 7.5 §4.2/§4.3: the verify-cache kill-switch + mode. `cacheEnabled`
+   * default false + `cacheMode` default "off" → no cache (today's behavior). The
+   * pipeline runs cache-aware only when enabled AND mode !== "off" (§5.3).
+   */
+  cacheEnabled: boolean;
+  cacheMode: CacheMode;
   verifyTimeoutSec: number;
   worktreeRoot: string;
   worktreeName: string;
@@ -88,9 +102,14 @@ export async function loadConfig(
       `Integrator is not enabled for project ${projectId}; set settings.integrator.enabled = true`,
     );
   }
-  if (!ic.verify_command) {
+  // FOLDED-FIX-3: mirror the canonical schema refine (project.ts) — verify_command
+  // OR a non-empty verify_steps satisfies the requirement. Throw only when BOTH
+  // are absent/empty. The synthetic single step is built downstream ONLY when
+  // verify_steps is empty, in which case verify_command IS present here.
+  const verifySteps = ic.verify_steps ?? [];
+  if (!ic.verify_command && verifySteps.length === 0) {
     throw new ConfigError(
-      `settings.integrator.verify_command is required when enabled`,
+      `settings.integrator.verify_command (or a non-empty verify_steps) is required when enabled`,
     );
   }
   if (!ic.worktree_root) {
@@ -112,7 +131,13 @@ export async function loadConfig(
     pmUrl,
     token,
     logLevel,
-    verifyCommand: ic.verify_command,
+    // Tolerates undefined (the synthetic step is built only when verifySteps is
+    // empty, in which case verify_command IS present per the relaxed guard).
+    verifyCommand: ic.verify_command ?? "",
+    verifySteps,
+    // Mirror the schema defaults (project.ts:122-123): cache off by default.
+    cacheEnabled: ic.cache_enabled ?? false,
+    cacheMode: ic.cache_mode ?? "off",
     verifyTimeoutSec: ic.verify_timeout_sec ?? 600,
     worktreeRoot: ic.worktree_root,
     worktreeName: ic.worktree_name ?? `${project.slug}-integrator`,

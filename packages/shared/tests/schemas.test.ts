@@ -13,6 +13,8 @@ import {
   aiAutonomySettingsSchema,
   workflowSettingsSchema,
   gitSettingsSchema,
+  verifyCacheRowSchema,
+  verifyStepResultSchema,
   selectProposalSchema,
   insertProposalSchema,
   selectEpicSchema,
@@ -367,6 +369,156 @@ describe("projectSettingsSchema", () => {
         webhooks: { discord_url: "not-a-url" },
       }),
     ).toThrow();
+  });
+
+  // ── Phase 7.5 verify_steps DAG + cache config (design §2.1/§8.1) ──
+  it("accepts a valid 3-step DAG + cache config and round-trips it", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: {
+        enabled: true,
+        verify_command: "pnpm verify",
+        worktree_root: "/tmp/wt",
+        cache_enabled: true,
+        cache_mode: "shadow",
+        verify_steps: [
+          { id: "format", command: "pnpm format:check" },
+          { id: "lint", command: "pnpm lint", depends_on: ["format"] },
+          { id: "typecheck", command: "pnpm typecheck", depends_on: ["format"] },
+          { id: "unit", command: "pnpm test", depends_on: ["lint", "typecheck"] },
+        ],
+      },
+    });
+    const i = parsed!.integrator!;
+    expect(i.cache_enabled).toBe(true);
+    expect(i.cache_mode).toBe("shadow");
+    expect(i.verify_steps).toHaveLength(4);
+    expect(i.verify_steps[3]).toEqual({
+      id: "unit",
+      command: "pnpm test",
+      depends_on: ["lint", "typecheck"],
+      cache_key_inputs: [],
+    });
+  });
+
+  it("defaults verify_steps to [], cache_enabled false, cache_mode off when omitted", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: { enabled: false },
+    });
+    const i = parsed!.integrator!;
+    expect(i.verify_steps).toEqual([]);
+    expect(i.cache_enabled).toBe(false);
+    expect(i.cache_mode).toBe("off");
+  });
+
+  const stepsSettings = (verify_steps: unknown) => ({
+    ...validSettings,
+    integrator: {
+      enabled: true,
+      verify_command: "pnpm verify",
+      worktree_root: "/tmp/wt",
+      verify_steps,
+    },
+  });
+
+  it("rejects a 2-cycle (a->b, b->a)", () => {
+    expect(() =>
+      projectSettingsSchema.parse(
+        stepsSettings([
+          { id: "a", command: "x", depends_on: ["b"] },
+          { id: "b", command: "y", depends_on: ["a"] },
+        ]),
+      ),
+    ).toThrow();
+  });
+
+  it("rejects a 3-cycle (a->b->c->a)", () => {
+    expect(() =>
+      projectSettingsSchema.parse(
+        stepsSettings([
+          { id: "a", command: "x", depends_on: ["c"] },
+          { id: "b", command: "y", depends_on: ["a"] },
+          { id: "c", command: "z", depends_on: ["b"] },
+        ]),
+      ),
+    ).toThrow();
+  });
+
+  it("rejects a self-loop (a->a)", () => {
+    expect(() =>
+      projectSettingsSchema.parse(
+        stepsSettings([{ id: "a", command: "x", depends_on: ["a"] }]),
+      ),
+    ).toThrow();
+  });
+
+  it("rejects a dangling depends_on reference", () => {
+    expect(() =>
+      projectSettingsSchema.parse(
+        stepsSettings([{ id: "a", command: "x", depends_on: ["ghost"] }]),
+      ),
+    ).toThrow();
+  });
+
+  it("rejects a duplicate verify_steps id", () => {
+    expect(() =>
+      projectSettingsSchema.parse(
+        stepsSettings([
+          { id: "a", command: "x" },
+          { id: "a", command: "y" },
+        ]),
+      ),
+    ).toThrow();
+  });
+
+  it("rejects an invalid cache_mode", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        integrator: {
+          enabled: true,
+          verify_command: "pnpm verify",
+          worktree_root: "/tmp/wt",
+          cache_mode: "maybe",
+        },
+      }),
+    ).toThrow();
+  });
+});
+
+describe("verify.ts schemas (Phase 7.5)", () => {
+  it("round-trips a verifyCacheRowSchema row", () => {
+    const row = {
+      id: "01HXYZ1234567890ABCDEFGHIJ",
+      projectId: "01HXYZ1234567890ABCDEFGHIK",
+      resource: "main",
+      treeSha: "abc123",
+      stepId: "lint",
+      stepConfigSha: "def456",
+      result: "pass" as const,
+      durationMs: 1200,
+      logExcerpt: "ok",
+      logUrl: "https://logs/1",
+      createdAt: "2026-05-30T00:00:00.000Z",
+      lastHitAt: null,
+      hitCount: 0,
+      updatedAt: "2026-05-30T00:00:00.000Z",
+    };
+    expect(verifyCacheRowSchema.parse(row)).toEqual(row);
+  });
+
+  it("round-trips a verifyStepResultSchema record", () => {
+    const result = {
+      stepId: "unit",
+      outcome: "fail" as const,
+      cached: false,
+      durationMs: 5400,
+      treeSha: "abc123",
+      stepConfigSha: "def456",
+      logUrl: "https://logs/2",
+    };
+    expect(verifyStepResultSchema.parse(result)).toEqual(result);
   });
 });
 

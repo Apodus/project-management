@@ -4,6 +4,7 @@ import type {
   MergeAttemptComplete,
   MergeAttemptStart,
   MergeAttemptView,
+  VerifyStepResult,
 } from "@pm/shared";
 import { getDb, mergeAttempts, mergeRequests } from "../db/index.js";
 import { AppError } from "../types.js";
@@ -26,6 +27,7 @@ interface MergeAttemptRow {
   failedFiles: string[] | null;
   logExcerpt: string | null;
   logUrl: string | null;
+  steps: VerifyStepResult[] | null;
   createdAt: string;
 }
 
@@ -84,6 +86,7 @@ function toView(row: MergeAttemptRow): MergeAttemptView {
     failedFiles: row.failedFiles,
     logExcerpt: row.logExcerpt,
     logUrl: row.logUrl,
+    steps: row.steps ?? null,
     createdAt: row.createdAt,
   };
 }
@@ -179,6 +182,7 @@ export function startAttempt(
       failedFiles: null,
       logExcerpt: null,
       logUrl: null,
+      steps: null,
       createdAt: now,
     })
     .run();
@@ -246,12 +250,14 @@ export function completeAttempt(
   };
   if (body.status === "passed") {
     values.treeSha = body.treeSha;
+    if (body.steps !== undefined) values.steps = body.steps;
   } else if (body.status === "failed") {
     values.failureCategory = body.failureCategory;
     values.failureReason = body.failureReason;
     values.failedFiles = body.failedFiles ?? null;
     values.logExcerpt = body.logExcerpt ?? null;
     values.logUrl = body.logUrl ?? null;
+    if (body.steps !== undefined) values.steps = body.steps;
   }
   // "cancelled" sets only status/completedAt/verifyDurationMs.
 

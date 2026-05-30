@@ -16,6 +16,11 @@ import {
   setAlertLatch,
 } from "./train.service.js";
 import * as mergeGroupService from "./merge-group.service.js";
+import * as verifyCacheService from "./verify-cache.service.js";
+import type {
+  CacheHitRate,
+  PerStepMetric,
+} from "./verify-cache.service.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
 import type { MergeRequestGroupView } from "@pm/shared";
 
@@ -72,6 +77,23 @@ export interface SloBlock {
   overallCompliant: boolean | null;
 }
 
+/**
+ * The Phase 7.5 §7.2 verify sub-block. ADDITIVE — a NEW field on the bundle;
+ * every existing 7.4 field is unchanged. cacheEnabled/cacheMode are read off
+ * projects.settings.integrator; cacheHitRate/timeSavedMs/perStep are derived
+ * from the verify_cache rows over the same 24h window. cacheMismatches is
+ * surfaced 0 — the mismatch is a NON-persisted relay (§9), so the live count
+ * is dashboard-side; 0 is the honest default (healthy on-mode).
+ */
+export interface VerifyMetric {
+  cacheEnabled: boolean;
+  cacheMode: string;
+  cacheHitRate: CacheHitRate;
+  timeSavedMs: number;
+  perStep: PerStepMetric[];
+  cacheMismatches: number;
+}
+
 export interface MetricsBundle {
   resource: string;
   queueDepth: number;
@@ -82,6 +104,7 @@ export interface MetricsBundle {
   poolUtilization: PoolUtilizationMetric;
   health: IntegratorHealthView;
   slo: SloBlock;
+  verify: VerifyMetric;
   windowHours: number;
   computedAt: string;
 }
@@ -404,6 +427,44 @@ function computeOldestQueuedAt(
 }
 
 /**
+ * The Phase 7.5 §7.2 verify sub-block, computed over the same [cutoff, nowIso]
+ * window as the rest of the bundle. cache_enabled/cache_mode are read off
+ * projects.settings.integrator (defaulting to off/empty — the shipped
+ * backward-compat defaults, §10). The hit-rate / time-saved / per-step are
+ * derived from the verify_cache rows. cache_mismatches is surfaced 0: the
+ * mismatch event is a NON-persisted relay (§9), so there is no durable count to
+ * aggregate — the live count is reconstructed dashboard-side from the SSE
+ * stream. 0 is the honest healthy-on-mode default.
+ */
+function computeVerify(
+  projectId: string,
+  resource: string,
+  from: string,
+  to: string,
+): VerifyMetric {
+  const settings = readSettings(projectId) as
+    | { integrator?: { cache_enabled?: unknown; cache_mode?: unknown } }
+    | null;
+  const integrator = settings?.integrator ?? null;
+  const cacheEnabled =
+    typeof integrator?.cache_enabled === "boolean"
+      ? integrator.cache_enabled
+      : false;
+  const cacheMode =
+    typeof integrator?.cache_mode === "string" ? integrator.cache_mode : "off";
+
+  return {
+    cacheEnabled,
+    cacheMode,
+    cacheHitRate: verifyCacheService.cacheHitRate(projectId, resource, from, to),
+    timeSavedMs: verifyCacheService.timeSaved(projectId, resource, from, to),
+    perStep: verifyCacheService.perStep(projectId, resource, from, to),
+    // NON-persisted relay (§9) — no durable count; 0 is the honest default.
+    cacheMismatches: 0,
+  };
+}
+
+/**
  * The on-read, edge-triggered alert evaluation (§7.3). Called from
  * computeMetrics AFTER the bundle is assembled. Evaluates two conditions
  * against the assembled metrics + the oldest-queued age, latching each on the
@@ -518,6 +579,9 @@ export function computeMetrics(
   // Reuse getHealth so the stale edge fires on a dashboard metrics read.
   const health = getHealth(projectId, resource, nowIso);
   const slo = computeSlo(projectId, timeToLand, verifySuccessRate, abandonRate);
+  // §7.2 verify sub-block — same [cutoff, nowIso] window as the rest of the
+  // bundle. Additive: a NEW field, every existing field unchanged.
+  const verify = computeVerify(projectId, resource, cutoff, nowIso);
   const oldestQueuedAt = computeOldestQueuedAt(projectId, resource);
 
   const bundle: MetricsBundle = {
@@ -530,6 +594,7 @@ export function computeMetrics(
     poolUtilization,
     health,
     slo,
+    verify,
     windowHours: WINDOW_HOURS,
     computedAt: nowIso,
   };

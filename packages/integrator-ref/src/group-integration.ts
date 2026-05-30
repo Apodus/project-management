@@ -30,6 +30,12 @@ import {
 } from "./group-assembly.js";
 import { categorize } from "./categorize.js";
 import { chaosCrashPoint } from "./chaos.js";
+import {
+  runPipeline,
+  toVerifyStepResults,
+  type PipelineCacheCtx,
+} from "./verify-pipeline.js";
+import type { CacheMode, VerifyStep, VerifyStepResult } from "@pm/shared";
 
 // ─── Role-bound repo descriptor (config-declared role) ────────────────
 
@@ -78,6 +84,16 @@ export interface GroupIntegrationDeps {
   /** Log directory for the per-attempt verify logs (per repo). */
   innerLogsDir?: string;
   outerLogsDir?: string;
+  /**
+   * PHASE 7.5 Step 6 (§6): the lane + cache config for the per-repo cache key.
+   * The group keys each repo's pipeline on ITS OWN content-addressed TREE sha
+   * (derived from Ri/Ro, which are COMMIT shas — CLARIFICATION A), distinct →
+   * no cross-repo collision under one resource. Absent/false → cache off-path.
+   */
+  projectId?: string;
+  resource?: string;
+  cacheEnabled?: boolean;
+  cacheMode?: CacheMode;
 }
 
 // ─── Outcome union ────────────────────────────────────────────────────
@@ -92,6 +108,11 @@ export type GroupIntegrationOutcome =
       outerAttemptId: string;
       Ri: string;
       Ro: string;
+      // PHASE 7.5 FOLDED-FIX M1: the per-repo pipeline steps, threaded to the
+      // passing-land completeAttempt in group-land.ts (pipeI/pipeO are out of
+      // scope there — they only run here). Null if a repo produced no steps.
+      innerSteps: VerifyStepResult[] | null;
+      outerSteps: VerifyStepResult[] | null;
     }
   | { kind: "rejected"; reason: string }
   | { kind: "backpressure" };
@@ -244,7 +265,6 @@ interface VerifyOutcome {
   durationMs: number;
 }
 
-const PASS = (r: VerifyOutcome): boolean => r.exitCode === 0 && !r.timedOut;
 
 const LOG_EXCERPT_CAP = 4096;
 
@@ -378,23 +398,102 @@ export async function runGroupIntegration(
   //       outcome. ──
   const innerVerifyCmd = innerMember.verifyCmd ?? deps.defaultVerifyCommand;
   const outerVerifyCmd = outerMember.verifyCmd ?? deps.defaultVerifyCommand;
-  const innerLogPath = logPathFor(deps.innerLogsDir, asm.innerWt, innerAttempt.id);
-  const outerLogPath = logPathFor(deps.outerLogsDir, asm.outerWt, outerAttempt.id);
 
-  const timeoutMs = deps.verifyTimeoutSec * 1000;
-  const [resI, resO] = await Promise.all([
-    asm.innerGitOps.runVerify(innerVerifyCmd, timeoutMs, {
+  // PHASE 7.5 Step 5: route each per-repo verify through runPipeline. linked_repos
+  // carries NO per-repo verify_steps yet, so each repo uses the synthetic single
+  // step over its existing verify command — byte-identical to today's single
+  // runVerify (the synthetic-step bare logPath == the old logPathFor output).
+  // Groups have no member-level kill → pass `signal: undefined` EXPLICITLY so each
+  // runPipeline mints its own child from an absent parent (no cross-repo abort).
+  const innerSteps: VerifyStep[] = [
+    { id: "verify", command: innerVerifyCmd, depends_on: [], cache_key_inputs: [] },
+  ];
+  const outerSteps: VerifyStep[] = [
+    { id: "verify", command: outerVerifyCmd, depends_on: [], cache_key_inputs: [] },
+  ];
+  const innerLogsDir = deps.innerLogsDir ?? asm.innerWt.logsDir;
+  const outerLogsDir = deps.outerLogsDir ?? asm.outerWt.logsDir;
+
+  // PHASE 7.5 Step 6 (§6): per-repo cache ctx. CLARIFICATION A — asm.Ri/asm.Ro are
+  // COMMIT shas (rebaseOnto / updateSubmoduleGitlink return `git rev-parse HEAD`,
+  // which carries a committer timestamp → NOT a stable cache key). Key each repo
+  // on its REAL content-addressed TREE sha (`<commit>^{tree}`): inner on Ri's
+  // tree, outer on the assembled-outer Ro's tree (the tree with the gitlink→Ri
+  // committed). Both tree shas are distinct → no cross-repo collision under one
+  // resource, AND the cache actually FUNCTIONS (a re-assembly of an identical tree
+  // HITS). `signal: undefined` is explicit (groups have no member-level kill).
+  const groupCacheOn =
+    (deps.cacheEnabled ?? false) &&
+    (deps.cacheMode ?? "off") !== "off" &&
+    deps.projectId !== undefined &&
+    deps.resource !== undefined;
+  let innerCache: PipelineCacheCtx | undefined;
+  let outerCache: PipelineCacheCtx | undefined;
+  if (groupCacheOn) {
+    const [innerTreeSha, outerTreeSha] = await Promise.all([
+      asm.innerGitOps.resolveRef(`${asm.Ri}^{tree}`),
+      asm.outerGitOps.resolveRef(`${asm.Ro}^{tree}`),
+    ]);
+    const mode = deps.cacheMode as CacheMode;
+    innerCache = {
+      enabled: true,
+      mode,
+      pmClient: deps.pmClient,
+      projectId: deps.projectId as string,
+      resource: deps.resource as string,
+      treeSha: innerTreeSha,
+      requestId: innerMember.id,
+    };
+    outerCache = {
+      enabled: true,
+      mode,
+      pmClient: deps.pmClient,
+      projectId: deps.projectId as string,
+      resource: deps.resource as string,
+      treeSha: outerTreeSha,
+      requestId: outerMember.id,
+    };
+  }
+
+  const [pipeI, pipeO] = await Promise.all([
+    runPipeline(innerSteps, {
+      gitOps: asm.innerGitOps,
       cwd: asm.innerWt.path,
-      logPath: innerLogPath,
+      verifyTimeoutSec: deps.verifyTimeoutSec,
+      signal: undefined,
+      logsDir: innerLogsDir,
+      attemptId: innerAttempt.id,
+      cache: innerCache,
+      logger: deps.logger,
     }),
-    asm.outerGitOps.runVerify(outerVerifyCmd, timeoutMs, {
+    runPipeline(outerSteps, {
+      gitOps: asm.outerGitOps,
       cwd: asm.outerWt.path,
-      logPath: outerLogPath,
+      verifyTimeoutSec: deps.verifyTimeoutSec,
+      signal: undefined,
+      logsDir: outerLogsDir,
+      attemptId: outerAttempt.id,
+      cache: outerCache,
+      logger: deps.logger,
     }),
   ]);
 
-  const innerPass = PASS(resI);
-  const outerPass = PASS(resO);
+  // Extract the per-repo VerifyResult (the failing-step trigger on fail, else the
+  // single synthetic step's result) — the SAME shape the VerifyOutcome consumer
+  // (completeFailing / categorize) branched on.
+  const resI = (pipeI.failingStep ?? pipeI.steps[0]).verify;
+  const resO = (pipeO.failingStep ?? pipeO.steps[0]).verify;
+
+  // PHASE 7.5 FOLDED-FIX M1: map each repo's pipeline RESULTS to the wire shape;
+  // threaded to group-land's passing completeAttempt + attached to the failing
+  // completeAttempt below (both repos run here, but the passing land is in
+  // group-land.ts where pipeI/pipeO are out of scope). (Named *StepResults to
+  // avoid colliding with the innerSteps/outerSteps VerifyStep[] config above.)
+  const innerStepResults = toVerifyStepResults(pipeI.steps);
+  const outerStepResults = toVerifyStepResults(pipeO.steps);
+
+  const innerPass = pipeI.outcome === "pass";
+  const outerPass = pipeO.outcome === "pass";
   const pass = innerPass && outerPass;
 
   // ── 6. Any-fail (POST-PICKUP, §6.6) → reject from INTEGRATING. ──
@@ -410,6 +509,7 @@ export async function runGroupIntegration(
       label: string,
       attemptId: string,
       res: VerifyOutcome,
+      steps: VerifyStepResult[] | null,
     ): Promise<void> => {
       const cat = categorize({
         exitCode: res.exitCode,
@@ -428,6 +528,8 @@ export async function runGroupIntegration(
         failedFiles: cat.failedFiles,
         logExcerpt: excerpt,
         logUrl: undefined,
+        // PHASE 7.5 FOLDED-FIX M1: this repo's pipeline steps on the fail attempt.
+        steps: steps ?? undefined,
       });
       // Record the FIRST failing repo's category/reason for the group reason.
       if (!failingRepo) {
@@ -438,12 +540,12 @@ export async function runGroupIntegration(
     };
 
     if (!innerPass) {
-      await completeFailing("inner", innerAttempt.id, resI);
+      await completeFailing("inner", innerAttempt.id, resI, innerStepResults);
     } else {
       await pmClient.completeAttempt(innerAttempt.id, { status: "cancelled" });
     }
     if (!outerPass) {
-      await completeFailing("outer", outerAttempt.id, resO);
+      await completeFailing("outer", outerAttempt.id, resO, outerStepResults);
     } else {
       await pmClient.completeAttempt(outerAttempt.id, { status: "cancelled" });
     }
@@ -478,20 +580,7 @@ export async function runGroupIntegration(
     outerAttemptId: outerAttempt.id,
     Ri: asm.Ri,
     Ro: asm.Ro,
+    innerSteps: innerStepResults,
+    outerSteps: outerStepResults,
   };
-}
-
-// ─── helpers ──────────────────────────────────────────────────────────
-
-/**
- * Per-attempt verify log path. Prefers an explicit per-repo logs dir; falls
- * back to the worktree's own logsDir (mirrors batch.ts's logPathFor).
- */
-function logPathFor(
-  logsDir: string | undefined,
-  wt: Worktree,
-  attemptId: string,
-): string {
-  const dir = logsDir ?? wt.logsDir;
-  return `${dir}/${attemptId}.log`;
 }

@@ -37,7 +37,8 @@
 import type { Logger } from "./logger.js";
 import type { PmClient } from "./pm-client.js";
 import type { RepoLane } from "./group-integration.js";
-import type { MergeIncidentView } from "@pm/shared";
+import type { MergeIncidentView, VerifyStep } from "@pm/shared";
+import { runPipeline } from "./verify-pipeline.js";
 
 // ─── Args + deps ──────────────────────────────────────────────────────
 
@@ -86,19 +87,6 @@ export interface RecoverResult {
   outcomes: IncidentRecoveryOutcome[];
 }
 
-// ─── Log-path helper ──────────────────────────────────────────────────
-
-import path from "node:path";
-
-function verifyLogPath(
-  logsDir: string | undefined,
-  incidentId: string,
-): string {
-  // Recovery verify writes to a per-incident log under the outer logs dir (or a
-  // tmp fallback). Mirrors the per-attempt log convention of the batch path.
-  const dir = logsDir ?? ".";
-  return path.join(dir, `recovery-${incidentId}.log`);
-}
 
 // ─── recoverOrphanedInner ─────────────────────────────────────────────
 
@@ -241,15 +229,32 @@ async function rollforwardOne(
     // outerVerifyCmd: the orphan recovery may not have the outer member handy,
     // so we use the configured defaultVerifyCommand (§7.3 step 4, documented).
     const outerVerifyCmd = deps.defaultVerifyCommand;
-    const v = await outerGit.runVerify(
-      outerVerifyCmd,
-      deps.verifyTimeoutSec * 1000,
+    // PHASE 7.5 Step 5: route the R1 roll-forward verify through runPipeline for
+    // consistency. Synthetic single step over the configured default command —
+    // byte-identical to today (the synthetic bare logPath uses the per-incident
+    // `recovery-<id>` base so the file path matches the old verifyLogPath output).
+    const recoverySteps: VerifyStep[] = [
       {
-        cwd: outerWt.path,
-        logPath: verifyLogPath(deps.outerLogsDir, incident.id),
+        id: "verify",
+        command: outerVerifyCmd,
+        depends_on: [],
+        cache_key_inputs: [],
       },
-    );
-    if (!(v.exitCode === 0 && !v.timedOut)) {
+    ];
+    // PHASE 7.5 Step 6 (CLARIFICATION B): recovery is INTENTIONALLY cache-disabled
+    // (no `cache` ctx → runStep takes the off-path, byte-identical to today). The
+    // R1 roll-forward has no stable assembled TREE sha in hand (the assembled Ro is
+    // dropped), orphan recovery is rare, and gains nothing from caching — so we do
+    // NOT contrive a treeSha here. Zero false-pass risk on the R1 gate.
+    const recoveryPipe = await runPipeline(recoverySteps, {
+      gitOps: outerGit,
+      cwd: outerWt.path,
+      verifyTimeoutSec: deps.verifyTimeoutSec,
+      signal: undefined,
+      logsDir: deps.outerLogsDir ?? ".",
+      attemptId: `recovery-${incident.id}`,
+    });
+    if (recoveryPipe.outcome !== "pass") {
       // R1: the assembled tree does NOT pass verify → DO NOT push outer.
       return escalate(incident, "rollforward tree failed verify", logger);
     }

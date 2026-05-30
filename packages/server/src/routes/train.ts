@@ -185,6 +185,28 @@ const metricsBundleSchema = z
       abandon_rate: sloDimensionSchema.optional(),
       overall_compliant: z.boolean().nullable(),
     }),
+    // Phase 7.5 §7.2 — the additive verify sub-block (cache observability).
+    verify: z.object({
+      cache_enabled: z.boolean(),
+      cache_mode: z.string(),
+      cache_hit_rate: z.object({
+        ratio: z.number().nullable(),
+        hits: z.number(),
+        lookups: z.number(),
+      }),
+      time_saved_ms: z.number(),
+      per_step: z.array(
+        z.object({
+          step_id: z.string(),
+          runs: z.number(),
+          cached: z.number(),
+          pass_rate: z.number().nullable(),
+          avg_duration_ms: z.number().nullable(),
+          fail_count: z.number(),
+        }),
+      ),
+      cache_mismatches: z.number(),
+    }),
     window_hours: z.number(),
     computed_at: z.string(),
   })
@@ -477,6 +499,25 @@ function metricsToResponse(
       integrator_id: bundle.health.integratorId,
     },
     slo: sloResponse,
+    verify: {
+      cache_enabled: bundle.verify.cacheEnabled,
+      cache_mode: bundle.verify.cacheMode,
+      cache_hit_rate: {
+        ratio: bundle.verify.cacheHitRate.ratio,
+        hits: bundle.verify.cacheHitRate.hits,
+        lookups: bundle.verify.cacheHitRate.lookups,
+      },
+      time_saved_ms: bundle.verify.timeSavedMs,
+      per_step: bundle.verify.perStep.map((s) => ({
+        step_id: s.stepId,
+        runs: s.runs,
+        cached: s.cached,
+        pass_rate: s.passRate,
+        avg_duration_ms: s.avgDurationMs,
+        fail_count: s.failCount,
+      })),
+      cache_mismatches: bundle.verify.cacheMismatches,
+    },
     window_hours: bundle.windowHours,
     computed_at: bundle.computedAt,
   };

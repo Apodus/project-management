@@ -120,6 +120,133 @@ describe("PmClient.postBatchEvent", () => {
   });
 });
 
+describe("PmClient verify cache (lookup / record / mismatch)", () => {
+  // A client whose fetch returns a caller-supplied JSON body + status.
+  function makeClientWith(
+    responseBody: unknown,
+    status = 200,
+  ): { client: PmClient; calls: CapturedCall[] } {
+    const calls: CapturedCall[] = [];
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        method: init?.method ?? "GET",
+        url: String(url),
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      return new Response(JSON.stringify(responseBody), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    const client = new PmClient({
+      baseUrl: "http://pm.local",
+      token: "tok",
+      fetchImpl,
+    });
+    return { client, calls };
+  }
+
+  const row = {
+    id: "vc-1",
+    projectId: "proj-1",
+    resource: "main",
+    treeSha: "t-1",
+    stepId: "lint",
+    stepConfigSha: "cfg-1",
+    result: "pass" as const,
+    durationMs: 4200,
+    logExcerpt: "ok",
+    logUrl: null,
+    createdAt: "2026-05-30T12:00:00.000Z",
+    lastHitAt: "2026-05-30T12:00:05.000Z",
+    hitCount: 1,
+    updatedAt: "2026-05-30T12:00:05.000Z",
+  };
+
+  it("lookupVerifyCache POSTs the key and unwraps a HIT row", async () => {
+    const { client, calls } = makeClientWith({ data: row });
+    const result = await client.lookupVerifyCache("proj-1", {
+      resource: "main",
+      treeSha: "t-1",
+      stepId: "lint",
+      stepConfigSha: "cfg-1",
+    });
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].url).toBe(
+      "http://pm.local/api/v1/projects/proj-1/verify-cache/lookup",
+    );
+    expect(calls[0].body).toEqual({
+      resource: "main",
+      treeSha: "t-1",
+      stepId: "lint",
+      stepConfigSha: "cfg-1",
+    });
+    expect(result).toEqual(row);
+  });
+
+  it("lookupVerifyCache unwraps a MISS (data:null) to null", async () => {
+    const { client } = makeClientWith({ data: null });
+    const result = await client.lookupVerifyCache("proj-1", {
+      resource: "main",
+      treeSha: "t-x",
+      stepId: "lint",
+      stepConfigSha: "cfg-1",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("recordVerifyCache POSTs the verdict body to /record and returns the row", async () => {
+    const { client, calls } = makeClientWith({ data: row });
+    const result = await client.recordVerifyCache("proj-1", {
+      resource: "main",
+      treeSha: "t-1",
+      stepId: "lint",
+      stepConfigSha: "cfg-1",
+      result: "pass",
+      durationMs: 4200,
+      logExcerpt: "ok",
+    });
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].url).toBe(
+      "http://pm.local/api/v1/projects/proj-1/verify-cache/record",
+    );
+    expect(calls[0].body).toEqual({
+      resource: "main",
+      treeSha: "t-1",
+      stepId: "lint",
+      stepConfigSha: "cfg-1",
+      result: "pass",
+      durationMs: 4200,
+      logExcerpt: "ok",
+    });
+    expect(result).toEqual(row);
+  });
+
+  it("emitVerifyCacheMismatch POSTs to /mismatch and tolerates a 202", async () => {
+    const { client, calls } = makeClientWith({ data: { ok: true } }, 202);
+    await client.emitVerifyCacheMismatch("proj-1", {
+      resource: "main",
+      treeSha: "t-1",
+      stepId: "unit",
+      stepConfigSha: "cfg-1",
+      cachedResult: "pass",
+      realResult: "fail",
+      requestId: "req-1",
+      attemptId: "att-1",
+    });
+    expect(calls.length).toBe(1);
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].url).toBe(
+      "http://pm.local/api/v1/projects/proj-1/verify-cache/mismatch",
+    );
+    expect(calls[0].body).toMatchObject({
+      treeSha: "t-1",
+      cachedResult: "pass",
+      realResult: "fail",
+    });
+  });
+});
+
 describe("PmClient pickup/startAttempt batch tags", () => {
   it("pickup sends batchId/speculativePosition when tags supplied", async () => {
     const { client, calls } = makeClient();

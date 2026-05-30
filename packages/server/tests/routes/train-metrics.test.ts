@@ -13,6 +13,7 @@ import {
   integratorHealth,
   mergeRequests,
   users,
+  verifyCache,
 } from "../../src/db/index.js";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
 
@@ -217,6 +218,138 @@ describe("Train metrics + in-flight routes", () => {
     expect(res.status).toBe(200);
     // The GET fired the stuck alert as a side effect of the on-read evaluation.
     expect(calls).toHaveLength(1);
+  });
+
+  it("GET /train/metrics carries the verify block additively (defaults off, existing fields unchanged)", async () => {
+    const project = createTestProject(testApp.db);
+
+    const res = await authRequest(
+      testApp.app,
+      "GET",
+      `/api/v1/projects/${project.id}/train/metrics`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: Record<string, unknown> };
+
+    // The verify block is present with the backward-compat defaults (§10).
+    const verify = body.data.verify as {
+      cache_enabled: boolean;
+      cache_mode: string;
+      cache_hit_rate: { ratio: number | null; hits: number; lookups: number };
+      time_saved_ms: number;
+      per_step: unknown[];
+      cache_mismatches: number;
+    };
+    expect(verify.cache_enabled).toBe(false);
+    expect(verify.cache_mode).toBe("off");
+    expect(verify.cache_hit_rate.ratio).toBeNull();
+    expect(verify.cache_hit_rate.hits).toBe(0);
+    expect(verify.cache_hit_rate.lookups).toBe(0);
+    expect(verify.time_saved_ms).toBe(0);
+    expect(verify.per_step).toEqual([]);
+    expect(verify.cache_mismatches).toBe(0);
+
+    // ADDITIVE: every existing 7.4 field is unchanged.
+    expect(body.data.resource).toBe("main");
+    expect(body.data.queue_depth).toBe(0);
+    expect(body.data.window_hours).toBe(24);
+    expect(body.data).toHaveProperty("verify_success_rate");
+    expect(body.data).toHaveProperty("pool_utilization");
+    expect(body.data).toHaveProperty("health");
+    expect(body.data).toHaveProperty("slo");
+  });
+
+  it("GET /train/metrics derives the verify block from seeded cache rows + settings", async () => {
+    const now = new Date().toISOString();
+    const project = createTestProject(testApp.db, {
+      settings: { integrator: { cache_enabled: true, cache_mode: "on" } },
+    });
+
+    function seedCache(o: {
+      treeSha: string;
+      stepId: string;
+      result: "pass" | "fail";
+      durationMs: number;
+      hitCount: number;
+    }) {
+      testApp.db
+        .insert(verifyCache)
+        .values({
+          id: createId(),
+          projectId: project.id,
+          resource: "main",
+          treeSha: o.treeSha,
+          stepId: o.stepId,
+          stepConfigSha: `cfg-${o.treeSha}`,
+          result: o.result,
+          durationMs: o.durationMs,
+          logExcerpt: null,
+          logUrl: null,
+          // created_at + last_hit_at inside the 24h window (now).
+          createdAt: now,
+          lastHitAt: now,
+          hitCount: o.hitCount,
+          updatedAt: now,
+        })
+        .run();
+    }
+
+    // lint: 1 row, 4000ms, 3 hits. unit: 1 row (fail), 9000ms, 2 hits.
+    seedCache({ treeSha: "a", stepId: "lint", result: "pass", durationMs: 4000, hitCount: 3 });
+    seedCache({ treeSha: "b", stepId: "unit", result: "fail", durationMs: 9000, hitCount: 2 });
+
+    const res = await authRequest(
+      testApp.app,
+      "GET",
+      `/api/v1/projects/${project.id}/train/metrics`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: {
+        verify: {
+          cache_enabled: boolean;
+          cache_mode: string;
+          cache_hit_rate: { ratio: number; hits: number; lookups: number };
+          time_saved_ms: number;
+          per_step: {
+            step_id: string;
+            runs: number;
+            cached: number;
+            pass_rate: number | null;
+            avg_duration_ms: number | null;
+            fail_count: number;
+          }[];
+          cache_mismatches: number;
+        };
+      };
+    };
+    const verify = body.data.verify;
+    // Settings read off projects.settings.integrator.
+    expect(verify.cache_enabled).toBe(true);
+    expect(verify.cache_mode).toBe("on");
+    // hits = 3 + 2 = 5; misses = 2 rows created in-window → lookups 7.
+    expect(verify.cache_hit_rate.hits).toBe(5);
+    expect(verify.cache_hit_rate.lookups).toBe(7);
+    expect(verify.cache_hit_rate.ratio).toBeCloseTo(5 / 7, 10);
+    // time_saved = 3×4000 + 2×9000 = 30000.
+    expect(verify.time_saved_ms).toBe(30000);
+    // per_step ordered by step_id.
+    expect(verify.per_step.map((s) => s.step_id)).toEqual(["lint", "unit"]);
+    expect(verify.per_step[0]).toMatchObject({
+      step_id: "lint",
+      runs: 1,
+      cached: 3,
+      avg_duration_ms: 4000,
+      fail_count: 0,
+    });
+    expect(verify.per_step[1]).toMatchObject({
+      step_id: "unit",
+      runs: 1,
+      cached: 2,
+      fail_count: 1,
+    });
+    // cache_mismatches surfaced 0 (the non-persisted relay, §9).
+    expect(verify.cache_mismatches).toBe(0);
   });
 
   it("GET /train/in-flight returns { groups, members }", async () => {

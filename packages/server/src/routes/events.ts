@@ -84,6 +84,14 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
         let groupId: string | undefined;
         let incidentId: string | undefined;
         let orphanedSha: string | undefined;
+        // Phase 7.5 (§9): verify.cache_mismatch identifying fields, read
+        // additively off payload.entity exactly like batch_id/group_id so they
+        // ride the verify.cache_mismatch frame. Absent → omitted, so all
+        // 7.1/7.2/7.3/7.4 frames stay byte-identical.
+        let treeSha: string | undefined;
+        let stepId: string | undefined;
+        let cachedResult: string | undefined;
+        let realResult: string | undefined;
         if (payload.entity && typeof payload.entity === "object") {
           const entity = payload.entity as Record<string, unknown>;
           switch (payload.entityType) {
@@ -106,6 +114,10 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           if (typeof entity.groupId === "string") groupId = entity.groupId;
           if (typeof entity.incidentId === "string") incidentId = entity.incidentId;
           if (typeof entity.orphanedSha === "string") orphanedSha = entity.orphanedSha;
+          if (typeof entity.treeSha === "string") treeSha = entity.treeSha;
+          if (typeof entity.stepId === "string") stepId = entity.stepId;
+          if (typeof entity.cachedResult === "string") cachedResult = entity.cachedResult;
+          if (typeof entity.realResult === "string") realResult = entity.realResult;
         }
 
         const ssePayload = {
@@ -123,6 +135,10 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           ...(groupId ? { group_id: groupId } : {}),
           ...(incidentId ? { incident_id: incidentId } : {}),
           ...(orphanedSha ? { orphaned_sha: orphanedSha } : {}),
+          ...(treeSha ? { tree_sha: treeSha } : {}),
+          ...(stepId ? { step_id: stepId } : {}),
+          ...(cachedResult ? { cached_result: cachedResult } : {}),
+          ...(realResult ? { real_result: realResult } : {}),
         };
 
         stream.writeSSE({

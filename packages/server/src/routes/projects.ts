@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { PROJECT_STATUSES, TASK_STATUSES } from "@pm/shared";
+import { PROJECT_STATUSES, TASK_STATUSES, CACHE_MODES } from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as projectService from "../services/project.service.js";
 
@@ -34,6 +34,77 @@ const linkedRepoSchema = z.object({
   gitlink_path: z.string().min(1).optional(),
 });
 
+// Phase 7.5 — Zod-4 mirror of @pm/shared/verifyStepSchema (§2.1/§8.1).
+const verifyStepSchema = z.object({
+  id: z.string().min(1),
+  command: z.string().min(1),
+  depends_on: z.array(z.string().min(1)).default([]),
+  cache_key_inputs: z.array(z.string().min(1)).default([]),
+  timeout_sec: z.number().int().min(1).optional(),
+});
+
+// PURE config-time DAG validator — a verbatim DUPLICATE of the Zod-3 helper in
+// packages/shared/src/schemas/project.ts (NOT imported: this is the load-bearing
+// route-mirror so the PATCH 400-gate catches a cycle/dangling/dup before a cyclic
+// DAG hangs the integrator pipeline). Keep the two copies in lockstep. (§2.1)
+function hasDagIssues(steps: { id: string; depends_on?: string[] }[]): {
+  dup?: string;
+  dangling?: string;
+  cycle?: boolean;
+} {
+  const ids = new Set<string>();
+  let dup: string | undefined;
+  for (const s of steps) {
+    if (ids.has(s.id)) {
+      dup = dup ?? s.id;
+    }
+    ids.add(s.id);
+  }
+
+  let dangling: string | undefined;
+  for (const s of steps) {
+    for (const dep of s.depends_on ?? []) {
+      if (!ids.has(dep)) {
+        dangling = dangling ?? dep;
+      }
+    }
+  }
+
+  // Kahn's topo sort: if fewer nodes are consumed than exist, a cycle exists
+  // (a self-loop a->a leaves a's in-degree permanently at 1).
+  const inDegree = new Map<string, number>();
+  const adj = new Map<string, string[]>();
+  for (const id of ids) {
+    inDegree.set(id, 0);
+    adj.set(id, []);
+  }
+  for (const s of steps) {
+    for (const dep of s.depends_on ?? []) {
+      if (ids.has(dep) && ids.has(s.id)) {
+        adj.get(dep)!.push(s.id);
+        inDegree.set(s.id, (inDegree.get(s.id) ?? 0) + 1);
+      }
+    }
+  }
+  const queue: string[] = [];
+  for (const [id, deg] of inDegree) {
+    if (deg === 0) queue.push(id);
+  }
+  let consumed = 0;
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+    consumed++;
+    for (const next of adj.get(node) ?? []) {
+      const deg = (inDegree.get(next) ?? 0) - 1;
+      inDegree.set(next, deg);
+      if (deg === 0) queue.push(next);
+    }
+  }
+  const cycle = consumed < ids.size;
+
+  return { dup, dangling, cycle };
+}
+
 const integratorSettingsSchema = z
   .object({
     enabled: z.boolean().default(false),
@@ -46,6 +117,9 @@ const integratorSettingsSchema = z
     parallelism: z.number().int().min(1).default(1),
     linked_repos: z.array(linkedRepoSchema).default([]),
     heartbeat_interval_sec: z.number().int().min(5).default(30),
+    cache_enabled: z.boolean().default(false),
+    cache_mode: z.enum(CACHE_MODES).default("off"),
+    verify_steps: z.array(verifyStepSchema).default([]),
     slo: z
       .object({
         target_p95_time_to_land_sec: z.number().int().min(1).optional(),
@@ -54,11 +128,40 @@ const integratorSettingsSchema = z
       })
       .optional(),
   })
+  // Phase 7.5 — DAG validation (§2.1): dup id / dangling depends_on / cycle -> 400.
+  // Empty verify_steps = no issues (backward-compat inert).
+  .superRefine((v, ctx) => {
+    const { dup, dangling, cycle } = hasDagIssues(v.verify_steps);
+    if (dup) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate verify_steps id: "${dup}".`,
+        path: ["verify_steps"],
+      });
+    }
+    if (dangling) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `verify_steps depends_on references a non-existent step id: "${dangling}".`,
+        path: ["verify_steps"],
+      });
+    }
+    if (cycle) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "verify_steps contains a dependency cycle.",
+        path: ["verify_steps"],
+      });
+    }
+  })
   .refine(
-    (v) => !v.enabled || (Boolean(v.verify_command) && Boolean(v.worktree_root)),
+    (v) =>
+      !v.enabled ||
+      ((Boolean(v.verify_command) || v.verify_steps.length > 0) &&
+        Boolean(v.worktree_root)),
     {
       message:
-        "When integrator.enabled is true, verify_command and worktree_root are required and must be non-empty.",
+        "When integrator.enabled is true, verify_command (or a non-empty verify_steps) and worktree_root are required and must be non-empty.",
       path: ["enabled"],
     },
   );

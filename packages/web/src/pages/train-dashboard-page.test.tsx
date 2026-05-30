@@ -85,6 +85,23 @@ function seededMetrics(): TrainMetrics {
       abandon_rate: { compliant: false },
       overall_compliant: false,
     },
+    verify: {
+      cache_enabled: true,
+      cache_mode: "on",
+      cache_hit_rate: { ratio: 0.61, hits: 122, lookups: 200 },
+      time_saved_ms: 5_400_000,
+      per_step: [
+        {
+          step_id: "lint",
+          runs: 40,
+          cached: 60,
+          pass_rate: 0.95,
+          avg_duration_ms: 4200,
+          fail_count: 2,
+        },
+      ],
+      cache_mismatches: 0,
+    },
     window_hours: 24,
     computed_at: new Date().toISOString(),
   };
@@ -115,6 +132,14 @@ function nullMetrics(): TrainMetrics {
       integrator_id: null,
     },
     slo: { overall_compliant: null },
+    verify: {
+      cache_enabled: false,
+      cache_mode: "off",
+      cache_hit_rate: { ratio: null, hits: 0, lookups: 0 },
+      time_saved_ms: 0,
+      per_step: [],
+      cache_mismatches: 0,
+    },
     window_hours: 24,
     computed_at: new Date().toISOString(),
   };
@@ -225,6 +250,23 @@ describe("TrainDashboardPage — seeded data", () => {
     expect(screen.getByText(/Verify rate: OK/)).toBeInTheDocument();
     expect(screen.getByText(/Abandon rate: Breach/)).toBeInTheDocument();
   });
+
+  it("renders the verify cache section (Phase 7.5)", () => {
+    render(<TrainDashboardPage />);
+    expect(screen.getByText("Verify Cache")).toBeInTheDocument();
+    // Cache mode badge.
+    expect(screen.getByText("On")).toBeInTheDocument();
+    // Cache hit rate: 0.61 → "61%" with hits/lookups sub.
+    expect(screen.getByText("61%")).toBeInTheDocument();
+    expect(screen.getByText("122/200 lookups")).toBeInTheDocument();
+    // Time saved: 5_400_000 ms → "1h 30m".
+    expect(screen.getByText("1h 30m")).toBeInTheDocument();
+    // Cache mismatches label present (0 in a healthy on-mode deployment).
+    expect(screen.getByText("Cache mismatches")).toBeInTheDocument();
+    // Per-step row: the lint step id + its pass rate.
+    expect(screen.getByText("lint")).toBeInTheDocument();
+    expect(screen.getByText("95%")).toBeInTheDocument();
+  });
 });
 
 describe("TrainDashboardPage — null-safe rendering (divide-by-null bug class)", () => {
@@ -252,5 +294,11 @@ describe("TrainDashboardPage — null-safe rendering (divide-by-null bug class)"
     expect(
       screen.getByText("Nothing currently integrating"),
     ).toBeInTheDocument();
+  });
+
+  it("shows the disabled verify-cache state without NaN (Phase 7.5)", () => {
+    render(<TrainDashboardPage />);
+    expect(screen.getByText("Verify cache disabled")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("NaN");
   });
 });

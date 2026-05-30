@@ -22,7 +22,7 @@ Each process loops. At `parallelism: 1` (the default, Phase 7.1 behavior) it pro
 4. Run the project's configured verify command against the rebased tree.
 5. Either **land** it — fast-forward `main` to the verified tree, attach a `landed_sha` git_ref to the linked task — or **reject** it — record a structured payload (category, failed files, log pointer) and auto-post a comment of type `merge_rejection` on the linked task.
 
-**Main is never broken**: verify runs against a tree SHA *before* `main` fast-forwards. A verify failure terminates as `rejected`; it can never land.
+**Main is never broken**: verify runs against a tree SHA _before_ `main` fast-forwards. A verify failure terminates as `rejected`; it can never land.
 
 At `parallelism: N > 1` (**Phase 7.2 speculative batching**, §13) the same process runs **N integrations in flight at once** in a pool of N isolated worktree clones — members rebase speculatively on `main + predecessors`, verify concurrently, and land serialized in batch order. The lane lock is then acquired **once per batch** (lane ownership), not once per request. `parallelism: 1` is exactly the serial loop above (a degenerate batch of one). Read §13 before enabling N > 1.
 
@@ -36,7 +36,7 @@ Before deploying an integrator for a project, confirm all of the following:
 
 - **Project has the integrator enabled.** `projects.settings.integrator.enabled = true`, with the required fields set: `verify_command` and `worktree_root` (both must be non-empty when enabled). See §4 for the full field list and a sample `PATCH` body.
 - **Project has `gitRepoUrl` set.** This is a **top-level project field** (not under `settings`). The integrator clones this URL on first use. Without it the integrator refuses to start.
-- **A PM `ai_agent` user with an API token.** The integrator authenticates as this user. In Month 1, *any* `ai_agent` token works — `requireIntegrator` only checks `user.type === "ai_agent"`; there is no special integrator role yet (that ships in Phase 7.6). Do not use a human user's token.
+- **A PM `ai_agent` user with an API token.** The integrator authenticates as this user. In Month 1, _any_ `ai_agent` token works — `requireIntegrator` only checks `user.type === "ai_agent"`; there is no special integrator role yet (that ships in Phase 7.6). Do not use a human user's token.
 - **`git` on PATH** on the integrator host (the integrator shells out to git via `simple-git`).
 - **Node.js >= 22** on the integrator host.
 - **Network reachability** from the integrator host to the PM API URL (`--pm-url`), over HTTP. The integrator polls and opens an SSE stream against this URL.
@@ -72,42 +72,45 @@ The integrator is configured from three places: CLI args (per process), environm
 
 ### 4.1 CLI arguments
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `--project <id>` | (none — else `PM_PROJECT_ID`) | **Required.** The project ULID. If omitted, falls back to `PM_PROJECT_ID`; if neither is set, the process exits with a config error. |
-| `--resource <name>` | `main` | The lane within the project. |
-| `--pm-url <url>` | `http://localhost:3000` (else `PM_API_URL`) | PM API base URL. Trailing slashes are stripped. |
-| `--token <envVar>` | `PM_API_TOKEN` | **Names the environment variable** that holds the API token. The token is never passed on the command line (it would leak to `ps`). The process reads `process.env[<envVar>]`. |
-| `--log-level <level>` | `info` (else `PM_LOG_LEVEL`) | pino level: `trace` / `debug` / `info` / `warn` / `error` / `fatal`. |
-| `--poll-interval-sec <sec>` | `30` | Polling interval. This is the **correctness floor** — the integrator always finds work by polling DB truth. SSE is only a latency hint that lets it poll sooner. |
+| Flag                        | Default                                     | Meaning                                                                                                                                                                        |
+| --------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--project <id>`            | (none — else `PM_PROJECT_ID`)               | **Required.** The project ULID. If omitted, falls back to `PM_PROJECT_ID`; if neither is set, the process exits with a config error.                                           |
+| `--resource <name>`         | `main`                                      | The lane within the project.                                                                                                                                                   |
+| `--pm-url <url>`            | `http://localhost:3000` (else `PM_API_URL`) | PM API base URL. Trailing slashes are stripped.                                                                                                                                |
+| `--token <envVar>`          | `PM_API_TOKEN`                              | **Names the environment variable** that holds the API token. The token is never passed on the command line (it would leak to `ps`). The process reads `process.env[<envVar>]`. |
+| `--log-level <level>`       | `info` (else `PM_LOG_LEVEL`)                | pino level: `trace` / `debug` / `info` / `warn` / `error` / `fatal`.                                                                                                           |
+| `--poll-interval-sec <sec>` | `30`                                        | Polling interval. This is the **correctness floor** — the integrator always finds work by polling DB truth. SSE is only a latency hint that lets it poll sooner.               |
 
 A CLI flag always wins over the corresponding environment variable.
 
 ### 4.2 Environment variables
 
-| Variable | Used for |
-|---|---|
-| `PM_PROJECT_ID` | Fallback for `--project`. |
-| `PM_API_URL` | Fallback for `--pm-url`. |
-| `PM_API_TOKEN` | The default token env var (overridable by `--token <envVar>`). |
+| Variable                 | Used for                                                                     |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| `PM_PROJECT_ID`          | Fallback for `--project`.                                                    |
+| `PM_API_URL`             | Fallback for `--pm-url`.                                                     |
+| `PM_API_TOKEN`           | The default token env var (overridable by `--token <envVar>`).               |
 | (var named by `--token`) | If you pass `--token MY_TOKEN`, the integrator reads `process.env.MY_TOKEN`. |
-| `PM_LOG_LEVEL` | Fallback for `--log-level`. |
+| `PM_LOG_LEVEL`           | Fallback for `--log-level`.                                                  |
 
 ### 4.3 Per-project `settings.integrator` fields
 
 Stored in PM under `projects.settings.integrator`. The `settings` column is already JSON TEXT — no migration is required. Keys are **snake_case** (matching the sibling `ai_autonomy` / `workflow` / `git` blocks).
 
-| Field | Type | Default | Required when `enabled` | Notes |
-|---|---|---|---|---|
-| `enabled` | boolean | `false` | always | Master switch. If not `true`, the integrator logs a fatal error and exits cleanly. |
-| `verify_command` | string | (none) | yes | Shell command line. Run as `spawn(verify_command, { shell: true, cwd: worktreePath })`. A per-request override is the request's `verifyCmd`. |
-| `verify_timeout_sec` | number | `600` | no | Kill the verify process after this many seconds (SIGTERM then SIGKILL); the failure is categorized as `verify_timeout`. |
-| `worktree_root` | string | (none) | yes | Absolute path to the directory that owns this integrator's isolated worktree (and its logs). See §5. |
-| `git_remote` | string | `origin` | no | Remote to fetch from and push to. |
-| `git_main_branch` | string | `main` | no | The branch on the remote that the lane maps to. |
-| `worktree_name` | string | `${project.slug}-integrator` | no | Base subdirectory name under `worktree_root`. The pool appends `-0`, `-1`, … per slot (§5). Useful when one host runs multiple integrators. |
-| `parallelism` | integer ≥ 1 | `1` | no | **Phase 7.2.** Number of integrations in flight at once = number of worktree slots in the pool (§5, §13). `1` = exact 7.1 serial behavior. There is **no env var** for this — it lives only here, on the project. |
-| `linked_repos` | array | `[]` | no | **Phase 7.3.** Declares the inner/outer linked repos for cross-repo atomic landing (§14). Empty/absent = single-repo (byte-identical to 7.2). Each entry: `{ name, path, role: "inner"\|"outer", gitlink_parent?, gitlink_path? }`. The integrator requires **exactly one `inner` and one `outer`** entry when this is non-empty; the inner entry carries `gitlink_path` (and `gitlink_parent`). |
+| Field                | Type        | Default                      | Required when `enabled` | Notes                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------- | ----------- | ---------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`            | boolean     | `false`                      | always                  | Master switch. If not `true`, the integrator logs a fatal error and exits cleanly.                                                                                                                                                                                                                                                                                                                                           |
+| `verify_command`     | string      | (none)                       | yes                     | Shell command line. Run as `spawn(verify_command, { shell: true, cwd: worktreePath })`. A per-request override is the request's `verifyCmd`.                                                                                                                                                                                                                                                                                 |
+| `verify_timeout_sec` | number      | `600`                        | no                      | Kill the verify process after this many seconds (SIGTERM then SIGKILL); the failure is categorized as `verify_timeout`.                                                                                                                                                                                                                                                                                                      |
+| `worktree_root`      | string      | (none)                       | yes                     | Absolute path to the directory that owns this integrator's isolated worktree (and its logs). See §5.                                                                                                                                                                                                                                                                                                                         |
+| `git_remote`         | string      | `origin`                     | no                      | Remote to fetch from and push to.                                                                                                                                                                                                                                                                                                                                                                                            |
+| `git_main_branch`    | string      | `main`                       | no                      | The branch on the remote that the lane maps to.                                                                                                                                                                                                                                                                                                                                                                              |
+| `worktree_name`      | string      | `${project.slug}-integrator` | no                      | Base subdirectory name under `worktree_root`. The pool appends `-0`, `-1`, … per slot (§5). Useful when one host runs multiple integrators.                                                                                                                                                                                                                                                                                  |
+| `parallelism`        | integer ≥ 1 | `1`                          | no                      | **Phase 7.2.** Number of integrations in flight at once = number of worktree slots in the pool (§5, §13). `1` = exact 7.1 serial behavior. There is **no env var** for this — it lives only here, on the project.                                                                                                                                                                                                            |
+| `linked_repos`       | array       | `[]`                         | no                      | **Phase 7.3.** Declares the inner/outer linked repos for cross-repo atomic landing (§14). Empty/absent = single-repo (byte-identical to 7.2). Each entry: `{ name, path, role: "inner"\|"outer", gitlink_parent?, gitlink_path? }`. The integrator requires **exactly one `inner` and one `outer`** entry when this is non-empty; the inner entry carries `gitlink_path` (and `gitlink_parent`).                             |
+| `verify_steps`       | array       | `[]`                         | no                      | **Phase 7.5.** The multi-step verify DAG (cheap-first, fail-fast, independent steps parallel). Each entry: `{ id, command, depends_on?, cache_key_inputs?, timeout_sec? }`. Empty/absent → a single synthetic `verify` step running `verify_command` (byte-identical 7.2/7.3/7.4). A non-empty array makes `verify_command` optional. Validated (unique ids / no dangling `depends_on` / no cycles → 400). Deep dive: §16.1. |
+| `cache_enabled`      | boolean     | `false`                      | no                      | **Phase 7.5.** Master kill-switch for the verify-result cache. `false` (default) = no lookup, no record (byte-identical to no cache table). Flip `false` for an instant revert. Deep dive: §16.2.                                                                                                                                                                                                                            |
+| `cache_mode`         | string      | `"off"`                      | no                      | **Phase 7.5.** `"off" \| "on" \| "shadow"`. `off` = inert; `on` = HIT skips the step / MISS runs + records; `shadow` = always runs + compares + emits `verify.cache_mismatch` + uses the real verdict. Adopt via shadow → on (§16.2). Only consulted when `cache_enabled` is `true`.                                                                                                                                         |
 
 > **`gitRepoUrl` is a top-level project field, NOT under `settings`.** It is required — the integrator clones it. Do not put it inside `settings.integrator`.
 
@@ -157,7 +160,7 @@ ${worktree_root}/
 
 **Clone-on-startup (`ensureAll`).** On startup the pool clones any missing slot from `gitRepoUrl` and aligns the configured remote. On-disk clones are **reused** across runs (no destructive teardown), matching the 7.1 single-worktree reuse.
 
-**Startup garbage-collection (`gc`).** Before cloning, the pool prunes **stale numbered slots** left over from a previous run with a *larger* `parallelism`. It scans `worktree_root` for directories matching `${worktree_name}-<digits>` that are not in the current `0..parallelism-1` set and removes them. (Only numeric-suffixed slot dirs are touched; unrelated directories are left alone.) So shrinking `parallelism` from 5 to 3 cleans up `-3` and `-4` on the next start.
+**Startup garbage-collection (`gc`).** Before cloning, the pool prunes **stale numbered slots** left over from a previous run with a _larger_ `parallelism`. It scans `worktree_root` for directories matching `${worktree_name}-<digits>` that are not in the current `0..parallelism-1` set and removes them. (Only numeric-suffixed slot dirs are touched; unrelated directories are left alone.) So shrinking `parallelism` from 5 to 3 cleans up `-3` and `-4` on the next start.
 
 **Lease model (backpressure).** Slots are leased one per admitted member and released on terminal/invalidated. When all slots are leased, new queued requests are **not** picked up (backpressure, §13) — they stay `queued`, never dropped.
 
@@ -195,15 +198,15 @@ spawn(verify_command, { shell: true, cwd: worktreePath })
 
 **Timeout.** If the command runs longer than `verify_timeout_sec` (default `600`), the integrator sends SIGTERM to the process group, then SIGKILL after a short grace period. The failure is categorized as `verify_timeout`.
 
-**Categorization heuristic.** The category is a *hint*, not a contract — the load-bearing artifact is the `logUrl`, which surfaces the raw verify output to the worker. The integrator maps signals to categories as follows:
+**Categorization heuristic.** The category is a _hint_, not a contract — the load-bearing artifact is the `logUrl`, which surfaces the raw verify output to the worker. The integrator maps signals to categories as follows:
 
-| Signal | Category |
-|---|---|
-| timeout / exit code 124 / killed by SIGTERM / SIGKILL | `verify_timeout` |
-| `error[E…]`, or `error:` together with `could not compile` | `build_failed` |
-| pytest `FAILED (failures=…` / `= FAILURES =` / `test result: FAILED` / a `FAIL ` line | `test_failed` |
-| `warning:` / eslint / Prettier / clippy markers (with a non-zero exit) | `lint_failed` |
-| anything else with a non-zero exit | `other` |
+| Signal                                                                                | Category         |
+| ------------------------------------------------------------------------------------- | ---------------- |
+| timeout / exit code 124 / killed by SIGTERM / SIGKILL                                 | `verify_timeout` |
+| `error[E…]`, or `error:` together with `could not compile`                            | `build_failed`   |
+| pytest `FAILED (failures=…` / `= FAILURES =` / `test result: FAILED` / a `FAIL ` line | `test_failed`    |
+| `warning:` / eslint / Prettier / clippy markers (with a non-zero exit)                | `lint_failed`    |
+| anything else with a non-zero exit                                                    | `other`          |
 
 (Rebase conflicts and push races are detected separately, before/after verify, and map to `conflict` / re-queue respectively — see the design doc §14.6.)
 
@@ -221,11 +224,11 @@ spawn(verify_command, { shell: true, cwd: worktreePath })
 
 - **Exit codes for supervisors:**
 
-  | Code | Meaning | Supervisor action |
-  |---|---|---|
-  | `0` | Clean shutdown (received SIGTERM/SIGINT, finished current iteration). | No restart needed. |
-  | `1` | Runtime error (e.g. worktree init failed, missing token). | Safe to auto-restart. |
-  | `2` | Config error (integrator not enabled, missing required field, bad settings). | **Do NOT auto-restart** — fix the config first. |
+  | Code | Meaning                                                                      | Supervisor action                               |
+  | ---- | ---------------------------------------------------------------------------- | ----------------------------------------------- |
+  | `0`  | Clean shutdown (received SIGTERM/SIGINT, finished current iteration).        | No restart needed.                              |
+  | `1`  | Runtime error (e.g. worktree init failed, missing token).                    | Safe to auto-restart.                           |
+  | `2`  | Config error (integrator not enabled, missing required field, bad settings). | **Do NOT auto-restart** — fix the config first. |
 
 ---
 
@@ -268,31 +271,31 @@ Integrator ready for project <X> resource <Y>
 
 Every realistic Month 1 failure, its symptom, and the recovery path. "Operator action" is called out where a human must intervene; everything else is automatic. Pulled from the design doc §15 catalog.
 
-| Failure | Symptom | Recovery | Operator action |
-|---|---|---|---|
-| Integrator crash mid-attempt | Request stuck `integrating`; no `merge.attempt.completed`; Stage 1 lock TTL expires within ≤5 min | On restart the integrator scans stranded `integrating` requests and resets them to `queued` (open attempts → `cancelled`); the lock self-heals via TTL expiry | Restart the process (a supervisor does this on exit code 1). |
-| Verify timeout | `merge.attempt.completed` with `failureCategory=verify_timeout`; `merge.request.rejected` with `category=verify_timeout` | Automatic: categorize → reject | None. |
-| Rebase conflict | `merge.request.rejected` with `category=conflict`; `failedFiles` captured from the conflicting paths | Automatic: categorize → reject | Worker resolves locally and resubmits. |
-| Push race | `git push` is non-fast-forward after verify passed (main moved); verified tree is stale | Automatic: cancel the attempt, reset request to `queued`, release the lock; the next iteration rebases onto the new main and retries | None. |
-| Disk full | Verify / log write / worktree op fails with `ENOSPC`; rejected as `other` with the system error in `failureReason` | Automatic reject; integrator cannot make progress until space is freed | **Free disk space** on the integrator host. |
-| Network drop / PM unreachable | HTTP calls fail; SSE drops | Retry with exponential backoff; reconcile from DB state on reconnect (poll for in-flight `integrating` request) | None (unless the outage is on the operator's side). |
-| PM crash | Every call returns `ECONNREFUSED` | Pause loop, backoff, resume from DB state on reconnect | Bring PM back up. |
-| Task deleted in-flight | Request still resolves (`landed`/`rejected`); auto side-effects (git_ref / comment) are silently skipped; structured payload still on the SSE event and the request row | Automatic (`ON DELETE SET NULL` on `taskId`; service checks `taskId !== null`) | None. |
-| Verify command missing / non-executable | `spawn` fails with `ENOENT` / `EACCES`; rejected as `other` with the system error in `failureReason` | Automatic reject | **Fix `verify_command`** in project settings. |
-| Admin force-cancel mid-verify | Admin POSTs `/force-cancel`; request → `abandoned` while the integrator is mid-verify | The integrator's next service call returns 409; it bails, kills any running verify, and releases the lock | None. |
+| Failure                                 | Symptom                                                                                                                                                                 | Recovery                                                                                                                                                      | Operator action                                              |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Integrator crash mid-attempt            | Request stuck `integrating`; no `merge.attempt.completed`; Stage 1 lock TTL expires within ≤5 min                                                                       | On restart the integrator scans stranded `integrating` requests and resets them to `queued` (open attempts → `cancelled`); the lock self-heals via TTL expiry | Restart the process (a supervisor does this on exit code 1). |
+| Verify timeout                          | `merge.attempt.completed` with `failureCategory=verify_timeout`; `merge.request.rejected` with `category=verify_timeout`                                                | Automatic: categorize → reject                                                                                                                                | None.                                                        |
+| Rebase conflict                         | `merge.request.rejected` with `category=conflict`; `failedFiles` captured from the conflicting paths                                                                    | Automatic: categorize → reject                                                                                                                                | Worker resolves locally and resubmits.                       |
+| Push race                               | `git push` is non-fast-forward after verify passed (main moved); verified tree is stale                                                                                 | Automatic: cancel the attempt, reset request to `queued`, release the lock; the next iteration rebases onto the new main and retries                          | None.                                                        |
+| Disk full                               | Verify / log write / worktree op fails with `ENOSPC`; rejected as `other` with the system error in `failureReason`                                                      | Automatic reject; integrator cannot make progress until space is freed                                                                                        | **Free disk space** on the integrator host.                  |
+| Network drop / PM unreachable           | HTTP calls fail; SSE drops                                                                                                                                              | Retry with exponential backoff; reconcile from DB state on reconnect (poll for in-flight `integrating` request)                                               | None (unless the outage is on the operator's side).          |
+| PM crash                                | Every call returns `ECONNREFUSED`                                                                                                                                       | Pause loop, backoff, resume from DB state on reconnect                                                                                                        | Bring PM back up.                                            |
+| Task deleted in-flight                  | Request still resolves (`landed`/`rejected`); auto side-effects (git_ref / comment) are silently skipped; structured payload still on the SSE event and the request row | Automatic (`ON DELETE SET NULL` on `taskId`; service checks `taskId !== null`)                                                                                | None.                                                        |
+| Verify command missing / non-executable | `spawn` fails with `ENOENT` / `EACCES`; rejected as `other` with the system error in `failureReason`                                                                    | Automatic reject                                                                                                                                              | **Fix `verify_command`** in project settings.                |
+| Admin force-cancel mid-verify           | Admin POSTs `/force-cancel`; request → `abandoned` while the integrator is mid-verify                                                                                   | The integrator's next service call returns 409; it bails, kills any running verify, and releases the lock                                                     | None.                                                        |
 
 ### 9.1 Phase 7.2 batch failure modes (`parallelism > 1`)
 
 Additional modes when speculative batching is enabled. Pulled from 7.2 design §15.
 
-| Failure | Symptom | Recovery | Operator action |
-|---|---|---|---|
-| Worktree pool exhaustion | All `parallelism` slots leased; queue depth grows; new requests stay `queued` (not picked up) | **Backpressure** — requests are neither dropped nor picked up; slots free as members terminate and the next FIFO request is admitted. No data loss. | None (raise `parallelism` if throughput is the bottleneck and the host has capacity). |
-| One slot corrupt mid-batch | A member's git op fails on a corrupt `.git` in its slot | `pool.repair` rebuilds **that slot only** (delete + re-clone); the member is `resetToQueued` and re-admitted. Other slots/members continue. | None. |
-| Integrator crash mid-batch | In-memory batch lost; lane lock held by the dead process; N requests stuck `integrating` | The lane lock TTL-frees in ≤5 min; the next integrator's `acquire` reclaims it. On restart the crash-recovery sweep resets **ALL** `integrating` in the lane → `queued`. **No orphan `main` advance** — a push only happens under the live lock. | Restart the process (supervisor on exit code 1). |
-| Per-member verify hang | One member's verify exceeds `verify_timeout_sec` | The **per-member** `runVerify` timeout fires and kills **just that** worktree's verify subtree; `timedOut → category verify_timeout` (real, not retried) → reject + invalidate that member's dependent suffix. Siblings untouched. | None. |
-| Predecessor stale at land | At land time, live `main` ≠ the expected predecessor SHA, or `push` is `non_fast_forward` | **Fast-forward-or-reverify guard**: cancel the attempt, `resetToQueued`, re-admit with the corrected base, re-verify. (Should not occur while holding the lane lock; guarded regardless.) | None. |
-| Transient verify failure | Verify child never ran (`ENOENT`/`EACCES`) or was killed by a signal the integrator did NOT fire (OOM, operator kill) | **Retry** the same member against the same speculative base, after backoff (**1s / 5s / 15s**, cap 3 retries). Each retry is a fresh attempt row. After the cap, treat as real → reject + suffix invalidation. | None (investigate if it recurs — e.g. a flaky verify command or an under-provisioned host). |
+| Failure                    | Symptom                                                                                                               | Recovery                                                                                                                                                                                                                                         | Operator action                                                                             |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Worktree pool exhaustion   | All `parallelism` slots leased; queue depth grows; new requests stay `queued` (not picked up)                         | **Backpressure** — requests are neither dropped nor picked up; slots free as members terminate and the next FIFO request is admitted. No data loss.                                                                                              | None (raise `parallelism` if throughput is the bottleneck and the host has capacity).       |
+| One slot corrupt mid-batch | A member's git op fails on a corrupt `.git` in its slot                                                               | `pool.repair` rebuilds **that slot only** (delete + re-clone); the member is `resetToQueued` and re-admitted. Other slots/members continue.                                                                                                      | None.                                                                                       |
+| Integrator crash mid-batch | In-memory batch lost; lane lock held by the dead process; N requests stuck `integrating`                              | The lane lock TTL-frees in ≤5 min; the next integrator's `acquire` reclaims it. On restart the crash-recovery sweep resets **ALL** `integrating` in the lane → `queued`. **No orphan `main` advance** — a push only happens under the live lock. | Restart the process (supervisor on exit code 1).                                            |
+| Per-member verify hang     | One member's verify exceeds `verify_timeout_sec`                                                                      | The **per-member** `runVerify` timeout fires and kills **just that** worktree's verify subtree; `timedOut → category verify_timeout` (real, not retried) → reject + invalidate that member's dependent suffix. Siblings untouched.               | None.                                                                                       |
+| Predecessor stale at land  | At land time, live `main` ≠ the expected predecessor SHA, or `push` is `non_fast_forward`                             | **Fast-forward-or-reverify guard**: cancel the attempt, `resetToQueued`, re-admit with the corrected base, re-verify. (Should not occur while holding the lane lock; guarded regardless.)                                                        | None.                                                                                       |
+| Transient verify failure   | Verify child never ran (`ENOENT`/`EACCES`) or was killed by a signal the integrator did NOT fire (OOM, operator kill) | **Retry** the same member against the same speculative base, after backoff (**1s / 5s / 15s**, cap 3 retries). Each retry is a fresh attempt row. After the cap, treat as real → reject + suffix invalidation.                                   | None (investigate if it recurs — e.g. a flaky verify command or an under-provisioned host). |
 
 ---
 
@@ -426,7 +429,7 @@ Setting `parallelism: N > 1` turns the serial loop into a **speculative batch sc
 3. **Concurrent verify.** Each member runs its verify command in its own pool slot; up to N verifies run at once.
 4. **Serialized lands.** Lands happen in batch order: a member lands only after every predecessor has landed, fast-forwarding `main` to its verified tree — **no re-verify** (it already verified against exactly that base).
 5. **Suffix invalidation on failure.** When a member fails (verify non-zero / rebase conflict / push error — not a benign main-drift), exactly its **dependent suffix** (every member that speculated on it) is invalidated and re-admitted against the corrected base; **predecessors that already passed still land**. "A single failure invalidates exactly the dependent suffix — never more, never less."
-6. **Transient retry.** A verify that *never ran* (spawn failure) or was killed by a signal the integrator did not fire (OOM / operator kill) is retried on the same base with **1s / 5s / 15s** backoff (cap 3). A verify that hits its own `verify_timeout_sec` is a **real** failure (not retried).
+6. **Transient retry.** A verify that _never ran_ (spawn failure) or was killed by a signal the integrator did not fire (OOM / operator kill) is retried on the same base with **1s / 5s / 15s** backoff (cap 3). A verify that hits its own `verify_timeout_sec` is a **real** failure (not retried).
 
 `parallelism: 1` is exactly the 7.1 serial loop (a batch of one): one slot, base = live `main`, immediate land — PM-observably identical to before.
 
@@ -441,12 +444,12 @@ There is **no PM batch table** — the integrator owns batch state in memory and
 - **Endpoint:** `POST /api/v1/projects/{projectId}/merge-batches/events` — **integrator (`ai_agent`) only** (403 for any other caller). The reference integrator wires this automatically (`onBatchEvent` → `postBatchEvent`); a failed POST is logged and never crashes the loop.
 - **Markers** (all carry `batchId`):
 
-  | Event | Payload |
-  |---|---|
-  | `merge.batch.started` | `{ batchId, resource, memberCount, memberRequestIds[] }` |
-  | `merge.batch.member_landed` | `{ batchId, requestId, speculativePosition, landedSha }` |
+  | Event                            | Payload                                                                           |
+  | -------------------------------- | --------------------------------------------------------------------------------- |
+  | `merge.batch.started`            | `{ batchId, resource, memberCount, memberRequestIds[] }`                          |
+  | `merge.batch.member_landed`      | `{ batchId, requestId, speculativePosition, landedSha }`                          |
   | `merge.batch.member_invalidated` | `{ batchId, requestId, speculativePosition, reason, failedPredecessorRequestId }` |
-  | `merge.batch.completed` | `{ batchId, landed, rejected, invalidated }` (counts) |
+  | `merge.batch.completed`          | `{ batchId, landed, rejected, invalidated }` (counts)                             |
 
 The `batchId` is a ULID **minted by the integrator**; PM never generates or persists it. These events are the entire batch-observability contract (the Phase 7.4 dashboard consumes them — there is no batch query API).
 
@@ -460,7 +463,7 @@ The `batchId` is a ULID **minted by the integrator**; PM never generates or pers
 
 A **merge group** binds one merge request per linked repo so they land **as a unit or not at all** — game_one's `rynx` inner Rust workspace and the outer `game` repo that embeds it as a `160000` gitlink. No half-landed gitlink state ever reaches outer `main`. This section is the operator-facing summary; the authoritative spec is `docs/design/phase-7.3-design.md`.
 
-The state is **PM-owned and durable** (unlike the in-memory batch state of §13): two tables, `merge_request_groups` and `merge_incidents`, plus a nullable `merge_requests.group_id`. That is what makes the dangerous middle case — inner landed, outer push failed — *detectable from PM alone, no SSH into the integrator host*.
+The state is **PM-owned and durable** (unlike the in-memory batch state of §13): two tables, `merge_request_groups` and `merge_incidents`, plus a nullable `merge_requests.group_id`. That is what makes the dangerous middle case — inner landed, outer push failed — _detectable from PM alone, no SSH into the integrator host_.
 
 ### 14.1 Declaring linked repos
 
@@ -517,12 +520,12 @@ A group is picked up and integrated **under the same `(project, resource)` lane 
    - **PUSH 1 (inner):** fast-forward inner `main` → `Ri`.
    - **PUSH 2 (outer):** fast-forward outer `main` → `Ro` (gitlink → `Ri`).
 
-Both pushes are verify-gated fast-forwards; a non-fast-forward push is *rejected* by git, never forced. The lane lock spans both pushes; there is deliberately no second outer-drift recheck between them (the FF push itself gates outer drift).
+Both pushes are verify-gated fast-forwards; a non-fast-forward push is _rejected_ by git, never forced. The lane lock spans both pushes; there is deliberately no second outer-drift recheck between them (the FF push itself gates outer drift).
 
 ### 14.4 The three failure points
 
 - **(a) Inner push fails** → reject the whole group cleanly. The outer is **never touched**, nothing landed.
-- **(b) Outer push fails *after* the inner landed → THE ORPHAN.** Outer `main` is unchanged (the push rejected → no half-landed gitlink). The integrator marks the inner member `orphaned`, opens a durable `merge_incident` (`orphaned_inner`, recording the orphaned inner SHA), rejects the outer member, and marks the group `partially_landed`. This is the only case that leaves a repo advanced relative to the other — and it is fully recorded in PM.
+- **(b) Outer push fails _after_ the inner landed → THE ORPHAN.** Outer `main` is unchanged (the push rejected → no half-landed gitlink). The integrator marks the inner member `orphaned`, opens a durable `merge_incident` (`orphaned_inner`, recording the orphaned inner SHA), rejects the outer member, and marks the group `partially_landed`. This is the only case that leaves a repo advanced relative to the other — and it is fully recorded in PM.
 - **(c) Assembled verify fails** → reject the whole group. Nothing pushed, no incident.
 
 ### 14.5 Orphaned-inner incident model + recovery
@@ -531,8 +534,8 @@ An open `orphaned_inner` incident means: inner `main` is at the orphaned SHA `O`
 
 Recovery runs opportunistically on a later integration pass, under the lane lock:
 
-- **Auto-rollforward** (the common path): the incident is **reconcilable** when the current outer gitlink is an *ancestor* of `O` (checked in the inner repo). The integrator assembles the roll-forward outer tree (gitlink → `O`, inner sources materialized), **verifies it** (the safety gate), then does a verify-gated fast-forward push of outer `main`, and resolves the incident `auto_resolved`. Outer `main` advances **only** by a verified, fast-forward push.
-- **Human escalation**: if the current gitlink is **not** an ancestor of `O` (divergent intervening outer history), or the ancestry check errors, or the assembled roll-forward tree fails verify — the integrator **escalates**: it logs an escalation warning and **leaves the incident `open`** (it never auto-mutates). A human lands a reconciling change and closes it `human_resolved` (admin-only resolve). Transient conditions (pool exhaustion, outer drift, a push race) are *deferred* instead of escalated — the incident stays open and the next pass retries.
+- **Auto-rollforward** (the common path): the incident is **reconcilable** when the current outer gitlink is an _ancestor_ of `O` (checked in the inner repo). The integrator assembles the roll-forward outer tree (gitlink → `O`, inner sources materialized), **verifies it** (the safety gate), then does a verify-gated fast-forward push of outer `main`, and resolves the incident `auto_resolved`. Outer `main` advances **only** by a verified, fast-forward push.
+- **Human escalation**: if the current gitlink is **not** an ancestor of `O` (divergent intervening outer history), or the ancestry check errors, or the assembled roll-forward tree fails verify — the integrator **escalates**: it logs an escalation warning and **leaves the incident `open`** (it never auto-mutates). A human lands a reconciling change and closes it `human_resolved` (admin-only resolve). Transient conditions (pool exhaustion, outer drift, a push race) are _deferred_ instead of escalated — the incident stays open and the next pass retries.
 
 Operators detect incidents from PM alone:
 
@@ -547,15 +550,15 @@ GET /api/v1/merge-incidents/{id}
 
 Additional modes when `linked_repos` is declared. Pulled from 7.3 design §11.
 
-| Failure | Symptom | Recovery | Operator action |
-|---|---|---|---|
-| Inner push race | `non_fast_forward` on PUSH 1 (another lander advanced inner main) | The **whole group** rejects cleanly; outer never touched; it re-integrates as a unit later. `merge.group.rejected`. | None. |
-| Outer push race / network drop after inner landed (**the orphan**) | PUSH 2 fails after the inner landed; group → `partially_landed`; a `merge.incident.opened` event; member → `orphaned` | Auto-rollforward on a later pass when the gitlink is an ancestor of the orphan (verify-gated outer FF push) → incident `auto_resolved`. | None (watch for incidents that stay `open` — those need a human). |
-| Un-reconcilable orphan | Recovery finds the gitlink is **not** an ancestor of `O` (divergent outer history), or the roll-forward tree fails verify | **Escalate**: incident stays `open`, comment posted, outer untouched. | **Human lands a reconciling change**, then the incident is resolved `human_resolved` (admin-only). |
-| Assembled verify fails | A repo's verify exits non-zero on the assembled tree | The whole group rejects (`merge.group.rejected`); nothing pushed, no incident. | Worker fixes the failing repo and resubmits the group. |
-| Ambiguous member→role binding | A group member's ref resolves in both linked repos or neither | The group rejects from `forming` with the binding reason (no worktrees leased). | Worker resubmits with members whose `commit_sha` (preferred) or `branch` resolves unambiguously per repo. |
-| Stranded group (crash between PUSH 1 and the incident write) | A group left `integrating` by a crash with **no** open incident — the §6.4 window | On startup the integrator's **stranded-group sweep** resets the whole group (+ members) to `forming` to re-integrate; the inner re-push is a fast-forward no-op and the outer push completes the atom. A stranded group **with** an open incident is left for orphan recovery (never reset). | Restart the process (supervisor on exit code 1). |
-| Inner/outer pool exhaustion | A correlated slot is unavailable | **Backpressure** — the group stays `forming` and retries when a slot frees. | None (raise `parallelism` if groups are throughput-bound). |
+| Failure                                                            | Symptom                                                                                                                   | Recovery                                                                                                                                                                                                                                                                                     | Operator action                                                                                           |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Inner push race                                                    | `non_fast_forward` on PUSH 1 (another lander advanced inner main)                                                         | The **whole group** rejects cleanly; outer never touched; it re-integrates as a unit later. `merge.group.rejected`.                                                                                                                                                                          | None.                                                                                                     |
+| Outer push race / network drop after inner landed (**the orphan**) | PUSH 2 fails after the inner landed; group → `partially_landed`; a `merge.incident.opened` event; member → `orphaned`     | Auto-rollforward on a later pass when the gitlink is an ancestor of the orphan (verify-gated outer FF push) → incident `auto_resolved`.                                                                                                                                                      | None (watch for incidents that stay `open` — those need a human).                                         |
+| Un-reconcilable orphan                                             | Recovery finds the gitlink is **not** an ancestor of `O` (divergent outer history), or the roll-forward tree fails verify | **Escalate**: incident stays `open`, comment posted, outer untouched.                                                                                                                                                                                                                        | **Human lands a reconciling change**, then the incident is resolved `human_resolved` (admin-only).        |
+| Assembled verify fails                                             | A repo's verify exits non-zero on the assembled tree                                                                      | The whole group rejects (`merge.group.rejected`); nothing pushed, no incident.                                                                                                                                                                                                               | Worker fixes the failing repo and resubmits the group.                                                    |
+| Ambiguous member→role binding                                      | A group member's ref resolves in both linked repos or neither                                                             | The group rejects from `forming` with the binding reason (no worktrees leased).                                                                                                                                                                                                              | Worker resubmits with members whose `commit_sha` (preferred) or `branch` resolves unambiguously per repo. |
+| Stranded group (crash between PUSH 1 and the incident write)       | A group left `integrating` by a crash with **no** open incident — the §6.4 window                                         | On startup the integrator's **stranded-group sweep** resets the whole group (+ members) to `forming` to re-integrate; the inner re-push is a fast-forward no-op and the outer push completes the atom. A stranded group **with** an open incident is left for orphan recovery (never reset). | Restart the process (supervisor on exit code 1).                                                          |
+| Inner/outer pool exhaustion                                        | A correlated slot is unavailable                                                                                          | **Backpressure** — the group stays `forming` and retries when a slot frees.                                                                                                                                                                                                                  | None (raise `parallelism` if groups are throughput-bound).                                                |
 
 Every row preserves the prime invariant: **outer `main` is never advanced to a gitlink whose assembled tree has not passed verify** — not in land, not in recovery.
 
@@ -574,19 +577,19 @@ Phase 7.4 makes the train **legible** (a dashboard that answers "what's wrong" i
 A human-facing web dashboard, reachable in the SPA at:
 
 - **`/projects/{projectId}/train`** — the train dashboard: queue depth, in-flight batches/groups with per-member state, integrator heartbeat freshness ("last heard 47s ago"), recent lands/rejects, last-24h time-to-land p50/p95/p99, verify success rate, abandon rate, worktree-pool utilization, and SLO compliance per lane.
-- **`/projects/{projectId}/train/audit`** — the audit-log view + the break-glass controls (admin-gated UI; the pause/resume/force-* buttons render only for admins).
+- **`/projects/{projectId}/train/audit`** — the audit-log view + the break-glass controls (admin-gated UI; the pause/resume/force-\* buttons render only for admins).
 - The **per-request timeline** (queued → integrating → every verify attempt with its log link → landed/rejected/orphaned/overridden) is a component reachable from the dashboard's in-flight/recent rows, backed by `GET /api/v1/merge-requests/{id}/timeline`.
 
 All dashboard reads are **read-only observability** (`requireAuth` — any authenticated user can view), EXCEPT the audit log (`requireAdmin`). Only the overrides are gated to admins. The dashboard data APIs:
 
-| Method | Path | Authz |
-|---|---|---|
-| GET | `/api/v1/projects/{projectId}/train/metrics?resource=` | `requireAuth` |
-| GET | `/api/v1/projects/{projectId}/train/in-flight?resource=` | `requireAuth` |
-| GET | `/api/v1/projects/{projectId}/integrator/health?resource=` | `requireAuth` |
-| GET | `/api/v1/projects/{projectId}/train/state?resource=` | `requireAuth` |
-| GET | `/api/v1/merge-requests/{id}/timeline` | `requireAuth` |
-| GET | `/api/v1/projects/{projectId}/audit-log` (filters: `userId`, `action`, `targetType`, `targetId`, `from`, `to`, `page`, `perPage`) | `requireAuth && requireAdmin` |
+| Method | Path                                                                                                                              | Authz                         |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| GET    | `/api/v1/projects/{projectId}/train/metrics?resource=`                                                                            | `requireAuth`                 |
+| GET    | `/api/v1/projects/{projectId}/train/in-flight?resource=`                                                                          | `requireAuth`                 |
+| GET    | `/api/v1/projects/{projectId}/integrator/health?resource=`                                                                        | `requireAuth`                 |
+| GET    | `/api/v1/projects/{projectId}/train/state?resource=`                                                                              | `requireAuth`                 |
+| GET    | `/api/v1/merge-requests/{id}/timeline`                                                                                            | `requireAuth`                 |
+| GET    | `/api/v1/projects/{projectId}/audit-log` (filters: `userId`, `action`, `targetType`, `targetId`, `from`, `to`, `page`, `perPage`) | `requireAuth && requireAdmin` |
 
 Metrics are computed **on-read** (no rollup table, no background job) — always fresh. The 24h window is a JS-computed ISO cutoff. Reading the metrics or health GET also drives the on-read alert evaluation (§15.4) as a side effect.
 
@@ -604,13 +607,13 @@ The dashboard renders "last heard Ns ago" from the derived `staleness_ms`, greyi
 
 All five are **admin-only HUMAN operator actions** (gated on the existing `admin` role via `requireAdmin` — NOT the `ai_agent` integrator gate; there is no `operator` role yet — that is Phase 7.6). **Every override writes exactly one `audit_log` row in the same database transaction as its state change** — the audit row is the accountability record and is the one thing that is never skipped.
 
-| Override | Endpoint | Body | Reason | What it does |
-|---|---|---|---|---|
-| **Pause** | `POST /api/v1/projects/{projectId}/train/pause` | `{ resource?, reason? }` | optional | Sets the lane `paused`. The integrator stops admitting NEW work; in-flight members finish cleanly (§15.5). Idempotent no-op (no duplicate audit) when already paused. |
-| **Resume** | `POST /api/v1/projects/{projectId}/train/resume` | `{ resource?, reason? }` | optional | Sets the lane `running`. Idempotent no-op (no audit) when already running. |
-| **Force-release lock** | `POST /api/v1/projects/{projectId}/merge-locks/{resource}/force-release` | `{ reason? }` | optional | HARD-clears a stuck lane lock (for a dead integrator, without waiting out the 5-min lease TTL). Does NOT promote the queue head and does NOT touch in-flight merge_requests. Emits the existing `merge.lock.released` (with `forced: true`). |
-| **Force-land** | `POST /api/v1/merge-requests/{id}/force-land` | `{ landedSha, reason }` | **REQUIRED** (400 if empty) | **THE R1 override** — see §15.3.1. |
-| **Force-reject** | `POST /api/v1/merge-requests/{id}/force-reject` | `{ reason }` | **REQUIRED** (400 if empty) | Rejects a stuck `integrating` request on policy grounds (e.g. an integrator died mid-verify and you want the lane to clear rather than wait for crash-recovery to re-queue it). Completes/synthesizes the attempt as `failed`/`policy`, posts the `merge_rejection` comment, writes one `force_reject` audit row. |
+| Override               | Endpoint                                                                 | Body                     | Reason                      | What it does                                                                                                                                                                                                                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------ | ------------------------ | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pause**              | `POST /api/v1/projects/{projectId}/train/pause`                          | `{ resource?, reason? }` | optional                    | Sets the lane `paused`. The integrator stops admitting NEW work; in-flight members finish cleanly (§15.5). Idempotent no-op (no duplicate audit) when already paused.                                                                                                                                             |
+| **Resume**             | `POST /api/v1/projects/{projectId}/train/resume`                         | `{ resource?, reason? }` | optional                    | Sets the lane `running`. Idempotent no-op (no audit) when already running.                                                                                                                                                                                                                                        |
+| **Force-release lock** | `POST /api/v1/projects/{projectId}/merge-locks/{resource}/force-release` | `{ reason? }`            | optional                    | HARD-clears a stuck lane lock (for a dead integrator, without waiting out the 5-min lease TTL). Does NOT promote the queue head and does NOT touch in-flight merge_requests. Emits the existing `merge.lock.released` (with `forced: true`).                                                                      |
+| **Force-land**         | `POST /api/v1/merge-requests/{id}/force-land`                            | `{ landedSha, reason }`  | **REQUIRED** (400 if empty) | **THE R1 override** — see §15.3.1.                                                                                                                                                                                                                                                                                |
+| **Force-reject**       | `POST /api/v1/merge-requests/{id}/force-reject`                          | `{ reason }`             | **REQUIRED** (400 if empty) | Rejects a stuck `integrating` request on policy grounds (e.g. an integrator died mid-verify and you want the lane to clear rather than wait for crash-recovery to re-queue it). Completes/synthesizes the attempt as `failed`/`policy`, posts the `merge_rejection` comment, writes one `force_reject` audit row. |
 
 The seven audit actions recorded across the system are: `pause`, `resume`, `force_release_lock`, `force_land`, `force_reject` (the five overrides) plus `land` and `reject` (the integrator's natural verified outcomes — so the audit log is a complete record, not just overrides). Every audit row carries: `actor`, `action`, `target_type` (`merge_request`/`merge_lock`/`train`/`merge_group`), `target_id`, `reason`, `metadata_before`/`metadata_after`, and a timestamp. The audit log is **append-only** (no update, no delete; the table has no `updatedAt`) and queryable by user / action / target / time-window. Each override also emits `audit.recorded` on the SSE stream so the dashboard's audit view updates live.
 
@@ -618,7 +621,7 @@ The seven audit actions recorded across the system are: `pause`, `resume`, `forc
 
 Force-land is the ONE place the "verify before fast-forward" invariant is **deliberately overridden by a named human**. It lands an `integrating` request **WITHOUT running verify**.
 
-- **Admin-only + reason-required** (both 400 if absent/empty). The reason is the load-bearing accountability datum — *why* a human bypassed verify.
+- **Admin-only + reason-required** (both 400 if absent/empty). The reason is the load-bearing accountability datum — _why_ a human bypassed verify.
 - **Precondition:** the request must be `integrating` (force-landing `landed` is an idempotent 200 no-op; `queued`/`rejected`/`abandoned` → 409). A **grouped member → 409** (a cross-repo group member can only land via the group, never individually).
 - **What it does:** completes (or synthesizes, if none is open) the request's attempt as `passed` with an `overridden` marker, sets the request `landed` with the operator-supplied `landedSha`, attaches the `landed_sha` git_ref to the linked task — **identical durable side-effects to a normal land**, the ONLY difference being that no verify gated it — and writes the mandatory `force_land` audit row (the sole record that R1 was bypassed, by whom, and why). Emits `merge.request.landed` with `overridden: true` so the dashboard badges it as a force-land.
 - **CRITICAL operator contract — PM records landed; the operator advances git separately.** Force-land does **NOT push to git**. Like the normal land, PM only records the PM-side `landedSha` it was given; **PM never runs git** (only the integrator does). The `landedSha` in the body is the operator's **assertion** of the SHA `main` is (or will be) at. Therefore PM-state and the git remote can diverge: PM says `landed` regardless of whether remote `main` actually points at that SHA. **A force-land is only correct after (or paired with) the operator manually fast-forwarding the remote `main` to the asserted `landedSha`.** PM cannot and does not verify the remote advanced. In practice, pair force-land with **force-release-lock** or **pause** to stop a live integrator racing your manual push.
@@ -627,11 +630,11 @@ Force-land is the ONE place the "verify before fast-forward" invariant is **deli
 
 Three `train.*` alert events fire **edge-triggered, on-read** (once per breach episode; re-arm when the condition clears). There is no background sweep — evaluation happens when a dashboard metrics/health read runs (and the integrator's heartbeat POST re-arms its own lane's health latch). **Accepted tradeoff:** a dead integrator with nobody watching the dashboard delays the unhealthy alert until the next read of a metrics/health path.
 
-| Event | Trigger |
-|---|---|
-| `train.integrator_unhealthy` | The lane's heartbeat is stale: `now - last_seen_at > 90s` (`HEALTH_STALE_MS`). |
-| `train.stuck` | Oldest `queued` request's age `> 600s` (10 min) **AND** in-flight `== 0` **AND** the lane is **not paused** (a paused train is held, not stuck). |
-| `train.abandon_rate_high` | 24h abandon ratio `> 0.3` **AND** resolved-request sample `>= 5` (don't alert on 1-of-1). |
+| Event                        | Trigger                                                                                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `train.integrator_unhealthy` | The lane's heartbeat is stale: `now - last_seen_at > 90s` (`HEALTH_STALE_MS`).                                                                   |
+| `train.stuck`                | Oldest `queued` request's age `> 600s` (10 min) **AND** in-flight `== 0` **AND** the lane is **not paused** (a paused train is held, not stuck). |
+| `train.abandon_rate_high`    | 24h abandon ratio `> 0.3` **AND** resolved-request sample `>= 5` (don't alert on 1-of-1).                                                        |
 
 Each alert is delivered **two ways**, both firing once per episode in lockstep:
 
@@ -684,3 +687,167 @@ Per-project SLO targets are recorded under `settings.integrator.slo` and surface
 ```
 
 Compliance is computed on-read as part of the metrics bundle: measured p95 ≤ target (seconds), measured verify-success ≥ target, measured abandon ≤ target. A dimension with no configured target (or no measured data) is omitted; `overall_compliant` is the AND of the configured dimensions, or null when none are set. SLO targets are written via the existing `PATCH /api/v1/projects/{id}` (no new endpoint) — nest them in `settings.integrator.slo`.
+
+---
+
+## 16. Smart verification (Phase 7.5)
+
+Phase 7.5 makes verify stop being a fixed cost. It buys you two levers, both configured per project in `settings.integrator` and both **opt-in** (an unconfigured deployment is byte-identical to 7.2/7.3/7.4):
+
+1. **A multi-step verify DAG** (`verify_steps`) — cheap stages first (format → lint → typecheck), expensive last (unit → integration), with **fail-fast** (the first failing step short-circuits the rest) and **independent steps running in parallel**. A change that breaks `lint` fails in seconds instead of after the full suite.
+2. **A PM-owned verify-result cache** (`verify_cache`) — an identical re-verify (same tree, same step config) SKIPS the run and reuses the cached verdict. This collapses the cost of re-verifying a tree a sibling/predecessor already verified, and of a re-submitted unchanged tree.
+
+The pipeline runs **inside** the existing per-member verify seam (`runVerifyTask`) — the scheduler (admit / rebase / land / suffix-invalidate / retry / kill) is unchanged. The cross-repo assembled verify (§14) runs the pipeline per repo, AND-combined; group orphan-recovery runs cache-OFF.
+
+The authoritative spec is `docs/design/phase-7.5-design.md` (including §13, the post-ship deviations — read it before relying on the wire formats below). Two new PM tables back this: `verify_cache` (migration `0015`) and a nullable JSON `merge_attempts.steps` column (migration `0016`).
+
+### 16.1 Configuring the verify DAG
+
+`settings.integrator.verify_steps` is an array of step objects:
+
+| Field              | Type        | Default                              | Notes                                                                                                                                                                        |
+| ------------------ | ----------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | string      | (required)                           | Unique step id within the array. Cited by `depends_on` and by the cache key / timeline.                                                                                      |
+| `command`          | string      | (required)                           | Shell command line, run as `spawn(command, { shell: true, cwd: worktreePath })`. Exit 0 = pass.                                                                              |
+| `depends_on`       | string[]    | `[]`                                 | Predecessor step ids. This step only starts once every predecessor has **passed**. Roots (empty `depends_on`) form the first wave.                                           |
+| `cache_key_inputs` | string[]    | `[]`                                 | Operator-declared out-of-tree inputs whose change should invalidate this step's cached verdict (toolchain version, lockfile hash, env marker). See §16.2 — **load-bearing.** |
+| `timeout_sec`      | integer ≥ 1 | (falls back to `verify_timeout_sec`) | Per-step timeout. The step's process is killed (SIGTERM then SIGKILL) past this bound and the timeout is a real `fail` verdict.                                              |
+
+**Validation (config-time → 400).** The `PATCH /projects/{id}` route validates `verify_steps` and rejects with `400 VALIDATION_ERROR` on:
+
+- **Duplicate ids** — every `id` must be distinct.
+- **Dangling `depends_on`** — every `depends_on` entry must resolve to a real `id` in the same array.
+- **Cycles** — the `depends_on` graph must be acyclic (checked via Kahn's topological sort, which also catches a self-loop).
+
+An **empty/absent** array is valid — it falls back to a single synthetic `verify` step running `verify_command` (the exact 7.2/7.3/7.4 behavior). A **non-empty** `verify_steps` makes `verify_command` optional (a steps-only project with `worktree_root` is valid without `verify_command`); the integrator re-validates the DAG on startup and exits with code 2 on a bad config.
+
+**Sample multi-step PATCH body** (a cheap-first `format → {lint, typecheck} → unit` DAG; `lint` and `typecheck` run in parallel after `format`, `unit` only after both pass):
+
+```json
+{
+  "settings": {
+    "integrator": {
+      "enabled": true,
+      "worktree_root": "/srv/game_one/integrators/main",
+      "verify_steps": [
+        { "id": "format", "command": "cargo fmt --check", "cache_key_inputs": ["rustc-1.81.0"] },
+        {
+          "id": "lint",
+          "command": "cargo clippy --workspace -- -D warnings",
+          "depends_on": ["format"],
+          "cache_key_inputs": ["rustc-1.81.0"]
+        },
+        {
+          "id": "typecheck",
+          "command": "cargo check --workspace",
+          "depends_on": ["format"],
+          "cache_key_inputs": ["rustc-1.81.0"]
+        },
+        {
+          "id": "unit",
+          "command": "cargo test --workspace",
+          "depends_on": ["lint", "typecheck"],
+          "cache_key_inputs": ["rustc-1.81.0", "pnpm-lock:sha256:abcd"],
+          "timeout_sec": 900
+        }
+      ]
+    }
+  }
+}
+```
+
+(With `verify_steps` set, `verify_command` is optional. To keep the legacy single-command behavior, omit `verify_steps` and keep `verify_command` — see §4.3.)
+
+### 16.2 Enabling and adopting the cache — the shadow → on discipline
+
+**The cache key.** A cache row is valid for a step **iff** the strict 5-tuple `(project_id, resource, tree_sha, step_id, step_config_sha)` matches exactly — **no fuzzy match, no nearest-neighbor.**
+
+- `tree_sha` is **content-addressed** — the git _tree_ SHA of the rebased member (`resolveRef("<commit>^{tree}")`, NOT the commit SHA, which carries a committer timestamp and would dead-cache). Any one-byte source change → a different tree → a MISS. This is git's own invariant, not ours.
+- `step_config_sha = sha256(JSON.stringify({ command, cache_key_inputs: sorted }))` — the fingerprint of everything else that affects the verdict. Change the command or a declared input → a MISS. (`depends_on`, `timeout_sec`, and `id` are deliberately **not** in this hash.)
+- There is **no TTL** — a content-addressed row is correct forever for its exact key, so nothing goes stale (see §16.4 for the manual cleanup escape hatch).
+
+**The kill-switch + the three modes.** `cache_enabled` (default `false`) is the master switch. When `cache_enabled: true`, `cache_mode` governs how the cache is used:
+
+| `cache_mode` | Lookup?            | On HIT                                                                                                                                                      | On MISS                       | Latency win?                                  |
+| ------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------- |
+| `off`        | no                 | — (never looks up)                                                                                                                                          | run the step, no record       | none (inert — same as `cache_enabled: false`) |
+| `on`         | yes                | **skip the run**, reuse the cached verdict                                                                                                                  | run the step, then **record** | yes (a hit skips the run)                     |
+| `shadow`     | yes (compare only) | **run the step anyway**, compare the real verdict to the cached one, emit `verify.cache_mismatch` on a discrepancy, **always use the REAL verdict**, record | run the step, then **record** | none (shadow always runs — that is the point) |
+
+**The adoption procedure (load-bearing — follow it in order):**
+
+1. **Declare `cache_key_inputs` honestly, per step.** List every out-of-tree input whose change should invalidate that step's verdict: the toolchain version (`"rustc-1.81.0"`), the relevant lockfile hash (`"pnpm-lock:sha256:…"`), any environment marker (`"ci-image:2026-05"`). The `tree_sha` already captures every _in-tree_ dependency for free; `cache_key_inputs` is how you capture the _out-of-tree_ ones. **This is the irreducible operator responsibility — the system cannot know about an input you do not declare.**
+2. **Set `cache_enabled: true` and `cache_mode: "shadow"`** (via `PATCH /projects/{id}`). Shadow runs every step for real — zero latency win — but compares each verdict against any cached row.
+3. **Run shadow over a representative window** (a span that exercises your real change mix). Watch for `verify.cache_mismatch` — the **SSE event / dashboard banner**, NOT the metric (see §16.3 — the `cache_mismatches` metric is hardcoded 0).
+4. **Zero mismatches over the window → flip `cache_mode: "on"`.** Now hits skip the run and you cash in the latency. A clean shadow window is your evidence that the declared key is correct.
+5. **Keep `cache_enabled` as the kill-switch.** If a correctness concern ever surfaces in production, set `cache_enabled: false` for an instant, zero-risk revert (the integrator re-reads settings on its next pass and the cache goes inert).
+
+> **The honest limitation — read this before trusting `on`.** In `cache_mode: on`, the cache is _exactly as correct as the operator's declared `cache_key_inputs`._ The `tree_sha` captures every in-tree dependency, and `step_config_sha` captures every input you **declared** — but a step whose verdict depends on an **undeclared** out-of-tree input (a global env var, an installed binary, an ambient service version you did not list) **can false-pass on a stale cache.** There is no way for the system to know about an undeclared dependency — that knowledge lives only in your head. The system does **not** claim to be structurally safe under arbitrary undeclared inputs. Its answer is the shadow mode: **run in shadow first, and any undeclared-input gap manifests as a `verify.cache_mismatch` before you flip to `on`.** Declare your inputs, prove it with shadow, then trust. Honest declaration is the part the system cannot do for you.
+
+### 16.3 Reading the new observability
+
+The train dashboard gains a **verify / cache block** (cache-hit-rate, time-saved, per-step pass rates) and the **per-request timeline** (`GET /api/v1/merge-requests/{id}/timeline`) gains per-step rows. A debug **`GET /api/v1/projects/{projectId}/verify-cache`** lists cache rows for inspection — filterable by `?resource=&step_id=&result=&page=&perPage=`, readable by **any authenticated user** (the same auth level as the metrics GET; not admin-only, not integrator-only).
+
+**Pin the wire-format reality — the casing differs by surface, deliberately:**
+
+- **`metrics.verify` is SNAKE_CASE.** The on-read metrics bundle (`GET .../train/metrics`) ships the `verify` sub-block as:
+
+  ```json
+  {
+    "verify": {
+      "cache_enabled": true,
+      "cache_mode": "on",
+      "cache_hit_rate": { "ratio": 0.62, "hits": 124, "lookups": 200 },
+      "time_saved_ms": 845000,
+      "per_step": [
+        {
+          "step_id": "lint",
+          "runs": 40,
+          "cached": 60,
+          "pass_rate": 0.95,
+          "avg_duration_ms": 4200,
+          "fail_count": 2
+        }
+      ],
+      "cache_mismatches": 0
+    }
+  }
+  ```
+
+- **`timeline.steps[]` is CAMELCASE.** The per-request timeline ships each step record (round-tripped from `merge_attempts.steps`) as:
+
+  ```json
+  {
+    "steps": [
+      {
+        "stepId": "lint",
+        "outcome": "pass",
+        "cached": true,
+        "durationMs": 0,
+        "treeSha": "a1b2c3…",
+        "stepConfigSha": "ff00…",
+        "logUrl": "file:///…/attempt.log"
+      }
+    ]
+  }
+  ```
+
+Do not conflate the two: `metrics.verify.per_step[].step_id` (snake) vs `timeline.steps[].stepId` (camel) is the same field name in two intentionally different casings.
+
+> **`cache_mismatches` in the metrics bundle is HARDCODED 0.** The shadow mismatch is a non-persisted SSE relay (`verify.cache_mismatch`), so the on-read metric — which derives every other field from durable rows — has nothing to count and always reports `0`. **The live shadow-mismatch signal is ONLY the `verify.cache_mismatch` SSE event (the dashboard banner).** When you validate a shadow window (§16.2 step 3), you watch the SSE event / dashboard banner, **not** the `cache_mismatches` metric.
+
+### 16.4 Failure and operational notes
+
+- **Cache I/O is best-effort and never fatal.** A cache lookup that throws is treated as a **MISS** (the step just runs); a record/emit that throws logs a warning and continues. Cache I/O **never fails a member and never blocks a land** — the worst case is a missed cache hit, i.e. a re-run.
+- **The kill-switch is the instant revert.** `cache_enabled: false` makes the cache inert on the integrator's next settings read — no restart needed, zero risk.
+- **Per-step fail-fast.** A cheap-step failure short-circuits the pipeline: later steps never start and are **absent from the timeline** (the timeline shows only the steps that actually ran up to and including the failing one). The member rejects citing the specific step that failed.
+- **A hung step is bounded by `timeout_sec`** (falling back to `verify_timeout_sec`). A timed-out step is a real `fail` verdict and **is** cacheable — a tree+step that deterministically times out should not be re-run on every encounter.
+- **A DAG cycle is rejected at config-time** (`400`) — you cannot save a cyclic `verify_steps`; the integrator also re-checks defensively and fails the pipeline if a cycle somehow reaches it.
+- **Orphan-recovery runs cache-OFF.** The R1 roll-forward verify (§14.5) runs the pipeline with no cache context — zero false-pass risk on the recovery gate.
+- **No TTL / manual cleanup.** Content-addressed rows never go stale, so there is no automatic eviction. If the `verify_cache` table ever grows large, the operator's escape hatch is a manual age-based delete:
+
+  ```sql
+  DELETE FROM verify_cache WHERE created_at < '2026-01-01T00:00:00.000Z';
+  ```
+
+  (The debug GET in §16.3 shows the current rows for sizing.)

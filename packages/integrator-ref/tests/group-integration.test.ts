@@ -80,6 +80,10 @@ interface FakePm {
   calls: string[];
   /** Recorded reject payload (FIX 3 surfacing assertion). */
   rejectPayload?: { reason: string; category?: string };
+  /** Phase 7.5 Step 6: recorded per-repo cache lookup keys (treeSha + stepId). */
+  cacheLookups?: { treeSha: string; stepId: string }[];
+  /** Phase 7.5 Step 7: captured completeAttempt bodies (steps[] M1 assertion). */
+  completeBodies?: { status: string; steps?: unknown[] }[];
 }
 
 function nowIso(): string {
@@ -138,14 +142,33 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
     },
     async completeAttempt(
       attemptId: string,
-      body: { status: string },
+      body: { status: string; steps?: unknown[] },
     ): Promise<MergeAttemptView> {
       const att = state.attempts.find((a) => a.id === attemptId);
       if (!att) throw new Error(`no attempt ${attemptId}`);
       att.status = body.status as MergeAttemptView["status"];
       att.completedAt = nowIso();
       state.calls.push(`completeAttempt:${body.status}`);
+      if (state.completeBodies)
+        state.completeBodies.push({ status: body.status, steps: body.steps });
       return att;
+    },
+    // ── Phase 7.5 Step 6 verify-cache (per-repo). MISS always (returns null), so
+    //    both repos run; we record the lookup KEY to assert distinct TREE shas. ──
+    async lookupVerifyCache(
+      _projectId: string,
+      key: { treeSha: string; stepId: string },
+    ): Promise<unknown> {
+      state.cacheLookups?.push({ treeSha: key.treeSha, stepId: key.stepId });
+      state.calls.push("lookupVerifyCache");
+      return null;
+    },
+    async recordVerifyCache(): Promise<unknown> {
+      state.calls.push("recordVerifyCache");
+      return {};
+    },
+    async emitVerifyCacheMismatch(): Promise<void> {
+      state.calls.push("emitVerifyCacheMismatch");
     },
   };
   return fake as unknown as GroupIntegrationDeps["pmClient"];
@@ -333,6 +356,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       group: { state: "forming", members: [inner, outer] },
       attempts: [],
       calls: [],
+      completeBodies: [],
     };
   }
 
@@ -382,6 +406,11 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     expect(outcome.Ro).toMatch(/^[0-9a-f]{40}$/);
     expect(outcome.Ri).not.toBe(innerMainSha);
 
+    // Phase 7.5 FOLDED-FIX M1: ready_to_land threads each repo's per-step results
+    // through to group-land's passing completeAttempt (single synthetic step each).
+    expect(outcome.innerSteps?.map((s) => s.stepId)).toEqual(["verify"]);
+    expect(outcome.outerSteps?.map((s) => s.stepId)).toEqual(["verify"]);
+
     // Attempts NOT completed (Step 11 completes with treeSha on land).
     expect(state.calls).not.toContain("completeAttempt:passed");
     // NOT rejected.
@@ -397,6 +426,48 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     const o = outerPool.acquire();
     expect(i).not.toBeNull();
     expect(o).not.toBeNull();
+    if (i) innerPool.release(i);
+    if (o) outerPool.release(o);
+  }, 30_000);
+
+  // ── Phase 7.5 Step 6 (§6): per-repo cache keys on DISTINCT content-addressed
+  //    TREE shas (CLARIFICATION A: derived from Ri/Ro via `^{tree}`), AND-combine
+  //    preserved. Both repos MISS (the fake returns null) → both verifies run. ──
+  it("7.5 cross-repo: inner + outer cache lookups key on DISTINCT tree shas; AND preserved", async () => {
+    const state = makeGroupState({
+      inner: { verifyCmd: "echo inner-ok" },
+      outer: { verifyCmd: "echo outer-ok" },
+    });
+    state.cacheLookups = [];
+    const deps = depsFor(state, {
+      projectId: "proj-1",
+      resource: "main",
+      cacheEnabled: true,
+      cacheMode: "on",
+    });
+    const outcome = await runGroupIntegration(
+      { id: "grp-cache", members: state.group.members },
+      deps,
+    );
+
+    expect(outcome.kind).toBe("ready_to_land");
+    if (outcome.kind !== "ready_to_land") throw new Error("not ready_to_land");
+
+    // Both repos probed the cache (single synthetic step each → 2 lookups).
+    expect(state.cacheLookups!.length).toBe(2);
+    const treeShas = state.cacheLookups!.map((l) => l.treeSha);
+    // Two DISTINCT content-addressed tree shas (inner vs outer assembled tree).
+    expect(new Set(treeShas).size).toBe(2);
+    // Each is a real 40-hex git tree sha (NOT the commit shas Ri/Ro).
+    for (const t of treeShas) expect(t).toMatch(/^[0-9a-f]{40}$/);
+    expect(treeShas).not.toContain(outcome.Ri); // keyed on the TREE, not the commit
+    expect(treeShas).not.toContain(outcome.Ro);
+    // AND preserved: both passed → ready_to_land (not rejected).
+    expect(state.calls).not.toContain("rejectGroup");
+
+    outcome.assembled.release();
+    const i = innerPool.acquire();
+    const o = outerPool.acquire();
     if (i) innerPool.release(i);
     if (o) outerPool.release(o);
   }, 30_000);
@@ -425,6 +496,13 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     expect(state.calls).toContain("rejectGroup");
     // FIX 3: surfaced via the rejectGroup reason exactly once.
     expect(state.rejectPayload?.reason).toMatch(/assembled verify failed: inner/);
+    // Phase 7.5 FOLDED-FIX M1: the failing repo's completeAttempt carries its
+    // per-repo pipeline steps (the synthetic single step → a 1-element array).
+    const failedBody = state.completeBodies!.find((b) => b.status === "failed");
+    expect(failedBody).toBeDefined();
+    expect(
+      (failedBody!.steps as { stepId: string }[]).map((s) => s.stepId),
+    ).toEqual(["verify"]);
 
     // Worktrees RELEASED (pools reacquirable).
     const i = innerPool.acquire();

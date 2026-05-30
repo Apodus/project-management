@@ -20,7 +20,12 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMergeRequestTimeline } from "@/hooks/use-train";
-import { formatRelativeTime, formatStatus, getStatusColor } from "@/lib/format";
+import {
+  formatDurationMs,
+  formatRelativeTime,
+  formatStatus,
+  getStatusColor,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { MergeRequest, MergeRequestTimelineEvent } from "@/lib/api";
 
@@ -118,6 +123,56 @@ function AttemptBody({ event }: { event: MergeRequestTimelineEvent }) {
         <span className="font-mono">base {shortSha(event.baseSha)}</span>
         <span className="font-mono">tree {shortSha(event.treeSha)}</span>
       </div>
+
+      {/* Phase 7.5: per-step pipeline results (fail-fast short-circuit visible —
+          later steps simply absent). Null/absent → renders nothing (7.4 view). */}
+      {event.steps && event.steps.length > 0 && (
+        <div className="space-y-1">
+          {event.steps.map((step) => {
+            const passed = step.outcome === "pass";
+            return (
+              <div
+                key={step.stepId}
+                className="flex flex-wrap items-center gap-2 text-xs"
+              >
+                <span className="font-mono text-muted-foreground">
+                  {step.stepId}
+                </span>
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px]",
+                    passed
+                      ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+                      : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+                  )}
+                >
+                  {passed ? "pass" : "fail"}
+                </Badge>
+                {step.cached && (
+                  <Badge variant="outline" className="text-[10px]">
+                    hit
+                  </Badge>
+                )}
+                <span className="tabular-nums text-muted-foreground/70">
+                  {formatDurationMs(step.durationMs)}
+                </span>
+                {step.logUrl && (
+                  <a
+                    href={step.logUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    <ExternalLink className="size-3" />
+                    log
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Log pointer: prefer a real link, else surface the excerpt inline. */}
       {event.logUrl ? (

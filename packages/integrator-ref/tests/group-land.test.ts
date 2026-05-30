@@ -117,7 +117,12 @@ interface FakePm {
   /** Recorded per-request rejectMergeRequest (the outer member, §6.5e). */
   requestRejects: { requestId: string; category: string; reason: string }[];
   /** Per-attempt completion payloads, in order. */
-  attemptCompletions: { attemptId: string; status: string; treeSha?: string }[];
+  attemptCompletions: {
+    attemptId: string;
+    status: string;
+    treeSha?: string;
+    steps?: unknown[];
+  }[];
 }
 
 function nowIso(): string {
@@ -177,7 +182,7 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
     },
     async completeAttempt(
       attemptId: string,
-      body: { status: string; treeSha?: string },
+      body: { status: string; treeSha?: string; steps?: unknown[] },
     ): Promise<MergeAttemptView> {
       const att = state.attempts.find((a) => a.id === attemptId);
       if (!att) throw new Error(`no attempt ${attemptId}`);
@@ -189,6 +194,7 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
         attemptId,
         status: body.status,
         treeSha: body.treeSha,
+        steps: body.steps,
       });
       return att;
     },
@@ -575,16 +581,25 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     const outerPass = state.attemptCompletions.find(
       (c) => c.attemptId === integ.outerAttemptId,
     );
-    expect(innerPass).toEqual({
+    expect(innerPass).toMatchObject({
       attemptId: integ.innerAttemptId,
       status: "passed",
       treeSha: integ.Ri,
     });
-    expect(outerPass).toEqual({
+    expect(outerPass).toMatchObject({
       attemptId: integ.outerAttemptId,
       status: "passed",
       treeSha: integ.Ro,
     });
+    // Phase 7.5 FOLDED-FIX M1: the grouped passing-land carries each repo's
+    // per-step results (threaded from ready_to_land — pipeI/pipeO are out of
+    // scope in group-land). The synthetic single-step pipeline → a 1-element array.
+    expect((innerPass!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual([
+      "verify",
+    ]);
+    expect((outerPass!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual([
+      "verify",
+    ]);
     // Both completeAttempt:passed precede landGroup in the call log.
     const passedIndices = state.calls
       .map((c, i) => (c === "completeAttempt:passed" ? i : -1))
@@ -723,11 +738,16 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     const innerComp = state.attemptCompletions.find(
       (c) => c.attemptId === integ.innerAttemptId,
     );
-    expect(innerComp).toEqual({
+    expect(innerComp).toMatchObject({
       attemptId: integ.innerAttemptId,
       status: "passed",
       treeSha: integ.Ri,
     });
+    // Phase 7.5 FOLDED-FIX M1: even on the orphan path the inner-passed attempt
+    // carries the inner repo's per-step results (it passed verify).
+    expect((innerComp!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual([
+      "verify",
+    ]);
     // b — orphaned the INNER request @Ri.
     expect(state.orphaned).toEqual({
       requestId: "req-inner",

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { verifyStepResultSchema } from "./verify.js";
 
 // ─── Enums ────────────────────────────────────────────────────────
 // Status of a merge request through its full lifecycle. First element
@@ -92,6 +93,7 @@ export const mergeAttemptSchema = z.object({
   failedFiles: z.array(z.string()).nullable(),
   logExcerpt: z.string().nullable(),
   logUrl: z.string().nullable(),
+  steps: z.array(verifyStepResultSchema).nullable().optional(),
   createdAt: z.string(),
 });
 export type MergeAttemptView = z.infer<typeof mergeAttemptSchema>;
@@ -144,6 +146,7 @@ export const mergeAttemptCompleteSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("passed"),
     treeSha: z.string().min(1),
+    steps: z.array(verifyStepResultSchema).optional(),
   }),
   z.object({
     status: z.literal("failed"),
@@ -152,6 +155,7 @@ export const mergeAttemptCompleteSchema = z.discriminatedUnion("status", [
     failedFiles: z.array(z.string()).optional(),
     logExcerpt: z.string().optional(),
     logUrl: z.string().optional(),
+    steps: z.array(verifyStepResultSchema).optional(),
   }),
   z.object({
     status: z.literal("cancelled"),

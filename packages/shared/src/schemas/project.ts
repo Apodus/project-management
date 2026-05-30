@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PROJECT_STATUSES, TASK_STATUSES } from "../constants/enums.js";
+import { PROJECT_STATUSES, TASK_STATUSES, CACHE_MODES } from "../constants/enums.js";
 import { ulidSchema, timestampSchema, optionalText } from "./common.js";
 
 export const aiAutonomySettingsSchema = z.object({
@@ -28,6 +28,85 @@ export const linkedRepoSchema = z.object({
   gitlink_path: z.string().min(1).optional(),
 });
 
+// Phase 7.5 — a single verify-step in the verify_steps DAG (design §2.1/§8.1).
+// id: unique within the array. command: the shell command. depends_on: predecessor
+// step ids (DAG edges). cache_key_inputs: out-of-tree fingerprint values folded into
+// step_config_sha (§3.3). timeout_sec: per-step override of verify_timeout_sec.
+export const verifyStepSchema = z.object({
+  id: z.string().min(1),
+  command: z.string().min(1),
+  depends_on: z.array(z.string().min(1)).default([]),
+  cache_key_inputs: z.array(z.string().min(1)).default([]),
+  timeout_sec: z.number().int().min(1).optional(),
+});
+export type VerifyStep = z.infer<typeof verifyStepSchema>;
+
+// PURE config-time DAG validator (design §2.1). Returns the issues a .superRefine
+// raises as 400s: duplicate id, a depends_on referencing a non-existent id (dangling),
+// and a cycle (detected via Kahn's topo sort — a self-loop a->a is a 1-cycle Kahn's
+// catches). Duplicated verbatim (not imported) by the Zod-4 route mirror in
+// packages/server/src/routes/projects.ts — keep the two in lockstep.
+function hasDagIssues(steps: { id: string; depends_on?: string[] }[]): {
+  dup?: string;
+  dangling?: string;
+  cycle?: boolean;
+} {
+  const ids = new Set<string>();
+  let dup: string | undefined;
+  for (const s of steps) {
+    if (ids.has(s.id)) {
+      dup = dup ?? s.id;
+    }
+    ids.add(s.id);
+  }
+
+  let dangling: string | undefined;
+  for (const s of steps) {
+    for (const dep of s.depends_on ?? []) {
+      if (!ids.has(dep)) {
+        dangling = dangling ?? dep;
+      }
+    }
+  }
+
+  // Kahn's algorithm: in-degree map → queue 0-indegree → consume; if fewer than
+  // steps.length nodes are consumed a cycle exists (a self-loop a->a gives a->a an
+  // in-degree of 1 that never reaches 0). Operates over the (de-duplicated) id set
+  // so dup/dangling don't mask a cycle.
+  const inDegree = new Map<string, number>();
+  const adj = new Map<string, string[]>();
+  for (const id of ids) {
+    inDegree.set(id, 0);
+    adj.set(id, []);
+  }
+  for (const s of steps) {
+    for (const dep of s.depends_on ?? []) {
+      // edge dep -> s.id; only count edges within the known id set.
+      if (ids.has(dep) && ids.has(s.id)) {
+        adj.get(dep)!.push(s.id);
+        inDegree.set(s.id, (inDegree.get(s.id) ?? 0) + 1);
+      }
+    }
+  }
+  const queue: string[] = [];
+  for (const [id, deg] of inDegree) {
+    if (deg === 0) queue.push(id);
+  }
+  let consumed = 0;
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+    consumed++;
+    for (const next of adj.get(node) ?? []) {
+      const deg = (inDegree.get(next) ?? 0) - 1;
+      inDegree.set(next, deg);
+      if (deg === 0) queue.push(next);
+    }
+  }
+  const cycle = consumed < ids.size;
+
+  return { dup, dangling, cycle };
+}
+
 export const integratorSettingsSchema = z
   .object({
     enabled: z.boolean().default(false),
@@ -40,6 +119,9 @@ export const integratorSettingsSchema = z
     parallelism: z.number().int().min(1).default(1),
     linked_repos: z.array(linkedRepoSchema).default([]),
     heartbeat_interval_sec: z.number().int().min(5).default(30),
+    cache_enabled: z.boolean().default(false),
+    cache_mode: z.enum(CACHE_MODES).default("off"),
+    verify_steps: z.array(verifyStepSchema).default([]),
     slo: z
       .object({
         target_p95_time_to_land_sec: z.number().int().min(1).optional(),
@@ -48,11 +130,40 @@ export const integratorSettingsSchema = z
       })
       .optional(),
   })
+  // Phase 7.5 — DAG validation (§2.1): duplicate id / dangling depends_on / cycle
+  // are all 400s. An empty verify_steps array yields no issues (backward-compat inert).
+  .superRefine((v, ctx) => {
+    const { dup, dangling, cycle } = hasDagIssues(v.verify_steps);
+    if (dup) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate verify_steps id: "${dup}".`,
+        path: ["verify_steps"],
+      });
+    }
+    if (dangling) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `verify_steps depends_on references a non-existent step id: "${dangling}".`,
+        path: ["verify_steps"],
+      });
+    }
+    if (cycle) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "verify_steps contains a dependency cycle.",
+        path: ["verify_steps"],
+      });
+    }
+  })
   .refine(
-    (v) => !v.enabled || (Boolean(v.verify_command) && Boolean(v.worktree_root)),
+    (v) =>
+      !v.enabled ||
+      ((Boolean(v.verify_command) || v.verify_steps.length > 0) &&
+        Boolean(v.worktree_root)),
     {
       message:
-        "When integrator.enabled is true, verify_command and worktree_root are required and must be non-empty.",
+        "When integrator.enabled is true, verify_command (or a non-empty verify_steps) and worktree_root are required and must be non-empty.",
       path: ["enabled"],
     },
   );

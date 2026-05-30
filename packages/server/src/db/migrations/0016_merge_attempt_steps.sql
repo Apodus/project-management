@@ -1,0 +1,1 @@
+ALTER TABLE `merge_attempts` ADD `steps` text;

@@ -318,6 +318,13 @@ async function main(): Promise<void> {
       resource: cfg.resource,
       defaultVerifyCommand: cfg.verifyCommand,
       verifyTimeoutSec: cfg.verifyTimeoutSec,
+      // Phase 7.5 Step 5: the verify_steps DAG (empty → synthetic single step).
+      verifySteps: cfg.verifySteps,
+      // Phase 7.5 Step 6: the verify-cache kill-switch + mode (default off → the
+      // byte-identical no-cache path). Threaded into the single-repo runVerifyTask
+      // cache ctx AND the group lane's per-repo ctx (via RunBatchLoopDeps).
+      cacheEnabled: cfg.cacheEnabled,
+      cacheMode: cfg.cacheMode,
       gitRemote: cfg.gitRemote,
       gitMainBranch: cfg.gitMainBranch,
       groupLane,

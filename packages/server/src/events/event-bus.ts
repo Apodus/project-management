@@ -91,6 +91,12 @@ export const EVENT_NAMES = {
   // the outbound Discord listener (events/alerts-listener.ts).
   TRAIN_STUCK: "train.stuck",
   TRAIN_ABANDON_RATE_HIGH: "train.abandon_rate_high",
+
+  // Smart-verification (Phase 7.5 §9 — the shadow-mode false-pass detector).
+  // Emitted (relayed, not persisted) when shadow mode finds a cached verdict
+  // that disagrees with the real run. onAll auto-forwards it to the SSE stream;
+  // action becomes "cache_mismatch".
+  VERIFY_CACHE_MISMATCH: "verify.cache_mismatch",
 } as const;
 
 export type EventName = (typeof EVENT_NAMES)[keyof typeof EVENT_NAMES];

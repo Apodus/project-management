@@ -5,6 +5,7 @@ import type {
   MergeRequestLand,
   MergeRequestReject,
   MergeRequestView,
+  VerifyStepResult,
 } from "@pm/shared";
 import {
   comments,
@@ -502,6 +503,7 @@ export function getById(id: string): MergeRequestWithAttempts {
     failedFiles: a.failedFiles ?? null,
     logExcerpt: a.logExcerpt,
     logUrl: a.logUrl,
+    steps: a.steps ?? null,
     createdAt: a.createdAt,
   }));
   return { ...toView(row), attempts };
@@ -538,6 +540,7 @@ export interface TimelineEvent {
   failureCategory?: string | null;
   logExcerpt?: string | null;
   logUrl?: string | null;
+  steps?: VerifyStepResult[] | null;
   // terminal-milestone fields
   landedSha?: string | null;
   rejectCategory?: string | null;
@@ -620,6 +623,7 @@ export function getTimeline(id: string): TimelineResult {
     failureCategory: string | null;
     logExcerpt: string | null;
     logUrl: string | null;
+    steps: VerifyStepResult[] | null;
     createdAt: string;
   }>;
   for (const a of attemptRows) {
@@ -635,6 +639,7 @@ export function getTimeline(id: string): TimelineResult {
       failureCategory: a.failureCategory,
       logExcerpt: a.logExcerpt,
       logUrl: a.logUrl,
+      steps: a.steps ?? null,
     });
   }
 

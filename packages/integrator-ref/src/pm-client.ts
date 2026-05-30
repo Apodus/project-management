@@ -20,6 +20,11 @@ import type {
   IntegratorHeartbeat,
   IntegratorHealthView,
   TrainStateView,
+  VerifyCacheRowView,
+  VerifyResultValue,
+  VerifyStep,
+  VerifyStepResult,
+  CacheMode,
 } from "@pm/shared";
 // Type-only import (avoids a runtime circular import with batch.ts).
 import type { BatchEvent } from "./batch.js";
@@ -56,6 +61,12 @@ export interface IntegratorSettings {
    * derived as this × 3 (§3.4).
    */
   heartbeat_interval_sec?: number;
+  /** Phase 7.5 §2.1: the verify_steps DAG (default [] = single-command). */
+  verify_steps?: VerifyStep[];
+  /** Phase 7.5 §4.2: the cache kill-switch (default false = no cache). */
+  cache_enabled?: boolean;
+  /** Phase 7.5 §4.3: the cache mode (default "off"). */
+  cache_mode?: CacheMode;
   linked_repos?: {
     name: string;
     path: string;
@@ -272,7 +283,7 @@ export class PmClient {
   completeAttempt(
     attemptId: string,
     body:
-      | { status: "passed"; treeSha: string }
+      | { status: "passed"; treeSha: string; steps?: VerifyStepResult[] }
       | {
           status: "failed";
           failureCategory: RejectCategory;
@@ -280,6 +291,7 @@ export class PmClient {
           failedFiles?: string[];
           logExcerpt?: string;
           logUrl?: string;
+          steps?: VerifyStepResult[];
         }
       | { status: "cancelled" },
   ): Promise<MergeAttemptView> {
@@ -564,6 +576,81 @@ export class PmClient {
       "POST",
       `/projects/${encodeURIComponent(projectId)}/merge-batches/events`,
       marker,
+    );
+  }
+
+  // ── Phase 7.5 verify cache (lookup / record / mismatch, §8.5) ──────
+  /**
+   * Probe the verify cache BEFORE running a step (§3.2/§8.5). A HIT returns the
+   * cached row view (the verdict + duration + log; the server bumps
+   * hit_count/last_hit_at), a MISS returns null. The `request` helper unwraps
+   * `{ data }` — `data: null` (the miss) surfaces here as `null`.
+   */
+  lookupVerifyCache(
+    projectId: string,
+    key: {
+      resource: string;
+      treeSha: string;
+      stepId: string;
+      stepConfigSha: string;
+    },
+  ): Promise<VerifyCacheRowView | null> {
+    return this.request<VerifyCacheRowView | null>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/verify-cache/lookup`,
+      key,
+    );
+  }
+
+  /**
+   * Record a verify verdict AFTER running a step (§8.5) — a write-or-update on
+   * the unique 5-tuple key that preserves hit_count/last_hit_at/created_at on a
+   * re-record (the shadow self-heal). Returns the recorded row view.
+   */
+  recordVerifyCache(
+    projectId: string,
+    entry: {
+      resource: string;
+      treeSha: string;
+      stepId: string;
+      stepConfigSha: string;
+      result: VerifyResultValue;
+      durationMs?: number | null;
+      logExcerpt?: string | null;
+      logUrl?: string | null;
+    },
+  ): Promise<VerifyCacheRowView> {
+    return this.request<VerifyCacheRowView>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/verify-cache/record`,
+      entry,
+    );
+  }
+
+  /**
+   * Relay a shadow-mode cache mismatch (§4.4/§9) — fire-and-forget, like
+   * postBatchEvent. PM re-emits verify.cache_mismatch on the SSE stream and
+   * persists nothing; the endpoint returns 202 (which `request` tolerates). A
+   * relay failure must NEVER break the verify pass (the verdict the member uses
+   * is the REAL run's, already in hand).
+   */
+  async emitVerifyCacheMismatch(
+    projectId: string,
+    mismatch: {
+      resource: string;
+      treeSha: string;
+      stepId: string;
+      stepConfigSha: string;
+      cachedResult: VerifyResultValue;
+      realResult: VerifyResultValue;
+      requestId?: string;
+      attemptId?: string;
+    },
+  ): Promise<void> {
+    await this.request<{ ok: boolean }>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/verify-cache/mismatch`,
+      mismatch,
     );
   }
 }

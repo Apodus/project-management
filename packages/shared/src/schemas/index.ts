@@ -20,3 +20,4 @@ export * from "./merge-incident.js";
 export * from "./audit.js";
 export * from "./train.js";
 export * from "./observability.js";
+export * from "./verify.js";

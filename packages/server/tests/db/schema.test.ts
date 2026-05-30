@@ -49,7 +49,7 @@ describe("Database schema", () => {
 
   // ── Table existence ──────────────────────────────────────────────
   describe("table existence", () => {
-    it("should create all 27 tables", () => {
+    it("should create all 28 tables", () => {
       const db = setupDb();
       const tableNames = db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' AND name NOT LIKE '%_fts%' ORDER BY name`,
@@ -85,10 +85,20 @@ describe("Database schema", () => {
         "templates",
         "train_state",
         "users",
+        "verify_cache",
         "workspaces",
       ].sort();
 
       expect(names).toEqual(expected);
+    });
+
+    it("migration 0016: merge_attempts has the additive steps column", () => {
+      const db = setupDb();
+      const cols = db.all<{ name: string }>(
+        sql`PRAGMA table_info(merge_attempts)`,
+      );
+      const names = (cols as any[]).map((c: any) => c.name);
+      expect(names).toContain("steps");
     });
   });
 
@@ -132,6 +142,8 @@ describe("Database schema", () => {
         "idx_audit_log_target",
         "idx_integrator_health_project_resource",
         "idx_train_state_project_resource",
+        "idx_verify_cache_key",
+        "idx_verify_cache_project_resource_created",
       ].sort();
 
       for (const idx of expected) {

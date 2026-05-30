@@ -16,7 +16,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
-import type { MergeAttemptView, MergeRequestView } from "@pm/shared";
+import type {
+  MergeAttemptView,
+  MergeRequestView,
+  VerifyStep,
+  CacheMode,
+} from "@pm/shared";
+import { stepConfigSha } from "../src/step-config-sha.js";
 import { createGitOps, type GitOps } from "../src/git-ops.js";
 import { createWorktreePool } from "../src/worktree-pool.js";
 import { createLogger } from "../src/logger.js";
@@ -76,6 +82,8 @@ interface FakeState {
   /** Recorded tags arg per call site (Step 9 tag-wiring assertions). */
   pickupTags?: Record<string, BatchTag>;
   startAttemptTags?: BatchTag[];
+  /** Phase 7.5: captured completeAttempt bodies (for steps[] threading asserts). */
+  completeBodies?: { status: string; steps?: unknown[] }[];
   /** Identity for the shared-lock test (which integrator this fake is). */
   integratorId?: string;
   /** Shared single-holder lock (two integrators contend on the same store). */
@@ -99,6 +107,25 @@ interface FakeState {
   groupMembers?: MergeRequestView[];
   /** Open incidents listMergeIncidents returns (drives recovery + the lock). */
   openIncidents?: { id: string }[];
+  // ── Phase 7.5 Step 6 verify-cache fakes ──
+  /**
+   * In-memory verify_cache keyed by the 5-tuple string. Seed rows here to plant
+   * a HIT; the fake's lookup/record/mismatch read+write it. Spied via cacheCalls.
+   */
+  verifyCache?: Map<string, VerifyCacheRowFake>;
+  cacheCalls?: { lookups: number; records: number; mismatches: number };
+}
+
+interface VerifyCacheRowFake {
+  resource: string;
+  treeSha: string;
+  stepId: string;
+  stepConfigSha: string;
+  result: "pass" | "fail";
+  durationMs?: number | null;
+  logExcerpt?: string | null;
+  logUrl?: string | null;
+  hitCount: number;
 }
 
 function nowIso(): string {
@@ -195,13 +222,15 @@ function makeFakeClient(state: FakeState): PmClient {
     },
     async completeAttempt(
       attemptId: string,
-      body: { status: string },
+      body: { status: string; steps?: unknown[] },
     ): Promise<MergeAttemptView> {
       const att = state.attempts.find((a) => a.id === attemptId);
       if (!att) throw new PmApiError(404, "NOT_FOUND", "no attempt");
       att.status = body.status as MergeAttemptView["status"];
       att.completedAt = nowIso();
       state.calls.push(`completeAttempt:${body.status}`);
+      if (state.completeBodies)
+        state.completeBodies.push({ status: body.status, steps: body.steps });
       return att;
     },
     async landMergeRequest(
@@ -284,6 +313,64 @@ function makeFakeClient(state: FakeState): PmClient {
     async markGroupIntegrating(): Promise<unknown> {
       state.calls.push("markGroupIntegrating");
       return {};
+    },
+    // ── Phase 7.5 Step 6 verify-cache ──
+    async lookupVerifyCache(
+      _projectId: string,
+      key: {
+        resource: string;
+        treeSha: string;
+        stepId: string;
+        stepConfigSha: string;
+      },
+    ): Promise<unknown> {
+      if (state.cacheCalls) state.cacheCalls.lookups += 1;
+      state.calls.push("lookupVerifyCache");
+      const k = [key.resource, key.treeSha, key.stepId, key.stepConfigSha].join(
+        " ",
+      );
+      const row = state.verifyCache?.get(k);
+      if (!row) return null;
+      row.hitCount += 1;
+      return {
+        id: k,
+        projectId: "proj-1",
+        resource: row.resource,
+        treeSha: row.treeSha,
+        stepId: row.stepId,
+        stepConfigSha: row.stepConfigSha,
+        result: row.result,
+        durationMs: row.durationMs ?? null,
+        logExcerpt: row.logExcerpt ?? null,
+        logUrl: row.logUrl ?? null,
+        createdAt: nowIso(),
+        lastHitAt: nowIso(),
+        hitCount: row.hitCount,
+        updatedAt: nowIso(),
+      };
+    },
+    async recordVerifyCache(
+      _projectId: string,
+      entry: VerifyCacheRowFake,
+    ): Promise<unknown> {
+      if (state.cacheCalls) state.cacheCalls.records += 1;
+      state.calls.push(`recordVerifyCache:${entry.result}`);
+      const k = [
+        entry.resource,
+        entry.treeSha,
+        entry.stepId,
+        entry.stepConfigSha,
+      ].join(" ");
+      const existing = state.verifyCache?.get(k);
+      state.verifyCache?.set(k, {
+        ...entry,
+        hitCount: existing?.hitCount ?? 0,
+      });
+      return { id: k, result: entry.result };
+    },
+    async emitVerifyCacheMismatch(): Promise<void> {
+      if (state.cacheCalls) state.cacheCalls.mismatches += 1;
+      state.calls.push("emitVerifyCacheMismatch");
     },
   };
   return fake as unknown as PmClient;
@@ -405,6 +492,9 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       heartbeatIntervalMs?: number;
       gitOpsFactory?: (p: string) => GitOps;
       onBatchEvent?: (event: BatchEvent) => void;
+      verifySteps?: VerifyStep[];
+      cacheEnabled?: boolean;
+      cacheMode?: CacheMode;
     },
   ): Promise<BatchDeps> {
     const pool = createWorktreePool({
@@ -439,6 +529,9 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       newBatchId: () => "batch-test",
       heartbeatIntervalMs: opts.heartbeatIntervalMs,
       onBatchEvent: opts.onBatchEvent,
+      verifySteps: opts.verifySteps,
+      cacheEnabled: opts.cacheEnabled,
+      cacheMode: opts.cacheMode,
     };
   }
 
@@ -450,6 +543,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       attempts: [],
       lockHeld: false,
       calls: [],
+      completeBodies: [],
     };
     const deps = await depsFor(state, { worktreeRoot: root });
     const outcome = await runBatchOnce(deps);
@@ -457,6 +551,15 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(outcome.kind).toBe("drained");
     expect(req.status).toBe("landed");
     expect(state.lockHeld).toBe(false);
+
+    // Phase 7.5 Step 7: the passing land's completeAttempt carries the single
+    // synthetic step's result (cache-off path still surfaces the per-step row;
+    // existing call-order assertion below stays green).
+    const passed = state.completeBodies!.find((b) => b.status === "passed");
+    expect(passed).toBeDefined();
+    expect((passed!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual([
+      "verify",
+    ]);
     // Byte-identical to runOnce for N=1: acquire IS before pickup in both.
     // Phase 7.4 (Step 12) interleaves per-pass `getTrainState` pause-checks into
     // the call log (a read-side gate, never a merge op); filter them out so the
@@ -1647,6 +1750,366 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(reqB.rejectCategory).toBeNull();
     expect(deps.pool.leasedCount).toBe(0);
   }, 30_000);
+
+  // ───────────────────────────────────────────────────────────────────
+  // Phase 7.5 Step 5: runVerifyTask now runs verify via runPipeline. These
+  // exercise the SEAM through the real runVerifyTask (the per-pass child
+  // controller, transient-retry-re-runs, backward-compat bare logPath, and a
+  // verify_steps DAG fail-fast).
+  // ───────────────────────────────────────────────────────────────────
+
+  it("7.5 transient-then-pass via pipeline → re-runs (exactly 2 runVerify calls), member LANDS", async () => {
+    const root = path.join(tmpRoot, "wt-75-retry");
+    const req = makeRequest({
+      id: "req-75r",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Call #1 → synthetic transient (fail-fast aborts the per-pass child). The
+    // 7.2 retry re-calls runVerifyTask → runPipeline mints a FRESH child from the
+    // still-un-fired member signal → call #2 runs and passes. A single SHARED
+    // member signal (passed to runVerify directly) would leave call #2 aborted →
+    // this would burn retries and NOT land. Proving 2 calls + landed proves the
+    // per-pass child + the retry RE-RUN.
+    let calls = 0;
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async runVerify(cmd, timeoutMs, runOpts) {
+          calls += 1;
+          if (calls === 1) return transientResult(runOpts.logPath);
+          return real.runVerify(cmd, timeoutMs, runOpts);
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: factory,
+    });
+    deps.maxVerifyRetries = 3;
+    deps.retryBackoffMs = [5, 5, 5];
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(calls).toBe(2); // EXACTLY 2 — the retry re-ran, did not burn the cap
+    expect(state.calls.filter((c) => c === "startAttempt").length).toBe(2);
+  }, 20_000);
+
+  it("7.5 backward-compat: verifySteps:[] → synthetic single step, bare today logPath + correct args, LANDS", async () => {
+    const root = path.join(tmpRoot, "wt-75-compat");
+    const req = makeRequest({
+      id: "req-75c",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Capture the EXACT runVerify args the synthetic single step passes.
+    const seen: {
+      cmd: string;
+      timeoutMs: number;
+      cwd: string;
+      logPath: string;
+      hasSignal: boolean;
+    }[] = [];
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async runVerify(cmd, timeoutMs, runOpts) {
+          seen.push({
+            cmd,
+            timeoutMs,
+            cwd: runOpts.cwd,
+            logPath: runOpts.logPath,
+            hasSignal: Boolean(runOpts.signal),
+          });
+          return real.runVerify(cmd, timeoutMs, runOpts);
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: factory,
+    });
+    deps.verifySteps = []; // EXPLICIT empty → synthetic fallback
+    deps.verifyTimeoutSec = 30;
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(seen.length).toBe(1);
+    expect(seen[0].cmd).toBe("echo ok"); // member.request.verifyCmd
+    expect(seen[0].timeoutMs).toBe(30 * 1000); // verifyTimeoutSec * 1000
+    // The bare today path: <wt.logsDir>/<attemptId>.log — NO stepId suffix.
+    expect(seen[0].logPath).toMatch(/[/\\][^/\\]+\.log$/);
+    expect(seen[0].logPath).not.toMatch(/-verify\.log$/);
+    expect(seen[0].cwd).toBeTruthy();
+    expect(seen[0].hasSignal).toBe(true); // the per-pass child signal is forwarded
+  }, 20_000);
+
+  it("7.5 verify_steps DAG fail-fast: a cheap failing step rejects; the expensive dependent NEVER runs", async () => {
+    const root = path.join(tmpRoot, "wt-75-dag");
+    const req = makeRequest({
+      id: "req-75d",
+      branch: "feature/clean",
+      verifyCmd: "echo unused", // overridden by the DAG steps
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      completeBodies: [],
+    };
+
+    // The DAG: cheap (exit 1) → expensive (depends_on cheap). cheap fails in wave
+    // 1 → fail-fast → expensive never runs. Real exit-1 → no retry → reject.
+    const cheapCmd = "exit 1";
+    const expensiveCmd = "ping -n 30 127.0.0.1 > nul"; // would be slow IF run
+    let expensiveRan = false;
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async runVerify(cmd, timeoutMs, runOpts) {
+          if (cmd === expensiveCmd) expensiveRan = true;
+          return real.runVerify(cmd, timeoutMs, runOpts);
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: factory,
+    });
+    deps.verifySteps = [
+      { id: "cheap", command: cheapCmd, depends_on: [], cache_key_inputs: [] },
+      {
+        id: "expensive",
+        command: expensiveCmd,
+        depends_on: ["cheap"],
+        cache_key_inputs: [],
+      },
+    ];
+    deps.maxVerifyRetries = 3;
+    deps.retryBackoffMs = [5, 5, 5];
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("rejected");
+    expect(expensiveRan).toBe(false); // fail-fast short-circuit
+    // Real failure → no transient retry → exactly one attempt.
+    expect(state.calls.filter((c) => c === "startAttempt").length).toBe(1);
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(true);
+    // Phase 7.5 Step 7: the failing completeAttempt carries the mapped steps[]
+    // (the cheap fail is present; the expensive step is absent — fail-fast).
+    const failed = state.completeBodies!.find((b) => b.status === "failed");
+    expect(failed).toBeDefined();
+    expect(Array.isArray(failed!.steps)).toBe(true);
+    const stepIds = (failed!.steps as { stepId: string }[]).map((s) => s.stepId);
+    expect(stepIds).toContain("cheap");
+    expect(stepIds).not.toContain("expensive");
+  }, 20_000);
+
+  // ── Phase 7.5 Step 6: cache-aware runVerifyTask (lifted: members land/reject
+  //    on the cache verdict). A gitOps wrapper stamps the derived TREE sha to a
+  //    KNOWN constant (CLARIFICATION A: the key is `<commit>^{tree}`, content-
+  //    addressed) so the cache key is deterministic + we can pre-seed a HIT. ──
+  const FIXED_TREE = "fixed-tree-sha-for-cache-tests";
+  const treeStampFactory =
+    (onVerify?: (cmd: string) => void) =>
+    (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async resolveRef(ref: string): Promise<string> {
+          // Stamp the cache-key tree-sha derivation to a constant; pass through
+          // every other resolveRef (HEAD, origin/main, etc.) untouched.
+          if (ref.endsWith("^{tree}")) return FIXED_TREE;
+          return real.resolveRef(ref);
+        },
+        async runVerify(cmd, timeoutMs, runOpts) {
+          onVerify?.(cmd);
+          return real.runVerify(cmd, timeoutMs, runOpts);
+        },
+      };
+    };
+
+  it("7.6 SHADOW: member REJECTS despite a cached PASS (the false-pass detector, lifted)", async () => {
+    const root = path.join(tmpRoot, "wt-76-shadow");
+    const failCmd = "exit 1"; // the REAL run fails
+    const req = makeRequest({
+      id: "req-76s",
+      branch: "feature/clean",
+      verifyCmd: failCmd,
+    });
+    // Pre-seed a cached PASS under the EXACT key the integrator will probe.
+    const scSha = stepConfigSha({ command: failCmd, cache_key_inputs: [] });
+    const verifyCache = new Map<string, VerifyCacheRowFake>([
+      [
+        ["main", FIXED_TREE, "verify", scSha].join(" "),
+        {
+          resource: "main",
+          treeSha: FIXED_TREE,
+          stepId: "verify",
+          stepConfigSha: scSha,
+          result: "pass",
+          hitCount: 0,
+        },
+      ],
+    ]);
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      verifyCache,
+      cacheCalls: { lookups: 0, records: 0, mismatches: 0 },
+    };
+    let ran = false;
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: treeStampFactory(() => {
+        ran = true;
+      }),
+      cacheEnabled: true,
+      cacheMode: "shadow",
+    });
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    // Shadow ALWAYS runs; the REAL verdict (fail) wins over the cached pass.
+    expect(ran).toBe(true);
+    expect(req.status).toBe("rejected");
+    // The mismatch fired (cached pass vs real fail).
+    expect(state.cacheCalls!.mismatches).toBe(1);
+    // The real verdict was recorded (self-heal): fail.
+    expect(state.calls.some((c) => c === "recordVerifyCache:fail")).toBe(true);
+  }, 20_000);
+
+  it("7.7 ON-mode HIT of a cached FAIL → reject, NO real run, NO transient retry", async () => {
+    const root = path.join(tmpRoot, "wt-77-hitfail");
+    const cmd = "echo ok"; // would PASS if it ran — but the HIT says fail.
+    const req = makeRequest({
+      id: "req-77h",
+      branch: "feature/clean",
+      verifyCmd: cmd,
+    });
+    const scSha = stepConfigSha({ command: cmd, cache_key_inputs: [] });
+    const verifyCache = new Map<string, VerifyCacheRowFake>([
+      [
+        ["main", FIXED_TREE, "verify", scSha].join(" "),
+        {
+          resource: "main",
+          treeSha: FIXED_TREE,
+          stepId: "verify",
+          stepConfigSha: scSha,
+          result: "fail",
+          logExcerpt: "cached failure",
+          hitCount: 0,
+        },
+      ],
+    ]);
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      verifyCache,
+      cacheCalls: { lookups: 0, records: 0, mismatches: 0 },
+    };
+    let ran = false;
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: treeStampFactory(() => {
+        ran = true;
+      }),
+      cacheEnabled: true,
+      cacheMode: "on",
+    });
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    // The cached FAIL HIT skipped the real run entirely.
+    expect(ran).toBe(false);
+    expect(req.status).toBe("rejected");
+    // Synthesized cached fail → classify "real" → straight to reject, NO retry:
+    // exactly ONE attempt, no transient completeAttempt:failed loop.
+    expect(state.calls.filter((c) => c === "startAttempt").length).toBe(1);
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(true);
+    // NO record on a HIT.
+    expect(state.cacheCalls!.records).toBe(0);
+  }, 20_000);
+
+  it("7.8 ON-mode HIT of a cached PASS → LANDS without running verify", async () => {
+    const root = path.join(tmpRoot, "wt-78-hitpass");
+    const cmd = "exit 1"; // would FAIL if it ran — but the HIT says pass.
+    const req = makeRequest({
+      id: "req-78h",
+      branch: "feature/clean",
+      verifyCmd: cmd,
+    });
+    const scSha = stepConfigSha({ command: cmd, cache_key_inputs: [] });
+    const verifyCache = new Map<string, VerifyCacheRowFake>([
+      [
+        ["main", FIXED_TREE, "verify", scSha].join(" "),
+        {
+          resource: "main",
+          treeSha: FIXED_TREE,
+          stepId: "verify",
+          stepConfigSha: scSha,
+          result: "pass",
+          hitCount: 0,
+        },
+      ],
+    ]);
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      verifyCache,
+      cacheCalls: { lookups: 0, records: 0, mismatches: 0 },
+    };
+    let ran = false;
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: treeStampFactory(() => {
+        ran = true;
+      }),
+      cacheEnabled: true,
+      cacheMode: "on",
+    });
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(ran).toBe(false); // HIT skipped the (would-fail) run.
+    expect(req.status).toBe("landed"); // the cached pass landed it.
+    expect(state.cacheCalls!.records).toBe(0);
+  }, 20_000);
 
   // ───────────────────────────────────────────────────────────────────
   // Step 9: lane-ownership rewire (index.ts → runBatchLoop). These prove
