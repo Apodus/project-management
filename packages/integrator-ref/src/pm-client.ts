@@ -13,6 +13,8 @@ import type {
   MergeAttemptView,
   MergeRequestStatus,
 } from "@pm/shared";
+// Type-only import (avoids a runtime circular import with batch.ts).
+import type { BatchEvent } from "./batch.js";
 
 export class PmApiError extends Error {
   constructor(
@@ -39,6 +41,7 @@ export interface IntegratorSettings {
   git_remote?: string;
   git_main_branch?: string;
   worktree_name?: string;
+  parallelism?: number;
 }
 
 export interface ProjectDetail {
@@ -139,10 +142,14 @@ export class PmClient {
     );
   }
 
-  pickupMergeRequest(requestId: string): Promise<MergeRequestView> {
+  pickupMergeRequest(
+    requestId: string,
+    tags?: { batchId?: string; speculativePosition?: number },
+  ): Promise<MergeRequestView> {
     return this.request<MergeRequestView>(
       "POST",
       `/merge-requests/${encodeURIComponent(requestId)}/pickup`,
+      tags ?? {},
     );
   }
 
@@ -180,11 +187,15 @@ export class PmClient {
   }
 
   // ── Attempts ───────────────────────────────────────────────────────
-  startAttempt(requestId: string, baseSha: string): Promise<MergeAttemptView> {
+  startAttempt(
+    requestId: string,
+    baseSha: string,
+    tags?: { batchId?: string; speculativePosition?: number },
+  ): Promise<MergeAttemptView> {
     return this.request<MergeAttemptView>(
       "POST",
       `/merge-requests/${encodeURIComponent(requestId)}/attempts`,
-      { baseSha },
+      { baseSha, ...(tags ?? {}) },
     );
   }
 
@@ -256,6 +267,20 @@ export class PmClient {
       "POST",
       `/projects/${encodeURIComponent(projectId)}/merge-locks/${encodeURIComponent(resource)}/release`,
       opts ?? {},
+    );
+  }
+
+  // ── Phase 7.2 batch-marker relay (design §13.2) ────────────────────
+  /**
+   * POST a batch-marker event to the thin relay endpoint. PM re-emits it on
+   * the merge.batch.* SSE stream and persists nothing. The endpoint returns a
+   * 202 (which the `request` helper tolerates as a non-JSON / data 2xx).
+   */
+  async postBatchEvent(projectId: string, marker: BatchEvent): Promise<void> {
+    await this.request<{ ok: boolean }>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/merge-batches/events`,
+      marker,
     );
   }
 }

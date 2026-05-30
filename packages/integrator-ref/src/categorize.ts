@@ -77,3 +77,29 @@ export function categorize(input: CategorizeInput): CategorizeResult {
 
   return { category: "other", reason: `verify failed with exit code ${exitCode}`, failedFiles: [] };
 }
+
+// ─── Verify retry disposition (phase 7.2 Step 8, design §10) ──────────────────
+
+export type VerifyDisposition = "transient" | "real";
+
+/**
+ * Classify a verify FAILURE as transient (retry the same member + same base) or
+ * real (reject + suffix-invalidate). Layered on top of `categorize` (which stays
+ * the reject-payload categorizer and is unchanged). NOT called on a clean exit 0.
+ *
+ * Ordering is load-bearing — `timedOut` MUST come first: a verify that hit OUR
+ * timeout also carries `signal: SIGTERM` + `exitCode: null`, but it is REAL (the
+ * verify was too slow), never transient.
+ */
+export function classifyVerifyFailure(r: {
+  exitCode: number | null;
+  signal: string | null;
+  timedOut: boolean;
+  spawnError?: string;
+}): VerifyDisposition {
+  if (r.timedOut) return "real"; // our own verify timeout = too slow = real
+  if (r.spawnError) return "transient"; // child never ran
+  if (r.exitCode === null && r.signal) return "transient"; // external signal-kill (not our timeout: timedOut handled above; not our abort: bailed before classification)
+  if (r.exitCode !== 0) return "real"; // verify ran and failed on its own
+  return "real"; // defensive (not called on exit 0)
+}

@@ -126,6 +126,19 @@ Main is never broken — verify runs against a tree SHA before main fast-forward
 - **Reference integrator**: `packages/integrator-ref` (`@pm/integrator-ref`, bin `pm-integrator`).
   Deploy one process per `(project, resource)` lane.
 
+**Speculative batching (Phase 7.2).** The integrator can run **N integrations in flight at once**,
+configured by `project.settings.integrator.parallelism` (integer ≥ 1, **default 1** = exact 7.1
+serial behavior — no env var). With `parallelism > 1` each member rebases speculatively on
+`main + predecessors` (member K assumes 0..K-1 land first), all verify concurrently in a pool of N
+isolated worktree clones, and lands serialize in batch order. A member failure invalidates exactly
+its dependent suffix (predecessors still land; the suffix re-verifies against the corrected base);
+transient verify failures retry with backoff. The lane lock is now acquired **once per batch**
+(lane ownership), so a second integrator on the same lane idles. Batch observability is delivered
+via SSE: `merge.batch.started/member_landed/member_invalidated/completed` markers (relayed through
+`POST /api/v1/projects/{projectId}/merge-batches/events`) plus `batch_id`/`speculative_position` tags
+on the existing `merge.request.*` / `merge.attempt.*` frames. No PM batch tables — the integrator owns
+batch state in memory. Full spec: `docs/design/phase-7.2-design.md`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:

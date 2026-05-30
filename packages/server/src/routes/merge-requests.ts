@@ -142,8 +142,24 @@ const rejectBody = z
   })
   .openapi("MergeRequestReject");
 
+// Optional batch tags (Phase 7.2 §13.1). When the integrator runs speculative
+// batches it tags pickup/startAttempt with the batchId + speculativePosition so
+// the resulting merge.request.integrating / merge.attempt.started SSE frames
+// carry batch_id / speculative_position. Omitted by 7.1 callers → frames stay
+// byte-identical.
+const pickupBody = z
+  .object({
+    batchId: z.string().optional(),
+    speculativePosition: z.number().int().optional(),
+  })
+  .openapi("MergeRequestPickup");
+
 const startAttemptBody = z
-  .object({ baseSha: z.string().min(1) })
+  .object({
+    baseSha: z.string().min(1),
+    batchId: z.string().optional(),
+    speculativePosition: z.number().int().optional(),
+  })
   .openapi("MergeAttemptStart");
 
 const completeAttemptBody = z
@@ -235,8 +251,11 @@ const pickupRoute = createRoute({
   tags: ["Merge Requests"],
   summary: "Integrator picks up a queued request",
   description:
-    "queued → integrating. Sets pickedUpAt and emits merge.request.integrating. Integrator (ai_agent) only. 409 from any non-queued state (no idempotent case — re-pickup throws).",
-  request: { params: z.object({ id: requestIdParam }) },
+    "queued → integrating. Sets pickedUpAt and emits merge.request.integrating. Integrator (ai_agent) only. 409 from any non-queued state (no idempotent case — re-pickup throws). Optional batchId/speculativePosition tag the emitted SSE frame.",
+  request: {
+    params: z.object({ id: requestIdParam }),
+    body: { content: { "application/json": { schema: pickupBody } }, required: false },
+  },
   responses: {
     200: { description: "Picked up", content: { "application/json": { schema: mergeRequestDataEnvelope } } },
     401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
@@ -433,7 +452,16 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
   router.openapi(pickupRoute, (c) => {
     const { id } = c.req.valid("param");
     const user = requireUser(c.get("currentUser") as AuthUser | null);
-    const view = requestSvc.transitionToIntegrating(id, actorOf(user));
+    let body: { batchId?: string; speculativePosition?: number } = {};
+    try {
+      body = c.req.valid("json") ?? {};
+    } catch {
+      // Body optional; tolerate empty (7.1 callers send none).
+    }
+    const view = requestSvc.transitionToIntegrating(id, actorOf(user), {
+      batchId: body.batchId,
+      speculativePosition: body.speculativePosition,
+    });
     return c.json({ data: view }, 200);
   });
 
@@ -462,7 +490,10 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
     const { id } = c.req.valid("param");
     const user = requireUser(c.get("currentUser") as AuthUser | null);
     const body = c.req.valid("json");
-    const view = attemptSvc.startAttempt(id, body, actorOf(user));
+    const view = attemptSvc.startAttempt(id, { baseSha: body.baseSha }, actorOf(user), {
+      batchId: body.batchId,
+      speculativePosition: body.speculativePosition,
+    });
     return c.json({ data: view }, 201);
   });
 

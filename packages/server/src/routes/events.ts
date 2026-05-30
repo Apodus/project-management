@@ -71,6 +71,12 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
 
         // Extract entity title based on entity type
         let entity_title: string | undefined;
+        // Phase 7.2: batch-tag fields, read additively off payload.entity so
+        // they ride merge.batch.* markers AND batch-tagged merge.request.* /
+        // merge.attempt.* frames. Absent → omitted (like entity_title), so all
+        // 7.1 frames stay byte-identical.
+        let batchId: string | undefined;
+        let speculativePosition: number | undefined;
         if (payload.entity && typeof payload.entity === "object") {
           const entity = payload.entity as Record<string, unknown>;
           switch (payload.entityType) {
@@ -84,6 +90,12 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
               break;
             // comments have no title — omit
           }
+          if (typeof entity.batchId === "string") {
+            batchId = entity.batchId;
+          }
+          if (typeof entity.speculativePosition === "number") {
+            speculativePosition = entity.speculativePosition;
+          }
         }
 
         const ssePayload = {
@@ -94,6 +106,10 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           actor,
           timestamp: payload.timestamp,
           ...(entity_title ? { entity_title } : {}),
+          ...(batchId ? { batch_id: batchId } : {}),
+          ...(speculativePosition !== undefined
+            ? { speculative_position: speculativePosition }
+            : {}),
         };
 
         stream.writeSSE({

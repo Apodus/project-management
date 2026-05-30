@@ -26,6 +26,7 @@ import { createAutomationRoutes } from "./routes/automation.js";
 import { createTemplateRoutes } from "./routes/templates.js";
 import { createMergeLockRoutes } from "./routes/merge-locks.js";
 import { createMergeRequestRoutes } from "./routes/merge-requests.js";
+import { createMergeBatchRoutes } from "./routes/merge-batches.js";
 import { initializeEventListeners } from "./events/index.js";
 import type { AppVariables } from "./types.js";
 
@@ -102,6 +103,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
   app.route("/", createTemplateRoutes());
   app.route("/", createMergeLockRoutes());
   app.route("/", createMergeRequestRoutes());
+  app.route("/", createMergeBatchRoutes());
 
   // ── Health endpoint ───────────────────────────────────────────────
   const healthRoute = createRoute({

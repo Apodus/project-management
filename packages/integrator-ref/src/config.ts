@@ -20,6 +20,7 @@ export interface IntegratorConfig {
   gitRemote: string;
   gitMainBranch: string;
   gitRepoUrl: string;
+  parallelism: number;
 }
 
 export interface CliArgs {
@@ -105,5 +106,6 @@ export async function loadConfig(
     gitRemote: ic.git_remote ?? "origin",
     gitMainBranch: ic.git_main_branch ?? "main",
     gitRepoUrl,
+    parallelism: ic.parallelism ?? 1,
   };
 }

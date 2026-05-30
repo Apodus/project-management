@@ -29,6 +29,7 @@ export const integratorSettingsSchema = z
     git_remote: z.string().min(1).default("origin"),
     git_main_branch: z.string().min(1).default("main"),
     worktree_name: z.string().min(1).optional(),
+    parallelism: z.number().int().min(1).default(1),
   })
   .refine(
     (v) => !v.enabled || (Boolean(v.verify_command) && Boolean(v.worktree_root)),

@@ -1,0 +1,1707 @@
+/**
+ * runBatchOnce integration tests (phase 7.2 Step 4).
+ *
+ * Reuses the loop.test.ts harness wholesale: a temp bare repo + author clone
+ * seeding `feature/clean` / `feature/badtest`, a hand-built FakePmClient that
+ * records its call sequence, and a REAL worktree pool + git-ops against the
+ * temp repo. The single-member batch scheduler is exercised against real git
+ * behavior (land / reject / land-time drift / backpressure / lock + heartbeat).
+ *
+ * Step 4 is single-member-at-a-time: this file deliberately does NOT test
+ * multi-member concurrent batches (Step 5 behavior).
+ */
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { simpleGit, type SimpleGit } from "simple-git";
+import type { MergeAttemptView, MergeRequestView } from "@pm/shared";
+import { createGitOps, type GitOps } from "../src/git-ops.js";
+import { createWorktreePool } from "../src/worktree-pool.js";
+import { createLogger } from "../src/logger.js";
+import { runBatchOnce, type BatchDeps, type BatchEvent } from "../src/batch.js";
+import { reclaimStrandedRequests } from "../src/recovery.js";
+import { PmApiError, type PmClient } from "../src/pm-client.js";
+
+function hasGit(): boolean {
+  try {
+    return spawnSync("git", ["--version"], { encoding: "utf8" }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+const GIT_AVAILABLE = hasGit();
+
+async function configIdentity(g: SimpleGit): Promise<void> {
+  await g.addConfig("user.email", "int@test.local");
+  await g.addConfig("user.name", "Integrator Test");
+  await g.addConfig("commit.gpgsign", "false");
+}
+
+// ── A minimal in-memory fake of the PmClient surface the batch touches. ──
+
+interface BatchTag {
+  batchId?: string;
+  speculativePosition?: number;
+}
+
+/**
+ * A shared single-holder lock store for the two-integrator double-land test.
+ * `acquireLock` grants only if unheld (and records the holder); a second caller
+ * gets the not-granted/queued shape the real lock service returns. When a
+ * FakeState carries one, all of its lock ops go through this shared store rather
+ * than the per-state `lockHeld` flag — so two integrators sharing it contend.
+ */
+interface SharedLock {
+  holder: string | null;
+}
+
+interface FakeState {
+  requests: MergeRequestView[];
+  attempts: MergeAttemptView[];
+  lockHeld: boolean;
+  calls: string[];
+  pickupThrows409?: boolean;
+  /** Recorded tags arg per call site (Step 9 tag-wiring assertions). */
+  pickupTags?: Record<string, BatchTag>;
+  startAttemptTags?: BatchTag[];
+  /** Identity for the shared-lock test (which integrator this fake is). */
+  integratorId?: string;
+  /** Shared single-holder lock (two integrators contend on the same store). */
+  sharedLock?: SharedLock;
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function makeFakeClient(state: FakeState): PmClient {
+  let attemptSeq = 0;
+  const find = (id: string): MergeRequestView | undefined =>
+    state.requests.find((r) => r.id === id);
+
+  const fake = {
+    async listMergeRequests(
+      _projectId: string,
+      filters?: { resource?: string; status?: string },
+    ): Promise<MergeRequestView[]> {
+      return state.requests.filter(
+        (r) =>
+          (!filters?.resource || r.resource === filters.resource) &&
+          (!filters?.status || r.status === filters.status),
+      );
+    },
+    async acquireLock(): Promise<{ ok: boolean; status: string }> {
+      state.calls.push("acquireLock");
+      // Shared single-holder lock (two-integrator test): grant only if unheld;
+      // otherwise return the not-granted/`queued` shape the real lock service
+      // uses so the loser short-circuits to `lock_unavailable`.
+      if (state.sharedLock) {
+        const me = state.integratorId ?? "anon";
+        if (state.sharedLock.holder !== null && state.sharedLock.holder !== me) {
+          return { ok: false, status: "queued" };
+        }
+        state.sharedLock.holder = me;
+        state.lockHeld = true;
+        return { ok: true, status: "held" };
+      }
+      state.lockHeld = true;
+      return { ok: true, status: "held" };
+    },
+    async heartbeatLock(): Promise<{ ok: boolean; status: string }> {
+      state.calls.push("heartbeatLock");
+      return { ok: true, status: "refreshed" };
+    },
+    async releaseLock(): Promise<{ ok: boolean; status: string }> {
+      state.calls.push("releaseLock");
+      if (state.sharedLock) {
+        const me = state.integratorId ?? "anon";
+        if (state.sharedLock.holder === me) state.sharedLock.holder = null;
+      }
+      state.lockHeld = false;
+      return { ok: true, status: "released" };
+    },
+    async pickupMergeRequest(
+      id: string,
+      tags?: BatchTag,
+    ): Promise<MergeRequestView> {
+      const r = find(id);
+      if (!r) throw new PmApiError(404, "NOT_FOUND", "not found");
+      if (state.pickupThrows409 || r.status !== "queued")
+        throw new PmApiError(409, "INVALID_TRANSITION", "not queued");
+      r.status = "integrating";
+      r.pickedUpAt = nowIso();
+      state.calls.push("pickup");
+      if (state.pickupTags && tags) state.pickupTags[id] = tags;
+      return r;
+    },
+    async startAttempt(
+      id: string,
+      baseSha: string,
+      tags?: BatchTag,
+    ): Promise<MergeAttemptView> {
+      attemptSeq += 1;
+      if (state.startAttemptTags) state.startAttemptTags.push(tags ?? {});
+      const att: MergeAttemptView = {
+        id: `att-${attemptSeq}`,
+        requestId: id,
+        attemptNumber: attemptSeq,
+        baseSha,
+        treeSha: null,
+        status: "running",
+        startedAt: nowIso(),
+        completedAt: null,
+        verifyDurationMs: null,
+        failureCategory: null,
+        failureReason: null,
+        failedFiles: null,
+        logExcerpt: null,
+        logUrl: null,
+        createdAt: nowIso(),
+      };
+      state.attempts.push(att);
+      state.calls.push("startAttempt");
+      return att;
+    },
+    async completeAttempt(
+      attemptId: string,
+      body: { status: string },
+    ): Promise<MergeAttemptView> {
+      const att = state.attempts.find((a) => a.id === attemptId);
+      if (!att) throw new PmApiError(404, "NOT_FOUND", "no attempt");
+      att.status = body.status as MergeAttemptView["status"];
+      att.completedAt = nowIso();
+      state.calls.push(`completeAttempt:${body.status}`);
+      return att;
+    },
+    async landMergeRequest(
+      id: string,
+      landedSha: string,
+    ): Promise<MergeRequestView> {
+      const r = find(id);
+      if (!r) throw new PmApiError(404, "NOT_FOUND", "not found");
+      if (r.status !== "integrating")
+        throw new PmApiError(409, "INVALID_TRANSITION", "not integrating");
+      r.status = "landed";
+      r.landedSha = landedSha;
+      r.resolvedAt = nowIso();
+      state.calls.push("land");
+      return r;
+    },
+    async rejectMergeRequest(
+      id: string,
+      payload: { category: string; reason: string },
+    ): Promise<MergeRequestView> {
+      const r = find(id);
+      if (!r) throw new PmApiError(404, "NOT_FOUND", "not found");
+      if (r.status !== "integrating")
+        throw new PmApiError(409, "INVALID_TRANSITION", "not integrating");
+      r.status = "rejected";
+      r.rejectCategory = payload.category as MergeRequestView["rejectCategory"];
+      r.rejectReason = payload.reason;
+      r.resolvedAt = nowIso();
+      state.calls.push(`reject:${payload.category}`);
+      return r;
+    },
+    async resetToQueued(id: string, _reason: string): Promise<MergeRequestView> {
+      const r = find(id);
+      if (!r) throw new PmApiError(404, "NOT_FOUND", "not found");
+      if (r.status !== "integrating")
+        throw new PmApiError(409, "INVALID_TRANSITION", "not integrating");
+      r.status = "queued";
+      r.pickedUpAt = null;
+      state.calls.push("resetToQueued");
+      return r;
+    },
+  };
+  return fake as unknown as PmClient;
+}
+
+function makeRequest(over: Partial<MergeRequestView>): MergeRequestView {
+  return {
+    id: "req-1",
+    projectId: "proj-1",
+    resource: "main",
+    submittedBy: "worker-1",
+    taskId: null,
+    branch: null,
+    commitSha: null,
+    verifyCmd: null,
+    worktreePath: null,
+    status: "queued",
+    enqueuedAt: nowIso(),
+    pickedUpAt: null,
+    resolvedAt: null,
+    landedSha: null,
+    rejectCategory: null,
+    rejectReason: null,
+    failedFiles: null,
+    logExcerpt: null,
+    logUrl: null,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    ...over,
+  };
+}
+
+describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
+  let tmpRoot: string;
+  let bareRepo: string;
+  let authorClone: string;
+  const logger = createLogger("error");
+
+  beforeAll(async () => {
+    tmpRoot = mkdtempSync(path.join(tmpdir(), "pm-int-batch-"));
+    bareRepo = path.join(tmpRoot, "bare.git");
+    authorClone = path.join(tmpRoot, "author");
+
+    await simpleGit().init(["--bare", "--initial-branch=main", bareRepo]);
+    await simpleGit().clone(bareRepo, authorClone);
+    const author = simpleGit(authorClone);
+    await configIdentity(author);
+    writeFileSync(path.join(authorClone, "base.txt"), "base\n");
+    await author.add(["base.txt"]);
+    await author.commit("initial");
+    await author.branch(["-M", "main"]);
+    await author.push(["-u", "origin", "main"]);
+
+    // Clean feature branch (adds a new file).
+    await author.checkoutLocalBranch("feature/clean");
+    writeFileSync(path.join(authorClone, "feature.txt"), "feat\n");
+    await author.add(["feature.txt"]);
+    await author.commit("add feature");
+    await author.push(["-u", "origin", "feature/clean"]);
+
+    // A second clean feature branch (used for the two-request backpressure test).
+    await author.checkout("main");
+    await author.checkoutLocalBranch("feature/clean2");
+    writeFileSync(path.join(authorClone, "feature2.txt"), "feat2\n");
+    await author.add(["feature2.txt"]);
+    await author.commit("add feature2");
+    await author.push(["-u", "origin", "feature/clean2"]);
+
+    // A third clean feature branch (disjoint file) — for 3-member chain tests.
+    await author.checkout("main");
+    await author.checkoutLocalBranch("feature/clean3");
+    writeFileSync(path.join(authorClone, "feature3.txt"), "feat3\n");
+    await author.add(["feature3.txt"]);
+    await author.commit("add feature3");
+    await author.push(["-u", "origin", "feature/clean3"]);
+
+    // A branch that touches the SAME file as feature/clean (feature.txt) with
+    // different content. Rebasing this onto feature/clean's rebased tree
+    // conflicts on feature.txt — used for the mid-chain conflict + the
+    // conflict-then-refill predecessor-correctness tests.
+    await author.checkout("main");
+    await author.checkoutLocalBranch("feature/collidefeature");
+    writeFileSync(path.join(authorClone, "feature.txt"), "collide\n");
+    await author.add(["feature.txt"]);
+    await author.commit("collide on feature.txt");
+    await author.push(["-u", "origin", "feature/collidefeature"]);
+
+    // Feature branch whose verify will fail.
+    await author.checkout("main");
+    await author.checkoutLocalBranch("feature/badtest");
+    writeFileSync(path.join(authorClone, "marker.txt"), "bad\n");
+    await author.add(["marker.txt"]);
+    await author.commit("add marker");
+    await author.push(["-u", "origin", "feature/badtest"]);
+    await author.checkout("main");
+  });
+
+  afterAll(() => {
+    try {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  /**
+   * Build BatchDeps with a REAL size-N worktree pool and a gitOps factory. The
+   * pool clones the bare repo into each slot on ensureAll(); we then configure
+   * identity + track feature branches in every slot so rebaseOnto can resolve
+   * them.
+   */
+  async function depsFor(
+    state: FakeState,
+    opts: {
+      worktreeRoot: string;
+      parallelism?: number;
+      verifyTimeoutSec?: number;
+      defaultVerifyCommand?: string;
+      heartbeatIntervalMs?: number;
+      gitOpsFactory?: (p: string) => GitOps;
+      onBatchEvent?: (event: BatchEvent) => void;
+    },
+  ): Promise<BatchDeps> {
+    const pool = createWorktreePool({
+      worktreeRoot: opts.worktreeRoot,
+      worktreeName: "wt",
+      gitRepoUrl: bareRepo,
+      gitRemote: "origin",
+      gitMainBranch: "main",
+      parallelism: opts.parallelism ?? 1,
+    });
+    await pool.ensureAll();
+    // Configure identity + local feature branches in each freshly-cloned slot.
+    for (let i = 0; i < pool.size; i += 1) {
+      const wt = pool.acquire();
+      if (!wt) break;
+      const g = simpleGit(wt.path);
+      await configIdentity(g);
+      await g.fetch("origin");
+      pool.release(wt);
+    }
+    return {
+      pmClient: makeFakeClient(state),
+      pool,
+      gitOps: opts.gitOpsFactory ?? ((p: string) => createGitOps(simpleGit(p))),
+      logger,
+      projectId: "proj-1",
+      resource: "main",
+      defaultVerifyCommand: opts.defaultVerifyCommand ?? "echo verify-ok",
+      verifyTimeoutSec: opts.verifyTimeoutSec ?? 30,
+      gitRemote: "origin",
+      gitMainBranch: "main",
+      newBatchId: () => "batch-test",
+      heartbeatIntervalMs: opts.heartbeatIntervalMs,
+      onBatchEvent: opts.onBatchEvent,
+    };
+  }
+
+  it("single-member land == runOnce sequence", async () => {
+    const root = path.join(tmpRoot, "wt-land");
+    const req = makeRequest({ branch: "feature/clean", verifyCmd: "echo ok" });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(state.lockHeld).toBe(false);
+    // Byte-identical to runOnce for N=1: acquire IS before pickup in both.
+    expect(state.calls).toEqual([
+      "acquireLock",
+      "pickup",
+      "startAttempt",
+      "completeAttempt:passed",
+      "land",
+      "releaseLock",
+    ]);
+  });
+
+  it("verify-fail → reject + categorize + slot+lock released", async () => {
+    const root = path.join(tmpRoot, "wt-reject");
+    const req = makeRequest({
+      id: "req-bad",
+      branch: "feature/badtest",
+      verifyCmd: "exit 1",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("rejected");
+    expect(state.calls).toContain("completeAttempt:failed");
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(true);
+    expect(state.calls).toContain("releaseLock");
+    expect(state.lockHeld).toBe(false);
+    expect(deps.pool.leasedCount).toBe(0);
+  });
+
+  it("land-time drift → resetToQueued → re-pickup → re-verify → land within one drain", async () => {
+    const root = path.join(tmpRoot, "wt-drift");
+    const req = makeRequest({
+      id: "req-drift",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // EXPLICIT race injection (git-ops.test.ts technique): wrap the gitOps
+    // factory's push so the FIRST push performs a racing author commit to the
+    // bare remote *before* delegating — guaranteeing that first push observes a
+    // non-fast-forward. The member then re-queues, re-rebases onto the new
+    // main, re-verifies, and the SECOND push fast-forwards cleanly.
+    let pushCount = 0;
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async push(remote, branch) {
+          pushCount += 1;
+          if (pushCount === 1) {
+            const author = simpleGit(authorClone);
+            await author.checkout("main");
+            await author.pull("origin", "main");
+            writeFileSync(path.join(authorClone, "race.txt"), "race\n");
+            await author.add(["race.txt"]);
+            await author.commit("author race commit");
+            await author.push("origin", "main");
+          }
+          return real.push(remote, branch);
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: factory,
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    // resetToQueued must precede a SECOND pickup + startAttempt for the re-admit.
+    const reset = state.calls.indexOf("resetToQueued");
+    expect(reset).toBeGreaterThanOrEqual(0);
+    const pickupsAfter = state.calls
+      .slice(reset + 1)
+      .filter((c) => c === "pickup").length;
+    const startsAfter = state.calls
+      .slice(reset + 1)
+      .filter((c) => c === "startAttempt").length;
+    expect(pickupsAfter).toBeGreaterThanOrEqual(1);
+    expect(startsAfter).toBeGreaterThanOrEqual(1);
+    expect(state.lockHeld).toBe(false);
+  });
+
+  it("lock acquired/released exactly once + heartbeat fires", async () => {
+    const root = path.join(tmpRoot, "wt-lock");
+    const req = makeRequest({
+      id: "req-hb",
+      branch: "feature/clean",
+      // A short sleep so the 20ms heartbeat fires at least once during verify.
+      verifyCmd:
+        process.platform === "win32"
+          ? "ping -n 2 127.0.0.1 > nul"
+          : "sleep 0.3",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      heartbeatIntervalMs: 20,
+    });
+    const hbSpy = vi.spyOn(deps.pmClient, "heartbeatLock");
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(state.calls.filter((c) => c === "acquireLock").length).toBe(1);
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+    expect(hbSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("backpressure size-1: second request not admitted until first drains", async () => {
+    const root = path.join(tmpRoot, "wt-bp");
+    const req1 = makeRequest({
+      id: "req-a",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+      enqueuedAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    const req2 = makeRequest({
+      id: "req-b",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok",
+      enqueuedAt: nowIso(),
+    });
+    const state: FakeState = {
+      requests: [req1, req2],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, parallelism: 1 });
+
+    // Track peak concurrent leases — must never exceed 1 with a size-1 pool.
+    let peakLeased = 0;
+    const origAcquire = deps.pool.acquire.bind(deps.pool);
+    deps.pool.acquire = () => {
+      const wt = origAcquire();
+      if (deps.pool.leasedCount > peakLeased) peakLeased = deps.pool.leasedCount;
+      return wt;
+    };
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req1.status).toBe("landed");
+    expect(req2.status).toBe("landed");
+    expect(peakLeased).toBe(1);
+    // req-a (older enqueuedAt) is picked up first; req-b only after req-a lands.
+    // Both pickups happen, but never concurrently (peakLeased === 1 proves it).
+    expect(state.calls.filter((c) => c === "pickup").length).toBe(2);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Step 5: speculative rebase + concurrent verify.
+  // ───────────────────────────────────────────────────────────────────
+
+  // win32-safe ~300ms sleep for the overlap test (NEVER bare `sleep 0.3`).
+  const SLEEP_300 =
+    process.platform === "win32" ? "ping -n 2 127.0.0.1 > nul" : "sleep 0.3";
+
+  it("chain correctness: member K base == member K-1 rebased tree; all land", async () => {
+    const root = path.join(tmpRoot, "wt-chain");
+    const reqA = makeRequest({
+      id: "req-c1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const reqB = makeRequest({
+      id: "req-c2",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok",
+    });
+    const reqC = makeRequest({
+      id: "req-c3",
+      branch: "feature/clean3",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB, reqC],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Record each rebaseOnto's input base + returned commit sha, keyed by ref.
+    const rebases: { ref: string; base: string; treeSha: string }[] = [];
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async rebaseOnto(base, branch) {
+          const r = await real.rebaseOnto(base, branch);
+          if (r.ok) rebases.push({ ref: branch, base, treeSha: r.treeSha });
+          return r;
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 3,
+      gitOpsFactory: factory,
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("landed");
+    expect(reqB.status).toBe("landed");
+    expect(reqC.status).toBe("landed");
+
+    const reb = (ref: string): { base: string; treeSha: string } => {
+      const found = rebases.find((x) => x.ref === ref);
+      if (!found) throw new Error(`no rebase recorded for ${ref}`);
+      return found;
+    };
+    const r0 = reb("feature/clean");
+    const r1 = reb("feature/clean2");
+    const r2 = reb("feature/clean3");
+
+    // The rebase chain: member K rebased ONTO member K-1's returned tree.
+    expect(r1.base).toBe(r0.treeSha);
+    expect(r2.base).toBe(r1.treeSha);
+
+    // PM-recorded startAttempt baseSha[K] === member K-1's rebased tree sha.
+    const attemptBase = (id: string): string => {
+      const a = state.attempts.find((x) => x.requestId === id);
+      if (!a) throw new Error(`no attempt for ${id}`);
+      return a.baseSha;
+    };
+    expect(attemptBase("req-c2")).toBe(r0.treeSha);
+    expect(attemptBase("req-c3")).toBe(r1.treeSha);
+
+    // Final remote main == member 2's rebased tree (the last land in the chain).
+    const remote = simpleGit(authorClone);
+    await remote.fetch("origin");
+    const remoteMain = (await remote.revparse(["origin/main"])).trim();
+    expect(remoteMain).toBe(r2.treeSha);
+  });
+
+  it("concurrent verify overlap: latest-start < earliest-end for ≥2 members", async () => {
+    const root = path.join(tmpRoot, "wt-overlap");
+    const reqA = makeRequest({
+      id: "req-o1",
+      branch: "feature/clean",
+      verifyCmd: SLEEP_300,
+    });
+    const reqB = makeRequest({
+      id: "req-o2",
+      branch: "feature/clean2",
+      verifyCmd: SLEEP_300,
+    });
+    const reqC = makeRequest({
+      id: "req-o3",
+      branch: "feature/clean3",
+      verifyCmd: SLEEP_300,
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB, reqC],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Record per-call verify start/end by wrapping runVerify in the factory.
+    const windows: { start: number; end: number }[] = [];
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async runVerify(cmd, timeoutMs, runOpts) {
+          const start = Date.now();
+          const res = await real.runVerify(cmd, timeoutMs, runOpts);
+          windows.push({ start, end: Date.now() });
+          return res;
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 3,
+      gitOpsFactory: factory,
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(windows.length).toBeGreaterThanOrEqual(2);
+    // Non-flaky overlap form: there exists a PAIR of verifies whose time
+    // windows intersect (one started before the other ended and vice-versa) —
+    // i.e. ≥2 verifies ran concurrently. We don't require ALL N to mutually
+    // overlap, because the serialized rebases (each a real git op) can stagger
+    // the launches enough that the first verify finishes before the last
+    // starts; concurrency of ANY two members is the property under test.
+    let overlapFound = false;
+    for (let i = 0; i < windows.length && !overlapFound; i += 1) {
+      for (let j = i + 1; j < windows.length; j += 1) {
+        const a = windows[i];
+        const b = windows[j];
+        if (a.start < b.end && b.start < a.end) {
+          overlapFound = true;
+          break;
+        }
+      }
+    }
+    expect(overlapFound).toBe(true);
+  }, 20_000);
+
+  it("mid-chain rebase conflict fails that member; member 0 lands; lock released once", async () => {
+    const root = path.join(tmpRoot, "wt-midconflict");
+    // Member 0 adds feature.txt; member 1 (collide) also touches feature.txt →
+    // rebasing member 1 onto member 0's rebased tree conflicts.
+    const reqA = makeRequest({
+      id: "req-m1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const reqB = makeRequest({
+      id: "req-m2",
+      branch: "feature/collidefeature",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, parallelism: 2 });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("landed");
+    expect(reqB.status).toBe("rejected");
+    expect(reqB.rejectCategory).toBe("conflict");
+    expect(state.calls).toContain("reject:conflict");
+    // Lane lock acquired + released exactly once.
+    expect(state.calls.filter((c) => c === "acquireLock").length).toBe(1);
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+    expect(state.lockHeld).toBe(false);
+    expect(deps.pool.leasedCount).toBe(0);
+  });
+
+  it("MANDATORY: conflict-then-refill chains onto the surviving predecessor, not the failed one", async () => {
+    const root = path.join(tmpRoot, "wt-refill");
+    // FIFO order: A (clean, pos 0) → B (collide, pos 1, conflicts at admit and
+    // frees its slot) → C (clean3, pos 2, admitted into the freed slot). C must
+    // chain onto the SURVIVING predecessor A (pos 0), NOT the failed B (pos 1).
+    const reqA = makeRequest({
+      id: "req-r1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const reqB = makeRequest({
+      id: "req-r2",
+      branch: "feature/collidefeature",
+      verifyCmd: "echo ok",
+    });
+    const reqC = makeRequest({
+      id: "req-r3",
+      branch: "feature/clean3",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB, reqC],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Record rebaseOnto base/treeSha per ref + per-ref expectedMainSha observed
+    // at land (via fetch+resolveRef ordering we read from landMember's push).
+    const rebases: Record<string, { base: string; treeSha: string }> = {};
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async rebaseOnto(base, branch) {
+          const r = await real.rebaseOnto(base, branch);
+          if (r.ok) rebases[branch] = { base, treeSha: r.treeSha };
+          return r;
+        },
+      };
+    };
+
+    // parallelism 2: A + B admitted; B conflicts at admit, frees the slot; the
+    // SAME admit phase then re-acquires that slot and admits C while A is still
+    // in flight (verifying) — exercising conflict-then-refill.
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 2,
+      gitOpsFactory: factory,
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("landed");
+    expect(reqB.status).toBe("rejected");
+    expect(reqB.rejectCategory).toBe("conflict");
+    expect(reqC.status).toBe("landed");
+
+    // (a) C's speculative base chains onto A's rebasedTreeSha (the surviving
+    //     predecessor), NOT B (which never produced a rebased tree).
+    const rA = rebases["feature/clean"];
+    const rC = rebases["feature/clean3"];
+    expect(rA).toBeTruthy();
+    expect(rC).toBeTruthy();
+    expect(rC.base).toBe(rA.treeSha);
+    expect(rebases["feature/collidefeature"]).toBeUndefined();
+
+    // C's PM-recorded startAttempt baseSha == A's rebased tree (not B's).
+    const cAttempt = state.attempts.find((a) => a.requestId === "req-r3");
+    expect(cAttempt?.baseSha).toBe(rA.treeSha);
+
+    // (b) landMember computed C's expectedMainSha from A's landedSha: the chain
+    //     fast-forwarded cleanly (C verified against A's tree and landed onto
+    //     it). Final remote main == C's rebased tree == A.treeSha + feature3.
+    const remote = simpleGit(authorClone);
+    await remote.fetch("origin");
+    const remoteMain = (await remote.revparse(["origin/main"])).trim();
+    expect(remoteMain).toBe(rC.treeSha);
+    // A landed first; its landedSha IS the base C expected and rebased onto.
+    expect(reqA.landedSha).toBe(rA.treeSha);
+  });
+
+  it("lane-lock-once under concurrency: exactly one acquire/release; heartbeat fires", async () => {
+    const root = path.join(tmpRoot, "wt-lockonce");
+    const reqA = makeRequest({
+      id: "req-l1",
+      branch: "feature/clean",
+      verifyCmd: SLEEP_300,
+    });
+    const reqB = makeRequest({
+      id: "req-l2",
+      branch: "feature/clean2",
+      verifyCmd: SLEEP_300,
+    });
+    const reqC = makeRequest({
+      id: "req-l3",
+      branch: "feature/clean3",
+      verifyCmd: SLEEP_300,
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB, reqC],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 3,
+      heartbeatIntervalMs: 20,
+    });
+    const hbSpy = vi.spyOn(deps.pmClient, "heartbeatLock");
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("landed");
+    expect(reqB.status).toBe("landed");
+    expect(reqC.status).toBe("landed");
+    expect(state.calls.filter((c) => c === "acquireLock").length).toBe(1);
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+    expect(hbSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(deps.pool.leasedCount).toBe(0);
+  }, 20_000);
+
+  // ───────────────────────────────────────────────────────────────────
+  // Step 6: land serialization + suffix invalidation.
+  //
+  // "A single failure invalidates EXACTLY the dependent suffix — never more,
+  // never less." Three signature shapes (mid / tail / head) + a base-SHA proof
+  // + the kill-during-verify integration proof of the two mandatory fixes.
+  // ───────────────────────────────────────────────────────────────────
+
+  // win32-safe LONG sleep (~9s) for the kill-during-verify test. The kill MUST
+  // cut it short; if it doesn't, the test times out — a clear failure signal.
+  const SLEEP_LONG =
+    process.platform === "win32" ? "ping -n 10 127.0.0.1 > nul" : "sleep 9";
+
+  // A verify that SLEEPS ~2s and THEN fails (exit non-zero). Load-bearing for
+  // the suffix-invalidation tests: the failing member must fail AFTER its
+  // dependents have been admitted (chained onto it) and started verifying —
+  // otherwise the surviving-prefix logic simply admits the dependents fresh
+  // against main (no speculation on the failed member → nothing to invalidate).
+  // The delay guarantees the dependents speculate on the failing member first.
+  const DELAY_FAIL =
+    process.platform === "win32"
+      ? "ping -n 3 127.0.0.1 > nul & exit 1"
+      : "sleep 2; exit 1";
+
+  it("Step 6 mid-failure: req1 verify-fails; req0 lands, req2 invalidated→re-admitted→landed onto main+0", async () => {
+    const root = path.join(tmpRoot, "wt-s6-mid");
+    const reqA = makeRequest({
+      id: "req-s1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const reqB = makeRequest({
+      id: "req-s2",
+      branch: "feature/clean2",
+      // Delayed verify failure (NOT a conflict — clean rebase): fails AFTER req2
+      // has chained onto it and started verifying, so req2 truly speculates on
+      // req1 and must be invalidated when req1 fails.
+      verifyCmd: DELAY_FAIL,
+    });
+    const reqC = makeRequest({
+      id: "req-s3",
+      branch: "feature/clean3",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB, reqC],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Record every rebaseOnto so we can prove req2's re-admit base.
+    const rebases: { ref: string; base: string; treeSha: string }[] = [];
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async rebaseOnto(base, branch) {
+          const r = await real.rebaseOnto(base, branch);
+          if (r.ok) rebases.push({ ref: branch, base, treeSha: r.treeSha });
+          return r;
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 3,
+      gitOpsFactory: factory,
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("landed");
+    expect(reqB.status).toBe("rejected");
+    // It is a VERIFY rejection, not a conflict.
+    expect(reqB.rejectCategory).not.toBe("conflict");
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(true);
+    expect(reqC.status).toBe("landed");
+
+    // req2's INITIAL speculative rebase chained onto req1's tree (the failed
+    // predecessor). Its RE-ADMIT rebase must chain onto req0's rebased tree
+    // (= main+0), NEVER main+0+1.
+    const r0 = rebases.find((x) => x.ref === "feature/clean");
+    expect(r0).toBeTruthy();
+    const c3Rebases = rebases.filter((x) => x.ref === "feature/clean3");
+    // req2 rebased at least twice: the initial (chained on req1) and the
+    // re-admit (chained on the surviving prefix = req0). This ≥2 IS the
+    // invalidation→re-admit signal (a non-invalidated member rebases once).
+    expect(c3Rebases.length).toBeGreaterThanOrEqual(2);
+    const reAdmitRebase = c3Rebases[c3Rebases.length - 1];
+
+    // The CASCADE fired structurally: req2 was reset-to-queued (invalidation)
+    // and re-picked-up. Pollution-independent (does not rely on SHA inequality,
+    // which collapses when earlier tests have already landed these files onto
+    // the shared remote main, making rebases no-ops).
+    expect(state.calls.filter((c) => c === "resetToQueued").length).toBe(1);
+
+    // req2's INITIAL speculative rebase chained onto req1 (the failed
+    // predecessor); its RE-ADMIT rebase anchors onto req0's rebased tree
+    // (= main+0, the surviving prefix), NEVER main+0+1. The initial base is
+    // req1's tree, the re-admit base is req0's tree.
+    const r1 = rebases.find((x) => x.ref === "feature/clean2");
+    expect(r1).toBeTruthy();
+    expect(c3Rebases[0].base).toBe(r1!.treeSha); // initial: speculated on req1
+    expect(reAdmitRebase.base).toBe(r0!.treeSha); // re-admit: anchored to main+0
+
+    // Final remote main == req2's RE-rebased tree (the last land).
+    const remote = simpleGit(authorClone);
+    await remote.fetch("origin");
+    const remoteMain = (await remote.revparse(["origin/main"])).trim();
+    expect(remoteMain).toBe(reAdmitRebase.treeSha);
+
+    // Lock once; no leaked worktrees.
+    expect(state.calls.filter((c) => c === "acquireLock").length).toBe(1);
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+    expect(deps.pool.leasedCount).toBe(0);
+
+    // Base-SHA PROOF (fold-in): req2's RE-ADMIT startAttempt baseSha === req0's
+    // rebased tree (main+0), and the INITIAL attempt speculated on req1's tree.
+    const c3Attempts = state.attempts.filter((a) => a.requestId === "req-s3");
+    expect(c3Attempts.length).toBeGreaterThanOrEqual(2);
+    const reAdmitAttempt = c3Attempts[c3Attempts.length - 1];
+    expect(c3Attempts[0].baseSha).toBe(r1!.treeSha); // initial speculated on req1
+    expect(reAdmitAttempt.baseSha).toBe(r0!.treeSha); // re-admit anchored to main+0
+  }, 20_000);
+
+  it("Step 6 tail-failure: req2 verify-fails; req0+req1 land, NOTHING invalidated (never more)", async () => {
+    const root = path.join(tmpRoot, "wt-s6-tail");
+    const reqA = makeRequest({
+      id: "req-t1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const reqB = makeRequest({
+      id: "req-t2",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok",
+    });
+    const reqC = makeRequest({
+      id: "req-t3",
+      branch: "feature/clean3",
+      verifyCmd: "exit 1", // tail fails
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB, reqC],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, parallelism: 3 });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("landed");
+    expect(reqB.status).toBe("landed");
+    expect(reqC.status).toBe("rejected");
+
+    // NEVER MORE: req0 and req1 must NOT be invalidated. resetToQueued is the
+    // suffix-invalidation (and drift) signal; there is no drift here, so a
+    // resetToQueued would mean an erroneous invalidation. Assert zero.
+    expect(state.calls.filter((c) => c === "resetToQueued").length).toBe(0);
+    // Each surviving member picked up + started an attempt EXACTLY once.
+    expect(state.attempts.filter((a) => a.requestId === "req-t1").length).toBe(1);
+    expect(state.attempts.filter((a) => a.requestId === "req-t2").length).toBe(1);
+    // No re-pickup of the survivors.
+    expect(state.calls.filter((c) => c === "pickup").length).toBe(3);
+    expect(deps.pool.leasedCount).toBe(0);
+  }, 20_000);
+
+  it("Step 6 head-failure: req0 verify-fails; req1 AND req2 invalidated→re-admitted→landed (entire suffix)", async () => {
+    const root = path.join(tmpRoot, "wt-s6-head");
+    const reqA = makeRequest({
+      id: "req-h1",
+      branch: "feature/clean",
+      verifyCmd: DELAY_FAIL, // head fails AFTER the suffix speculates on it
+    });
+    const reqB = makeRequest({
+      id: "req-h2",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok",
+    });
+    const reqC = makeRequest({
+      id: "req-h3",
+      branch: "feature/clean3",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB, reqC],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    const rebases: { ref: string; base: string; treeSha: string }[] = [];
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async rebaseOnto(base, branch) {
+          const r = await real.rebaseOnto(base, branch);
+          if (r.ok) rebases.push({ ref: branch, base, treeSha: r.treeSha });
+          return r;
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 3,
+      gitOpsFactory: factory,
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("rejected");
+    expect(reqB.status).toBe("landed");
+    expect(reqC.status).toBe("landed");
+
+    // ENTIRE SUFFIX invalidated: both req1 and req2 were reset + re-picked-up.
+    // Two suffix members → at least two resetToQueued calls.
+    expect(
+      state.calls.filter((c) => c === "resetToQueued").length,
+    ).toBeGreaterThanOrEqual(2);
+    // Each suffix member shows a SECOND pickup + startAttempt (re-admit).
+    expect(state.attempts.filter((a) => a.requestId === "req-h2").length).toBeGreaterThanOrEqual(2);
+    expect(state.attempts.filter((a) => a.requestId === "req-h3").length).toBeGreaterThanOrEqual(2);
+
+    // Re-admit bases anchor to FRESH main (head failed → surviving prefix is
+    // empty for req1, so it anchors live main; req2 chains onto req1's re-tree).
+    const remote = simpleGit(authorClone);
+    await remote.fetch("origin");
+    const mainSha = (await remote.revparse(["origin/main"])).trim();
+    // Final main is the last land (req2's re-rebased tree).
+    const c3Rebases = rebases.filter((x) => x.ref === "feature/clean3");
+    const lastC3 = c3Rebases[c3Rebases.length - 1];
+    expect(mainSha).toBe(lastC3.treeSha);
+
+    expect(state.calls.filter((c) => c === "acquireLock").length).toBe(1);
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+    expect(deps.pool.leasedCount).toBe(0);
+  }, 20_000);
+
+  it("Step 6 kill-during-verify: failed member 0 kills suffix member 1's long verify; member 1 re-verifies and lands; no double-handling", async () => {
+    const root = path.join(tmpRoot, "wt-s6-kill");
+    // Member 0 fails fast (exit 1). Member 1 runs a LONG verify that MUST be
+    // killed when member 0's failure invalidates the suffix; on re-admit member
+    // 1 re-verifies (echo ok) against fresh main and lands.
+    const reqA = makeRequest({
+      id: "req-k1",
+      branch: "feature/clean",
+      // Delayed fail (~2s): long enough for member 1's LONG verify to be in
+      // flight (chained onto member 0) when member 0's failure fires the
+      // suffix invalidation that must KILL member 1's verify.
+      verifyCmd: DELAY_FAIL,
+    });
+    const reqB = makeRequest({
+      id: "req-k2",
+      branch: "feature/clean2",
+      // First verify is long; we cannot vary verifyCmd per-attempt via the fake,
+      // so the LONG command must ALSO pass once killed/re-run. Use a wrapper:
+      // the recorded duration proves the FIRST run was cut short by kill().
+      verifyCmd: SLEEP_LONG,
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Wrap runVerify to record member 1's verify durations. The FIRST member-1
+    // verify must be cut short (well under the full ~9s sleep) by the kill seam.
+    const durations: { cmd: string; ms: number; killedish: boolean }[] = [];
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async runVerify(cmd, timeoutMs, runOpts) {
+          const start = Date.now();
+          const res = await real.runVerify(cmd, timeoutMs, runOpts);
+          const ms = Date.now() - start;
+          durations.push({
+            cmd,
+            ms,
+            killedish: res.exitCode !== 0 || res.signal !== null,
+          });
+          return res;
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 2,
+      verifyTimeoutSec: 60, // long timeout so the internal timeout NEVER fires
+      gitOpsFactory: factory,
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("rejected"); // member 0 verify-failed
+    expect(reqB.status).toBe("landed"); // member 1 re-verified + landed
+
+    // The LONG verify ran at least twice (the killed first run + the re-verify).
+    const longRuns = durations.filter((d) => d.cmd === SLEEP_LONG);
+    expect(longRuns.length).toBeGreaterThanOrEqual(1);
+    // The FIRST long run was cut short — resolved WELL under the ~9s sleep,
+    // proving kill() fired (FIX 1 killed it; FIX 2 made the continuation bail).
+    const firstLong = longRuns[0];
+    expect(firstLong.ms).toBeLessThan(7_000);
+
+    // NO double-handling of member 1: it was reset exactly ONCE (the suffix
+    // invalidation), never rejected. A double-reject/double-reset would show up
+    // as >1 resetToQueued for req-k2 or a reject of req-k2.
+    expect(state.calls.filter((c) => c === "resetToQueued").length).toBe(1);
+    // Exactly one reject overall (member 0 only); member 1 never rejected.
+    expect(state.calls.filter((c) => c.startsWith("reject:")).length).toBe(1);
+    expect(reqB.rejectCategory).toBeNull();
+
+    // No leaked worktree (the killed member's slot was released in FIX 1's
+    // synchronous pass and re-leased for the re-admit, then freed on land).
+    expect(deps.pool.leasedCount).toBe(0);
+  }, 30_000);
+
+  // ───────────────────────────────────────────────────────────────────
+  // Step 7: batch-marker events (onBatchEvent fires at all transitions).
+  // ───────────────────────────────────────────────────────────────────
+
+  it("Step 7 land scenario: onBatchEvent fires started → member_landed → completed with exact payloads", async () => {
+    const root = path.join(tmpRoot, "wt-s7-land");
+    const req = makeRequest({
+      id: "req-be1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const captured: BatchEvent[] = [];
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      onBatchEvent: (e) => captured.push(e),
+    });
+    // Override the batch-id minter so we can assert the exact id flows through.
+    deps.newBatchId = () => "batch-be";
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+
+    const types = captured.map((e) => e.type);
+    expect(types).toEqual(["started", "member_landed", "completed"]);
+
+    const started = captured[0];
+    expect(started).toMatchObject({
+      type: "started",
+      batchId: "batch-be",
+      resource: "main",
+      memberCount: 1,
+      memberRequestIds: ["req-be1"],
+    });
+
+    const landed = captured[1];
+    expect(landed).toMatchObject({
+      type: "member_landed",
+      batchId: "batch-be",
+      requestId: "req-be1",
+      speculativePosition: 0,
+      landedSha: req.landedSha,
+    });
+
+    const completed = captured[2];
+    expect(completed).toMatchObject({
+      type: "completed",
+      batchId: "batch-be",
+      landed: 1,
+      rejected: 0,
+      invalidated: 0,
+    });
+  });
+
+  it("Step 7 suffix invalidation: onBatchEvent fires member_invalidated with reason + failedPredecessorRequestId", async () => {
+    const root = path.join(tmpRoot, "wt-s7-inv");
+    const reqA = makeRequest({
+      id: "req-bi1",
+      branch: "feature/clean",
+      verifyCmd: DELAY_FAIL, // head fails AFTER the suffix speculates on it
+    });
+    const reqB = makeRequest({
+      id: "req-bi2",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const captured: BatchEvent[] = [];
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 2,
+      onBatchEvent: (e) => captured.push(e),
+    });
+    deps.newBatchId = () => "batch-bi";
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("rejected");
+
+    const invalidated = captured.filter(
+      (e): e is Extract<BatchEvent, { type: "member_invalidated" }> =>
+        e.type === "member_invalidated",
+    );
+    expect(invalidated.length).toBeGreaterThanOrEqual(1);
+    const inv = invalidated[0];
+    expect(inv.batchId).toBe("batch-bi");
+    expect(inv.requestId).toBe("req-bi2");
+    expect(inv.failedPredecessorRequestId).toBe("req-bi1");
+    expect(inv.reason).toContain("req-bi1");
+
+    // started + completed still bookend the batch.
+    expect(captured[0].type).toBe("started");
+    expect(captured.at(-1)?.type).toBe("completed");
+  }, 20_000);
+
+  // ───────────────────────────────────────────────────────────────────
+  // Step 8: verify retry policy (transient vs real, backoff/cap, retries
+  // as attempts, abort-during-backoff race).
+  //
+  // Transients are simulated via the established gitOpsFactory runVerify
+  // WRAPPER: it returns a synthetic transient-shaped result for the first K
+  // calls (per ref), then delegates to the real runVerify. retryBackoffMs
+  // is tiny ([5,5,5]) so the backoff doesn't slow the suite.
+  // ───────────────────────────────────────────────────────────────────
+
+  // A synthetic transient verify result (spawn failure shape): the classifier
+  // reads spawnError → transient. logPath is supplied by the caller.
+  const transientResult = (logPath: string) => ({
+    exitCode: null as unknown as number,
+    signal: null,
+    spawnError: "EAGAIN",
+    timedOut: false,
+    stdout: "",
+    stderr: "",
+    durationMs: 0,
+    logPath,
+  });
+
+  it("Step 8 transient-then-succeeds → lands (exactly 2 attempts; superseded attempt completed failed)", async () => {
+    const root = path.join(tmpRoot, "wt-s8-transient");
+    const req = makeRequest({
+      id: "req-x1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Wrapper: call #1 for this ref returns a synthetic transient; call #2 runs
+    // the real (passing) verify.
+    let calls = 0;
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async runVerify(cmd, timeoutMs, runOpts) {
+          calls += 1;
+          if (calls === 1) return transientResult(runOpts.logPath);
+          return real.runVerify(cmd, timeoutMs, runOpts);
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: factory,
+    });
+    deps.maxVerifyRetries = 3;
+    deps.retryBackoffMs = [5, 5, 5];
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    // Exactly 2 startAttempt for the request (initial + 1 retry).
+    expect(state.calls.filter((c) => c === "startAttempt").length).toBe(2);
+    // The superseded (first) attempt was completed as failed; the landed one passed.
+    expect(state.calls).toContain("completeAttempt:failed");
+    expect(state.calls).toContain("completeAttempt:passed");
+    // Main advanced to the verified tree.
+    const remote = simpleGit(authorClone);
+    await remote.fetch("origin");
+    expect(req.landedSha).toBeTruthy();
+  }, 20_000);
+
+  it("Step 8 real failure (exit 1) → no retry, immediate reject; retryCount stays 0", async () => {
+    const root = path.join(tmpRoot, "wt-s8-real");
+    const req = makeRequest({
+      id: "req-x2",
+      branch: "feature/badtest",
+      verifyCmd: "exit 1",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    deps.maxVerifyRetries = 3;
+    deps.retryBackoffMs = [5, 5, 5];
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("rejected");
+    // Exactly ONE attempt (no 2nd startAttempt).
+    expect(state.calls.filter((c) => c === "startAttempt").length).toBe(1);
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(true);
+    // No suffix invalidation here (single member), so no resetToQueued.
+    expect(state.calls.filter((c) => c === "resetToQueued").length).toBe(0);
+    expect(deps.pool.leasedCount).toBe(0);
+  });
+
+  it("Step 8 retry cap honored → 3 verify calls (initial + 2 retries) then reject; retryCount===2", async () => {
+    const root = path.join(tmpRoot, "wt-s8-cap");
+    const req = makeRequest({
+      id: "req-x3",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Wrapper: ALWAYS returns the synthetic transient shape (never passes).
+    let verifyCalls = 0;
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async runVerify(_cmd, _timeoutMs, runOpts) {
+          verifyCalls += 1;
+          return transientResult(runOpts.logPath);
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: factory,
+    });
+    deps.maxVerifyRetries = 2;
+    deps.retryBackoffMs = [5, 5, 5];
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("rejected");
+    // initial + 2 retries = 3 verify calls.
+    expect(verifyCalls).toBe(3);
+    // startAttempt: initial + 2 retries = 3.
+    expect(state.calls.filter((c) => c === "startAttempt").length).toBe(3);
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(true);
+    expect(deps.pool.leasedCount).toBe(0);
+  }, 20_000);
+
+  it("Step 8 own-timeout = real (no retry); immediate reject (timedOut-first)", async () => {
+    const root = path.join(tmpRoot, "wt-s8-timeout");
+    const req = makeRequest({
+      id: "req-x4",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Wrapper returns a timed-out shape (timedOut:true + SIGTERM + exitCode:null).
+    // classifyVerifyFailure must read this as REAL (timedOut FIRST), no retry.
+    let verifyCalls = 0;
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async runVerify(_cmd, _timeoutMs, runOpts) {
+          verifyCalls += 1;
+          return {
+            exitCode: null as unknown as number,
+            signal: "SIGTERM" as NodeJS.Signals,
+            timedOut: true,
+            stdout: "",
+            stderr: "",
+            durationMs: 0,
+            logPath: runOpts.logPath,
+          };
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: factory,
+    });
+    deps.maxVerifyRetries = 3;
+    deps.retryBackoffMs = [5, 5, 5];
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("rejected");
+    // No retry: exactly one verify call + one attempt.
+    expect(verifyCalls).toBe(1);
+    expect(state.calls.filter((c) => c === "startAttempt").length).toBe(1);
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(true);
+  });
+
+  it("Step 8 suffix-killed-during-backoff → NOT retried in place; re-admitted fresh and lands; no illegal attempt", async () => {
+    const root = path.join(tmpRoot, "wt-s8-killbackoff");
+    // Member 0 fails REAL (delayed exit 1) so its failure + suffix invalidation
+    // lands while member 1 is in a backoff sleep. Member 1's verify returns a
+    // transient ONCE → enters a LONG (200ms base) backoff; the invalidation must
+    // abort that sleep and the post-sleep guard must make the retry loop bail
+    // WITHOUT a fresh startAttempt. Member 1 is then re-admitted fresh and lands.
+    const reqA = makeRequest({
+      id: "req-kb1",
+      branch: "feature/clean",
+      verifyCmd: DELAY_FAIL, // ~2s then exit 1 (real)
+    });
+    const reqB = makeRequest({
+      id: "req-kb2",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Member 1's verify: FIRST call (its initial speculative attempt, chained on
+    // member 0) returns a synthetic transient → member 1 enters backoff. Any
+    // later call (the re-admit's fresh verify against main) runs the real passing
+    // verify. Keyed on the clean2 ref so member 0's verify is untouched.
+    let b1Calls = 0;
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async runVerify(cmd, timeoutMs, runOpts) {
+          if (cmd === "echo ok") {
+            b1Calls += 1;
+            if (b1Calls === 1) return transientResult(runOpts.logPath);
+          }
+          return real.runVerify(cmd, timeoutMs, runOpts);
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 2,
+      gitOpsFactory: factory,
+    });
+    // A backoff long enough that member 0's ~2s failure + invalidation lands
+    // DURING member 1's first backoff sleep.
+    deps.maxVerifyRetries = 3;
+    deps.retryBackoffMs = [200, 200, 200];
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("rejected"); // member 0 real-failed
+    expect(reqB.status).toBe("landed"); // member 1 re-admitted fresh + landed
+
+    // Member 1 was invalidated (suffix) exactly once — NOT rejected, NOT
+    // double-handled. A retry-in-place that survived the kill would have issued
+    // an extra startAttempt against the now-released worktree.
+    expect(state.calls.filter((c) => c === "resetToQueued").length).toBe(1);
+    // Exactly one reject overall (member 0 only).
+    expect(state.calls.filter((c) => c.startsWith("reject:")).length).toBe(1);
+    expect(reqB.rejectCategory).toBeNull();
+    expect(deps.pool.leasedCount).toBe(0);
+  }, 30_000);
+
+  // ───────────────────────────────────────────────────────────────────
+  // Step 9: lane-ownership rewire (index.ts → runBatchLoop). These prove
+  // the integrator-level invariants the LIVE entrypoint now relies on.
+  // ───────────────────────────────────────────────────────────────────
+
+  it("Step 9 crash recovery: reclaimStrandedRequests resets N=3 integrating → queued", async () => {
+    // N-tolerance: the startup sweep must reclaim EVERY stranded `integrating`
+    // request in the lane, not just one. (A serial crash could strand only one;
+    // a batch crash can strand up to `parallelism` at once.)
+    const stranded = [
+      makeRequest({ id: "req-s1", status: "integrating" }),
+      makeRequest({ id: "req-s2", status: "integrating" }),
+      makeRequest({ id: "req-s3", status: "integrating" }),
+    ];
+    const state: FakeState = {
+      requests: stranded,
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const client = makeFakeClient(state);
+
+    const result = await reclaimStrandedRequests(client, "proj-1", "main", logger);
+
+    expect(result.scanned).toBe(3);
+    expect(result.reclaimed).toBe(3);
+    expect(stranded.every((r) => r.status === "queued")).toBe(true);
+    // resetToQueued fired once per stranded request.
+    expect(state.calls.filter((c) => c === "resetToQueued").length).toBe(3);
+  });
+
+  it("Step 9 second integrator can't double-land: loser gets lock_unavailable + ZERO land/push", async () => {
+    const root = path.join(tmpRoot, "wt-double-land");
+    // ONE shared queued request + ONE shared single-holder lock. Two integrators
+    // run runBatchOnce against the SAME request array + SAME lock store. The real
+    // lock service grants to exactly one holder; the loser's acquireLock returns
+    // the not-granted/`queued` shape → runBatchOnce short-circuits to
+    // `lock_unavailable` BEFORE any pickup/startAttempt/land/push.
+    const sharedRequests = [
+      makeRequest({ id: "req-dl1", branch: "feature/clean", verifyCmd: "echo ok" }),
+    ];
+    const sharedLock: SharedLock = { holder: null };
+
+    const stateA: FakeState = {
+      requests: sharedRequests,
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      integratorId: "int-A",
+      sharedLock,
+    };
+    const stateB: FakeState = {
+      requests: sharedRequests,
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      integratorId: "int-B",
+      sharedLock,
+    };
+
+    // Two REAL size-1 pools in distinct worktree roots; depsFor builds each
+    // fake-client from the state it is handed, and the fake reads state lazily —
+    // so the shared lock + shared requests + per-state integratorId are honored.
+    const depsA = await depsFor(stateA, { worktreeRoot: path.join(root, "A") });
+    const depsB = await depsFor(stateB, { worktreeRoot: path.join(root, "B") });
+
+    const [outA, outB] = await Promise.all([
+      runBatchOnce(depsA),
+      runBatchOnce(depsB),
+    ]);
+
+    const outcomes = [outA.kind, outB.kind];
+    // Exactly one drained, exactly one lock_unavailable.
+    expect(outcomes.filter((k) => k === "drained").length).toBe(1);
+    expect(outcomes.filter((k) => k === "lock_unavailable").length).toBe(1);
+
+    // Identify winner/loser by outcome.
+    const [winState, loseState] =
+      outA.kind === "drained" ? [stateA, stateB] : [stateB, stateA];
+
+    // Winner landed + pushed exactly once.
+    expect(sharedRequests[0].status).toBe("landed");
+    expect(winState.calls).toContain("land");
+
+    // LOSER performed ZERO land and ZERO pickup/startAttempt — it never touched
+    // the request. (push happens inside landMember via the real gitOps; the
+    // structural guarantee is the loser issues no landMergeRequest call at all.)
+    expect(loseState.calls).not.toContain("land");
+    expect(loseState.calls).not.toContain("pickup");
+    expect(loseState.calls).not.toContain("startAttempt");
+    // The loser released no lock it never held.
+    expect(loseState.calls).not.toContain("releaseLock");
+  }, 30_000);
+
+  it("Step 9 tag-wiring: pickup + startAttempt carry {batchId, speculativePosition}", async () => {
+    const root = path.join(tmpRoot, "wt-tags");
+    const req = makeRequest({
+      id: "req-tag1",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      pickupTags: {},
+      startAttemptTags: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    deps.newBatchId = () => "batch-tag";
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+
+    // pickup carried the batch lineage for the admitted member (position 0).
+    expect(state.pickupTags!["req-tag1"]).toEqual({
+      batchId: "batch-tag",
+      speculativePosition: 0,
+    });
+    // startAttempt (initial admit) carried the same lineage.
+    expect(state.startAttemptTags!.length).toBeGreaterThanOrEqual(1);
+    expect(state.startAttemptTags![0]).toEqual({
+      batchId: "batch-tag",
+      speculativePosition: 0,
+    });
+  });
+});

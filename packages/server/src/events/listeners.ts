@@ -52,6 +52,18 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.COMMENT_DELETED:
       return "deleted";
 
+    // Merge batch markers (Phase 7.2 — relayed, not persisted as rows; the
+    // activity_log INSERT is FK-safe: entityType/entityId have no FK, and
+    // projectId+actorId are real entities on the relay path).
+    case EVENT_NAMES.MERGE_BATCH_STARTED:
+      return "batch_started";
+    case EVENT_NAMES.MERGE_BATCH_MEMBER_LANDED:
+      return "batch_member_landed";
+    case EVENT_NAMES.MERGE_BATCH_MEMBER_INVALIDATED:
+      return "batch_member_invalidated";
+    case EVENT_NAMES.MERGE_BATCH_COMPLETED:
+      return "batch_completed";
+
     default:
       return "unknown";
   }

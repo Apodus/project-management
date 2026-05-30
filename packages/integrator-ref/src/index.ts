@@ -3,11 +3,11 @@ import { simpleGit } from "simple-git";
 import { ConfigError, loadConfig, type CliArgs } from "./config.js";
 import { PmClient } from "./pm-client.js";
 import { createLogger } from "./logger.js";
-import { createWorktree } from "./worktree.js";
 import { createGitOps } from "./git-ops.js";
+import { createWorktreePool } from "./worktree-pool.js";
 import { createSseSubscriber } from "./sse-subscriber.js";
 import { reclaimStrandedRequests } from "./recovery.js";
-import { runLoop } from "./loop.js";
+import { runBatchLoop } from "./batch.js";
 
 async function main(): Promise<void> {
   const program = new Command()
@@ -39,9 +39,9 @@ async function main(): Promise<void> {
   );
   const pmClient = new PmClient({ baseUrl: pmUrl, token });
 
-  let config;
+  let cfg;
   try {
-    config = await loadConfig(args, process.env as Record<string, string | undefined>, pmClient);
+    cfg = await loadConfig(args, process.env as Record<string, string | undefined>, pmClient);
   } catch (err) {
     if (err instanceof ConfigError) {
       logger.fatal({ err: err.message }, "Configuration invalid");
@@ -59,54 +59,68 @@ async function main(): Promise<void> {
 
   logger.info(
     {
-      projectId: config.projectId,
-      resource: config.resource,
-      verifyCommand: config.verifyCommand,
-      worktreeRoot: config.worktreeRoot,
+      projectId: cfg.projectId,
+      resource: cfg.resource,
+      verifyCommand: cfg.verifyCommand,
+      worktreeRoot: cfg.worktreeRoot,
+      parallelism: cfg.parallelism,
     },
     "Integrator ready",
   );
 
   process.stdout.write(
-    `Integrator ready for project ${config.projectId} resource ${config.resource}\n`,
+    `Integrator ready for project ${cfg.projectId} resource ${cfg.resource}\n`,
   );
 
   // ── Crash recovery: reclaim any stranded `integrating` requests. ──
+  // N-tolerant: loops over EVERY `integrating` request in the lane and resets
+  // each to `queued`. Takes no worktree/gitOps — purely a PM-side sweep — so it
+  // is unchanged from the 7.1 wiring.
   const reclaim = await reclaimStrandedRequests(
     pmClient,
-    config.projectId,
-    config.resource,
+    cfg.projectId,
+    cfg.resource,
     logger,
   );
   if (reclaim.scanned > 0) {
     logger.info(reclaim, "Crash-recovery sweep complete");
   }
 
-  // ── Worktree + git-ops setup. ──
-  const worktree = createWorktree({
-    worktreeRoot: config.worktreeRoot,
-    worktreeName: config.worktreeName,
-    gitRemote: config.gitRemote,
-    gitMainBranch: config.gitMainBranch,
-    gitRepoUrl: config.gitRepoUrl,
+  // ── Worktree pool + git-ops factory (phase 7.2). ──
+  // The serial 7.1 path used a single worktree + a single gitOps bound to it.
+  // The batch path leases worktrees from a size-`parallelism` pool and builds a
+  // GitOps per-worktree via the factory (each member runs in its own slot).
+  // At parallelism:1 the pool is a size-1 pool, so the observable behavior is a
+  // batch-of-one that is byte-identical to the 7.1 serial loop.
+  const pool = createWorktreePool({
+    parallelism: cfg.parallelism,
+    worktreeRoot: cfg.worktreeRoot,
+    worktreeName: cfg.worktreeName,
+    gitRepoUrl: cfg.gitRepoUrl,
+    gitRemote: cfg.gitRemote,
+    gitMainBranch: cfg.gitMainBranch,
   });
+  const makeGitOps = (p: string) => createGitOps(simpleGit(p));
   try {
-    await worktree.ensureExists();
+    // gc() removes stale slot clones from a previous run with a larger pool;
+    // ensureAll() clones any missing slot. On-disk clones are reused across
+    // runs (no destructive teardown), matching the 7.1 single-worktree reuse.
+    await pool.gc();
+    await pool.ensureAll();
   } catch (err) {
     logger.fatal(
       { err: err instanceof Error ? err.message : String(err) },
-      "Failed to initialize worktree",
+      "Failed to initialize worktree pool",
     );
     process.exit(1);
     return;
   }
-  const gitOps = createGitOps(simpleGit(worktree.path));
 
   // ── SSE subscriber (latency hint; poll is the correctness floor). ──
   const sub = createSseSubscriber({
     baseUrl: pmUrl,
     token,
-    projectId: config.projectId,
+    projectId: cfg.projectId,
     logger,
   });
   sub.start();
@@ -125,18 +139,27 @@ async function main(): Promise<void> {
   const pollIntervalMs =
     Math.max(1, Number(args.pollIntervalSec ?? "30") || 30) * 1000;
 
-  await runLoop(
+  await runBatchLoop(
     {
       pmClient,
-      gitOps,
-      worktree,
+      pool,
+      gitOps: makeGitOps,
       logger,
-      projectId: config.projectId,
-      resource: config.resource,
-      defaultVerifyCommand: config.verifyCommand,
-      verifyTimeoutSec: config.verifyTimeoutSec,
-      gitRemote: config.gitRemote,
-      gitMainBranch: config.gitMainBranch,
+      projectId: cfg.projectId,
+      resource: cfg.resource,
+      defaultVerifyCommand: cfg.verifyCommand,
+      verifyTimeoutSec: cfg.verifyTimeoutSec,
+      gitRemote: cfg.gitRemote,
+      gitMainBranch: cfg.gitMainBranch,
+      // Telemetry sink: post each batch marker to the PM relay endpoint. This is
+      // a SYNCHRONOUS void handler that swallows its promise — a failed telemetry
+      // POST must NEVER reject into / crash the drain loop, so we `.catch` it and
+      // never return/await the promise (BatchDeps onBatchEvent is `(e) => void`).
+      onBatchEvent: (evt) => {
+        pmClient
+          .postBatchEvent(cfg.projectId, evt)
+          .catch((e) => logger.warn(`batch event post failed: ${String(e)}`));
+      },
       shouldContinue: () => !stopRequested,
       waitForWork: async (pollMs: number) => {
         const wake = sub.wakeup.wait();

@@ -139,6 +139,7 @@ export function startAttempt(
   requestId: string,
   params: MergeAttemptStart,
   actor: Actor,
+  tags?: { batchId?: string; speculativePosition?: number },
 ): MergeAttemptView {
   if (actor.type !== "ai_agent") {
     throw new AppError(
@@ -187,6 +188,11 @@ export function startAttempt(
   emitAttempt(EVENT_NAMES.MERGE_ATTEMPT_STARTED, row, projectId, actor.id, {
     requestId,
     baseSha: params.baseSha,
+    // Phase 7.2: optional batch tags ride the started frame (omitted when absent).
+    ...(tags?.batchId !== undefined ? { batchId: tags.batchId } : {}),
+    ...(tags?.speculativePosition !== undefined
+      ? { speculativePosition: tags.speculativePosition }
+      : {}),
   });
   return toView(row);
 }

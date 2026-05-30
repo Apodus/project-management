@@ -57,6 +57,12 @@ export const EVENT_NAMES = {
   // Merge attempt events (Phase 7.1 Stage 2 — attempt lifecycle)
   MERGE_ATTEMPT_STARTED: "merge.attempt.started",
   MERGE_ATTEMPT_COMPLETED: "merge.attempt.completed",
+
+  // Merge batch markers (Phase 7.2 — integrator-relayed, not persisted)
+  MERGE_BATCH_STARTED: "merge.batch.started",
+  MERGE_BATCH_MEMBER_LANDED: "merge.batch.member_landed",
+  MERGE_BATCH_MEMBER_INVALIDATED: "merge.batch.member_invalidated",
+  MERGE_BATCH_COMPLETED: "merge.batch.completed",
 } as const;
 
 export type EventName = (typeof EVENT_NAMES)[keyof typeof EVENT_NAMES];

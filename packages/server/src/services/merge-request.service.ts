@@ -526,6 +526,7 @@ function applyAbandon(
 export function transitionToIntegrating(
   id: string,
   actor: Actor,
+  extra?: { batchId?: string; speculativePosition?: number },
 ): MergeRequestView {
   const row = readRequestOrThrow(id);
 
@@ -550,7 +551,14 @@ export function transitionToIntegrating(
     .where(eq(mergeRequests.id, row.id))
     .run();
   const updated = readRequestOrThrow(row.id);
-  emit(EVENT_NAMES.MERGE_REQUEST_INTEGRATING, updated, actor.id);
+  // Phase 7.2: spread optional batch tags onto the event entity so the SSE
+  // frame carries batch_id / speculative_position (undefined fields omitted).
+  emit(EVENT_NAMES.MERGE_REQUEST_INTEGRATING, updated, actor.id, {
+    ...(extra?.batchId !== undefined ? { batchId: extra.batchId } : {}),
+    ...(extra?.speculativePosition !== undefined
+      ? { speculativePosition: extra.speculativePosition }
+      : {}),
+  });
   return toView(updated);
 }
 

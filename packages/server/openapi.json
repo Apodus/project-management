@@ -218,7 +218,125 @@
             ]
           },
           "settings": {
-            "nullable": true
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "ai_autonomy": {
+                "type": "object",
+                "properties": {
+                  "can_self_assign": {
+                    "type": "boolean"
+                  },
+                  "can_create_subtasks": {
+                    "type": "boolean"
+                  },
+                  "can_create_tasks": {
+                    "type": "boolean"
+                  },
+                  "can_change_priority": {
+                    "type": "boolean"
+                  },
+                  "can_close_epics": {
+                    "type": "boolean"
+                  },
+                  "max_concurrent_tasks": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "can_self_assign",
+                  "can_create_subtasks",
+                  "can_create_tasks",
+                  "can_change_priority",
+                  "can_close_epics",
+                  "max_concurrent_tasks"
+                ]
+              },
+              "workflow": {
+                "type": "object",
+                "properties": {
+                  "statuses": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "backlog",
+                        "ready",
+                        "in_progress",
+                        "in_review",
+                        "done",
+                        "cancelled"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "statuses"
+                ]
+              },
+              "git": {
+                "type": "object",
+                "properties": {
+                  "branch_prefix": {
+                    "type": "string"
+                  },
+                  "auto_link_branches": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "branch_prefix",
+                  "auto_link_branches"
+                ]
+              },
+              "integrator": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "verify_command": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "verify_timeout_sec": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 600
+                  },
+                  "worktree_root": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "git_remote": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "origin"
+                  },
+                  "git_main_branch": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "main"
+                  },
+                  "worktree_name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "parallelism": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1
+                  }
+                }
+              }
+            },
+            "required": [
+              "ai_autonomy",
+              "workflow",
+              "git"
+            ]
           },
           "sortOrder": {
             "type": "integer"
@@ -253,7 +371,125 @@
             ]
           },
           "settings": {
-            "nullable": true
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "ai_autonomy": {
+                "type": "object",
+                "properties": {
+                  "can_self_assign": {
+                    "type": "boolean"
+                  },
+                  "can_create_subtasks": {
+                    "type": "boolean"
+                  },
+                  "can_create_tasks": {
+                    "type": "boolean"
+                  },
+                  "can_change_priority": {
+                    "type": "boolean"
+                  },
+                  "can_close_epics": {
+                    "type": "boolean"
+                  },
+                  "max_concurrent_tasks": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "can_self_assign",
+                  "can_create_subtasks",
+                  "can_create_tasks",
+                  "can_change_priority",
+                  "can_close_epics",
+                  "max_concurrent_tasks"
+                ]
+              },
+              "workflow": {
+                "type": "object",
+                "properties": {
+                  "statuses": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "backlog",
+                        "ready",
+                        "in_progress",
+                        "in_review",
+                        "done",
+                        "cancelled"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "statuses"
+                ]
+              },
+              "git": {
+                "type": "object",
+                "properties": {
+                  "branch_prefix": {
+                    "type": "string"
+                  },
+                  "auto_link_branches": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "branch_prefix",
+                  "auto_link_branches"
+                ]
+              },
+              "integrator": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "verify_command": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "verify_timeout_sec": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 600
+                  },
+                  "worktree_root": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "git_remote": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "origin"
+                  },
+                  "git_main_branch": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "main"
+                  },
+                  "worktree_name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "parallelism": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1
+                  }
+                }
+              }
+            },
+            "required": [
+              "ai_autonomy",
+              "workflow",
+              "git"
+            ]
           },
           "sortOrder": {
             "type": "integer"
@@ -670,7 +906,8 @@
               "question",
               "handoff",
               "review_note",
-              "design_discussion"
+              "design_discussion",
+              "merge_rejection"
             ]
           }
         },
@@ -1088,6 +1325,14 @@
           "reporterType": {
             "type": "string",
             "nullable": true
+          },
+          "claimStatus": {
+            "type": "string",
+            "enum": [
+              "unclaimed",
+              "claimed_by_you",
+              "claimed_by_other"
+            ]
           }
         },
         "required": [
@@ -1117,7 +1362,8 @@
           "assigneeName",
           "assigneeType",
           "reporterName",
-          "reporterType"
+          "reporterType",
+          "claimStatus"
         ]
       },
       "CreateTask": {
@@ -1534,6 +1780,97 @@
           "to_status"
         ]
       },
+      "TaskClaimResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "claimed_by_you",
+              "already_claimed_by_you",
+              "claimed_by_another_agent",
+              "released",
+              "not_held",
+              "closed"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "status"
+        ]
+      },
+      "Awareness": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "inFlight": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "assignee": {
+                  "type": "object",
+                  "nullable": true,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "type": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type"
+                  ]
+                },
+                "gitBranch": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "startedAt": {
+                  "type": "string",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "taskId",
+                "title",
+                "assignee",
+                "gitBranch",
+                "startedAt"
+              ]
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "label",
+          "inFlight",
+          "total"
+        ]
+      },
       "TaskComment": {
         "type": "object",
         "properties": {
@@ -1594,7 +1931,8 @@
               "question",
               "handoff",
               "review_note",
-              "design_discussion"
+              "design_discussion",
+              "merge_rejection"
             ]
           },
           "metadata": {
@@ -1994,7 +2332,8 @@
             "enum": [
               "branch",
               "commit",
-              "pull_request"
+              "pull_request",
+              "landed_sha"
             ]
           },
           "refValue": {
@@ -2040,7 +2379,8 @@
             "enum": [
               "branch",
               "commit",
-              "pull_request"
+              "pull_request",
+              "landed_sha"
             ]
           },
           "refValue": {
@@ -2432,6 +2772,833 @@
         },
         "required": [
           "name"
+        ]
+      },
+      "MergeLockAcquireResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "held",
+              "queued",
+              "already_held"
+            ]
+          },
+          "position": {
+            "type": "integer",
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "ok",
+          "status"
+        ]
+      },
+      "MergeLockAcquire": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1
+          },
+          "branch": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "commitSha": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "verifyCmd": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "worktreePath": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        }
+      },
+      "MergeLockHeartbeatResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "refreshed",
+              "not_holder"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "ok",
+          "status"
+        ]
+      },
+      "MergeLockReleaseResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "released",
+              "not_held",
+              "not_holder"
+            ]
+          },
+          "grantedTo": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "ok",
+          "status"
+        ]
+      },
+      "MergeLockRelease": {
+        "type": "object",
+        "properties": {
+          "landedSha": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 128,
+            "example": "abc1234"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 2048,
+            "example": "verify failed: skinned_renderer.cpp API drift"
+          }
+        }
+      },
+      "MergeLock": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "holder": {
+            "type": "string",
+            "enum": [
+              "you",
+              "someone_else",
+              "none"
+            ]
+          },
+          "holderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "acquiredAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "heartbeatAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "landedSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "landedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "taskId": {
+            "type": "string",
+            "nullable": true
+          },
+          "branch": {
+            "type": "string",
+            "nullable": true
+          },
+          "commitSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifyCmd": {
+            "type": "string",
+            "nullable": true
+          },
+          "worktreePath": {
+            "type": "string",
+            "nullable": true
+          },
+          "abandonReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "queueLength": {
+            "type": "integer"
+          },
+          "yourPosition": {
+            "type": "integer",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "resource",
+          "holder",
+          "holderId",
+          "acquiredAt",
+          "heartbeatAt",
+          "expiresAt",
+          "landedSha",
+          "landedAt",
+          "taskId",
+          "branch",
+          "commitSha",
+          "verifyCmd",
+          "worktreePath",
+          "abandonReason",
+          "queueLength",
+          "yourPosition",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "MergeRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "submittedBy": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string",
+            "nullable": true
+          },
+          "branch": {
+            "type": "string",
+            "nullable": true
+          },
+          "commitSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifyCmd": {
+            "type": "string",
+            "nullable": true
+          },
+          "worktreePath": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "integrating",
+              "landed",
+              "rejected",
+              "abandoned"
+            ]
+          },
+          "enqueuedAt": {
+            "type": "string"
+          },
+          "pickedUpAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "resolvedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "landedSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectCategory": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "conflict",
+              "build_failed",
+              "test_failed",
+              "lint_failed",
+              "verify_timeout",
+              "policy",
+              "other",
+              null
+            ]
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "failedFiles": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "logExcerpt": {
+            "type": "string",
+            "nullable": true
+          },
+          "logUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "resource",
+          "submittedBy",
+          "taskId",
+          "branch",
+          "commitSha",
+          "verifyCmd",
+          "worktreePath",
+          "status",
+          "enqueuedAt",
+          "pickedUpAt",
+          "resolvedAt",
+          "landedSha",
+          "rejectCategory",
+          "rejectReason",
+          "failedFiles",
+          "logExcerpt",
+          "logUrl",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "MergeRequestSubmit": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "taskId": {
+            "type": "string",
+            "nullable": true
+          },
+          "branch": {
+            "type": "string",
+            "nullable": true
+          },
+          "commitSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifyCmd": {
+            "type": "string",
+            "nullable": true
+          },
+          "worktreePath": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "MergeRequestDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MergeRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "attempts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MergeAttempt"
+                }
+              }
+            },
+            "required": [
+              "attempts"
+            ]
+          }
+        ]
+      },
+      "MergeAttempt": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "attemptNumber": {
+            "type": "integer"
+          },
+          "baseSha": {
+            "type": "string"
+          },
+          "treeSha": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "passed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifyDurationMs": {
+            "type": "integer",
+            "nullable": true
+          },
+          "failureCategory": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "conflict",
+              "build_failed",
+              "test_failed",
+              "lint_failed",
+              "verify_timeout",
+              "policy",
+              "other",
+              null
+            ]
+          },
+          "failureReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "failedFiles": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "logExcerpt": {
+            "type": "string",
+            "nullable": true
+          },
+          "logUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requestId",
+          "attemptNumber",
+          "baseSha",
+          "treeSha",
+          "status",
+          "startedAt",
+          "completedAt",
+          "verifyDurationMs",
+          "failureCategory",
+          "failureReason",
+          "failedFiles",
+          "logExcerpt",
+          "logUrl",
+          "createdAt"
+        ]
+      },
+      "MergeRequestPickup": {
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string"
+          },
+          "speculativePosition": {
+            "type": "integer"
+          }
+        }
+      },
+      "MergeRequestResetToQueued": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "MergeRequestForceCancel": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          }
+        }
+      },
+      "MergeAttemptStart": {
+        "type": "object",
+        "properties": {
+          "baseSha": {
+            "type": "string",
+            "minLength": 1
+          },
+          "batchId": {
+            "type": "string"
+          },
+          "speculativePosition": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "baseSha"
+        ]
+      },
+      "MergeAttemptComplete": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "passed"
+                ]
+              },
+              "treeSha": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "status",
+              "treeSha"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "failed"
+                ]
+              },
+              "failureCategory": {
+                "type": "string",
+                "enum": [
+                  "conflict",
+                  "build_failed",
+                  "test_failed",
+                  "lint_failed",
+                  "verify_timeout",
+                  "policy",
+                  "other"
+                ]
+              },
+              "failureReason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "failedFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "logExcerpt": {
+                "type": "string"
+              },
+              "logUrl": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "failureCategory",
+              "failureReason"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "cancelled"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        ]
+      },
+      "MergeRequestLand": {
+        "type": "object",
+        "properties": {
+          "landedSha": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "landedSha"
+        ]
+      },
+      "MergeRequestReject": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "conflict",
+              "build_failed",
+              "test_failed",
+              "lint_failed",
+              "verify_timeout",
+              "policy",
+              "other"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "failedFiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "logExcerpt": {
+            "type": "string"
+          },
+          "logUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "reason"
+        ]
+      },
+      "MergeBatchEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "started"
+                ]
+              },
+              "batchId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "resource": {
+                "type": "string",
+                "minLength": 1
+              },
+              "memberCount": {
+                "type": "integer"
+              },
+              "memberRequestIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "type",
+              "batchId",
+              "resource",
+              "memberCount",
+              "memberRequestIds"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "member_landed"
+                ]
+              },
+              "batchId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "requestId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "speculativePosition": {
+                "type": "integer"
+              },
+              "landedSha": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "type",
+              "batchId",
+              "requestId",
+              "speculativePosition",
+              "landedSha"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "member_invalidated"
+                ]
+              },
+              "batchId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "requestId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "speculativePosition": {
+                "type": "integer"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "failedPredecessorRequestId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "type",
+              "batchId",
+              "requestId",
+              "speculativePosition",
+              "reason",
+              "failedPredecessorRequestId"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "completed"
+                ]
+              },
+              "batchId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "landed": {
+                "type": "integer"
+              },
+              "rejected": {
+                "type": "integer"
+              },
+              "invalidated": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "type",
+              "batchId",
+              "landed",
+              "rejected",
+              "invalidated"
+            ]
+          }
         ]
       }
     },
@@ -7248,6 +8415,27 @@
           },
           {
             "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "label_name",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "available",
+                "mine",
+                "all"
+              ]
+            },
+            "required": false,
+            "name": "claim",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string",
               "enum": [
                 "true",
@@ -8051,6 +9239,197 @@
                   },
                   "required": [
                     "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{id}/claim": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Claim task",
+        "description": "Atomically claim a task for the caller. Sets the caller as assignee. Returns a structured result without leaking other claimants' IDs.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Claim outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TaskClaimResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{id}/release": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Release task claim",
+        "description": "Release the caller's claim. Humans can release any claim; AI agents only their own.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Release outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TaskClaimResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/awareness": {
+      "get": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Subsystem awareness check",
+        "description": "Return in-flight tasks for a project, optionally filtered to a label name. Used as a boundary-time check before touching a subsystem.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "label",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "In-flight summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Awareness"
+                    }
+                  },
+                  "required": [
+                    "data"
                   ]
                 }
               }
@@ -11740,6 +13119,2599 @@
           },
           "404": {
             "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-locks/{resource}/acquire": {
+      "post": {
+        "tags": [
+          "Merge Locks"
+        ],
+        "summary": "Acquire merge lock",
+        "description": "Atomically acquire the named lock for the caller, or join the FIFO queue if held. Idempotent for the current holder. Optionally attach landing intent (taskId / branch / commitSha / verifyCmd / worktreePath) — all optional, used for observability while held or queued.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_./-]{0,62}$",
+              "example": "main"
+            },
+            "required": true,
+            "name": "resource",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeLockAcquire"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acquire outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeLockAcquireResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (e.g. taskId not in this project)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or referenced task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-locks/{resource}/heartbeat": {
+      "post": {
+        "tags": [
+          "Merge Locks"
+        ],
+        "summary": "Refresh merge lock lease",
+        "description": "Refresh the holder's lease. Returns not_holder if the caller doesn't currently hold the lock (e.g. lease already swept).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_./-]{0,62}$",
+              "example": "main"
+            },
+            "required": true,
+            "name": "resource",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Heartbeat outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeLockHeartbeatResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-locks/{resource}/release": {
+      "post": {
+        "tags": [
+          "Merge Locks"
+        ],
+        "summary": "Release merge lock",
+        "description": "Release the lock and promote the queue head. If landedSha is provided, the release event carries it as the 'main moved' announcement. If landedSha is omitted and a reason is given, the release is an abandon — the reason is stored on the lock so the next holder can see why main hasn't moved (e.g. 'verify failed: skinned_renderer.cpp API drift').",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_./-]{0,62}$",
+              "example": "main"
+            },
+            "required": true,
+            "name": "resource",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeLockRelease"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Release outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeLockReleaseResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-locks/{resource}": {
+      "get": {
+        "tags": [
+          "Merge Locks"
+        ],
+        "summary": "Get merge lock state",
+        "description": "Return the current state of the lock. Holder identity is reported relative to the caller as 'you' / 'someone_else' / 'none'.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_./-]{0,62}$",
+              "example": "main"
+            },
+            "required": true,
+            "name": "resource",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current lock state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeLock"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-locks": {
+      "get": {
+        "tags": [
+          "Merge Locks"
+        ],
+        "summary": "List merge locks",
+        "description": "List all known locks for a project (one per resource name).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of locks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MergeLock"
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "total"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "pagination"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-requests": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Submit a merge request",
+        "description": "Worker submits a request to land branch/commitSha into the named lane (defaults to 'main'). Returns the queued row. The integrator process picks it up asynchronously; subscribe to merge.request.* SSE events for the outcome.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestSubmit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Queued request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (e.g. taskId not in this project)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "List merge requests in a project",
+        "description": "Returns requests for the project ordered by enqueuedAt ASC. Optional filters: resource, status, taskId. Paginated.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "resource",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "integrating",
+                "landed",
+                "rejected",
+                "abandoned"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "taskId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "perPage",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filtered list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MergeRequest"
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        },
+                        "page": {
+                          "type": "integer"
+                        },
+                        "perPage": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "page",
+                        "perPage"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "pagination"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}": {
+      "get": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Get a merge request with attempts",
+        "description": "Returns the request plus all attempts (most-recent first).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request + attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequestDetail"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Cancel a queued merge request",
+        "description": "Submitter or admin cancels a queued request (queued → abandoned). 409 if the request is integrating or already terminal (use force-cancel for integrating).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Abandoned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the submitter or an admin may cancel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid transition from current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/pickup": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Integrator picks up a queued request",
+        "description": "queued → integrating. Sets pickedUpAt and emits merge.request.integrating. Integrator (ai_agent) only. 409 from any non-queued state (no idempotent case — re-pickup throws). Optional batchId/speculativePosition tag the emitted SSE frame.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestPickup"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Picked up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator (ai_agent) only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request not in 'queued' state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/reset-to-queued": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Integrator resets a stuck integrating request back to queued",
+        "description": "integrating → queued. Used for crash recovery and post-verify push-race retry. Cancels any open attempts. Integrator (ai_agent) only. Returns 409 if not in 'integrating'.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestResetToQueued"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Re-queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request not in 'integrating' state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/force-cancel": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Admin force-cancel any non-terminal request",
+        "description": "Admin override: forces queued OR integrating → abandoned. The integrator discovers this on its next land/reject/completeAttempt call (which returns 409 INVALID_TRANSITION).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestForceCancel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Abandoned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid transition (terminal)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/attempts": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Integrator starts a new attempt",
+        "description": "Records baseSha and creates a running attempt row.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeAttemptStart"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Attempt started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeAttempt"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator (ai_agent) only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request not in 'integrating' state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-attempts/{id}": {
+      "patch": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Integrator completes an attempt",
+        "description": "Discriminated on status: passed requires treeSha; failed requires failureCategory + failureReason; cancelled requires only status.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ATTEMPT01"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeAttemptComplete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Attempt completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeAttempt"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Attempt not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Attempt not in 'running' state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/land": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Integrator lands the request",
+        "description": "integrating → landed. Transactionally creates a git_refs row of type 'landed_sha' if the request is linked to a task. Idempotent on landed → landed.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestLand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Landed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request not in 'integrating' state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/reject": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Integrator rejects the request",
+        "description": "integrating → rejected. Transactionally creates a 'merge_rejection' comment on the linked task with structured metadata. Idempotent on rejected → rejected.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestReject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request not in 'integrating' state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-batches/events": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Integrator relays a batch-marker event",
+        "description": "Thin relay (design §13.2): the integrator POSTs one of four batch markers (started / member_landed / member_invalidated / completed); PM re-emits it on the merge.batch.* SSE stream and persists NOTHING. Integrator (ai_agent) only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeBatchEvent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted and re-emitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator (ai_agent) only",
             "content": {
               "application/json": {
                 "schema": {

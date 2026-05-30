@@ -37,6 +37,22 @@ describe("loadConfig", () => {
     expect(config.gitRemote).toBe("origin");
     expect(config.gitMainBranch).toBe("main");
     expect(config.gitRepoUrl).toBe("https://github.com/test/repo.git");
+    expect(config.parallelism).toBe(1);
+  });
+
+  it("reads parallelism override from integrator settings", async () => {
+    const withParallelism: ProjectDetail = {
+      ...enabledProject,
+      settings: {
+        integrator: { ...enabledProject.settings!.integrator!, parallelism: 4 },
+      },
+    };
+    const config = await loadConfig(
+      { project: "p1" },
+      { PM_API_TOKEN: "t" } as never,
+      stubClient(withParallelism),
+    );
+    expect(config.parallelism).toBe(4);
   });
 
   it("throws when project has no gitRepoUrl", async () => {

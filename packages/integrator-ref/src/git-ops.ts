@@ -38,16 +38,44 @@ export interface VerifyResult {
   durationMs: number;
   timedOut: boolean;
   logPath: string;
+  /**
+   * Set ONLY when the child failed to spawn (e.g. ENOENT/EACCES) — the
+   * `child.on("error")` handler captures the error message here BEFORE resolving.
+   * Undefined on every normal exit (including a normal non-zero exit), so the
+   * retry classifier never mistakes a real verify failure for a transient spawn
+   * failure. Threaded as a closure var into the resolved result, mirroring how
+   * `timedOut` is reported.
+   */
+  spawnError?: string;
 }
 
 export interface RunVerifyOptions {
   cwd: string;
   logPath: string;
   killGracePeriodMs?: number;
+  /**
+   * External-cancel seam (phase 7.2 Step 6). When aborted, the verify child's
+   * whole process tree is killed via the SAME `killTree` the internal timeout
+   * uses (no second kill path). An aborted verify RESOLVES cleanly via the
+   * `child.on("exit") → finish()` path (finish only resolves, never rejects),
+   * so the killed task settles like any other. Backward compatible: callers
+   * that omit `signal` (e.g. loop.ts) are unaffected.
+   */
+  signal?: AbortSignal;
 }
 
 export interface GitOps {
   fetch(remote: string): Promise<void>;
+  /**
+   * §4.3 cross-worktree materialization. Fetch a single not-yet-pushed COMMIT
+   * `sha` from another clone's worktree path (used as a one-off local remote)
+   * into THIS clone's object store, so a subsequent `rebaseOnto(sha, ref)` can
+   * resolve it. `git fetch <local-path> <commit-sha>` over the local transport
+   * copies the object reliably with no refspec — the SHA lands as a loose
+   * object / `FETCH_HEAD`. This is how chain member K materializes member K-1's
+   * rebased tree (which lives only in K-1's clone, never on the remote).
+   */
+  fetchFromPath(fromPath: string, sha: string): Promise<void>;
   checkout(ref: string): Promise<void>;
   rebaseOnto(base: string, branch: string): Promise<RebaseResult>;
   push(remote: string, branch: string): Promise<PushResult>;
@@ -125,6 +153,12 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
 
   async function fetch(remote: string): Promise<void> {
     await git.fetch(remote);
+  }
+
+  async function fetchFromPath(fromPath: string, sha: string): Promise<void> {
+    // Local-transport fetch of a single commit object by SHA. No refspec — git
+    // copies the named object (and its history) into this clone's store.
+    await git.raw(["fetch", fromPath, sha]);
   }
 
   async function checkout(ref: string): Promise<void> {
@@ -205,7 +239,24 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       let stdoutBuf = "";
       let stderrBuf = "";
       let timedOut = false;
+      let spawnError: string | undefined;
+      let settled = false;
       let sigkillTimer: NodeJS.Timeout | undefined;
+
+      // External-cancel seam: kill the child's process tree on abort, reusing
+      // the SAME killTree the timeout path uses. The kill makes the child exit,
+      // which resolves the promise via finish() (never rejects).
+      const onAbort = (): void => {
+        if (child.pid !== undefined) killTree(child.pid, "SIGTERM");
+      };
+      const signal = runOpts.signal;
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+        } else {
+          signal.addEventListener("abort", onAbort, { once: true });
+        }
+      }
 
       const appendCapped = (current: string, chunk: string): string => {
         if (current.length >= maxBuffer) return current;
@@ -237,17 +288,26 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       }, timeoutMs);
       timeout.unref?.();
 
-      const finish = (exitCode: number, signal: NodeJS.Signals | null): void => {
+      const finish = (
+        exitCode: number,
+        exitSignal: NodeJS.Signals | null,
+      ): void => {
+        // Settled/finished guard: a spawn `error` can arrive after a partial
+        // `exit` (or vice-versa); resolve exactly once so we never double-resolve.
+        if (settled) return;
+        settled = true;
         clearTimeout(timeout);
         if (sigkillTimer) clearTimeout(sigkillTimer);
+        if (signal) signal.removeEventListener("abort", onAbort);
         logStream.end(() => {
           resolve({
             exitCode,
-            signal,
+            signal: exitSignal,
             stdout: stdoutBuf,
             stderr: stderrBuf,
             durationMs: Date.now() - start,
             timedOut,
+            spawnError,
             logPath: runOpts.logPath,
           });
         });
@@ -256,9 +316,13 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       child.on("error", (err) => {
         // spawn-level failure (e.g. ENOENT). Surface as a non-zero exit with
         // the error text in the captured stderr so categorize() can read it.
+        // Record `spawnError` (the retry classifier reads it to mark this
+        // TRANSIENT) BEFORE calling finish — set it only on the first settle so
+        // an `error` arriving after a partial `exit` does not overwrite/double.
         const s = errText(err);
         logStream.write(s);
         stderrBuf = appendCapped(stderrBuf, s);
+        if (!settled) spawnError = s;
         finish(127, null);
       });
 
@@ -268,5 +332,13 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     });
   }
 
-  return { fetch, checkout, rebaseOnto, push, resolveRef, runVerify };
+  return {
+    fetch,
+    fetchFromPath,
+    checkout,
+    rebaseOnto,
+    push,
+    resolveRef,
+    runVerify,
+  };
 }

@@ -426,4 +426,86 @@ describe("SSE Events API", () => {
       expect(landedData.entity_type).toBe("merge_request");
     });
   });
+
+  // ── Phase 7.2: batch-tagged merge.request / merge.attempt frames ──
+
+  describe("Phase 7.2 batch-tagged frames over SSE", () => {
+    it("tags merge.request.integrating and merge.attempt.started with batch_id/speculative_position", async () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db).user;
+      const actor = { id: integrator.id, role: "member", type: "ai_agent" };
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${project.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      setTimeout(() => {
+        const r = mergeRequestSvc.submit({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          branch: "feat/tagged",
+        });
+        mergeRequestSvc.transitionToIntegrating(r.id, actor, {
+          batchId: "batch-X",
+          speculativePosition: 2,
+        });
+        mergeAttemptSvc.startAttempt(r.id, { baseSha: "base000" }, actor, {
+          batchId: "batch-X",
+          speculativePosition: 2,
+        });
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 4, timeoutMs: 3000 });
+      const events = parseSSEEvents(text);
+
+      const integrating = events.find((e) => e.event === "merge.request.integrating");
+      expect(integrating).toBeDefined();
+      const intData = JSON.parse(integrating!.data!);
+      expect(intData.batch_id).toBe("batch-X");
+      expect(intData.speculative_position).toBe(2);
+
+      const started = events.find((e) => e.event === "merge.attempt.started");
+      expect(started).toBeDefined();
+      const startData = JSON.parse(started!.data!);
+      expect(startData.batch_id).toBe("batch-X");
+      expect(startData.speculative_position).toBe(2);
+    });
+
+    it("backward-compat: an untagged 7.1-style integrating frame has no batch_id", async () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db).user;
+      const actor = { id: integrator.id, role: "member", type: "ai_agent" };
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${project.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      setTimeout(() => {
+        const r = mergeRequestSvc.submit({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          branch: "feat/untagged",
+        });
+        // No extra → 7.1 behavior.
+        mergeRequestSvc.transitionToIntegrating(r.id, actor);
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 3, timeoutMs: 3000 });
+      const events = parseSSEEvents(text);
+
+      const integrating = events.find((e) => e.event === "merge.request.integrating");
+      expect(integrating).toBeDefined();
+      const data = JSON.parse(integrating!.data!);
+      expect("batch_id" in data).toBe(false);
+      expect("speculative_position" in data).toBe(false);
+    });
+  });
 });

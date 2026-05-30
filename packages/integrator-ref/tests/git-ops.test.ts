@@ -192,7 +192,110 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
     });
     expect(result.exitCode).toBe(7);
     expect(result.timedOut).toBe(false);
+    // A normal non-zero exit is NOT a spawn failure: spawnError must be
+    // undefined so the retry classifier reads this as a REAL failure (guard
+    // against a false-positive transient). (phase 7.2 Step 8)
+    expect(result.spawnError).toBeUndefined();
   });
+
+  it("fetchFromPath materializes a never-pushed commit across clones (§4.3)", async () => {
+    // Two independent clones of the bare remote. Clone A makes a commit that is
+    // NEVER pushed to the remote; clone B fetches that commit's SHA directly
+    // from A's worktree path (the §4.3 cross-worktree materialization) and can
+    // then resolve it locally — proving the not-yet-pushed object reached B.
+    // Use a dedicated bare repo + fresh clones so no cross-test state (other
+    // pushed commits in the shared `bareRepo`) can make B coincidentally hold A's
+    // commit object.
+    const ffpBare = path.join(tmpRoot, "ffp-bare.git");
+    const cloneA = path.join(tmpRoot, "ffp-a");
+    const cloneB = path.join(tmpRoot, "ffp-b");
+    await simpleGit().init(["--bare", "--initial-branch=main", ffpBare]);
+    // Seed via A so main exists, then clone B from the same point.
+    await simpleGit().clone(ffpBare, cloneA);
+    const ga = simpleGit(cloneA);
+    await configIdentity(ga);
+    writeFileSync(path.join(cloneA, "base.txt"), "base\n");
+    await ga.add(["base.txt"]);
+    await ga.commit("ffp base");
+    await ga.branch(["-M", "main"]);
+    await ga.push(["-u", "origin", "main"]);
+    await simpleGit().clone(ffpBare, cloneB);
+    const gb = simpleGit(cloneB);
+    await configIdentity(gb);
+
+    // A commits locally, does NOT push.
+    await ga.checkout("main");
+    writeFileSync(path.join(cloneA, "speculative.txt"), "spec\n");
+    await ga.add(["speculative.txt"]);
+    await ga.commit("never-pushed speculative commit");
+    const opsA = createGitOps(ga);
+    const sha = await opsA.resolveRef("HEAD");
+    expect(sha).toMatch(/^[0-9a-f]{40}$/);
+
+    // The object is absent from B before the fetch. `cat-file -t` errors (and
+    // simple-git rejects) on a missing object, so it actually proves presence —
+    // unlike `rev-parse` (echoes a well-formed SHA without checking the store)
+    // or `cat-file -e` (simple-git swallows its non-zero exit).
+    const opsB = createGitOps(gb);
+    await expect(gb.raw(["cat-file", "-t", sha])).rejects.toBeTruthy();
+
+    // §4.3 cross-worktree fetch: B pulls the object from A's path. Now the
+    // object is present (cat-file -t resolves to "commit") and resolveRef
+    // returns it.
+    await opsB.fetchFromPath(cloneA, sha);
+    const objType = await gb.raw(["cat-file", "-t", sha]);
+    expect(objType.trim()).toBe("commit");
+    const resolved = await opsB.resolveRef(sha);
+    expect(resolved).toBe(sha);
+  });
+
+  it("runVerify external AbortSignal kills the process well before the sleep", async () => {
+    const ops = createGitOps(git);
+    const logPath = path.join(tmpRoot, "verify-abort.log");
+    // A command that sleeps ~9s; we abort after ~100ms and assert the promise
+    // resolves WELL under the full sleep, reflecting an external kill.
+    const cmd =
+      process.platform === "win32"
+        ? "ping -n 10 127.0.0.1 > nul"
+        : "sleep 9";
+    const controller = new AbortController();
+    const start = Date.now();
+    setTimeout(() => controller.abort(), 100);
+    const result = await ops.runVerify(cmd, 30_000, {
+      cwd: workClone,
+      logPath,
+      signal: controller.signal,
+      killGracePeriodMs: 500,
+    });
+    const elapsed = Date.now() - start;
+    // Killed long before the ~9s sleep would naturally complete.
+    expect(elapsed).toBeLessThan(5_000);
+    // The kill is an external abort, NOT the internal timeout (30s never fired).
+    expect(result.timedOut).toBe(false);
+    // The result reflects a kill: non-zero exit or a kill signal.
+    expect(result.exitCode !== 0 || result.signal !== null).toBe(true);
+  }, 15_000);
+
+  it("runVerify already-aborted signal kills immediately", async () => {
+    const ops = createGitOps(git);
+    const logPath = path.join(tmpRoot, "verify-pre-abort.log");
+    const cmd =
+      process.platform === "win32"
+        ? "ping -n 10 127.0.0.1 > nul"
+        : "sleep 9";
+    const controller = new AbortController();
+    controller.abort(); // aborted BEFORE runVerify spawns
+    const start = Date.now();
+    const result = await ops.runVerify(cmd, 30_000, {
+      cwd: workClone,
+      logPath,
+      signal: controller.signal,
+      killGracePeriodMs: 500,
+    });
+    expect(Date.now() - start).toBeLessThan(5_000);
+    expect(result.timedOut).toBe(false);
+    expect(result.exitCode !== 0 || result.signal !== null).toBe(true);
+  }, 15_000);
 
   it("runVerify timeout kills the process and flags timedOut", async () => {
     const ops = createGitOps(git);

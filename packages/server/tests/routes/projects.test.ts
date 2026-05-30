@@ -642,6 +642,7 @@ describe("Projects API", () => {
       expect(body.data.settings.integrator.verify_timeout_sec).toBe(600);
       expect(body.data.settings.integrator.git_remote).toBe("origin");
       expect(body.data.settings.integrator.git_main_branch).toBe("main");
+      expect(body.data.settings.integrator.parallelism).toBe(1);
     });
 
     it("accepts a fully valid enabled integrator config and applies defaults", async () => {
@@ -728,6 +729,7 @@ describe("Projects API", () => {
                 git_remote: "upstream",
                 git_main_branch: "trunk",
                 worktree_name: "game_one-int",
+                parallelism: 3,
               },
             },
           },
@@ -744,6 +746,7 @@ describe("Projects API", () => {
       expect(i.git_remote).toBe("upstream");
       expect(i.git_main_branch).toBe("trunk");
       expect(i.worktree_name).toBe("game_one-int");
+      expect(i.parallelism).toBe(3);
     });
 
     it("rejects verify_timeout_sec < 1", async () => {
@@ -761,6 +764,29 @@ describe("Projects API", () => {
                 verify_command: "x",
                 worktree_root: "/tmp",
                 verify_timeout_sec: 0,
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects parallelism < 1", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "x",
+                worktree_root: "/tmp",
+                parallelism: 0,
               },
             },
           },

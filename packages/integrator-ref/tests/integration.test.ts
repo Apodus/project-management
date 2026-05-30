@@ -30,6 +30,22 @@
  *   pnpm --filter @pm/shared build
  *   pnpm --filter @pm/server build
  *   pnpm --filter @pm/integrator-ref build
+ *
+ * ── Phase 7.2 Step 9 batch-of-one invariant (DO NOT silently break) ──────────
+ * As of Step 9 the spawned integrator (`dist/index.js`) drives `runBatchLoop`,
+ * NOT 7.1's serial `runLoop`. This E2E is the regression net proving the rewire
+ * preserves 7.1 observable behavior. It relies on TWO invariants:
+ *   1. `config.parallelism` defaults to 1 (config.ts: `ic.parallelism ?? 1`),
+ *      and the spawn env below does NOT set a project `parallelism` setting —
+ *      so the pool is size 1 and every batch is a BATCH-OF-ONE.
+ *   2. runBatchOnce drains ALL currently-queued requests per single lock
+ *      acquisition. At parallelism:1 this is one member at a time, FIFO,
+ *      byte-identical to the serial loop (acquire → pickup → … → land →
+ *      release, then re-list). Flow 3 (two queued → FIFO) exercises the
+ *      multi-iteration drain at batch-of-one.
+ * If a future change raises the default parallelism (or the spawn raises it),
+ * Flow 4 (cancel-while-lock-starved) and the FIFO timing in Flow 3 can change
+ * shape — re-validate this file before changing that default.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
