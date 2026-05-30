@@ -5,12 +5,17 @@ import { z } from "zod";
 // ("queued") matches the merge_requests.status column default in
 // packages/server/src/db/schema.ts. Lifecycle state machine lives in
 // docs/design/phase-7.1-design.md §5.1.
+// "orphaned" is the Phase-7.3 grouped-inner outcome: the inner request
+// landed on its remote but the group-land did not complete, so its commit
+// is orphaned relative to the outer gitlink (docs/design/phase-7.3-design.md
+// §3.4).
 export const MERGE_REQUEST_STATUSES = [
   "queued",
   "integrating",
   "landed",
   "rejected",
   "abandoned",
+  "orphaned",
 ] as const;
 export type MergeRequestStatus = (typeof MERGE_REQUEST_STATUSES)[number];
 

@@ -38,6 +38,7 @@ describe("loadConfig", () => {
     expect(config.gitMainBranch).toBe("main");
     expect(config.gitRepoUrl).toBe("https://github.com/test/repo.git");
     expect(config.parallelism).toBe(1);
+    expect(config.linkedRepos).toEqual([]);
   });
 
   it("reads parallelism override from integrator settings", async () => {
@@ -53,6 +54,51 @@ describe("loadConfig", () => {
       stubClient(withParallelism),
     );
     expect(config.parallelism).toBe(4);
+  });
+
+  it("surfaces linked_repos with snake→camel mapping", async () => {
+    const withLinkedRepos: ProjectDetail = {
+      ...enabledProject,
+      settings: {
+        integrator: {
+          ...enabledProject.settings!.integrator!,
+          linked_repos: [
+            {
+              name: "rynx-inner",
+              path: "engine",
+              role: "inner",
+              gitlink_parent: "game_one",
+              gitlink_path: "vendor/rynx",
+            },
+            {
+              name: "game_one",
+              path: ".",
+              role: "outer",
+            },
+          ],
+        },
+      },
+    };
+    const config = await loadConfig(
+      { project: "p1" },
+      { PM_API_TOKEN: "t" } as never,
+      stubClient(withLinkedRepos),
+    );
+    expect(config.linkedRepos).toHaveLength(2);
+    expect(config.linkedRepos[0]).toEqual({
+      name: "rynx-inner",
+      path: "engine",
+      role: "inner",
+      gitlinkParent: "game_one",
+      gitlinkPath: "vendor/rynx",
+    });
+    expect(config.linkedRepos[1]).toEqual({
+      name: "game_one",
+      path: ".",
+      role: "outer",
+      gitlinkParent: undefined,
+      gitlinkPath: undefined,
+    });
   });
 
   it("throws when project has no gitRepoUrl", async () => {

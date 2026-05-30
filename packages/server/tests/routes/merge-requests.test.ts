@@ -633,6 +633,34 @@ describe("Merge Requests API", () => {
       );
       expect(res.status).toBe(403);
     });
+
+    // ── G1 guard: a grouped member cannot land independently ──────────
+    it("409 GROUPED_MEMBER when landing a grouped member independently", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const a = await submitRequest(project.id, agent.token, { branch: "a" });
+      const b = await submitRequest(project.id, agent.token, { branch: "b" });
+
+      // Bind a + b into a group, then flip one member to integrating.
+      const groupRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        { token: agent.token, body: { resource: "main", memberRequestIds: [a, b] } },
+      );
+      expect(groupRes.status).toBe(201);
+      forceIntegrating(a);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${a}/land`,
+        { token: agent.token, body: { landedSha: "landed999" } },
+      );
+      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(json.error.code).toBe("GROUPED_MEMBER");
+    });
   });
 
   // ─── I. POST reject ─────────────────────────────────────────────

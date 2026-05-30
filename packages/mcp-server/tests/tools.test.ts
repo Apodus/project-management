@@ -53,6 +53,10 @@ vi.mock("../src/api-client.js", () => ({
   listMergeRequests: vi.fn(),
   getMergeRequest: vi.fn(),
   cancelMergeRequest: vi.fn(),
+  requestMergeGroup: vi.fn(),
+  getMergeGroup: vi.fn(),
+  listMergeIncidents: vi.fn(),
+  getMergeIncident: vi.fn(),
 }));
 
 // Import the mocked functions so we can configure them per test
@@ -91,6 +95,10 @@ const mockSubmitMergeRequest = vi.mocked(apiClient.submitMergeRequest);
 const mockListMergeRequests = vi.mocked(apiClient.listMergeRequests);
 const mockGetMergeRequest = vi.mocked(apiClient.getMergeRequest);
 const mockCancelMergeRequest = vi.mocked(apiClient.cancelMergeRequest);
+const mockRequestMergeGroup = vi.mocked(apiClient.requestMergeGroup);
+const mockGetMergeGroup = vi.mocked(apiClient.getMergeGroup);
+const mockListMergeIncidents = vi.mocked(apiClient.listMergeIncidents);
+const mockGetMergeIncident = vi.mocked(apiClient.getMergeIncident);
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -2539,6 +2547,149 @@ describe("MCP Tools", () => {
       expect(text).toContain("mreq_001");
       expect(text).toContain("abandoned");
       expect(text).toContain("2026-05-29T14:22:50.000Z");
+    });
+  });
+
+  // ── Merge group + incident tools (Phase 7.3) ────────────────────
+  describe("merge group + incident tools", () => {
+    const sampleGroupDetail = {
+      id: "grp_001",
+      projectId: "P1",
+      resource: "main",
+      state: "forming" as const,
+      submittedBy: "U_AGENT",
+      integratorId: null,
+      resolvedAt: null,
+      resolutionReason: null,
+      createdAt: "2026-05-29T14:21:03.412Z",
+      updatedAt: "2026-05-29T14:21:03.412Z",
+      members: [
+        { ...sampleMergeRequest, id: "mreq_A", branch: "feat/inner" },
+        { ...sampleMergeRequest, id: "mreq_B", branch: "feat/outer" },
+      ],
+    };
+
+    const sampleIncident = {
+      id: "inc_001",
+      projectId: "P1",
+      groupId: "grp_001",
+      type: "orphaned_inner" as const,
+      innerRepo: "inner",
+      orphanedSha: "orphan99",
+      outerRepo: "outer",
+      innerRequestId: "mreq_A",
+      taskId: "T1",
+      state: "open" as const,
+      openedAt: "2026-05-29T14:30:00.000Z",
+      resolvedAt: null,
+      resolution: null,
+      createdAt: "2026-05-29T14:30:00.000Z",
+      updatedAt: "2026-05-29T14:30:00.000Z",
+    };
+
+    it("pm_request_merge_group creates a group and lists members", async () => {
+      mockRequestMergeGroup.mockResolvedValue(sampleGroupDetail);
+
+      const result = await client.callTool({
+        name: "pm_request_merge_group",
+        arguments: {
+          project_id: "P1",
+          member_request_ids: ["mreq_A", "mreq_B"],
+        },
+      });
+
+      expect(mockRequestMergeGroup).toHaveBeenCalledWith("P1", {
+        resource: "main",
+        memberRequestIds: ["mreq_A", "mreq_B"],
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("grp_001");
+      expect(text).toContain("forming");
+      expect(text).toContain("mreq_A");
+      expect(text).toContain("mreq_B");
+      expect(text).toContain("merge.group.landed");
+    });
+
+    it("pm_get_merge_group surfaces state + members", async () => {
+      mockGetMergeGroup.mockResolvedValue({
+        ...sampleGroupDetail,
+        state: "landed",
+        members: sampleGroupDetail.members.map((m) => ({
+          ...m,
+          status: "landed",
+          landedSha: `land-${m.id}`,
+        })),
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_group",
+        arguments: { group_id: "grp_001" },
+      });
+
+      expect(mockGetMergeGroup).toHaveBeenCalledWith("grp_001");
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("LANDED");
+      expect(text).toContain("mreq_A");
+      expect(text).toContain("land-mreq_A");
+    });
+
+    it("pm_list_merge_incidents renders one line per incident and maps all→undefined", async () => {
+      mockListMergeIncidents.mockResolvedValue([sampleIncident]);
+
+      const result = await client.callTool({
+        name: "pm_list_merge_incidents",
+        arguments: { project_id: "P1" },
+      });
+
+      expect(mockListMergeIncidents).toHaveBeenCalledWith("P1", {
+        state: undefined,
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("inc_001");
+      expect(text).toContain("open");
+      expect(text).toContain("inner@orphan99");
+      expect(text).toContain("outer");
+    });
+
+    it("pm_list_merge_incidents passes a concrete state filter", async () => {
+      mockListMergeIncidents.mockResolvedValue([]);
+
+      await client.callTool({
+        name: "pm_list_merge_incidents",
+        arguments: { project_id: "P1", state: "open" },
+      });
+
+      expect(mockListMergeIncidents).toHaveBeenCalledWith("P1", {
+        state: "open",
+      });
+    });
+
+    it("pm_get_merge_incident surfaces detail + resolution", async () => {
+      mockGetMergeIncident.mockResolvedValue({
+        ...sampleIncident,
+        state: "human_resolved",
+        resolvedAt: "2026-05-29T15:00:00.000Z",
+        resolution: {
+          mode: "human",
+          outerLandedSha: "outer-land",
+          note: "fixed by hand",
+        },
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_incident",
+        arguments: { incident_id: "inc_001" },
+      });
+
+      expect(mockGetMergeIncident).toHaveBeenCalledWith("inc_001");
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("inc_001");
+      expect(text).toContain("HUMAN_RESOLVED");
+      expect(text).toContain("inner @ orphan99");
+      expect(text).toContain("outer");
+      expect(text).toContain("T1");
+      expect(text).toContain("outer-land");
+      expect(text).toContain("fixed by hand");
     });
   });
 });

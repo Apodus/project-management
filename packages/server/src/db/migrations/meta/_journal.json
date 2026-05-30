@@ -78,6 +78,13 @@
       "when": 1780617600000,
       "tag": "0010_merge_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1780704000000,
+      "tag": "0011_merge_request_groups",
+      "breakpoints": true
     }
   ]
 }

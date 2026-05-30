@@ -794,6 +794,108 @@ describe("Projects API", () => {
       );
       expect(res.status).toBe(400);
     });
+
+    it("defaults linked_repos to [] when integrator config omits it", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      expect(body.data.settings.integrator.linked_repos).toEqual([]);
+    });
+
+    it("round-trips a valid 2-entry linked_repos config", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+                linked_repos: [
+                  {
+                    name: "rynx-inner",
+                    path: "engine",
+                    role: "inner",
+                    gitlink_parent: "game_one",
+                    gitlink_path: "vendor/rynx",
+                  },
+                  {
+                    name: "game_one",
+                    path: ".",
+                    role: "outer",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      const repos = body.data.settings.integrator.linked_repos;
+      expect(repos).toHaveLength(2);
+      expect(repos[0]).toEqual({
+        name: "rynx-inner",
+        path: "engine",
+        role: "inner",
+        gitlink_parent: "game_one",
+        gitlink_path: "vendor/rynx",
+      });
+      expect(repos[1]).toEqual({
+        name: "game_one",
+        path: ".",
+        role: "outer",
+      });
+    });
+
+    it("rejects linked_repos with an invalid role", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "x",
+                worktree_root: "/tmp",
+                linked_repos: [
+                  { name: "rynx", path: "engine", role: "sideways" },
+                ],
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
   });
 
   // ── OpenAPI spec ──────────────────────────────────────────────────

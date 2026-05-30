@@ -19,6 +19,9 @@ import {
   comments,
   activityLog,
   gitRefs,
+  mergeRequests,
+  mergeRequestGroups,
+  mergeIncidents,
 } from "../../src/db/index.js";
 import type { AppDatabase } from "../../src/db/index.js";
 
@@ -44,7 +47,7 @@ describe("Database schema", () => {
 
   // ── Table existence ──────────────────────────────────────────────
   describe("table existence", () => {
-    it("should create all 22 tables", () => {
+    it("should create all 24 tables", () => {
       const db = setupDb();
       const tableNames = db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' AND name NOT LIKE '%_fts%' ORDER BY name`,
@@ -63,8 +66,10 @@ describe("Database schema", () => {
         "git_refs",
         "labels",
         "merge_attempts",
+        "merge_incidents",
         "merge_lock_queue",
         "merge_locks",
+        "merge_request_groups",
         "merge_requests",
         "milestones",
         "projects",
@@ -111,6 +116,12 @@ describe("Database schema", () => {
         "idx_deps_task",
         "idx_deps_depends_on",
         "idx_labels_project_name",
+        "idx_merge_request_groups_project_state",
+        "idx_merge_request_groups_resource_state",
+        "idx_merge_incidents_project_state",
+        "idx_merge_incidents_group",
+        "idx_merge_incidents_open",
+        "idx_merge_requests_group",
       ].sort();
 
       for (const idx of expected) {
@@ -465,6 +476,254 @@ describe("Database schema", () => {
       expect(result).toBeDefined();
       expect(result!.refType).toBe("branch");
       expect(result!.refValue).toBe("feat/my-feature");
+    });
+  });
+
+  // ── Merge groups + incidents (Phase 7.3) ─────────────────────────
+  describe("merge groups and incidents", () => {
+    let db: AppDatabase;
+    let userId: string;
+    let projectId: string;
+
+    beforeEach(() => {
+      db = setupDb();
+      const workspaceId = db.select().from(workspaces).all()[0].id;
+      const ts = now();
+
+      userId = createId();
+      db.insert(users)
+        .values({
+          id: userId,
+          username: "mguser",
+          displayName: "Merge Group User",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      projectId = createId();
+      db.insert(projects)
+        .values({
+          id: projectId,
+          workspaceId,
+          name: "MG Project",
+          slug: "mg-project",
+          createdAt: ts,
+          updatedAt: ts,
+          createdBy: userId,
+        })
+        .run();
+    });
+
+    it("should insert a group with default state and resource", () => {
+      const id = createId();
+      const ts = now();
+      db.insert(mergeRequestGroups)
+        .values({
+          id,
+          projectId,
+          submittedBy: userId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const result = db
+        .select()
+        .from(mergeRequestGroups)
+        .where(eq(mergeRequestGroups.id, id))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.state).toBe("forming");
+      expect(result!.resource).toBe("main");
+      expect(result!.integratorId).toBeNull();
+    });
+
+    it("should insert an incident referencing a group with default open state", () => {
+      const groupId = createId();
+      const ts = now();
+      db.insert(mergeRequestGroups)
+        .values({
+          id: groupId,
+          projectId,
+          submittedBy: userId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const incidentId = createId();
+      db.insert(mergeIncidents)
+        .values({
+          id: incidentId,
+          projectId,
+          groupId,
+          type: "orphaned_inner",
+          innerRepo: "game_one",
+          orphanedSha: "abc123",
+          outerRepo: "outer",
+          openedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const result = db
+        .select()
+        .from(mergeIncidents)
+        .where(eq(mergeIncidents.id, incidentId))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.state).toBe("open");
+      expect(result!.groupId).toBe(groupId);
+      expect(result!.type).toBe("orphaned_inner");
+    });
+
+    it("should round-trip the incident resolution JSON column", () => {
+      const groupId = createId();
+      const ts = now();
+      db.insert(mergeRequestGroups)
+        .values({
+          id: groupId,
+          projectId,
+          submittedBy: userId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const incidentId = createId();
+      const resolution = {
+        mode: "auto_rollforward" as const,
+        outerLandedSha: "def456",
+        resolvedByGroupId: createId(),
+        note: "healed by next group",
+      };
+      db.insert(mergeIncidents)
+        .values({
+          id: incidentId,
+          projectId,
+          groupId,
+          type: "orphaned_inner",
+          innerRepo: "game_one",
+          orphanedSha: "abc123",
+          outerRepo: "outer",
+          state: "auto_resolved",
+          openedAt: ts,
+          resolvedAt: ts,
+          resolution,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const result = db
+        .select()
+        .from(mergeIncidents)
+        .where(eq(mergeIncidents.id, incidentId))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.resolution).toEqual(resolution);
+    });
+
+    it("should insert a merge request associated to a group", () => {
+      const groupId = createId();
+      const ts = now();
+      db.insert(mergeRequestGroups)
+        .values({
+          id: groupId,
+          projectId,
+          submittedBy: userId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const requestId = createId();
+      db.insert(mergeRequests)
+        .values({
+          id: requestId,
+          projectId,
+          submittedBy: userId,
+          groupId,
+          enqueuedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const result = db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, requestId))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.groupId).toBe(groupId);
+    });
+
+    it("should SET NULL (not cascade-delete) on group deletion", () => {
+      const groupId = createId();
+      const ts = now();
+      db.insert(mergeRequestGroups)
+        .values({
+          id: groupId,
+          projectId,
+          submittedBy: userId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const incidentId = createId();
+      db.insert(mergeIncidents)
+        .values({
+          id: incidentId,
+          projectId,
+          groupId,
+          type: "orphaned_inner",
+          innerRepo: "game_one",
+          orphanedSha: "abc123",
+          outerRepo: "outer",
+          openedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const requestId = createId();
+      db.insert(mergeRequests)
+        .values({
+          id: requestId,
+          projectId,
+          submittedBy: userId,
+          groupId,
+          enqueuedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      // Delete the group — FK ON DELETE SET NULL must null the references,
+      // NOT cascade-delete the dependent rows. Requires foreign_keys=ON.
+      db.delete(mergeRequestGroups)
+        .where(eq(mergeRequestGroups.id, groupId))
+        .run();
+
+      const incident = db
+        .select()
+        .from(mergeIncidents)
+        .where(eq(mergeIncidents.id, incidentId))
+        .get();
+      expect(incident).toBeDefined();
+      expect(incident!.groupId).toBeNull();
+
+      const request = db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, requestId))
+        .get();
+      expect(request).toBeDefined();
+      expect(request!.groupId).toBeNull();
     });
   });
 

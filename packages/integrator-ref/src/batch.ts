@@ -25,6 +25,19 @@ import type { MergeRequestView } from "@pm/shared";
 import { type PmClient } from "./pm-client.js";
 import { categorize, classifyVerifyFailure } from "./categorize.js";
 import { isApiError, errMessage } from "./loop.js";
+import {
+  runGroupIntegration,
+  type RepoLane,
+  type GroupIntegrationOutcome,
+} from "./group-integration.js";
+import {
+  landAssembledGroup,
+  type GroupLandResult,
+} from "./group-land.js";
+import {
+  recoverOrphanedInner,
+  type RecoverResult,
+} from "./group-recovery.js";
 
 const LOG_EXCERPT_CAP = 4096;
 
@@ -205,7 +218,55 @@ export interface RunBatchLoopDeps extends BatchDeps {
   waitForWork: (pollMs: number) => Promise<void>;
   /** Should the loop keep running? Flipped by the SIGTERM/SIGINT handler. */
   shouldContinue: () => boolean;
+  /**
+   * Phase 7.3 group lane (Step 10). When present AND non-empty, the loop checks
+   * for a FORMING cross-repo group BEFORE falling through to the single-repo
+   * speculative `runBatchOnce`. Absent / empty linkedRepos → exact 7.2 behavior
+   * (backward compat). The two lanes are the correlated per-repo pools
+   * assembleGroup leases from + their binding clones.
+   */
+  groupLane?: GroupLaneDeps;
 }
+
+/**
+ * The 7.3 group dispatch surface. `innerLane`/`outerLane` are the role-bound
+ * per-repo pools; the verify defaults mirror BatchDeps. Present only when the
+ * project declares linkedRepos.
+ */
+export interface GroupLaneDeps {
+  innerLane: RepoLane;
+  outerLane: RepoLane;
+  integratorId?: string;
+  innerLogsDir?: string;
+  outerLogsDir?: string;
+}
+
+export type RunGroupLaneOutcome =
+  | { kind: "no_group" }
+  | { kind: "lock_unavailable" }
+  | {
+      kind: "resolved";
+      outcome: GroupIntegrationOutcome;
+      /**
+       * Step 11: the atomic-land result when `outcome.kind === "ready_to_land"`
+       * (landed / rejected / orphaned). Absent for non-land outcomes
+       * (rejected / backpressure straight out of integration).
+       */
+      land?: GroupLandResult;
+      /**
+       * Step 12: the orphaned-inner recovery sweep result, run FIRST under the
+       * lane lock (§7.2) before the forming group integrates. Present whenever
+       * the lock was acquired (a forming group existed).
+       */
+      recovery?: RecoverResult;
+    }
+  /**
+   * Step 12: a recovery-ONLY pass — an open incident existed but NO forming
+   * group, so the lane lock was acquired solely to run the rollforward sweep.
+   * Treated as work-done by runBatchLoop (loop again immediately).
+   */
+  | { kind: "recovered"; recovery: RecoverResult }
+  | { kind: "error"; message: string };
 
 export interface RunBatchLoopOptions {
   pollIntervalMs?: number;
@@ -762,6 +823,10 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     queued = await pmClient.listMergeRequests(projectId, {
       resource,
       status: "queued",
+      // §9 finding 3: never admit a grouped member into the single-repo
+      // speculative drain — grouped members integrate only as a unit via the
+      // group lane. Excluding them here closes the submit→group race window.
+      ungrouped: true,
     });
   } catch (err) {
     logger.warn({ err: errMessage(err) }, "Failed to list queued requests");
@@ -896,6 +961,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
         const list = await pmClient.listMergeRequests(projectId, {
           resource,
           status: "queued",
+          ungrouped: true,
         });
         const req = list.find((r) => !admittedIds.has(r.id));
         if (!req) {
@@ -1363,11 +1429,212 @@ async function runVerifyTask(
   }
 }
 
+// ─── runGroupLaneOnce (Phase 7.3 Step 10) ─────────────────────────
+
+/**
+ * Process ONE forming cross-repo group as an atomic step, with the lane lock
+ * acquired once / released once (mirrors runBatchOnce's lock discipline — one
+ * lane lock, §8). Returns `no_group` when nothing is forming (the caller then
+ * falls through to the single-repo `runBatchOnce`), `lock_unavailable` when
+ * another integrator holds the lane, or `resolved` with the group outcome.
+ *
+ * STEP-10/11 SEAM: a `ready_to_land` outcome means the assembled worktrees are
+ * STILL HELD (Step 11 lands from them). Step 11 is not wired yet, so the live
+ * loop must NOT leak the slots — it releases them here with a clear log + TODO.
+ * Step 11 replaces that release with the actual atomic land.
+ */
+export async function runGroupLaneOnce(
+  deps: RunBatchLoopDeps,
+): Promise<RunGroupLaneOutcome> {
+  const { pmClient, logger, projectId, resource } = deps;
+  const groupLane = deps.groupLane;
+  if (!groupLane) return { kind: "no_group" };
+
+  // 1. Cheap fast path (NO lock): list forming groups AND open orphaned_inner
+  //    incidents. Only when EITHER is non-empty do we take the lane lock. Both
+  //    empty → no_group (the scheduler then falls through to the single-repo
+  //    path), keeping the lock-free fast path of §7.2 / §8.
+  let forming;
+  let openIncidentCount = 0;
+  try {
+    const groups = await pmClient.listMergeGroups(projectId, {
+      resource,
+      state: "forming",
+    });
+    forming = groups[0];
+  } catch (err) {
+    logger.warn({ err: errMessage(err) }, "listMergeGroups failed");
+    return { kind: "error", message: errMessage(err) };
+  }
+  try {
+    const incidents = await pmClient.listMergeIncidents(projectId, {
+      state: "open",
+      type: "orphaned_inner",
+    });
+    openIncidentCount = incidents.length;
+  } catch (err) {
+    logger.warn({ err: errMessage(err) }, "listMergeIncidents failed (group lane)");
+    return { kind: "error", message: errMessage(err) };
+  }
+  if (!forming && openIncidentCount === 0) return { kind: "no_group" };
+
+  // 2. If a group is forming, bind its members (needed for the lock
+  //    representative + the integration call). For a recovery-only pass there is
+  //    no group; the lock uses a recovery-marker representative.
+  let group: Awaited<ReturnType<typeof pmClient.getMergeGroup>> | undefined;
+  if (forming) {
+    try {
+      group = await pmClient.getMergeGroup(forming.id);
+    } catch (err) {
+      logger.warn(
+        { groupId: forming.id, err: errMessage(err) },
+        "getMergeGroup failed",
+      );
+      return { kind: "error", message: errMessage(err) };
+    }
+  }
+
+  // 3. Acquire the lane lock ONCE (like runBatchOnce). Representative = the
+  //    forming group's first member (its intent seeds the lock) when integrating,
+  //    else a recovery-marker (recovery-only pass). OUTSIDE the try/finally so a
+  //    failed/unavailable acquire never enters the release.
+  const rep = group?.members[0];
+  try {
+    const lock = await pmClient.acquireLock(projectId, resource, {
+      taskId: rep?.taskId ?? null,
+      branch: rep?.branch ?? null,
+      commitSha: rep?.commitSha ?? null,
+      verifyCmd: rep?.verifyCmd ?? deps.defaultVerifyCommand,
+      worktreePath: null,
+    });
+    if (!lock.ok || lock.status === "queued") {
+      logger.info(
+        { lockStatus: lock.status },
+        "Lock unavailable; another integrator holds the lane (group)",
+      );
+      return { kind: "lock_unavailable" };
+    }
+  } catch (err) {
+    logger.warn({ err: errMessage(err) }, "acquireLock failed (group)");
+    return { kind: "error", message: errMessage(err) };
+  }
+
+  // 4. Single group-lifetime heartbeat (mirrors runBatchOnce §9.2).
+  const heartbeat = setInterval(() => {
+    void pmClient.heartbeatLock(projectId, resource).catch((err: unknown) => {
+      logger.debug({ err: errMessage(err) }, "heartbeat failed (group)");
+    });
+  }, deps.heartbeatIntervalMs ?? 60_000);
+  heartbeat.unref?.();
+
+  let released = false;
+  const releaseLock = async (opts: {
+    landedSha?: string;
+    reason?: string;
+  }): Promise<void> => {
+    if (released) return;
+    released = true;
+    clearInterval(heartbeat);
+    try {
+      await pmClient.releaseLock(projectId, resource, opts);
+    } catch (err) {
+      logger.debug(
+        { err: errMessage(err) },
+        "releaseLock failed (group, non-fatal)",
+      );
+    }
+  };
+
+  let landResult: GroupLandResult | undefined;
+  try {
+    // STEP 12 (§7.2): run the orphaned-inner recovery sweep FIRST, under the
+    // lane lock (so the rollforward push is serialized against any other land).
+    // currentGroupId = the forming group's id when one is integrating this pass,
+    // else undefined (recovery-only pass). recoverOrphanedInner is PM-keyed: a
+    // git history that LOOKS like an orphan but has no open incident does
+    // nothing. It leases/releases the correlated worktrees per incident.
+    const recovery = await recoverOrphanedInner(
+      { projectId, resource, currentGroupId: group?.id },
+      {
+        pmClient,
+        logger,
+        innerLane: groupLane.innerLane,
+        outerLane: groupLane.outerLane,
+        gitRemote: deps.gitRemote,
+        gitMainBranch: deps.gitMainBranch,
+        defaultVerifyCommand: deps.defaultVerifyCommand,
+        verifyTimeoutSec: deps.verifyTimeoutSec,
+        innerLogsDir: groupLane.innerLogsDir,
+        outerLogsDir: groupLane.outerLogsDir,
+      },
+    );
+
+    // Recovery-only pass (no forming group): the lane lock was taken solely to
+    // sweep incidents. Return `recovered` so runBatchLoop treats it as work-done.
+    if (!group) {
+      return { kind: "recovered", recovery };
+    }
+
+    const outcome = await runGroupIntegration(
+      { id: group.id, members: group.members },
+      {
+        pmClient,
+        logger,
+        innerLane: groupLane.innerLane,
+        outerLane: groupLane.outerLane,
+        defaultVerifyCommand: deps.defaultVerifyCommand,
+        verifyTimeoutSec: deps.verifyTimeoutSec,
+        integratorId: groupLane.integratorId,
+        innerLogsDir: groupLane.innerLogsDir,
+        outerLogsDir: groupLane.outerLogsDir,
+      },
+    );
+
+    if (outcome.kind === "ready_to_land") {
+      // STEP 11: the atomic land (inner-then-outer, §6) under THIS lane lock.
+      // landAssembledGroup releases the correlated worktrees EXACTLY ONCE in its
+      // own finally (CONSTRAINT D) — the scheduler must NOT release them here.
+      landResult = await landAssembledGroup(
+        {
+          groupId: group.id,
+          projectId,
+          ready: outcome,
+          innerRepoName: groupLane.innerLane.name,
+          outerRepoName: groupLane.outerLane.name,
+        },
+        { pmClient, logger, gitRemote: deps.gitRemote, gitMainBranch: deps.gitMainBranch },
+      );
+    }
+
+    return { kind: "resolved", outcome, land: landResult, recovery };
+  } catch (err) {
+    logger.error(
+      { groupId: group?.id, err: errMessage(err) },
+      "runGroupLaneOnce threw unexpectedly",
+    );
+    return { kind: "error", message: errMessage(err) };
+  } finally {
+    // On a clean land, release the lock with the outer landedSha (Ro); else a
+    // plain reason-based release.
+    if (landResult?.kind === "landed") {
+      await releaseLock({ landedSha: landResult.outerLandedSha });
+    } else {
+      await releaseLock({ reason: "group integration step complete" });
+    }
+  }
+}
+
 // ─── runBatchLoop ─────────────────────────────────────────────────
 
 /**
  * Drive `runBatchOnce` forever (mirror of `runLoop`). Crash recovery
  * (`reclaimStrandedRequests`) runs once in index.ts before the loop, not here.
+ *
+ * Phase 7.3 (Step 10): when a group lane is configured, each iteration FIRST
+ * tries `runGroupLaneOnce` (a forming cross-repo group). If a group was found
+ * and resolved (or the lane was locked), the iteration is spent on the group;
+ * otherwise the loop falls through to the UNCHANGED single-repo `runBatchOnce`.
+ * No group lane → exact 7.2 behavior.
  */
 export async function runBatchLoop(
   deps: RunBatchLoopDeps,
@@ -1377,6 +1644,37 @@ export async function runBatchLoop(
   const { logger } = deps;
 
   while (deps.shouldContinue()) {
+    // ── Phase 7.3 group dispatch (Step 10). Only when a group lane exists. ──
+    if (deps.groupLane) {
+      let groupOutcome: RunGroupLaneOutcome;
+      try {
+        groupOutcome = await runGroupLaneOnce(deps);
+      } catch (err) {
+        logger.error(
+          { err: errMessage(err) },
+          "runGroupLaneOnce threw unexpectedly",
+        );
+        groupOutcome = { kind: "error", message: errMessage(err) };
+      }
+      if (!deps.shouldContinue()) break;
+
+      if (groupOutcome.kind !== "no_group") {
+        // A group/recovery was handled (resolved / recovered / lane locked /
+        // error). Spend this iteration on it; back off briefly on lock/error,
+        // else loop again.
+        if (
+          groupOutcome.kind === "lock_unavailable" ||
+          groupOutcome.kind === "error"
+        ) {
+          await deps.waitForWork(Math.min(pollMs, 5000));
+        }
+        // resolved / recovered → loop again immediately (drain further forming
+        // groups / queued requests / open incidents).
+        continue;
+      }
+      // no_group → fall through to the single-repo speculative path.
+    }
+
     let outcome: RunBatchOutcome;
     try {
       outcome = await runBatchOnce(deps);

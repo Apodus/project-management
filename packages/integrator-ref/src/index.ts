@@ -6,8 +6,11 @@ import { createLogger } from "./logger.js";
 import { createGitOps } from "./git-ops.js";
 import { createWorktreePool } from "./worktree-pool.js";
 import { createSseSubscriber } from "./sse-subscriber.js";
-import { reclaimStrandedRequests } from "./recovery.js";
-import { runBatchLoop } from "./batch.js";
+import { reclaimStrandedGroups, reclaimStrandedRequests } from "./recovery.js";
+import { runBatchLoop, type GroupLaneDeps } from "./batch.js";
+import type { RepoLane } from "./group-integration.js";
+import { chaosFailOuterPushOnce } from "./chaos.js";
+import type { GitOps, PushResult } from "./git-ops.js";
 
 async function main(): Promise<void> {
   const program = new Command()
@@ -116,6 +119,136 @@ async function main(): Promise<void> {
     return;
   }
 
+  // ── Phase 7.3 group lane (Step 10) — only when linkedRepos are declared. ──
+  // Build a per-repo pool + binding clone for each linked repo, role from
+  // config. Absent linkedRepos → groupLane stays undefined → exact 7.2 path.
+  let groupLane: GroupLaneDeps | undefined;
+  if (cfg.linkedRepos.length > 0) {
+    const inner = cfg.linkedRepos.find((r) => r.role === "inner");
+    const outer = cfg.linkedRepos.find((r) => r.role === "outer");
+    if (!inner || !outer) {
+      logger.fatal(
+        { linkedRepos: cfg.linkedRepos.map((r) => r.role) },
+        "Group integration requires exactly one inner and one outer linked repo",
+      );
+      process.exit(2);
+      return;
+    }
+    const makeLane = (
+      repo: (typeof cfg.linkedRepos)[number],
+    ): { lane: RepoLane; pool: ReturnType<typeof createWorktreePool> } => {
+      const lanePool = createWorktreePool({
+        parallelism: cfg.parallelism,
+        worktreeRoot: cfg.worktreeRoot,
+        worktreeName: `${cfg.worktreeName}-${repo.role}`,
+        gitRepoUrl: repo.path,
+        gitRemote: cfg.gitRemote,
+        gitMainBranch: cfg.gitMainBranch,
+      });
+      // Binding clone: a simple-git over the repo's local clone path, used ONLY
+      // to resolve a member's ref (commitSha/branch). resolveRefInClone MUST
+      // return null (not throw) for an absent ref so FIX 1 can fail loud only
+      // on a true ambiguity.
+      const bindGit = simpleGit(repo.path);
+      const lane: RepoLane = {
+        role: repo.role,
+        name: repo.name,
+        acquire: () => lanePool.acquire(),
+        release: (wt) => lanePool.release(wt),
+        gitOps: (p) => createGitOps(simpleGit(p)),
+        gitlinkPath: repo.gitlinkPath,
+        resolveRefInClone: async (ref: string): Promise<string | null> => {
+          // `--verify <ref>^{commit}` FAILS (throws) when the object/ref is not
+          // present in THIS clone — unlike a bare `rev-parse <full-sha>`, which
+          // echoes any 40-hex string back without checking existence. This is
+          // what makes the commitSha-first binding resolve in exactly one repo.
+          try {
+            return (await bindGit.revparse(["--verify", `${ref}^{commit}`])).trim();
+          } catch {
+            return null;
+          }
+        },
+      };
+      return { lane, pool: lanePool };
+    };
+    const innerBuilt = makeLane(inner);
+    const outerBuilt = makeLane(outer);
+
+    // ── CHAOS (test-only): PM_CHAOS_FAIL_OUTER_PUSH=once makes the OUTER push in
+    //    the §6 atomic land return a PushFailure exactly ONCE (the deterministic
+    //    orphan trigger for E2E flow c/d). The first outer push (after inner
+    //    landed) fails → orphan + incident; every subsequent push (incl. the §7
+    //    recovery roll-forward, which uses the OUTER lane's gitOps) delegates to
+    //    the real gitOps. Gated; no-op in production.
+    //
+    //    NOTE: group assembly builds BOTH the inner and outer GitOps from the
+    //    INNER lane's `gitOps` factory (group-integration wires
+    //    `gitOps: innerLane.gitOps` for assembleGroup). So to induce the LAND's
+    //    outer push to fail we wrap the INNER lane factory and discriminate by
+    //    the outer worktree's path suffix ("-outer"); the OUTER lane's factory is
+    //    left real so the recovery push succeeds. (Mirrors the
+    //    group-land.test.ts failingPushGitOps technique.) ──
+    if (chaosFailOuterPushOnce()) {
+      const realInnerGitOps = innerBuilt.lane.gitOps;
+      let outerPushFailed = false;
+      const outerMarker = `${cfg.worktreeName}-${outer.role}`;
+      innerBuilt.lane.gitOps = (p: string): GitOps => {
+        const g = realInnerGitOps(p);
+        if (!p.includes(outerMarker)) return g;
+        return {
+          ...g,
+          async push(remote: string, branch: string): Promise<PushResult> {
+            if (!outerPushFailed) {
+              outerPushFailed = true;
+              logger.warn(
+                { worktree: p },
+                "CHAOS: failing outer push once (orphan trigger)",
+              );
+              return { ok: false, reason: "network", stderr: "induced chaos outer push failure" };
+            }
+            return g.push(remote, branch);
+          },
+        };
+      };
+    }
+    try {
+      await innerBuilt.pool.gc();
+      await innerBuilt.pool.ensureAll();
+      await outerBuilt.pool.gc();
+      await outerBuilt.pool.ensureAll();
+    } catch (err) {
+      logger.fatal(
+        { err: err instanceof Error ? err.message : String(err) },
+        "Failed to initialize linked-repo worktree pools",
+      );
+      process.exit(1);
+      return;
+    }
+    groupLane = {
+      innerLane: innerBuilt.lane,
+      outerLane: outerBuilt.lane,
+      integratorId: undefined,
+      innerLogsDir: undefined,
+      outerLogsDir: undefined,
+    };
+
+    // ── Crash recovery: reclaim stranded GROUPS (design §9 finding 2 / §6.4). ──
+    // Only when a group lane exists (linkedRepos declared). A group left
+    // `integrating` by a crash with NO open incident is the §6.4
+    // crash-between-PUSH-1-and-incident-write window — reset the whole group
+    // (atomic group+members) so it re-integrates as a clean atom. A group WITH
+    // an open incident is a real orphan, left for the §7 rollforward sweep.
+    const reclaimGroups = await reclaimStrandedGroups(
+      pmClient,
+      cfg.projectId,
+      cfg.resource,
+      logger,
+    );
+    if (reclaimGroups.scanned > 0) {
+      logger.info(reclaimGroups, "Stranded-group recovery sweep complete");
+    }
+  }
+
   // ── SSE subscriber (latency hint; poll is the correctness floor). ──
   const sub = createSseSubscriber({
     baseUrl: pmUrl,
@@ -151,6 +284,7 @@ async function main(): Promise<void> {
       verifyTimeoutSec: cfg.verifyTimeoutSec,
       gitRemote: cfg.gitRemote,
       gitMainBranch: cfg.gitMainBranch,
+      groupLane,
       // Telemetry sink: post each batch marker to the PM relay endpoint. This is
       // a SYNCHRONOUS void handler that swallows its promise — a failed telemetry
       // POST must NEVER reject into / crash the drain loop, so we `.catch` it and

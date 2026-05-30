@@ -15,3 +15,5 @@ export * from "./git-ref.js";
 export * from "./milestone.js";
 export * from "./merge-lock.js";
 export * from "./merge-request.js";
+export * from "./merge-group.js";
+export * from "./merge-incident.js";

@@ -8,6 +8,7 @@ import type { AppVariables, AuthUser } from "../types.js";
 import { AppError } from "../types.js";
 import * as requestSvc from "../services/merge-request.service.js";
 import * as attemptSvc from "../services/merge-attempt.service.js";
+import { assertMemberLandableViaGroup } from "../services/merge-group.service.js";
 
 // ─── Response schemas ─────────────────────────────────────────────
 
@@ -99,6 +100,10 @@ const listQuery = z.object({
   resource: z.string().optional(),
   status: z.enum(MERGE_REQUEST_STATUSES).optional(),
   taskId: z.string().optional(),
+  ungrouped: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
   page: z.coerce.number().int().positive().optional(),
   perPage: z.coerce.number().int().positive().max(200).optional(),
 });
@@ -360,7 +365,7 @@ const landRoute = createRoute({
     401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
     403: { description: "Integrator only", content: { "application/json": { schema: errorEnvelope } } },
     404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Request not in 'integrating' state", content: { "application/json": { schema: errorEnvelope } } },
+    409: { description: "Request not in 'integrating' state, or it is a grouped member that must land via its group (GROUPED_MEMBER)", content: { "application/json": { schema: errorEnvelope } } },
   },
 });
 
@@ -429,6 +434,7 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
       resource: query.resource,
       status: query.status,
       taskId: query.taskId,
+      ungrouped: query.ungrouped,
       page: query.page,
       perPage: query.perPage,
     });
@@ -509,6 +515,7 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
     const { id } = c.req.valid("param");
     const user = requireUser(c.get("currentUser") as AuthUser | null);
     const body = c.req.valid("json");
+    assertMemberLandableViaGroup(id);
     const view = requestSvc.land(id, body, actorOf(user));
     return c.json({ data: view }, 200);
   });

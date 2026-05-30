@@ -21,6 +21,13 @@ export interface IntegratorConfig {
   gitMainBranch: string;
   gitRepoUrl: string;
   parallelism: number;
+  linkedRepos: {
+    name: string;
+    path: string;
+    role: "inner" | "outer";
+    gitlinkParent?: string;
+    gitlinkPath?: string;
+  }[];
 }
 
 export interface CliArgs {
@@ -107,5 +114,12 @@ export async function loadConfig(
     gitMainBranch: ic.git_main_branch ?? "main",
     gitRepoUrl,
     parallelism: ic.parallelism ?? 1,
+    linkedRepos: (ic.linked_repos ?? []).map((r) => ({
+      name: r.name,
+      path: r.path,
+      role: r.role,
+      gitlinkParent: r.gitlink_parent,
+      gitlinkPath: r.gitlink_path,
+    })),
   };
 }

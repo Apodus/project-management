@@ -88,6 +88,8 @@ By month six the train is operating game_one in production: 3–5 parallel specu
 
 ## Phase 7.3 — Month 3: Cross-Repo Atomicity
 
+**Status**: **Shipped** (2026-05-30). PM-owned `merge_request_groups` + `merge_incidents` tables (+ nullable `merge_requests.group_id`), the `orphaned` member state, `linked_repos` config (inner/outer + gitlink), assembled-state concurrent verify, the inner-then-outer atomic-land protocol with the three failure points, PM-keyed orphaned-inner auto-rollforward recovery + human escalation, stranded-group crash recovery, group/incident REST + MCP surface and SSE events, and a real two-repo-fixture E2E + chaos suite. See `docs/design/phase-7.3-design.md` (incl. §16 implementation deviations) and the deployment guide §14.
+
 **Goal**: A change spanning multiple linked repos lands as a unit or not at all. No half-landed gitlink states reach main.
 
 **Why now**: game_one has rynx (inner Rust workspace) + outer gitlink (game repo containing rynx as submodule). The agents' team identified the half-landed gitlink as their primary corruption case. Until we model this, the train is unsafe for the real shape of the codebase.

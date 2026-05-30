@@ -54,6 +54,14 @@ export interface ListParams {
   taskId?: string;
   page?: number;
   perPage?: number;
+  /**
+   * When true, exclude requests that belong to a merge group (groupId IS NOT
+   * NULL). The integrator's single-repo FIFO drain passes this so a grouped
+   * member is NEVER speculatively interleaved into the single-repo path
+   * (Phase 7.3 design §9 finding 3 — grouped members are admitted only as a
+   * unit via group-pickup). Additive; absent → exact pre-7.3 behavior.
+   */
+  ungrouped?: boolean;
 }
 
 export interface ListResult {
@@ -179,6 +187,66 @@ function emit(
     actorId,
     timestamp: new Date().toISOString(),
   });
+}
+
+// ─── Shared git_refs land helper ──────────────────────────────────
+
+/**
+ * Write-only helper: attach (or dedup) a `landed_sha` git_ref for a landed
+ * merge request. Extracted from `land()` so the Phase-7.3 group-land path
+ * (`merge-group.service.ts:landGroup`) can attach the SAME git_ref per
+ * member without drifting from the single-repo land semantics.
+ *
+ * Guards `taskId != null` (no ref for task-less requests). Dedups on
+ * (taskId, refType='landed_sha', refValue=landedSha): reuses an existing
+ * row, else inserts a new one with the identical title/metadata/createdAt
+ * land() has always used. Returns the gitRefId (or null when taskId null).
+ *
+ * MUST be called inside a db.transaction (takes the tx handle). Emits
+ * nothing — the caller emits after commit.
+ */
+export function attachLandedRef(
+  tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
+  args: {
+    requestId: string;
+    taskId: string | null;
+    landedSha: string;
+    resource: string;
+    now: string;
+  },
+): string | null {
+  if (args.taskId === null) {
+    return null;
+  }
+  const existing = tx
+    .select({ id: gitRefs.id })
+    .from(gitRefs)
+    .where(
+      and(
+        eq(gitRefs.taskId, args.taskId),
+        eq(gitRefs.refType, "landed_sha"),
+        eq(gitRefs.refValue, args.landedSha),
+      ),
+    )
+    .get();
+  if (existing) {
+    return existing.id;
+  }
+  const gitRefId = createId();
+  tx.insert(gitRefs)
+    .values({
+      id: gitRefId,
+      taskId: args.taskId,
+      refType: "landed_sha",
+      refValue: args.landedSha,
+      url: null,
+      title: `Landed via merge request ${args.requestId}`,
+      status: null,
+      metadata: { mergeRequestId: args.requestId, resource: args.resource },
+      createdAt: args.now,
+    })
+    .run();
+  return gitRefId;
 }
 
 // ─── State-machine guard ──────────────────────────────────────────
@@ -363,6 +431,9 @@ export function list(projectId: string, params: ListParams = {}): ListResult {
   if (params.resource) conditions.push(eq(mergeRequests.resource, params.resource));
   if (params.status) conditions.push(eq(mergeRequests.status, params.status));
   if (params.taskId) conditions.push(eq(mergeRequests.taskId, params.taskId));
+  if (params.ungrouped) {
+    conditions.push(sql`${mergeRequests.groupId} IS NULL`);
+  }
 
   const whereClause = and(...conditions);
 
@@ -679,37 +750,13 @@ export function land(
       .where(eq(mergeRequests.id, id))
       .run();
 
-    if (row.taskId !== null) {
-      const existing = tx
-        .select({ id: gitRefs.id })
-        .from(gitRefs)
-        .where(
-          and(
-            eq(gitRefs.taskId, row.taskId),
-            eq(gitRefs.refType, "landed_sha"),
-            eq(gitRefs.refValue, body.landedSha),
-          ),
-        )
-        .get();
-      if (existing) {
-        gitRefId = existing.id;
-      } else {
-        gitRefId = createId();
-        tx.insert(gitRefs)
-          .values({
-            id: gitRefId,
-            taskId: row.taskId,
-            refType: "landed_sha",
-            refValue: body.landedSha,
-            url: null,
-            title: `Landed via merge request ${id}`,
-            status: null,
-            metadata: { mergeRequestId: id, resource: row.resource },
-            createdAt: now,
-          })
-          .run();
-      }
-    }
+    gitRefId = attachLandedRef(tx, {
+      requestId: id,
+      taskId: row.taskId,
+      landedSha: body.landedSha,
+      resource: row.resource,
+      now,
+    });
   });
 
   const updated = readRequestOrThrow(id);

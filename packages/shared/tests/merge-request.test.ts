@@ -27,11 +27,16 @@ describe("MERGE_REQUEST_STATUSES", () => {
       "landed",
       "rejected",
       "abandoned",
+      "orphaned",
     ]);
   });
 
   it("starts with 'queued' (the DB column default)", () => {
     expect(MERGE_REQUEST_STATUSES[0]).toBe("queued");
+  });
+
+  it("includes 'orphaned' (appended for phase 7.3)", () => {
+    expect(MERGE_REQUEST_STATUSES).toContain("orphaned");
   });
 });
 
@@ -64,6 +69,10 @@ describe("MERGE_REJECT_CATEGORIES", () => {
 describe("COMMENT_TYPES (extended)", () => {
   it("includes 'merge_rejection' (appended for phase 7.1)", () => {
     expect(COMMENT_TYPES).toContain("merge_rejection");
+  });
+
+  it("includes 'merge_incident' (appended for phase 7.3)", () => {
+    expect(COMMENT_TYPES).toContain("merge_incident");
   });
 });
 

@@ -1,8 +1,8 @@
 # Integrator deployment guide
 
 **Audience**: operators deploying and running the reference integrator (`@pm/integrator-ref`) for a PM project.
-**Scope**: the merge train — one integrator process per `(project, resource)` lane. Phase 7.1 (serial, `parallelism: 1`) is the baseline; **Phase 7.2 adds speculative batching** (`parallelism: N`, §13).
-**Companion specs**: `docs/design/phase-7.1-design.md` (serial baseline) and `docs/design/phase-7.2-design.md` (speculative batching — data model, lock protocol, observability, failure catalog). When this guide and a design doc disagree on a contract detail, the design doc wins.
+**Scope**: the merge train — one integrator process per `(project, resource)` lane. Phase 7.1 (serial, `parallelism: 1`) is the baseline; **Phase 7.2 adds speculative batching** (`parallelism: N`, §13); **Phase 7.3 adds cross-repo atomicity** (linked inner/outer repos landing as a unit, §14).
+**Companion specs**: `docs/design/phase-7.1-design.md` (serial baseline), `docs/design/phase-7.2-design.md` (speculative batching — data model, lock protocol, observability, failure catalog), and `docs/design/phase-7.3-design.md` (cross-repo atomicity — linked-repo model, group + incident tables, assembled verify, atomic-land protocol, orphaned-inner recovery). When this guide and a design doc disagree on a contract detail, the design doc wins.
 
 This guide is written so a fresh operator can take a project from "integrator disabled" to "a test merge request landed" in about 30 minutes. The fast path is the checklist in §12; everything before it is reference.
 
@@ -107,6 +107,7 @@ Stored in PM under `projects.settings.integrator`. The `settings` column is alre
 | `git_main_branch` | string | `main` | no | The branch on the remote that the lane maps to. |
 | `worktree_name` | string | `${project.slug}-integrator` | no | Base subdirectory name under `worktree_root`. The pool appends `-0`, `-1`, … per slot (§5). Useful when one host runs multiple integrators. |
 | `parallelism` | integer ≥ 1 | `1` | no | **Phase 7.2.** Number of integrations in flight at once = number of worktree slots in the pool (§5, §13). `1` = exact 7.1 serial behavior. There is **no env var** for this — it lives only here, on the project. |
+| `linked_repos` | array | `[]` | no | **Phase 7.3.** Declares the inner/outer linked repos for cross-repo atomic landing (§14). Empty/absent = single-repo (byte-identical to 7.2). Each entry: `{ name, path, role: "inner"\|"outer", gitlink_parent?, gitlink_path? }`. The integrator requires **exactly one `inner` and one `outer`** entry when this is non-empty; the inner entry carries `gitlink_path` (and `gitlink_parent`). |
 
 > **`gitRepoUrl` is a top-level project field, NOT under `settings`.** It is required — the integrator clones it. Do not put it inside `settings.integrator`.
 
@@ -241,6 +242,7 @@ Relevant events:
 - `merge.request.queued` / `.integrating` / `.landed` / `.rejected` / `.abandoned`
 - `merge.attempt.started` / `.completed`
 - **Batch markers (Phase 7.2):** `merge.batch.started` / `.member_landed` / `.member_invalidated` / `.completed` (see §13).
+- **Group + incident events (Phase 7.3):** `merge.group.started` / `.member_landed` / `.landed` / `.rejected` and `merge.incident.opened` / `.auto_resolved` / `.human_resolved` (see §14). Unlike the relayed batch markers, these are **PM-emitted** (the group/incident services write the row, then emit). Group/incident frames additionally carry `group_id` / `incident_id` / `orphaned_sha` when present.
 
 **SSE frames are flattened.** Each frame carries `entity_type`, `entity_id`, `action`, `actor` (`{ id, name, type }`), and `timestamp` (plus `changes?` / `entity_title?` when present). It does **not** carry the full row. To get full detail, fetch `GET /api/v1/merge-requests/{id}`. Cross-reference: design doc §9.2.
 
@@ -298,19 +300,35 @@ Additional modes when speculative batching is enabled. Pulled from 7.2 design §
 
 **The rule: `worktree_root` is per-integrator-process, never shared.** Two integrator processes must never point at the same `worktree_root` — they would clobber each other's worktrees and logs. Give each lane its own root.
 
-Recommended `game_one` layout (one lane, `main`, `parallelism: 3` → three pool slots):
+Recommended `game_one` layout. game_one runs **cross-repo** (Phase 7.3): `rynx` (inner) embedded in
+the `game` repo (outer) as a `160000` gitlink at `gitlink_path`. With `linked_repos` declared the
+integrator builds **a separate worktree pool per linked repo** (in addition to the base
+single-repo pool), each pool sized `parallelism`. The per-repo pool base name is
+`${worktree_name}-${role}` (so `…-inner` / `…-outer`), then `-{0..N-1}` per slot. Layout for one
+lane, `main`, `parallelism: 3`:
 
 ```
 /srv/game_one/
   integrators/
-    main/                        ← worktree_root for (game_one, main)
-      game_one-integrator-0/     ← pool slot 0 (clone)
-      game_one-integrator-1/     ← pool slot 1 (clone)
-      game_one-integrator-2/     ← pool slot 2 (clone)
-      logs/                      ← per-attempt logs (shared)
+    main/                              ← worktree_root for (game_one, main)
+      game_one-integrator-0/           ← base (single-repo) pool slot 0 (clone of gitRepoUrl)
+      game_one-integrator-1/           ← base pool slot 1
+      game_one-integrator-2/           ← base pool slot 2
+      game_one-integrator-inner-0/     ← INNER (rynx) pool slot 0 (clone of linked_repos[inner].path)
+      game_one-integrator-inner-1/     ← inner pool slot 1
+      game_one-integrator-inner-2/     ← inner pool slot 2
+      game_one-integrator-outer-0/     ← OUTER (game, holds the gitlink) pool slot 0 (clone of linked_repos[outer].path)
+      game_one-integrator-outer-1/     ← outer pool slot 1
+      game_one-integrator-outer-2/     ← outer pool slot 2
+      logs/                            ← per-attempt logs (shared)
 ```
 
-At `parallelism: 1` this collapses to a single slot, `game_one-integrator-0/`. Raising `parallelism` to N adds slots `…-{0..N-1}`; lowering it prunes the now-extra numbered slots on the next startup (`gc`, §5).
+At `parallelism: 1` each pool collapses to a single `-0` slot. Raising `parallelism` to N adds
+slots `…-{0..N-1}` to every pool; lowering it prunes the now-extra numbered slots on the next
+startup (`gc`, §5). **Single-repo (no `linked_repos`)** collapses to just the base pool
+(`game_one-integrator-{0..N-1}/`) — exactly the 7.2 layout. The base pool is still cloned and
+crash-swept even when `linked_repos` is set; group integration uses the inner/outer pools, the base
+pool serves any single-repo (`group_id` null) requests on the same lane (§14, §13.1).
 
 Adding a second lane later means a second root (e.g. `/srv/game_one/integrators/<resource>/`), a second process, and its own pool of slots — never a shared directory.
 
@@ -434,4 +452,113 @@ The `batchId` is a ULID **minted by the integrator**; PM never generates or pers
 
 ### 13.3 Sizing `parallelism`
 
-`parallelism` is bounded by the host's capacity to run N concurrent verify builds (CPU/RAM/disk) and N worktree clones on disk. `game_one` runs `parallelism: 3`. Start small, watch the per-attempt verify logs and host load, and raise it only if the queue is verify-bound. Remember: each slot is a full clone of the repo under `worktree_root` (§5), so disk grows ~linearly with N.
+`parallelism` is bounded by the host's capacity to run N concurrent verify builds (CPU/RAM/disk) and N worktree clones on disk. `game_one` runs `parallelism: 3`. Start small, watch the per-attempt verify logs and host load, and raise it only if the queue is verify-bound. Remember: each slot is a full clone of the repo under `worktree_root` (§5), so disk grows ~linearly with N. With `linked_repos` declared, disk grows ~linearly with `N × (1 + number_of_linked_repos)` — the base pool plus the inner and outer pools each get N slots (§14).
+
+---
+
+## 14. Cross-repo atomicity (Phase 7.3)
+
+A **merge group** binds one merge request per linked repo so they land **as a unit or not at all** — game_one's `rynx` inner Rust workspace and the outer `game` repo that embeds it as a `160000` gitlink. No half-landed gitlink state ever reaches outer `main`. This section is the operator-facing summary; the authoritative spec is `docs/design/phase-7.3-design.md`.
+
+The state is **PM-owned and durable** (unlike the in-memory batch state of §13): two tables, `merge_request_groups` and `merge_incidents`, plus a nullable `merge_requests.group_id`. That is what makes the dangerous middle case — inner landed, outer push failed — *detectable from PM alone, no SSH into the integrator host*.
+
+### 14.1 Declaring linked repos
+
+Set `settings.integrator.linked_repos` on the project (snake_case, sibling of `parallelism`). The integrator requires **exactly one `inner` and one `outer`** entry, or it exits with config code 2. Empty/absent = single-repo (byte-identical to 7.2).
+
+```json
+{
+  "settings": {
+    "integrator": {
+      "enabled": true,
+      "verify_command": "cargo build --workspace && cargo test --workspace",
+      "worktree_root": "/srv/game_one/integrators/main",
+      "parallelism": 3,
+      "linked_repos": [
+        {
+          "name": "rynx",
+          "path": "/srv/git/rynx.git",
+          "role": "inner",
+          "gitlink_parent": "game",
+          "gitlink_path": "vendor/rynx"
+        },
+        {
+          "name": "game",
+          "path": "/srv/git/game.git",
+          "role": "outer"
+        }
+      ]
+    }
+  }
+}
+```
+
+- `name` — logical repo name (matches the group member's target repo).
+- `path` — the repo's remote: a clone URL or a bare-repo path the integrator can clone from.
+- `role` — `"inner"` or `"outer"`. The role is **config-declared and authoritative** (never inferred from git).
+- `gitlink_parent` (inner only) — the `name` of the outer repo that embeds this inner.
+- `gitlink_path` (inner only) — the path inside the outer working tree where the gitlink/submodule lives (e.g. `vendor/rynx`). The integrator only ever mutates the gitlink **SHA** at this path; it never touches `.gitmodules` (the operator seeds that once).
+
+> `gitRepoUrl` (the top-level project field) still names the **base** single-repo pool's clone source. The linked repos' clone sources are their own `path` entries. All three are cloned under `worktree_root` (§10).
+
+### 14.2 The inner/outer worktree pools
+
+When `linked_repos` is non-empty the integrator builds **one worktree pool per linked repo**, each sized `parallelism`, with base name `${worktree_name}-${role}` (so `…-inner` / `…-outer`) and slots `-{0..N-1}` (the §10 layout). A group integration leases **one correlated pair** — one inner slot + one outer slot — for the whole assemble → verify → land cycle, and releases both exactly once when it resolves. If either pool is exhausted, the group stays `forming` (backpressure) and retries next pass; nothing is half-acquired.
+
+### 14.3 The atomic-land protocol (inner-then-outer, under the lane lock)
+
+A group is picked up and integrated **under the same `(project, resource)` lane lock** the integrator already uses — there is no second lock. The cycle:
+
+1. **Bind members → roles.** Each member's identity ref (commitSha-preferred, else branch) is resolved in each linked repo's clone; the member binds to the repo whose clone resolves it, and its role comes from config. An ambiguous binding (resolves in both repos, or neither) rejects the group cleanly from `forming`.
+2. **Assemble** (no push, no PM mutation yet): rebase the inner member onto live inner `main` → `Ri`; rebase the outer member onto live outer `main`; commit the outer gitlink at `gitlink_path` to `Ri` → `Ro`; **materialize** the inner@`Ri` sources into the outer working tree at `gitlink_path` so the outer verify actually sees them.
+3. **Pick up** (`forming → integrating`, flips members) and start a per-member attempt.
+4. **Verify the assembled state**: run the inner and outer verify commands **concurrently**, both against the assembled checkout, and AND the results. Any repo failing → reject the **whole** group (nothing pushed, no incident).
+5. **Land**, under the lock, with a single pre-push drift re-check on both live mains:
+   - **PUSH 1 (inner):** fast-forward inner `main` → `Ri`.
+   - **PUSH 2 (outer):** fast-forward outer `main` → `Ro` (gitlink → `Ri`).
+
+Both pushes are verify-gated fast-forwards; a non-fast-forward push is *rejected* by git, never forced. The lane lock spans both pushes; there is deliberately no second outer-drift recheck between them (the FF push itself gates outer drift).
+
+### 14.4 The three failure points
+
+- **(a) Inner push fails** → reject the whole group cleanly. The outer is **never touched**, nothing landed.
+- **(b) Outer push fails *after* the inner landed → THE ORPHAN.** Outer `main` is unchanged (the push rejected → no half-landed gitlink). The integrator marks the inner member `orphaned`, opens a durable `merge_incident` (`orphaned_inner`, recording the orphaned inner SHA), rejects the outer member, and marks the group `partially_landed`. This is the only case that leaves a repo advanced relative to the other — and it is fully recorded in PM.
+- **(c) Assembled verify fails** → reject the whole group. Nothing pushed, no incident.
+
+### 14.5 Orphaned-inner incident model + recovery
+
+An open `orphaned_inner` incident means: inner `main` is at the orphaned SHA `O`, and the outer gitlink references some earlier inner SHA. It is the **sole durable record** of a real orphan — recovery is **PM-keyed** (it queries open incidents), never reconstructed from git SHA comparison.
+
+Recovery runs opportunistically on a later integration pass, under the lane lock:
+
+- **Auto-rollforward** (the common path): the incident is **reconcilable** when the current outer gitlink is an *ancestor* of `O` (checked in the inner repo). The integrator assembles the roll-forward outer tree (gitlink → `O`, inner sources materialized), **verifies it** (the safety gate), then does a verify-gated fast-forward push of outer `main`, and resolves the incident `auto_resolved`. Outer `main` advances **only** by a verified, fast-forward push.
+- **Human escalation**: if the current gitlink is **not** an ancestor of `O` (divergent intervening outer history), or the ancestry check errors, or the assembled roll-forward tree fails verify — the integrator **escalates**: it logs an escalation warning and **leaves the incident `open`** (it never auto-mutates). A human lands a reconciling change and closes it `human_resolved` (admin-only resolve). Transient conditions (pool exhaustion, outer drift, a push race) are *deferred* instead of escalated — the incident stays open and the next pass retries.
+
+Operators detect incidents from PM alone:
+
+```
+GET /api/v1/projects/{projectId}/merge-incidents?state=open
+GET /api/v1/merge-incidents/{id}
+```
+
+(or the worker MCP tools `pm_list_merge_incidents` / `pm_get_merge_incident`). An open incident is also surfaced as a `merge_incident` comment on the linked task and a `merge.incident.opened` SSE event.
+
+### 14.6 Cross-repo failure modes
+
+Additional modes when `linked_repos` is declared. Pulled from 7.3 design §11.
+
+| Failure | Symptom | Recovery | Operator action |
+|---|---|---|---|
+| Inner push race | `non_fast_forward` on PUSH 1 (another lander advanced inner main) | The **whole group** rejects cleanly; outer never touched; it re-integrates as a unit later. `merge.group.rejected`. | None. |
+| Outer push race / network drop after inner landed (**the orphan**) | PUSH 2 fails after the inner landed; group → `partially_landed`; a `merge.incident.opened` event; member → `orphaned` | Auto-rollforward on a later pass when the gitlink is an ancestor of the orphan (verify-gated outer FF push) → incident `auto_resolved`. | None (watch for incidents that stay `open` — those need a human). |
+| Un-reconcilable orphan | Recovery finds the gitlink is **not** an ancestor of `O` (divergent outer history), or the roll-forward tree fails verify | **Escalate**: incident stays `open`, comment posted, outer untouched. | **Human lands a reconciling change**, then the incident is resolved `human_resolved` (admin-only). |
+| Assembled verify fails | A repo's verify exits non-zero on the assembled tree | The whole group rejects (`merge.group.rejected`); nothing pushed, no incident. | Worker fixes the failing repo and resubmits the group. |
+| Ambiguous member→role binding | A group member's ref resolves in both linked repos or neither | The group rejects from `forming` with the binding reason (no worktrees leased). | Worker resubmits with members whose `commit_sha` (preferred) or `branch` resolves unambiguously per repo. |
+| Stranded group (crash between PUSH 1 and the incident write) | A group left `integrating` by a crash with **no** open incident — the §6.4 window | On startup the integrator's **stranded-group sweep** resets the whole group (+ members) to `forming` to re-integrate; the inner re-push is a fast-forward no-op and the outer push completes the atom. A stranded group **with** an open incident is left for orphan recovery (never reset). | Restart the process (supervisor on exit code 1). |
+| Inner/outer pool exhaustion | A correlated slot is unavailable | **Backpressure** — the group stays `forming` and retries when a slot frees. | None (raise `parallelism` if groups are throughput-bound). |
+
+Every row preserves the prime invariant: **outer `main` is never advanced to a gitlink whose assembled tree has not passed verify** — not in land, not in recovery.
+
+### 14.7 Worker flow (MCP)
+
+A worker submits each repo's change as a normal merge request (`pm_request_merge`, giving each member a `branch`/`commit_sha` and `verify_cmd`), then binds them with `pm_request_merge_group` (`member_request_ids`, ≥2, all already-queued and ungrouped). The group lands or fails atomically; the worker subscribes to `merge.group.landed` / `merge.group.rejected` with the returned group id. `pm_get_merge_group` reports the group + member statuses.

@@ -77,6 +77,13 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
         // 7.1 frames stay byte-identical.
         let batchId: string | undefined;
         let speculativePosition: number | undefined;
+        // Phase 7.3: group/incident identifying fields (§10.3). Read additively
+        // off payload.entity exactly like batch_id/speculative_position so they
+        // ride merge.group.* / merge.incident.* frames. Absent → omitted, so all
+        // 7.1/7.2 frames stay byte-identical.
+        let groupId: string | undefined;
+        let incidentId: string | undefined;
+        let orphanedSha: string | undefined;
         if (payload.entity && typeof payload.entity === "object") {
           const entity = payload.entity as Record<string, unknown>;
           switch (payload.entityType) {
@@ -96,6 +103,9 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           if (typeof entity.speculativePosition === "number") {
             speculativePosition = entity.speculativePosition;
           }
+          if (typeof entity.groupId === "string") groupId = entity.groupId;
+          if (typeof entity.incidentId === "string") incidentId = entity.incidentId;
+          if (typeof entity.orphanedSha === "string") orphanedSha = entity.orphanedSha;
         }
 
         const ssePayload = {
@@ -110,6 +120,9 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           ...(speculativePosition !== undefined
             ? { speculative_position: speculativePosition }
             : {}),
+          ...(groupId ? { group_id: groupId } : {}),
+          ...(incidentId ? { incident_id: incidentId } : {}),
+          ...(orphanedSha ? { orphaned_sha: orphanedSha } : {}),
         };
 
         stream.writeSSE({

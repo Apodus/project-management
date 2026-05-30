@@ -11,6 +11,8 @@ import {
 import { getEventBus, EVENT_NAMES, type EventPayload } from "../../src/events/event-bus.js";
 import * as mergeRequestSvc from "../../src/services/merge-request.service.js";
 import * as mergeAttemptSvc from "../../src/services/merge-attempt.service.js";
+import * as mergeGroupSvc from "../../src/services/merge-group.service.js";
+import * as mergeIncidentSvc from "../../src/services/merge-incident.service.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -506,6 +508,314 @@ describe("SSE Events API", () => {
       const data = JSON.parse(integrating!.data!);
       expect("batch_id" in data).toBe(false);
       expect("speculative_position" in data).toBe(false);
+    });
+  });
+
+  // ── Phase 7.3: group/incident frames over SSE ────────────────────
+
+  describe("Phase 7.3 group/incident events over SSE", () => {
+    /** Create a real, FK-valid forming group from 2 queued members. */
+    function makeGroup(
+      project: { id: string },
+      submitter: { id: string },
+      resource = "main",
+    ) {
+      const m1 = mergeRequestSvc.submit({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        resource,
+      });
+      const m2 = mergeRequestSvc.submit({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        resource,
+      });
+      const g = mergeGroupSvc.createGroup(
+        {
+          projectId: project.id,
+          submittedBy: submitter.id,
+          memberRequestIds: [m1.id, m2.id],
+          resource,
+        },
+        { id: submitter.id, role: "member", type: "human" },
+      );
+      return { group: g, m1, m2 };
+    }
+
+    it("streams group started → member_landed → landed all tagged with group_id", async () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db).user;
+      const actor = { id: integrator.id, role: "member", type: "ai_agent" };
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${project.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      let groupId = "";
+      setTimeout(() => {
+        const { group, m1, m2 } = makeGroup(project, submitter);
+        groupId = group.id;
+        mergeGroupSvc.markIntegrating(group.id, actor);
+        mergeGroupSvc.landGroup(
+          group.id,
+          {
+            members: [
+              { requestId: m1.id, landedSha: "inner1", role: "inner" },
+              { requestId: m2.id, landedSha: "outer1", role: "outer" },
+            ],
+          },
+          actor,
+        );
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 8, timeoutMs: 3000 });
+      const events = parseSSEEvents(text);
+
+      const started = events.find((e) => e.event === "merge.group.started");
+      expect(started).toBeDefined();
+      const startedData = JSON.parse(started!.data!);
+      expect(startedData.entity_type).toBe("merge_group");
+      expect(startedData.entity_id).toBe(groupId);
+      expect(startedData.action).toBe("group.started");
+      expect(startedData.group_id).toBe(groupId);
+
+      const memberLanded = events.find(
+        (e) => e.event === "merge.group.member_landed",
+      );
+      expect(memberLanded).toBeDefined();
+      const memberLandedData = JSON.parse(memberLanded!.data!);
+      expect(memberLandedData.group_id).toBe(groupId);
+
+      const landed = events.find((e) => e.event === "merge.group.landed");
+      expect(landed).toBeDefined();
+      const landedData = JSON.parse(landed!.data!);
+      expect(landedData.entity_type).toBe("merge_group");
+      expect(landedData.action).toBe("group.landed");
+      expect(landedData.group_id).toBe(groupId);
+    });
+
+    it("streams merge.group.rejected tagged with group_id", async () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${project.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      let groupId = "";
+      setTimeout(() => {
+        const { group } = makeGroup(project, submitter);
+        groupId = group.id;
+        mergeGroupSvc.rejectGroup(
+          group.id,
+          { reason: "killed" },
+          { id: submitter.id, role: "admin", type: "human" },
+        );
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 4, timeoutMs: 3000 });
+      const events = parseSSEEvents(text);
+
+      const rejected = events.find((e) => e.event === "merge.group.rejected");
+      expect(rejected).toBeDefined();
+      const data = JSON.parse(rejected!.data!);
+      expect(data.entity_type).toBe("merge_group");
+      expect(data.action).toBe("group.rejected");
+      expect(data.group_id).toBe(groupId);
+    });
+
+    it("streams merge.incident.opened tagged with incident_id, orphaned_sha, group_id", async () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db).user;
+      const actor = { id: integrator.id, role: "member", type: "ai_agent" };
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${project.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      let incidentId = "";
+      let groupId = "";
+      setTimeout(() => {
+        const { group, m1 } = makeGroup(project, submitter);
+        groupId = group.id;
+        const inc = mergeIncidentSvc.openIncident(
+          {
+            projectId: project.id,
+            groupId: group.id,
+            type: "orphaned_inner",
+            innerRepo: "core",
+            orphanedSha: "Ri999",
+            outerRepo: "shell",
+            innerRequestId: m1.id,
+          },
+          actor,
+        );
+        incidentId = inc.id;
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 4, timeoutMs: 3000 });
+      const events = parseSSEEvents(text);
+
+      const opened = events.find((e) => e.event === "merge.incident.opened");
+      expect(opened).toBeDefined();
+      const data = JSON.parse(opened!.data!);
+      expect(data.entity_type).toBe("merge_incident");
+      expect(data.entity_id).toBe(incidentId);
+      expect(data.action).toBe("incident.opened");
+      expect(data.incident_id).toBe(incidentId);
+      expect(data.orphaned_sha).toBe("Ri999");
+      expect(data.group_id).toBe(groupId);
+    });
+
+    it("streams incident auto_resolved (ai) and human_resolved (admin) with incident_id/orphaned_sha/group_id", async () => {
+      // ── auto_rollforward (integrator) ──
+      const projectA = createTestProject(testApp.db);
+      const submitterA = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db).user;
+      const aiActor = { id: integrator.id, role: "member", type: "ai_agent" };
+
+      const resA = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${projectA.id}`,
+      );
+      expect(resA.status).toBe(200);
+
+      let incidentIdA = "";
+      let groupIdA = "";
+      setTimeout(() => {
+        const { group, m1 } = makeGroup(projectA, submitterA);
+        groupIdA = group.id;
+        const inc = mergeIncidentSvc.openIncident(
+          {
+            projectId: projectA.id,
+            groupId: group.id,
+            type: "orphaned_inner",
+            innerRepo: "core",
+            orphanedSha: "RiAUTO",
+            outerRepo: "shell",
+            innerRequestId: m1.id,
+          },
+          aiActor,
+        );
+        incidentIdA = inc.id;
+        mergeIncidentSvc.resolve(
+          inc.id,
+          {
+            mode: "auto_rollforward",
+            outerLandedSha: "OUTER_AUTO",
+            resolvedByGroupId: group.id,
+          },
+          aiActor,
+        );
+      }, 50);
+
+      const textA = await readSSEStream(resA, { maxEvents: 5, timeoutMs: 3000 });
+      const eventsA = parseSSEEvents(textA);
+
+      const autoResolved = eventsA.find(
+        (e) => e.event === "merge.incident.auto_resolved",
+      );
+      expect(autoResolved).toBeDefined();
+      const autoData = JSON.parse(autoResolved!.data!);
+      expect(autoData.entity_type).toBe("merge_incident");
+      expect(autoData.action).toBe("incident.auto_resolved");
+      expect(autoData.incident_id).toBe(incidentIdA);
+      expect(autoData.orphaned_sha).toBe("RiAUTO");
+      expect(autoData.group_id).toBe(groupIdA);
+
+      // ── human (admin) ──
+      const projectB = createTestProject(testApp.db);
+      const submitterB = createTestUser(testApp.db);
+      const admin = createTestUser(testApp.db, { role: "admin" });
+      const adminActor = { id: admin.id, role: "admin", type: "human" };
+
+      const resB = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${projectB.id}`,
+      );
+      expect(resB.status).toBe(200);
+
+      let incidentIdB = "";
+      let groupIdB = "";
+      setTimeout(() => {
+        const { group, m1 } = makeGroup(projectB, submitterB);
+        groupIdB = group.id;
+        const inc = mergeIncidentSvc.openIncident(
+          {
+            projectId: projectB.id,
+            groupId: group.id,
+            type: "orphaned_inner",
+            innerRepo: "core",
+            orphanedSha: "RiHUMAN",
+            outerRepo: "shell",
+            innerRequestId: m1.id,
+          },
+          aiActor,
+        );
+        incidentIdB = inc.id;
+        mergeIncidentSvc.resolve(
+          inc.id,
+          { mode: "human", outerLandedSha: "OUTER_HUMAN", note: "fixed by hand" },
+          adminActor,
+        );
+      }, 50);
+
+      const textB = await readSSEStream(resB, { maxEvents: 5, timeoutMs: 3000 });
+      const eventsB = parseSSEEvents(textB);
+
+      const humanResolved = eventsB.find(
+        (e) => e.event === "merge.incident.human_resolved",
+      );
+      expect(humanResolved).toBeDefined();
+      const humanData = JSON.parse(humanResolved!.data!);
+      expect(humanData.entity_type).toBe("merge_incident");
+      expect(humanData.action).toBe("incident.human_resolved");
+      expect(humanData.incident_id).toBe(incidentIdB);
+      expect(humanData.orphaned_sha).toBe("RiHUMAN");
+      expect(humanData.group_id).toBe(groupIdB);
+    });
+
+    it("backward-compat: a plain merge.request.queued frame carries no group_id/incident_id/orphaned_sha", async () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/events?project_id=${project.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      setTimeout(() => {
+        mergeRequestSvc.submit({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          branch: "feat/plain",
+        });
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 2, timeoutMs: 2000 });
+      const events = parseSSEEvents(text);
+
+      const queued = events.find((e) => e.event === "merge.request.queued");
+      expect(queued).toBeDefined();
+      const data = JSON.parse(queued!.data!);
+      expect("group_id" in data).toBe(false);
+      expect("incident_id" in data).toBe(false);
+      expect("orphaned_sha" in data).toBe(false);
     });
   });
 });

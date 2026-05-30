@@ -63,6 +63,17 @@ export const EVENT_NAMES = {
   MERGE_BATCH_MEMBER_LANDED: "merge.batch.member_landed",
   MERGE_BATCH_MEMBER_INVALIDATED: "merge.batch.member_invalidated",
   MERGE_BATCH_COMPLETED: "merge.batch.completed",
+
+  // Merge group events (Phase 7.3 — PM-owned, emitted by merge-group.service)
+  MERGE_GROUP_STARTED: "merge.group.started",
+  MERGE_GROUP_MEMBER_LANDED: "merge.group.member_landed",
+  MERGE_GROUP_LANDED: "merge.group.landed",
+  MERGE_GROUP_REJECTED: "merge.group.rejected",
+
+  // Merge incident events (Phase 7.3 — PM-owned, emitted by merge-incident.service)
+  MERGE_INCIDENT_OPENED: "merge.incident.opened",
+  MERGE_INCIDENT_AUTO_RESOLVED: "merge.incident.auto_resolved",
+  MERGE_INCIDENT_HUMAN_RESOLVED: "merge.incident.human_resolved",
 } as const;
 
 export type EventName = (typeof EVENT_NAMES)[keyof typeof EVENT_NAMES];

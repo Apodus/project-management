@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import type { SimpleGit } from "simple-git";
 
 // ─── Result types ─────────────────────────────────────────────────
@@ -80,11 +82,71 @@ export interface GitOps {
   rebaseOnto(base: string, branch: string): Promise<RebaseResult>;
   push(remote: string, branch: string): Promise<PushResult>;
   resolveRef(ref: string): Promise<string>;
+  /**
+   * §5.4 / §5.2 step 8. In the CURRENT worktree, stage the 160000 gitlink at
+   * `gitlinkPath` to point at inner commit `sha`, then COMMIT the outer tree.
+   * Returns the new outer HEAD SHA (the assembled `Ro`).
+   *
+   * Notes (per §5.4, confirmed on win32):
+   *  - `--add` is REQUIRED to stage a gitlink path not already present in the
+   *    index (harmless when it already exists — it updates in place).
+   *  - `gitlinkPath` MUST use forward slashes (git index convention, even on
+   *    Windows); callers pass the config `gitlinkPath` which is already POSIX.
+   *  - The commit runs with an EXPLICIT committer identity because this is the
+   *    integrator's FIRST authored commit and pool-cloned worktrees have no
+   *    configured identity (otherwise the commit fails "Author identity
+   *    unknown"). `commit.gpgsign=false` mirrors the test fixture identity.
+   *  - `update-index --cacheinfo` does NOT require `sha`'s object to be present
+   *    in this store to stage/commit the gitlink (git permits a gitlink to an
+   *    absent object). The §5.2 step-7 `fetchFromPath` is for step 9's checkout,
+   *    not for this op.
+   */
+  updateSubmoduleGitlink(gitlinkPath: string, sha: string): Promise<string>;
+  /**
+   * §5.4 / §7.4. Read the inner SHA the current outer tree's gitlink references
+   * at `gitlinkPath` (used by the §11 post-assembly assertion and recovery's
+   * reconciliation check). Parses `git ls-tree HEAD <gitlinkPath>` for the
+   * `160000 commit <sha>\t<path>` line and returns the SHA (3rd whitespace
+   * token). THROWS if no 160000 entry exists at `gitlinkPath` (a missing /
+   * non-gitlink path is a real error, §11).
+   */
+  readSubmoduleGitlink(gitlinkPath: string): Promise<string>;
+  /**
+   * §5.4 / §5.2 step 9. Expand the inner tree `sha` into the outer WORKING TREE
+   * at `gitlinkPath` on disk, so the outer verify sees the new inner SOURCES
+   * (not merely the committed gitlink SHA). Requires `sha`'s objects present in
+   * THIS store (the §5.2 step-7 `fetchFromPath`).
+   *
+   * Mechanism (empirically confirmed on win32 — see group-assembly.test.ts):
+   * `git read-tree --prefix=<gitlinkPath>/ <sha>` into a SEPARATE temp index
+   * (via GIT_INDEX_FILE) followed by `git checkout-index -a -f`. A separate
+   * index is REQUIRED: the real index already holds the 160000 gitlink at
+   * `gitlinkPath`, so read-tree-ing the expanded tree into it would collide;
+   * the temp index isolates the expansion and leaves the committed gitlink
+   * intact. checkout-index then writes the blobs to disk under the prefix.
+   */
+  materializeSubmoduleWorktree(gitlinkPath: string, sha: string): Promise<void>;
   runVerify(
     command: string,
     timeoutMs: number,
     opts: RunVerifyOptions,
   ): Promise<VerifyResult>;
+  /**
+   * §7.4 RECONCILABLE ancestry check. Returns true iff `ancestor` is an ancestor
+   * of `descendant` in THIS repo's history (i.e. `git merge-base --is-ancestor
+   * ancestor descendant` exits 0). Returns false on exit 1 (NOT an ancestor).
+   *
+   * MANDATORY FIX (R1-critical): this is a DIRECT git spawn reading the numeric
+   * process exit code, NOT `git.raw` + a text/regex inspection. simple-git's
+   * `git.raw` RESOLVES (does not throw) on `--is-ancestor`'s exit-1-with-empty-
+   * stderr, and `GitError` carries no numeric exitCode on this version, so a
+   * raw-based implementation would misclassify a NOT-ancestor (regressing)
+   * gitlink as reconcilable and auto-push it — an R1 BREAK. The direct spawn
+   * reads exit 0 → true, exit 1 → false, anything else (128 / bad object /
+   * corrupt repo) → REJECT, so recovery ESCALATES rather than silently treating
+   * an error as "not ancestor".
+   */
+  isAncestor(ancestor: string, descendant: string): Promise<boolean>;
 }
 
 export interface GitOpsOptions {
@@ -144,6 +206,70 @@ function killTree(pid: number, signal: NodeJS.Signals): void {
       /* already gone */
     }
   }
+}
+
+// ─── Direct git spawn (env-isolated) ──────────────────────────────
+
+/**
+ * Run a git subcommand with a SPECIFIC environment, isolated from the shared
+ * simple-git instance. Used by materializeSubmoduleWorktree, which needs a
+ * one-shot GIT_INDEX_FILE that must NOT leak onto the long-lived worktree git
+ * instance (simple-git `.env()` is stateful and persists). Rejects on non-zero
+ * exit with the captured stderr.
+ */
+function runGit(
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn("git", args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`git ${args.join(" ")} exited ${code}: ${stderr.trim()}`));
+    });
+  });
+}
+
+/**
+ * Run `git merge-base --is-ancestor` as a DIRECT spawn, reading the NUMERIC
+ * process exit code (the R1-critical precedent — see GitOps.isAncestor). Resolves
+ * `true` on exit 0, `false` on exit 1, and REJECTS on any other exit code (e.g.
+ * 128 — a bad/nonexistent object or a not-a-repo error) so the caller can
+ * escalate rather than silently treat an error as "not ancestor".
+ */
+function runIsAncestor(
+  ancestor: string,
+  descendant: string,
+  cwd: string,
+): Promise<boolean> {
+  return new Promise<boolean>((resolve, reject) => {
+    const child = spawn(
+      "git",
+      ["merge-base", "--is-ancestor", ancestor, descendant],
+      { cwd, env: process.env, stdio: ["ignore", "ignore", "pipe"] },
+    );
+    let stderr = "";
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      if (code === 0) resolve(true);
+      else if (code === 1) resolve(false);
+      else
+        reject(
+          new Error(
+            `git merge-base --is-ancestor ${ancestor} ${descendant} exited ${code}: ${stderr.trim()}`,
+          ),
+        );
+    });
+  });
 }
 
 // ─── Factory ──────────────────────────────────────────────────────
@@ -215,6 +341,89 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
 
   async function resolveRef(ref: string): Promise<string> {
     return (await git.revparse([ref])).trim();
+  }
+
+  async function updateSubmoduleGitlink(
+    gitlinkPath: string,
+    sha: string,
+  ): Promise<string> {
+    // Stage the 160000 gitlink at `gitlinkPath` -> `sha`. `--add` is required to
+    // introduce the cacheinfo entry; forward slashes are the git index
+    // convention. `cacheinfo` does NOT need `sha` present locally.
+    await git.raw([
+      "update-index",
+      "--add",
+      "--cacheinfo",
+      `160000,${sha},${gitlinkPath}`,
+    ]);
+    // Commit with an EXPLICIT identity — pool-cloned worktrees have no
+    // configured user, so without this the commit fails "Author identity
+    // unknown" (this is the integrator's first authored commit).
+    await git.raw([
+      "-c",
+      "user.email=integrator@pm.local",
+      "-c",
+      "user.name=PM Integrator",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "-m",
+      `assemble: gitlink ${gitlinkPath} -> ${sha}`,
+      "--no-verify",
+    ]);
+    return (await git.revparse(["HEAD"])).trim();
+  }
+
+  async function readSubmoduleGitlink(gitlinkPath: string): Promise<string> {
+    const out = await git.raw(["ls-tree", "HEAD", gitlinkPath]);
+    // Each line: `<mode> <type> <sha>\t<path>`. Find the 160000 gitlink entry.
+    for (const line of out.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+      // Split on whitespace: [mode, type, sha, ...path]
+      const parts = trimmed.split(/\s+/);
+      if (parts[0] === "160000" && parts[2]) {
+        return parts[2];
+      }
+    }
+    throw new Error(
+      `readSubmoduleGitlink: no 160000 gitlink entry found at "${gitlinkPath}" in HEAD`,
+    );
+  }
+
+  async function materializeSubmoduleWorktree(
+    gitlinkPath: string,
+    sha: string,
+  ): Promise<void> {
+    // Expand `sha`'s tree into the working tree at `gitlinkPath` on disk.
+    // Mechanism confirmed on win32: read-tree --prefix into a SEPARATE temp
+    // index (the real index already holds the gitlink at this path, which would
+    // collide), then checkout-index -a -f against that temp index. This writes
+    // the inner blobs under `<gitlinkPath>/` without disturbing the committed
+    // gitlink in HEAD or the real index.
+    const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+    const tmpIndex = path.join(
+      topLevel,
+      ".git",
+      `pm-materialize-index-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    // NOTE: we spawn git DIRECTLY here rather than via the shared simple-git
+    // instance. simple-git's `.env()` is STATEFUL — it persists GIT_INDEX_FILE
+    // on the instance for ALL subsequent calls (confirmed empirically), which
+    // would leak the throwaway temp index onto the long-lived worktree `git`
+    // and corrupt every later op. A direct spawn scopes the env to exactly
+    // these two commands. (cwd = the worktree top-level.)
+    const env = { ...process.env, GIT_INDEX_FILE: tmpIndex };
+    try {
+      // Forward slash + trailing slash on the prefix (git convention).
+      await runGit(["read-tree", `--prefix=${gitlinkPath}/`, sha], topLevel, env);
+      await runGit(["checkout-index", "-a", "-f"], topLevel, env);
+    } finally {
+      // The temp index is throwaway; remove it (best-effort).
+      await rm(tmpIndex, { force: true }).catch(() => {
+        /* best-effort */
+      });
+    }
   }
 
   function runVerify(
@@ -332,6 +541,18 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     });
   }
 
+  async function isAncestor(
+    ancestor: string,
+    descendant: string,
+  ): Promise<boolean> {
+    // The cwd is the worktree this gitOps is bound to. `--show-toplevel`
+    // resolves it from the underlying simple-git instance (same precedent as
+    // materializeSubmoduleWorktree). The direct spawn then reads the numeric
+    // exit code (0 → true, 1 → false, else → reject).
+    const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+    return runIsAncestor(ancestor, descendant, topLevel);
+  }
+
   return {
     fetch,
     fetchFromPath,
@@ -339,6 +560,10 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     rebaseOnto,
     push,
     resolveRef,
+    updateSubmoduleGitlink,
+    readSubmoduleGitlink,
+    materializeSubmoduleWorktree,
     runVerify,
+    isAncestor,
   };
 }

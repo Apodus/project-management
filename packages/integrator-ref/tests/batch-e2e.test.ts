@@ -93,19 +93,24 @@ const sleep = (ms: number): Promise<void> =>
 
 const isWin = process.platform === "win32";
 
-// Per-request verify one-liner that writes a `.start` marker, sleeps ~600ms,
-// then writes a `.end` marker. runVerify spawns shell:true, so the compound
-// one-liner runs as a single shell command. win32 uses cmd.exe idioms (never a
-// bare `sleep`); posix uses sh.
+// Per-request verify one-liner that writes a `.start` marker, sleeps, then
+// writes a `.end` marker. runVerify spawns shell:true, so the compound one-liner
+// runs as a single shell command. win32 uses cmd.exe idioms (never a bare
+// `sleep`); posix uses sh.
+//
+// CPU-contention de-flake (Step 13): widened the sleep to ~1.5-2s (win32 ping
+// -n 4 ≈ 3s of pings → ~1.5-2s effective wait; posix sleep 1.5) so the verify
+// windows still overlap under full-suite CPU contention (the flow-a overlap
+// assertion flaked in Step 12 under load, passed isolated).
 function markerVerify(markerDir: string, name: string): string {
   if (isWin) {
     const start = path.join(markerDir, `${name}.start`);
     const end = path.join(markerDir, `${name}.end`);
-    return `echo x > "${start}" & ping -n 2 127.0.0.1 > nul & echo x > "${end}"`;
+    return `echo x > "${start}" & ping -n 4 127.0.0.1 > nul & echo x > "${end}"`;
   }
   const start = path.join(markerDir, `${name}.start`);
   const end = path.join(markerDir, `${name}.end`);
-  return `date > '${start}'; sleep 0.6; date > '${end}'`;
+  return `date > '${start}'; sleep 1.5; date > '${end}'`;
 }
 
 // A ~600ms sleep verify (no markers) for the backpressure flow.
@@ -499,7 +504,21 @@ describe.skipIf(!RUN)("batch E2E (a) — 3 clean @parallelism:3", () => {
         }
       }
     }
-    expect(overlap).toBe(true);
+    // CPU-contention de-flake (Step 13): the direct interval-overlap can flake
+    // under full-suite CPU contention (marker mtimes jitter when 3 verifies
+    // contend for cores). A SUB-LINEAR total wall-clock is itself proof of
+    // concurrency: if the 3 verifies (each ~verifyDuration) had run serially the
+    // span (first .start → last .end) would be ≥3×verifyDuration; a span below
+    // that threshold means they overlapped. Accept EITHER signal.
+    const firstStart = Math.min(...windows.map((w) => w.start));
+    const lastEnd = Math.max(...windows.map((w) => w.end));
+    const span = lastEnd - firstStart;
+    const perVerifyMin = windows.reduce(
+      (min, w) => Math.min(min, w.end - w.start),
+      Infinity,
+    );
+    const subLinear = span < 3 * perVerifyMin;
+    expect(overlap || subLinear).toBe(true);
 
     // Ordered land: final main tip == the LAST member (req2)'s landedSha.
     const req2Final = finals[2];

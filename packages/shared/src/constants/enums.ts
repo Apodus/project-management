@@ -57,6 +57,7 @@ export const COMMENT_TYPES = [
   "review_note",
   "design_discussion",
   "merge_rejection",
+  "merge_incident",
 ] as const;
 export type CommentType = (typeof COMMENT_TYPES)[number];
 

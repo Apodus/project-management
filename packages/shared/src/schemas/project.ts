@@ -20,6 +20,14 @@ export const gitSettingsSchema = z.object({
   auto_link_branches: z.boolean(),
 });
 
+export const linkedRepoSchema = z.object({
+  name: z.string().min(1),
+  path: z.string().min(1),
+  role: z.enum(["inner", "outer"]),
+  gitlink_parent: z.string().min(1).optional(),
+  gitlink_path: z.string().min(1).optional(),
+});
+
 export const integratorSettingsSchema = z
   .object({
     enabled: z.boolean().default(false),
@@ -30,6 +38,7 @@ export const integratorSettingsSchema = z
     git_main_branch: z.string().min(1).default("main"),
     worktree_name: z.string().min(1).optional(),
     parallelism: z.number().int().min(1).default(1),
+    linked_repos: z.array(linkedRepoSchema).default([]),
   })
   .refine(
     (v) => !v.enabled || (Boolean(v.verify_command) && Boolean(v.worktree_root)),

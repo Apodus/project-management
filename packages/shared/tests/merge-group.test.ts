@@ -1,0 +1,145 @@
+import { describe, it, expect } from "vitest";
+import {
+  MERGE_GROUP_STATES,
+  mergeRequestGroupSchema,
+  createMergeGroupSchema,
+} from "../src/index.js";
+
+const VALID_ULID = "01H5K3RCH3EABY3V5SXGM7N1WQ";
+const VALID_TIMESTAMP = "2026-05-27T12:00:00.000Z";
+
+// ─── Enum constants ───────────────────────────────────────────────
+
+describe("MERGE_GROUP_STATES", () => {
+  it("contains exactly the canonical values in canonical order", () => {
+    expect([...MERGE_GROUP_STATES]).toEqual([
+      "forming",
+      "integrating",
+      "landed",
+      "rejected",
+      "partially_landed",
+    ]);
+  });
+
+  it("starts with 'forming' (the DB column default)", () => {
+    expect(MERGE_GROUP_STATES[0]).toBe("forming");
+  });
+});
+
+// ─── mergeRequestGroupSchema ──────────────────────────────────────
+
+describe("mergeRequestGroupSchema", () => {
+  const validGroup = {
+    id: VALID_ULID,
+    projectId: VALID_ULID,
+    resource: "main",
+    state: "forming" as const,
+    submittedBy: VALID_ULID,
+    integratorId: null,
+    resolvedAt: null,
+    resolutionReason: null,
+    createdAt: VALID_TIMESTAMP,
+    updatedAt: VALID_TIMESTAMP,
+  };
+
+  it("accepts a valid forming group with nullable fields null", () => {
+    expect(mergeRequestGroupSchema.parse(validGroup)).toEqual(validGroup);
+  });
+
+  it("accepts a landed group with integratorId + resolvedAt set", () => {
+    const landed = {
+      ...validGroup,
+      state: "landed" as const,
+      integratorId: VALID_ULID,
+      resolvedAt: VALID_TIMESTAMP,
+    };
+    expect(mergeRequestGroupSchema.parse(landed)).toBeTruthy();
+  });
+
+  it("accepts a partially_landed group with resolutionReason set", () => {
+    const partial = {
+      ...validGroup,
+      state: "partially_landed" as const,
+      integratorId: VALID_ULID,
+      resolvedAt: VALID_TIMESTAMP,
+      resolutionReason: "outer push failed; inner orphaned",
+    };
+    expect(mergeRequestGroupSchema.parse(partial)).toBeTruthy();
+  });
+
+  it("accepts all valid states", () => {
+    for (const state of MERGE_GROUP_STATES) {
+      expect(mergeRequestGroupSchema.parse({ ...validGroup, state })).toBeTruthy();
+    }
+  });
+
+  it("rejects unknown state", () => {
+    expect(() =>
+      mergeRequestGroupSchema.parse({ ...validGroup, state: "in_progress" }),
+    ).toThrow();
+  });
+
+  it("rejects missing projectId", () => {
+    const { projectId: _, ...g } = validGroup;
+    expect(() => mergeRequestGroupSchema.parse(g)).toThrow();
+  });
+
+  it("rejects missing submittedBy", () => {
+    const { submittedBy: _, ...g } = validGroup;
+    expect(() => mergeRequestGroupSchema.parse(g)).toThrow();
+  });
+});
+
+// ─── createMergeGroupSchema ───────────────────────────────────────
+
+describe("createMergeGroupSchema", () => {
+  it("defaults resource to 'main'", () => {
+    const parsed = createMergeGroupSchema.parse({
+      memberRequestIds: [VALID_ULID, VALID_ULID],
+    });
+    expect(parsed.resource).toBe("main");
+  });
+
+  it("accepts a resource override", () => {
+    const parsed = createMergeGroupSchema.parse({
+      resource: "release-x",
+      memberRequestIds: [VALID_ULID, VALID_ULID],
+    });
+    expect(parsed.resource).toBe("release-x");
+  });
+
+  it("accepts a fully-populated body", () => {
+    const body = {
+      resource: "main",
+      memberRequestIds: [VALID_ULID, VALID_ULID, VALID_ULID],
+    };
+    expect(createMergeGroupSchema.parse(body)).toEqual(body);
+  });
+
+  it("rejects fewer than 2 memberRequestIds", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({ memberRequestIds: [VALID_ULID] }),
+    ).toThrow();
+  });
+
+  it("rejects empty memberRequestIds", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({ memberRequestIds: [] }),
+    ).toThrow();
+  });
+
+  it("rejects an empty-string member id", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({ memberRequestIds: [VALID_ULID, ""] }),
+    ).toThrow();
+  });
+
+  it("rejects empty-string resource", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({
+        resource: "",
+        memberRequestIds: [VALID_ULID, VALID_ULID],
+      }),
+    ).toThrow();
+  });
+});

@@ -476,6 +476,13 @@ export const mergeRequests = sqliteTable(
     commitSha: text("commit_sha"),
     verifyCmd: text("verify_cmd"),
     worktreePath: text("worktree_path"),
+    // Phase 7.3: nullable association to the atomic group this request is a
+    // member of (§3.2). ON DELETE SET NULL — a deleted group orphans nothing;
+    // members degrade cleanly to single-repo requests. The lazy () => arrow
+    // forward-refs mergeRequestGroups (defined below).
+    groupId: text("group_id").references(() => mergeRequestGroups.id, {
+      onDelete: "set null",
+    }),
     // status enum lives in @pm/shared (MERGE_REQUEST_STATUSES) — added in
     // Step 3. Default "queued" matches the initial-state convention.
     status: text("status").notNull().default("queued"),
@@ -504,6 +511,7 @@ export const mergeRequests = sqliteTable(
       table.enqueuedAt,
     ),
     index("idx_merge_requests_task").on(table.taskId),
+    index("idx_merge_requests_group").on(table.groupId),
   ],
 );
 
@@ -542,6 +550,126 @@ export const mergeAttempts = sqliteTable(
     uniqueIndex("idx_merge_attempts_request_num").on(
       table.requestId,
       table.attemptNumber,
+    ),
+  ],
+);
+
+// ─── merge_request_groups ──────────────────────────────────────────
+// Phase 7.3 Stage: cross-repo atomicity. A group is a set of merge
+// requests (one per linked repo) that must land together atomically or
+// not at all. PM-owned; the integrator picks up the whole group under
+// the SAME lane lock, assembles + verifies the linked state, and lands
+// inner-then-outer (full state machine in docs/design/phase-7.3-design.md
+// §3.3).
+//
+// Lifecycle:
+//   forming → integrating → landed | rejected | partially_landed
+//   forming → rejected                 (abandoned while forming)
+export const mergeRequestGroups = sqliteTable(
+  "merge_request_groups",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    resource: text("resource").notNull().default("main"),
+    // Group state machine (§3.3). Enum lives in @pm/shared
+    // (MERGE_GROUP_STATES) — added in Step 3. Default "forming".
+    state: text("state").notNull().default("forming"),
+    submittedBy: text("submitted_by")
+      .notNull()
+      .references(() => users.id),
+    // The integrator that picked the group up (mirrors the lane-lock
+    // holder). Null until integration begins.
+    integratorId: text("integrator_id").references(() => users.id),
+    resolvedAt: text("resolved_at"),
+    // Free-text summary of why the group rejected or partially landed —
+    // observer context, like merge_locks.abandonReason.
+    resolutionReason: text("resolution_reason"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_merge_request_groups_project_state").on(
+      table.projectId,
+      table.state,
+    ),
+    index("idx_merge_request_groups_resource_state").on(
+      table.projectId,
+      table.resource,
+      table.state,
+      table.createdAt,
+    ),
+  ],
+);
+
+// ─── merge_incidents ───────────────────────────────────────────────
+// Phase 7.3: a recorded orphaned-inner event. When a group's inner repo
+// lands but the outer push fails (§6.5), the inner main now references a
+// commit the outer gitlink does not — an incident is opened to track and
+// heal the divergence (auto-rollforward §7, or human resolution §7.5).
+// PM-owned; survives group deletion (the orphan is a fact about main).
+//
+// Lifecycle:
+//   open → auto_resolved | human_resolved
+export const mergeIncidents = sqliteTable(
+  "merge_incidents",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    // The group whose land produced the orphan. ON DELETE SET NULL so a
+    // deleted group never cascade-deletes the incident.
+    groupId: text("group_id").references(() => mergeRequestGroups.id, {
+      onDelete: "set null",
+    }),
+    // Incident type. For 7.3 the only value is "orphaned_inner"; enum
+    // (MERGE_INCIDENT_TYPES) so 7.4+ can add types without a schema change.
+    type: text("type").notNull(),
+    innerRepo: text("inner_repo").notNull(),
+    // The orphaned inner commit SHA: inner main landed here, outer gitlink
+    // does NOT yet reference it. The heart of the incident.
+    orphanedSha: text("orphaned_sha").notNull(),
+    outerRepo: text("outer_repo").notNull(),
+    // The inner member request whose land orphaned. ON DELETE SET NULL.
+    innerRequestId: text("inner_request_id").references(
+      () => mergeRequests.id,
+      { onDelete: "set null" },
+    ),
+    // The task the incident comment is posted on (from the inner member's
+    // taskId at open time). ON DELETE SET NULL.
+    taskId: text("task_id").references(() => tasks.id, {
+      onDelete: "set null",
+    }),
+    // Incident state machine (§4.2). Enum MERGE_INCIDENT_STATES.
+    state: text("state").notNull().default("open"),
+    openedAt: text("opened_at").notNull(),
+    resolvedAt: text("resolved_at"),
+    // Structured resolution. JSON: { mode, outerLandedSha?,
+    // resolvedByGroupId?, note? }. Null while open.
+    resolution: text("resolution", { mode: "json" }).$type<{
+      mode: "auto_rollforward" | "human";
+      outerLandedSha?: string;
+      resolvedByGroupId?: string;
+      note?: string;
+    }>(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_merge_incidents_project_state").on(
+      table.projectId,
+      table.state,
+    ),
+    index("idx_merge_incidents_group").on(table.groupId),
+    // The recovery sweep's hot path: open orphaned_inner incidents for
+    // this project, oldest first.
+    index("idx_merge_incidents_open").on(
+      table.projectId,
+      table.state,
+      table.type,
+      table.openedAt,
     ),
   ],
 );

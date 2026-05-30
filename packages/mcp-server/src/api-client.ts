@@ -1049,6 +1049,8 @@ import type {
   MergeRequestView,
   MergeAttemptView,
   MergeRequestStatus,
+  MergeRequestGroupView,
+  MergeIncidentView,
 } from "@pm/shared";
 
 // Re-export so MCP tool files can pull types from one place.
@@ -1146,5 +1148,88 @@ export async function pickupMergeRequest(
   return apiRequest<MergeRequestView>(
     "POST",
     `/merge-requests/${encodeURIComponent(requestId)}/pickup`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Merge Groups + Incidents (Phase 7.3, worker-facing)
+// ---------------------------------------------------------------------------
+//
+// Single source of truth for the view shapes lives in @pm/shared
+// (MergeRequestGroupView, MergeIncidentView). Only the WORKER-facing
+// operations live here — the integrator ops (pickup/land/reject/orphan/
+// partially-land/resolve) are HTTP-only.
+
+// Re-export so MCP tool files can pull types from one place.
+export type { MergeRequestGroupView, MergeIncidentView } from "@pm/shared";
+
+export interface MergeRequestGroupDetailView extends MergeRequestGroupView {
+  members: MergeRequestView[];
+}
+
+export interface MergeGroupRequestBody {
+  resource?: string;
+  memberRequestIds: string[];
+}
+
+export interface MergeIncidentListFilters {
+  state?: string;
+  type?: string;
+  groupId?: string;
+}
+
+/**
+ * Request a merge group — worker-facing. Submits >=2 already-queued,
+ * ungrouped requests as one atomic unit. Returns the forming group + members.
+ */
+export async function requestMergeGroup(
+  projectId: string,
+  body: MergeGroupRequestBody,
+): Promise<MergeRequestGroupDetailView> {
+  return apiRequest<MergeRequestGroupDetailView>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/merge-groups`,
+    body,
+  );
+}
+
+/**
+ * Get a single merge group with its members.
+ */
+export async function getMergeGroup(
+  groupId: string,
+): Promise<MergeRequestGroupDetailView> {
+  return apiRequest<MergeRequestGroupDetailView>(
+    "GET",
+    `/merge-groups/${encodeURIComponent(groupId)}`,
+  );
+}
+
+/**
+ * List merge incidents for a project. apiRequest extracts the .data array.
+ */
+export async function listMergeIncidents(
+  projectId: string,
+  filters?: MergeIncidentListFilters,
+): Promise<MergeIncidentView[]> {
+  const params: Record<string, string | number | boolean | undefined> = {};
+  if (filters?.state) params.state = filters.state;
+  if (filters?.type) params.type = filters.type;
+  if (filters?.groupId) params.groupId = filters.groupId;
+  return apiRequest<MergeIncidentView[]>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/merge-incidents${qs(params)}`,
+  );
+}
+
+/**
+ * Get a single merge incident.
+ */
+export async function getMergeIncident(
+  incidentId: string,
+): Promise<MergeIncidentView> {
+  return apiRequest<MergeIncidentView>(
+    "GET",
+    `/merge-incidents/${encodeURIComponent(incidentId)}`,
   );
 }

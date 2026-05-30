@@ -139,6 +139,28 @@ via SSE: `merge.batch.started/member_landed/member_invalidated/completed` marker
 on the existing `merge.request.*` / `merge.attempt.*` frames. No PM batch tables — the integrator owns
 batch state in memory. Full spec: `docs/design/phase-7.2-design.md`.
 
+**Cross-repo atomicity (Phase 7.3).** A change that spans linked repos (game_one's `rynx` inner Rust
+workspace + the outer game repo that embeds it as a `160000` gitlink) lands as a unit or not at all.
+Workers submit each repo's change as a normal merge request, then bind them into a **merge group**
+(`pm_request_merge_group`); the integrator picks up the whole group under the **same lane lock**,
+assembles the multi-repo state (inner rebased to `Ri` + outer gitlink committed to `Ri` + the inner
+sources materialized into the outer working tree), runs per-repo verify concurrently (AND-combined),
+and lands **inner-first then outer**. If the inner push fails the whole group rejects cleanly (outer
+never touched); if the outer push fails *after* the inner landed, the inner commit is marked
+`orphaned` and a durable **incident** (`orphaned_inner`) is opened so the divergence is detectable
+from PM alone (no SSH into the host). Recovery is **auto-rollforward**: a later integration rolls the
+outer gitlink forward to absorb the orphaned SHA via a verify-gated fast-forward push (when the
+current gitlink is an ancestor of the orphan) and resolves the incident `auto_resolved`; an
+un-reconcilable orphan escalates and the incident stays `open` for a human (`human_resolved`). Outer
+`main` is **never** advanced to a gitlink whose assembled tree has not passed verify — not in land,
+not in recovery. State is PM-owned in two new tables — `merge_request_groups`
+(forming → integrating → landed | rejected | partially_landed) and `merge_incidents`
+(open → auto_resolved | human_resolved) — plus a nullable `merge_requests.group_id`. Linked repos are
+declared per project in `settings.integrator.linked_repos` (`[{ name, path, role: "inner"|"outer",
+gitlink_parent?, gitlink_path? }]`; default `[]` = single-repo, byte-identical to 7.2). Worker MCP
+tools: `pm_request_merge_group`, `pm_get_merge_group`, `pm_list_merge_incidents`,
+`pm_get_merge_incident`. Full spec: `docs/design/phase-7.3-design.md`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:
