@@ -27,6 +27,7 @@ import { UsersPage } from "@/pages/settings/users-page";
 import { BackupPage } from "@/pages/settings/backup-page";
 import { TemplatesPage } from "@/pages/settings/templates-page";
 import { AutomationPage } from "@/pages/settings/automation-page";
+import { NotificationsPage } from "@/pages/settings/notifications-page";
 import { HelpPage } from "@/pages/help-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
 
@@ -249,6 +250,13 @@ const projectAutomationRoute = createRoute({
   component: AutomationPage,
 });
 
+// /projects/$projectId/settings/notifications — webhook / Discord alerts
+const projectNotificationsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/settings/notifications",
+  component: NotificationsPage,
+});
+
 // /help — getting started and MCP setup
 const helpRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
@@ -274,6 +282,7 @@ const routeTree = rootRoute.addChildren([
       projectTrainRoute,
       projectTrainAuditRoute,
       projectAutomationRoute,
+      projectNotificationsRoute,
     ]),
     proposalDetailRoute,
     taskDetailRoute,

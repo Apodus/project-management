@@ -12,6 +12,7 @@ import {
   ListTodo,
   Milestone,
   HelpCircle,
+  Bell,
   Settings,
   TrainFront,
   Zap,
@@ -280,6 +281,18 @@ export function Sidebar() {
               icon: Zap,
               href: `/projects/${currentProjectId}/settings/automation`,
               matchPath: "/settings/automation",
+            }}
+            collapsed={collapsed}
+          />
+        )}
+
+        {currentProjectId && (
+          <NavLink
+            item={{
+              label: "Notifications",
+              icon: Bell,
+              href: `/projects/${currentProjectId}/settings/notifications`,
+              matchPath: "/settings/notifications",
             }}
             collapsed={collapsed}
           />
