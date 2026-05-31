@@ -109,6 +109,22 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
     await git.checkout("main");
   });
 
+  it("treesIdentical: same commit/identical tree → true, differing tree → false, bad object → rejects", async () => {
+    const ops = createGitOps(git);
+    await git.checkout("main");
+    await git.reset(["--hard", "origin/main"]);
+    const head = await ops.resolveRef("HEAD");
+    // Same commit / byte-identical trees → true (the no-op / already-landed case).
+    expect(await ops.treesIdentical("HEAD", head)).toBe(true);
+    expect(await ops.treesIdentical(head, "origin/main")).toBe(true);
+    // A branch carrying a real change → trees differ → false (a normal land).
+    expect(await ops.treesIdentical("HEAD", "feature/clean")).toBe(false);
+    // A bad/nonexistent object REJECTS (not silently treated as "differ", which
+    // would let a no-op push slip through).
+    await expect(ops.treesIdentical("HEAD", "dead".repeat(10))).rejects.toThrow();
+    await git.checkout("main");
+  });
+
   it("rebaseOnto conflicting branch → not ok with conflicting files", async () => {
     const ops = createGitOps(git);
     // Create a divergent commit on local main that edits base.txt differently

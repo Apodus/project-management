@@ -465,6 +465,17 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     await author.add(["marker.txt"]);
     await author.commit("add marker");
     await author.push(["-u", "origin", "feature/badtest"]);
+
+    // A DEDICATED branch for the land-time drift test. It must carry a change
+    // that is NOT already on main when the drift test runs — `feature/clean`
+    // gets landed by an earlier test, after which re-using it trips the no-op /
+    // already-landed guard (no push → the racing-commit-on-push never fires).
+    await author.checkout("main");
+    await author.checkoutLocalBranch("feature/drift");
+    writeFileSync(path.join(authorClone, "drift-feature.txt"), "drift\n");
+    await author.add(["drift-feature.txt"]);
+    await author.commit("add drift feature");
+    await author.push(["-u", "origin", "feature/drift"]);
     await author.checkout("main");
   });
 
@@ -603,7 +614,9 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     const root = path.join(tmpRoot, "wt-drift");
     const req = makeRequest({
       id: "req-drift",
-      branch: "feature/clean",
+      // Dedicated, never-pre-landed branch (see beforeAll) so the no-op guard
+      // does NOT short-circuit — the push (and its injected race) must happen.
+      branch: "feature/drift",
       verifyCmd: "echo ok",
     });
     const state: FakeState = {
@@ -2371,6 +2384,66 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(req.status).toBe("landed");
     expect(state.calls).toContain("pickup");
     expect(state.calls).toContain("land");
+  });
+
+  it("no-op / already-landed: rebased tree identical to main → landed WITHOUT a push", async () => {
+    const root = path.join(tmpRoot, "wt-noop");
+
+    // A branch that carries NO net change over main — its content is already on
+    // main (the "hand-landed out-of-band / duplicate" case the integrator must
+    // recognize). Created as a ref at main's tip so the rebase yields a tree
+    // byte-identical to main; origin/main itself is left untouched so the
+    // sibling tests below are unaffected.
+    const author = simpleGit(authorClone);
+    await author.checkout("main");
+    await author.pull("origin", "main");
+    const mainSha = (await author.revparse(["HEAD"])).trim();
+    await author.checkoutLocalBranch("feature/noop");
+    await author.push(["-u", "origin", "feature/noop"]);
+    await author.checkout("main");
+
+    const req = makeRequest({
+      id: "req-noop",
+      branch: "feature/noop",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+
+    // Count real pushes — the no-op land must NOT push to the remote.
+    let pushes = 0;
+    const factory = (p: string): GitOps => {
+      const real = createGitOps(simpleGit(p));
+      return {
+        ...real,
+        async push(remote, branch) {
+          pushes += 1;
+          return real.push(remote, branch);
+        },
+      };
+    };
+
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: factory,
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    // Recorded landed (no-op disposition) at the CURRENT main sha — a
+    // zero-advance land — and crucially WITHOUT any push.
+    expect(req.status).toBe("landed");
+    expect(req.landedSha).toBe(mainSha);
+    expect(pushes).toBe(0);
+    // Lock + slot released; a passing attempt recorded; never rejected.
+    expect(state.lockHeld).toBe(false);
+    expect(deps.pool.leasedCount).toBe(0);
+    expect(state.calls).toContain("land");
+    expect(state.calls.some((c) => c.startsWith("reject"))).toBe(false);
   });
 
   // ───────────────────────────────────────────────────────────────────

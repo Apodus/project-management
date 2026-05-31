@@ -145,6 +145,14 @@ export async function landAssembledGroup(
       return { kind: "rejected", reason };
     }
 
+    // NOTE — no-op / already-landed groups: a re-submitted group whose content
+    // is already on both remotes is handled by the fast-forward pushes below
+    // (PUSH 1 / PUSH 2 are `HEAD:main` — an up-to-date push is a safe no-op that
+    // returns ok and lands at the current mains, no double-apply, no regression).
+    // The explicit single-repo no-op guard (batch.ts landMember) is NOT mirrored
+    // here on purpose: the assembled-worktree HEAD state makes a pre-push tree
+    // comparison ambiguous, and the FF push already gives the correct outcome.
+
     // ── §6.2 PUSH 1: inner (fast-forwards inner main Mi → Ri). ──
     const push1 = await asm.innerGitOps.push(gitRemote, gitMainBranch);
     if (!push1.ok) {

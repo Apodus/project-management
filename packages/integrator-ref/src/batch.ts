@@ -831,6 +831,43 @@ export async function landMember(
     return false;
   }
 
+  // ── No-op / already-landed guard ──
+  // If the rebased HEAD's tree is byte-identical to live main's, this request
+  // contributes NO net change — its content is already on main (landed
+  // out-of-band under a different SHA, or fully redundant with a predecessor).
+  // Pushing would either be a literal no-op or, worse (an originally-empty
+  // commit that survived rebase), advance main by an empty commit. Record a
+  // no-op land instead: mark the request landed at the CURRENT main SHA without
+  // pushing. Suffix members chain onto this member's landedSha (= current main,
+  // unmoved), so the speculative land order stays correct — a zero-advance land.
+  if (await gitOps.treesIdentical("HEAD", actualMainSha)) {
+    deps.logger.info(
+      { requestId: member.request.id, mainSha: actualMainSha },
+      "rebased tree identical to main; content already landed — recording no-op land (no push)",
+    );
+    if (member.attemptId) {
+      await deps.pmClient.completeAttempt(member.attemptId, {
+        status: "passed",
+        treeSha: actualMainSha,
+        steps: member.steps ?? undefined,
+      });
+    }
+    await deps.pmClient.landMergeRequest(member.request.id, actualMainSha);
+    member.state = "landed";
+    member.landedSha = actualMainSha;
+    deps.pool.release(worktree);
+    member.worktree = null;
+    ctx.landed.push(member.request.id);
+    deps.onBatchEvent?.({
+      type: "member_landed",
+      batchId: batch.batchId,
+      requestId: member.request.id,
+      speculativePosition: member.speculativePosition,
+      landedSha: actualMainSha,
+    });
+    return true;
+  }
+
   const push = await gitOps.push(gitRemote, gitMainBranch);
   if (!push.ok) {
     if (push.reason === "non_fast_forward") {

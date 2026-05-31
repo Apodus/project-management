@@ -115,6 +115,12 @@ picks it up, rebases onto live main, runs the project's verify command in an iso
 worktree, and either lands it (fast-forwards main, attaches a `landed_sha` git_ref to the
 linked task) or rejects it with a structured payload (auto-comment of type `merge_rejection`).
 Main is never broken — verify runs against a tree SHA before main fast-forwards.
+If a request's content is already on main (landed out-of-band under a different SHA, or a
+duplicate), the land path detects the rebased tree is byte-identical to live main
+(`GitOps.treesIdentical`, under the lane lock) and records a **no-op land** at the current
+main SHA without pushing — it never advances main by an empty commit or re-applies. (Grouped
+cross-repo re-submissions are no-op'd naturally by the fast-forward push; see
+`docs/integrator-deployment.md` §9.)
 
 - **Architecture & contracts**: `docs/design/phase-7.1-design.md` (data model, state machines,
   REST surface, SSE events, authz, failure catalog); `phase-7.2` (speculative batching),

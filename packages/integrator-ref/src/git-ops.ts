@@ -147,6 +147,21 @@ export interface GitOps {
    * an error as "not ancestor".
    */
   isAncestor(ancestor: string, descendant: string): Promise<boolean>;
+  /**
+   * No-op / already-landed detector. Returns true iff `a` and `b` resolve to
+   * byte-identical trees — i.e. there is NO net diff between the two commits.
+   * Used by the land path to recognize a request whose content is already on
+   * the target branch (landed out-of-band under a different SHA, or a duplicate
+   * of a predecessor) so it records a no-op land instead of pushing an empty
+   * advance to `main`.
+   *
+   * Same direct-spawn rigor as `isAncestor`: `git diff --quiet <a> <b>` reads
+   * the NUMERIC exit code (0 → identical/true, 1 → differ/false, anything else
+   * → REJECT) rather than trusting `git.raw` text, so a bad object / corrupt
+   * repo escalates instead of being silently read as "differ" (which would let
+   * a no-op push through).
+   */
+  treesIdentical(a: string, b: string): Promise<boolean>;
 }
 
 export interface GitOpsOptions {
@@ -266,6 +281,42 @@ function runIsAncestor(
         reject(
           new Error(
             `git merge-base --is-ancestor ${ancestor} ${descendant} exited ${code}: ${stderr.trim()}`,
+          ),
+        );
+    });
+  });
+}
+
+/**
+ * Run `git diff --quiet <a> <b>` as a DIRECT spawn, reading the NUMERIC exit
+ * code (same precedent as runIsAncestor). `--quiet` implies `--exit-code`:
+ * exit 0 = no diff (identical trees) → `true`; exit 1 = a diff exists →
+ * `false`; any other code (128 — bad object / not-a-repo) REJECTS so the caller
+ * escalates rather than silently treating an error as "differ".
+ */
+function runTreesIdentical(
+  a: string,
+  b: string,
+  cwd: string,
+): Promise<boolean> {
+  return new Promise<boolean>((resolve, reject) => {
+    const child = spawn("git", ["diff", "--quiet", a, b], {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      if (code === 0) resolve(true);
+      else if (code === 1) resolve(false);
+      else
+        reject(
+          new Error(
+            `git diff --quiet ${a} ${b} exited ${code}: ${stderr.trim()}`,
           ),
         );
     });
@@ -553,6 +604,12 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     return runIsAncestor(ancestor, descendant, topLevel);
   }
 
+  async function treesIdentical(a: string, b: string): Promise<boolean> {
+    // Same cwd resolution as isAncestor — the worktree this gitOps is bound to.
+    const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+    return runTreesIdentical(a, b, topLevel);
+  }
+
   return {
     fetch,
     fetchFromPath,
@@ -565,5 +622,6 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     materializeSubmoduleWorktree,
     runVerify,
     isAncestor,
+    treesIdentical,
   };
 }
