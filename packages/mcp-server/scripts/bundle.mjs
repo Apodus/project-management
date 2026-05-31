@@ -16,7 +16,15 @@ const result = await build({
   format: "esm",
   outfile,
   banner: {
-    js: "#!/usr/bin/env node\n",
+    // ESM bundle has no real `require`; esbuild's dynamic-require shim throws on
+    // Node built-ins. ulid (a transitive dep) calls require("crypto") eagerly at
+    // import for its secure PRNG and otherwise throws "secure crypto unusable".
+    // Inject a real createRequire so require("crypto") resolves to Node's module.
+    js: [
+      "#!/usr/bin/env node",
+      "import { createRequire as __pmCreateRequire } from 'node:module';",
+      "const require = __pmCreateRequire(import.meta.url);",
+    ].join("\n"),
   },
   external: [],
   minify: true,
