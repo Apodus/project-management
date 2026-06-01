@@ -25,6 +25,7 @@ import type {
   VerifyStep,
   VerifyStepResult,
   CacheMode,
+  MergeResolutionView,
 } from "@pm/shared";
 // Type-only import (avoids a runtime circular import with batch.ts).
 import type { BatchEvent } from "./batch.js";
@@ -74,6 +75,18 @@ export interface IntegratorSettings {
     gitlink_parent?: string;
     gitlink_path?: string;
   }[];
+  /**
+   * Phase 7.6 §3: intelligent merge-conflict resolution config. Absent/empty ⇒
+   * `{ enabled: false }` (inert; a conflict rejects exactly as in 7.5). Mirrors
+   * the canonical Zod schema in `@pm/shared` (project.ts §resolver).
+   */
+  resolver?: {
+    enabled?: boolean;
+    max_concurrent?: number;
+    time_budget_sec?: number;
+    token_budget?: number;
+    command?: string;
+  };
 }
 
 export interface ProjectDetail {
@@ -651,6 +664,29 @@ export class PmClient {
       "POST",
       `/projects/${encodeURIComponent(projectId)}/verify-cache/mismatch`,
       mismatch,
+    );
+  }
+
+  // ── Phase 7.6 merge resolution (conflict → resolution, §5.1/§6) ────
+  /**
+   * Open a resolution for an origin request that hit a textual rebase conflict
+   * (§5.1 / §6). The server creates a `pending` `merge_resolutions` row and
+   * emits `merge.resolution.pending`. Called ONLY when `resolver.enabled` and
+   * AFTER the origin has already been rejected `conflict` + the lane lock
+   * released — the seam never resolves under the lock (§5.1). Returns the
+   * created MergeResolutionView (capture `.id` for the resolution job).
+   * POST /api/v1/projects/{projectId}/merge-resolutions.
+   */
+  openResolution(
+    projectId: string,
+    resource: string,
+    originRequestId: string,
+    conflictingFiles: string[],
+  ): Promise<MergeResolutionView> {
+    return this.request<MergeResolutionView>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/merge-resolutions`,
+      { originRequestId, resource, conflictingFiles },
     );
   }
 }

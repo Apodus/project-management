@@ -5,6 +5,7 @@ import { PmClient } from "./pm-client.js";
 import { createLogger } from "./logger.js";
 import { createGitOps } from "./git-ops.js";
 import { createWorktreePool } from "./worktree-pool.js";
+import { createResolverPool } from "./resolver-pool.js";
 import { createSseSubscriber } from "./sse-subscriber.js";
 import { reclaimStrandedGroups, reclaimStrandedRequests } from "./recovery.js";
 import { runBatchLoop, type GroupLaneDeps } from "./batch.js";
@@ -129,6 +130,38 @@ async function main(): Promise<void> {
     );
     process.exit(1);
     return;
+  }
+
+  // ── Phase 7.6 §3/§5.1: resolver pool — constructed ONLY when enabled. ──
+  // With resolver.enabled = false (default) this stays undefined, the conflict
+  // seam is inert, and the train is byte-identical to 7.5. When enabled we build
+  // a SEPARATE pool (size = resolver.maxConcurrent) whose worktrees carry a
+  // distinct `-resolver-<i>` name so they never collide with verify-pool slots.
+  let resolverPool: ReturnType<typeof createResolverPool> | undefined;
+  if (cfg.resolver.enabled) {
+    resolverPool = createResolverPool({
+      worktreeRoot: cfg.worktreeRoot,
+      worktreeName: cfg.worktreeName,
+      gitRepoUrl: cfg.gitRepoUrl,
+      gitRemote: cfg.gitRemote,
+      gitMainBranch: cfg.gitMainBranch,
+      maxConcurrent: cfg.resolver.maxConcurrent,
+    });
+    try {
+      await resolverPool.gc();
+      await resolverPool.ensureAll();
+    } catch (err) {
+      logger.fatal(
+        { err: err instanceof Error ? err.message : String(err) },
+        "Failed to initialize resolver worktree pool",
+      );
+      process.exit(1);
+      return;
+    }
+    logger.info(
+      { size: resolverPool.size, maxConcurrent: cfg.resolver.maxConcurrent },
+      "Resolver pool ready (Phase 7.6)",
+    );
   }
 
   // ── Phase 7.3 group lane (Step 10) — only when linkedRepos are declared. ──
@@ -340,6 +373,38 @@ async function main(): Promise<void> {
           .postBatchEvent(cfg.projectId, evt)
           .catch((e) => logger.warn(`batch event post failed: ${String(e)}`));
       },
+      // Phase 7.6 §5.1: the conflict-resolution seam. Present ONLY when the
+      // resolver is enabled (resolverPool constructed above). The open+enqueue
+      // handle opens a PM resolution row then enqueues a job onto the resolver
+      // pool; `maybeOpenResolution` wraps the call non-fatally. Absent ⇒ the
+      // conflict path is byte-identical to 7.5.
+      resolver: resolverPool
+        ? ((rp) => ({
+            enabled: true as const,
+            openAndEnqueue: async (args: {
+              originRequestId: string;
+              conflictingFiles: string[];
+              baseSha: string;
+              ref: string;
+            }) => {
+              const resolution = await pmClient.openResolution(
+                cfg.projectId,
+                cfg.resource,
+                args.originRequestId,
+                args.conflictingFiles,
+              );
+              rp.enqueue({
+                resolutionId: resolution.id,
+                originRequestId: args.originRequestId,
+                conflictingFiles: args.conflictingFiles,
+                baseSha: args.baseSha,
+                ref: args.ref,
+                resource: cfg.resource,
+              });
+              return resolution.id;
+            },
+          }))(resolverPool)
+        : undefined,
       shouldContinue: () => !stopRequested,
       waitForWork: async (pollMs: number) => {
         const wake = sub.wakeup.wait();

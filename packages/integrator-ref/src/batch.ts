@@ -44,6 +44,7 @@ import {
   recoverOrphanedInner,
   type RecoverResult,
 } from "./group-recovery.js";
+import type { ResolutionJob } from "./resolver-pool.js";
 
 const LOG_EXCERPT_CAP = 4096;
 
@@ -253,6 +254,81 @@ export interface BatchDeps {
    * never leave the status stuck "integrating". Absent (tests) → no-op.
    */
   inFlight?: { requests: number; batches: number; groups: number };
+  /**
+   * PHASE 7.6 Step 5 (design §5.1): the conflict-resolution seam. Present ONLY
+   * when `settings.integrator.resolver.enabled` (index.ts constructs the
+   * resolver pool and the open+enqueue handle only then). Absent / `enabled:
+   * false` ⇒ the conflict path is byte-identical to 7.5 (plain `conflict`
+   * reject, no resolution opened). `openAndEnqueue` is the NON-FATAL handle:
+   * it opens a PM resolution row and enqueues a job onto the resolver pool —
+   * a throw inside it MUST NOT propagate (the origin is already cleanly
+   * rejected as a plain conflict). See `maybeOpenResolution`.
+   */
+  resolver?: {
+    enabled: boolean;
+    /**
+     * Open a resolution (PM `pending` row + `merge.resolution.pending`) for the
+     * origin request, then enqueue the resolution job onto the resolver pool.
+     * Returns the resolution id on success. MUST be non-fatal: any throw is
+     * caught + logged inside `maybeOpenResolution`, never surfaced.
+     */
+    openAndEnqueue: (args: {
+      originRequestId: string;
+      conflictingFiles: string[];
+      baseSha: string;
+      ref: string;
+    }) => Promise<string>;
+  };
+}
+
+// ─── Phase 7.6 conflict-resolution seam (design §5.1) ─────────────
+//
+// Called from BOTH conflict-reject sites (batch.ts onMemberFailed + loop.ts) —
+// AFTER the origin is rejected `conflict` and the lane lock / slot is released,
+// BEFORE invalidateSuffix / return. Gated on `resolver.enabled`: with the
+// resolver off this is a no-op and the path is byte-identical to 7.5.
+//
+// REQUIRED-FIX (non-fatal): the openResolution + enqueue is wrapped in
+// try/catch HERE. On any throw we log a warning and CONTINUE — the origin is
+// already cleanly rejected as a plain conflict; the resolution simply doesn't
+// open. A throw must NEVER escape this function: in the batch path it would
+// reach the drain-loop catch (~1202) and tear down healthy in-flight
+// predecessor verifies. This matches the established non-fatal-I/O pattern
+// (heartbeat / onBatchEvent .catch in index.ts; releaseLock catch ~1027).
+export async function maybeOpenResolution(
+  deps: Pick<BatchDeps, "resolver" | "logger">,
+  args: {
+    projectId: string;
+    resource: string;
+    originRequestId: string;
+    conflictingFiles: string[];
+    baseSha: string;
+    ref: string;
+  },
+): Promise<void> {
+  if (!deps.resolver?.enabled) return;
+  try {
+    const resolutionId = await deps.resolver.openAndEnqueue({
+      originRequestId: args.originRequestId,
+      conflictingFiles: args.conflictingFiles,
+      baseSha: args.baseSha,
+      ref: args.ref,
+    });
+    deps.logger.info(
+      {
+        resolutionId,
+        originRequestId: args.originRequestId,
+        conflictingFiles: args.conflictingFiles,
+      },
+      "opened conflict resolution",
+    );
+  } catch (err) {
+    // Non-fatal: the origin is already rejected `conflict`. Log + continue.
+    deps.logger.warn(
+      { err: errMessage(err), originRequestId: args.originRequestId },
+      "openResolution failed (non-fatal); origin stays rejected-conflict",
+    );
+  }
 }
 
 // ─── Pause read-side gate (Phase 7.4 §4.2, Step 12) ───────────────
@@ -585,6 +661,20 @@ export async function onMemberFailed(
     });
     member.state = "failed";
     releaseSlot();
+    // PHASE 7.6 §5.1: AFTER the origin is rejected `conflict` + the slot is
+    // released, BEFORE invalidateSuffix — gated on resolver.enabled. Off ⇒
+    // no-op (byte-identical to 7.5). Non-fatal (try/catch inside the helper):
+    // an openResolution failure must NEVER reach invalidateSuffix / the drain
+    // loop. The lane lock is released at batch scope independently; the slot
+    // freed above is the verify-pool slot, never held across a resolution.
+    await maybeOpenResolution(deps, {
+      projectId: deps.projectId,
+      resource: deps.resource,
+      originRequestId: requestId,
+      conflictingFiles: failure.conflictingFiles,
+      baseSha: member.base?.liveMainSha ?? "",
+      ref: member.request.branch ?? member.request.commitSha ?? "",
+    });
     await invalidateSuffix(member, batch, deps, ctx);
     return { outcome: "rejected", category: "conflict" };
   }

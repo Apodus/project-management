@@ -48,6 +48,19 @@ export interface IntegratorConfig {
     gitlinkParent?: string;
     gitlinkPath?: string;
   }[];
+  /**
+   * Phase 7.6 §3: intelligent merge-conflict resolution. `enabled` defaults
+   * false → the conflict seam is inert and the train is byte-identical to 7.5.
+   * Mirrors the cacheEnabled pattern: the config is always present (defaults
+   * applied here), the seam is gated on `resolver.enabled`.
+   */
+  resolver: {
+    enabled: boolean;
+    maxConcurrent: number;
+    timeBudgetSec: number;
+    tokenBudget?: number;
+    command?: string;
+  };
 }
 
 export interface CliArgs {
@@ -153,5 +166,15 @@ export async function loadConfig(
       gitlinkParent: r.gitlink_parent,
       gitlinkPath: r.gitlink_path,
     })),
+    // Phase 7.6 §3: mirror the canonical schema defaults (project.ts §resolver:
+    // enabled false / max_concurrent 1 / time_budget_sec 600). Absent block ⇒
+    // inert (byte-identical to 7.5). Same pattern as cacheEnabled above.
+    resolver: {
+      enabled: ic.resolver?.enabled ?? false,
+      maxConcurrent: ic.resolver?.max_concurrent ?? 1,
+      timeBudgetSec: ic.resolver?.time_budget_sec ?? 600,
+      tokenBudget: ic.resolver?.token_budget,
+      command: ic.resolver?.command,
+    },
   };
 }

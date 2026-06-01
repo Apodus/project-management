@@ -114,6 +114,20 @@ interface FakeState {
    */
   verifyCache?: Map<string, VerifyCacheRowFake>;
   cacheCalls?: { lookups: number; records: number; mismatches: number };
+  // ── Phase 7.6 conflict-resolution fakes ──
+  /**
+   * Pending merge_resolutions rows the fake openResolution appends. Seeded
+   * empty; the off-path leaves it empty (the byte-identical 7.5 assertion).
+   */
+  resolutions?: {
+    id: string;
+    originRequestId: string;
+    resource: string;
+    conflictingFiles: string[];
+    state: string;
+  }[];
+  /** When set, the fake openResolution THROWS — exercises the non-fatal path. */
+  openResolutionThrows?: boolean;
 }
 
 interface VerifyCacheRowFake {
@@ -372,6 +386,41 @@ function makeFakeClient(state: FakeState): PmClient {
       if (state.cacheCalls) state.cacheCalls.mismatches += 1;
       state.calls.push("emitVerifyCacheMismatch");
     },
+    // ── Phase 7.6 conflict resolution ──
+    async openResolution(
+      _projectId: string,
+      resource: string,
+      originRequestId: string,
+      conflictingFiles: string[],
+    ): Promise<unknown> {
+      state.calls.push("openResolution");
+      if (state.openResolutionThrows) {
+        throw new PmApiError(500, "INTERNAL", "openResolution failed");
+      }
+      const id = `res-${(state.resolutions?.length ?? 0) + 1}`;
+      state.resolutions?.push({
+        id,
+        originRequestId,
+        resource,
+        conflictingFiles,
+        state: "pending",
+      });
+      return {
+        id,
+        projectId: "proj-1",
+        resource,
+        originRequestId,
+        resolvedRequestId: null,
+        state: "pending",
+        conflictingFiles,
+        attemptStartedAt: null,
+        attemptEndedAt: null,
+        escalationTarget: null,
+        detail: null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+    },
   };
   return fake as unknown as PmClient;
 }
@@ -507,6 +556,24 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       verifySteps?: VerifyStep[];
       cacheEnabled?: boolean;
       cacheMode?: CacheMode;
+      /**
+       * Phase 7.6: enable the conflict-resolution seam. When set, depsFor wires
+       * a `resolver` handle whose openAndEnqueue calls the fake openResolution
+       * and pushes the job onto `enqueued`. Absent ⇒ no resolver (off-path,
+       * byte-identical to 7.5).
+       */
+      resolver?: {
+        enabled: boolean;
+        /** Recorded ResolutionJobs the enqueue handle received. */
+        enqueued?: {
+          resolutionId: string;
+          originRequestId: string;
+          conflictingFiles: string[];
+          baseSha: string;
+          ref: string;
+          resource: string;
+        }[];
+      };
     },
   ): Promise<BatchDeps> {
     const pool = createWorktreePool({
@@ -527,8 +594,40 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       await g.fetch("origin");
       pool.release(wt);
     }
+    const pmClient = makeFakeClient(state);
+    // Phase 7.6: the resolver handle mirrors index.ts — openResolution then
+    // enqueue onto the (here in-memory recorded) job list. The non-fatal
+    // try/catch lives in maybeOpenResolution (src/batch.ts), NOT here, so a
+    // throwing openResolution is observed to be swallowed by production code.
+    const resolver = opts.resolver?.enabled
+      ? {
+          enabled: true as const,
+          openAndEnqueue: async (args: {
+            originRequestId: string;
+            conflictingFiles: string[];
+            baseSha: string;
+            ref: string;
+          }): Promise<string> => {
+            const resolution = await pmClient.openResolution(
+              "proj-1",
+              "main",
+              args.originRequestId,
+              args.conflictingFiles,
+            );
+            opts.resolver?.enqueued?.push({
+              resolutionId: resolution.id,
+              originRequestId: args.originRequestId,
+              conflictingFiles: args.conflictingFiles,
+              baseSha: args.baseSha,
+              ref: args.ref,
+              resource: "main",
+            });
+            return resolution.id;
+          },
+        }
+      : undefined;
     return {
-      pmClient: makeFakeClient(state),
+      pmClient,
       pool,
       gitOps: opts.gitOpsFactory ?? ((p: string) => createGitOps(simpleGit(p))),
       logger,
@@ -544,6 +643,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       verifySteps: opts.verifySteps,
       cacheEnabled: opts.cacheEnabled,
       cacheMode: opts.cacheMode,
+      resolver,
     };
   }
 
@@ -936,6 +1036,159 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
     expect(state.lockHeld).toBe(false);
     expect(deps.pool.leasedCount).toBe(0);
+  });
+
+  // ── Phase 7.6: conflict → resolver seam (off=inert / enabled / non-fatal) ──
+
+  it("7.6 off=inert: resolver disabled ⇒ plain conflict reject, ZERO openResolution (byte-identical to 7.5)", async () => {
+    const root = path.join(tmpRoot, "wt-res-off");
+    // Same real-git conflict setup as the mid-chain conflict test: member 0
+    // (clean) lands, member 1 (collide) conflicts on feature.txt.
+    const reqA = makeRequest({
+      id: "req-off-a",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const reqB = makeRequest({
+      id: "req-off-b",
+      branch: "feature/collidefeature",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      resolutions: [],
+    };
+    // No resolver knob → deps.resolver is undefined (the shipped 7.5 default).
+    const deps = await depsFor(state, { worktreeRoot: root, parallelism: 2 });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqB.status).toBe("rejected");
+    expect(reqB.rejectCategory).toBe("conflict");
+    expect(state.calls).toContain("reject:conflict");
+    // The prime invariant: the seam is inert. No resolution opened, no row.
+    expect(state.calls).not.toContain("openResolution");
+    expect(state.resolutions).toEqual([]);
+    // Lock acquired + released exactly once — byte-identical to 7.5.
+    expect(state.calls.filter((c) => c === "acquireLock").length).toBe(1);
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+    expect(state.lockHeld).toBe(false);
+  });
+
+  it("7.6 enabled: conflict opens a resolution + enqueues a job; predecessor still lands and the slot frees", async () => {
+    const root = path.join(tmpRoot, "wt-res-on");
+    // A (clean, pos 0) lands; B (collide, pos 1) conflicts and opens a
+    // resolution; C (clean2, queued) admits into the freed slot and lands —
+    // proving the resolution does not stall the drain.
+    const reqA = makeRequest({
+      id: "req-on-a",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const reqB = makeRequest({
+      id: "req-on-b",
+      branch: "feature/collidefeature",
+      verifyCmd: "echo ok",
+    });
+    const reqC = makeRequest({
+      id: "req-on-c",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB, reqC],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      resolutions: [],
+    };
+    const enqueued: {
+      resolutionId: string;
+      originRequestId: string;
+      conflictingFiles: string[];
+      baseSha: string;
+      ref: string;
+      resource: string;
+    }[] = [];
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 2,
+      resolver: { enabled: true, enqueued },
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    // Origin B genuinely rejected conflict (the audit trail stays truthful).
+    expect(reqB.status).toBe("rejected");
+    expect(reqB.rejectCategory).toBe("conflict");
+    expect(state.calls).toContain("openResolution");
+
+    // Exactly one pending resolution row, for B, with the conflicting file.
+    expect(state.resolutions).toHaveLength(1);
+    expect(state.resolutions![0].originRequestId).toBe(reqB.id);
+    expect(state.resolutions![0].resource).toBe("main");
+    expect(state.resolutions![0].conflictingFiles).toEqual(["feature.txt"]);
+    expect(state.resolutions![0].state).toBe("pending");
+
+    // The enqueue handle got exactly one job with the matching resolutionId.
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0].resolutionId).toBe(state.resolutions![0].id);
+    expect(enqueued[0].originRequestId).toBe(reqB.id);
+    expect(enqueued[0].conflictingFiles).toEqual(["feature.txt"]);
+
+    // The resolution does NOT stall the train: a predecessor landed AND the
+    // queued request admitted into the freed slot and landed.
+    expect(reqA.status).toBe("landed");
+    expect(reqC.status).toBe("landed");
+    expect(deps.pool.leasedCount).toBe(0);
+    // Still one lock cycle.
+    expect(state.calls.filter((c) => c === "acquireLock").length).toBe(1);
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+  });
+
+  it("7.6 non-fatal: a throwing openResolution is swallowed — batch still drains, origin stays rejected-conflict", async () => {
+    const root = path.join(tmpRoot, "wt-res-throw");
+    const reqA = makeRequest({
+      id: "req-tf-a",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const reqB = makeRequest({
+      id: "req-tf-b",
+      branch: "feature/collidefeature",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      resolutions: [],
+      openResolutionThrows: true,
+    };
+    const enqueued: never[] = [];
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 2,
+      resolver: { enabled: true, enqueued },
+    });
+    const outcome = await runBatchOnce(deps);
+
+    // The throw was swallowed inside maybeOpenResolution: the batch drained
+    // cleanly (NOT {kind:"error"}), the predecessor landed, the origin stayed
+    // rejected-conflict, and nothing was enqueued.
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("landed");
+    expect(reqB.status).toBe("rejected");
+    expect(reqB.rejectCategory).toBe("conflict");
+    expect(state.calls).toContain("openResolution");
+    expect(state.resolutions).toEqual([]);
+    expect(enqueued).toEqual([]);
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+    expect(state.lockHeld).toBe(false);
   });
 
   it("MANDATORY: conflict-then-refill chains onto the surviving predecessor, not the failed one", async () => {

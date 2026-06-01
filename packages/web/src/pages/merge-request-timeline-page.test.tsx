@@ -52,6 +52,7 @@ function seededTimeline(): MergeRequestTimeline {
       resource: "main",
       submittedBy: "user-1",
       taskId: "task-aaaa",
+      resolvedFrom: null,
       branch: "feature/x",
       commitSha: "deadbeef",
       verifyCmd: "pnpm verify",

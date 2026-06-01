@@ -5,6 +5,7 @@ import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
 import { PmApiError, type PmClient } from "./pm-client.js";
 import { categorize } from "./categorize.js";
+import { maybeOpenResolution, type BatchDeps } from "./batch.js";
 
 const LOG_EXCERPT_CAP = 4096;
 
@@ -21,6 +22,13 @@ export interface RunOnceDeps {
   verifyTimeoutSec: number;
   gitRemote: string;
   gitMainBranch: string;
+  /**
+   * PHASE 7.6 Step 5 (design §5.1): the conflict-resolution seam, shared with
+   * the batch path. Present ONLY when `resolver.enabled`. Absent / disabled ⇒
+   * the conflict seam below is byte-identical to 7.5. Non-fatal by
+   * construction (see `maybeOpenResolution`).
+   */
+  resolver?: BatchDeps["resolver"];
 }
 
 export type RunOnceOutcome =
@@ -249,6 +257,18 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
         logUrl,
       });
       await releaseLock({ reason: "rebase conflict" });
+      // PHASE 7.6 §5.1: AFTER releaseLock (the existing release; 7.6 adds no new
+      // one — the lane is already unlocked here), BEFORE return — gated on
+      // resolver.enabled. Off ⇒ no-op (byte-identical to 7.5). Non-fatal: a
+      // throw is caught inside maybeOpenResolution, never surfaced.
+      await maybeOpenResolution(deps, {
+        projectId,
+        resource,
+        originRequestId: request.id,
+        conflictingFiles: rebase.conflictingFiles,
+        baseSha,
+        ref,
+      });
       return { kind: "rejected", requestId: request.id, category: "conflict" };
     }
 
