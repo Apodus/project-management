@@ -224,6 +224,43 @@ var (config lives in `settings.integrator`, set via `PATCH /projects/{id}`). New
 (0015), `merge_attempts.steps` nullable JSON (0016). New event: `verify.cache_mismatch`. Full spec:
 `docs/design/phase-7.5-design.md`; operator guide: `docs/integrator-deployment.md` §16.
 
+**Intelligent conflict resolution (Phase 7.6).** When the integrator hits a **textual rebase
+conflict**, instead of rejecting straight to the worker it can — behind an opt-in flag — spawn a
+bounded headless Claude session to reconcile both intents, re-verify, and resubmit the resolved
+change as a **linked new merge request**; if that fails it escalates to the author then a human, and
+**no proven work is ever discarded**. Config is `settings.integrator.resolver: {enabled (default
+`false`), max_concurrent (default 1), time_budget_sec (default 600), token_budget?, command?}`
+(canonical Zod-3 in `@pm/shared` + the route-local Zod-4 mirror; absent/empty → `{enabled:false}` ⇒
+**byte-identical to 7.5**). **Five settled decisions:** (1) **off by default**, one attempt, no retry;
+(2) resolution spawns a **linked NEW** request (`resolved_from`), never mutates the origin (rejected
+`conflict`); (3) **verify is the only arbiter** — never a model's self-asserted confidence; (4)
+**never discard work** — escalate to the origin author (then human); (5) **conflict-only for v1**
+(semantic verify failures deferred). The engine: at the `rebaseOnto → RebaseConflict` seam
+(`loop.ts`/`batch.ts`), if enabled, reject-fast + **release the lane** + open a `merge_resolutions`
+row + enqueue into a **resolver pool** (isolated worktrees, separate from the verify pool) — the
+resolution runs **OFF the lane lock**. The worker calls `start` (pending→resolving) FIRST,
+materializes the conflict (`GitOps.materializeConflict`, no `--abort`), spawns the **injectable**
+resolver (`claude -p`/`command`, SIGTERM→SIGKILL at `time_budget_sec`, one attempt), commits +
+pushes `pm/resolution-<id>`, then runs the 7.5 verify pipeline **cache-OFF** as the sole gate; on pass
+it resubmits with `resolved_from` + the origin's `task_id` AND `verify_cmd` (re-enters the train, real
+verify gate); on fail/budget/spawn-error it escalates (`escalated`|`failed`) + posts a `merge_rejection`
+comment. **No recursion**: `resolved_from != null` ⇒ the resolver never re-engages. All PM/git I/O is
+non-fatal (never escapes into the train); a push/submit failure escalates, a post-resubmit
+`resolvedResolution` failure is log-only (the resubmit already succeeded). State is PM-owned:
+`merge_resolutions` (pending → resolving → resolved | escalated | failed) + a nullable
+`merge_requests.resolved_from` (migration 0017). REST (integrator-only `ai_agent`): `POST
+.../merge-resolutions` (open), `/start`, `/resolved`, `/escalate`; GET list + by-id (any authed user).
+Five SSE events `merge.resolution.pending|started|succeeded|escalated|failed`. Observability: the
+per-request **timeline** renders the origin→attempt→resolved chain (a `resolving` attempt shows
+in-flight) + a `resolution` metrics sub-block (snake_case attempts / auto-resolve-success-rate /
+escalation-rate / mean-wall-clock / budget-utilization). **No new worker MCP tools** (the resolver is
+operator/integrator machinery, like 7.4/7.5) and no new env var (config in `settings.integrator`, set
+via `PATCH /projects/{id}`). **Track A** (doc-only, shipped): the worker workflow doc now tells agents
+to **submit-and-move-on** (a rejection is a new ticket, not a stall). **Honest limitation:** the
+resolver is bounded + one-shot; a rare integrator crash mid-resolution strands the row in `resolving`
+(no auto-reclaim sweep yet — v2; no work lost, `main` untouched). Full spec:
+`docs/design/phase-7.6-design.md`; operator guide: `docs/integrator-deployment.md` §18.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:
