@@ -12,6 +12,7 @@ import {
   forceReleaseLock,
   forceLand,
   forceReject,
+  forceCancel,
   type AuditFilters,
 } from "@/lib/api";
 
@@ -201,6 +202,26 @@ export function useForceReject() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: trainKeys.all });
       toast.success("Merge request force-rejected");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+}
+
+export function useForceCancel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      reason,
+    }: {
+      requestId: string;
+      reason: string;
+    }) => forceCancel(requestId, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: trainKeys.all });
+      toast.success("Merge request force-cancelled");
     },
     onError: (err: Error) => {
       toast.error(err.message);

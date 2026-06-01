@@ -999,6 +999,19 @@ export async function forceReject(
   );
 }
 
+export async function forceCancel(
+  requestId: string,
+  body: { reason: string },
+): Promise<ForceMergeRequest> {
+  return apiFetch<ForceMergeRequest>(
+    `/merge-requests/${requestId}/force-cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 // ---- Automation Rules API ----
 
 export interface AutomationCondition {

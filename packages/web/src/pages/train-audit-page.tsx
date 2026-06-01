@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  Ban,
   PauseCircle,
   PlayCircle,
   ShieldAlert,
@@ -46,6 +47,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   useAuditLog,
+  useForceCancel,
   useForceLand,
   useForceReject,
   useForceReleaseLock,
@@ -66,6 +68,7 @@ const AUDIT_ACTION_OPTIONS = [
   "force_release_lock",
   "force_land",
   "force_reject",
+  "force_cancel",
   "land",
   "reject",
 ] as const satisfies readonly AuditLogEntry["action"][];
@@ -81,6 +84,7 @@ const AUDIT_TARGET_TYPE_OPTIONS = [
 const OVERRIDE_ACTIONS = new Set<AuditLogEntry["action"]>([
   "force_land",
   "force_reject",
+  "force_cancel",
 ]);
 
 const ALL = "__all__";
@@ -310,6 +314,109 @@ function ForceRejectDialog({
   );
 }
 
+// ─── Force-cancel dialog ─────────────────────────────────────────
+
+function ForceCancelDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [requestId, setRequestId] = useState("");
+  const [reason, setReason] = useState("");
+  const forceCancelMutation = useForceCancel();
+
+  function reset() {
+    setRequestId("");
+    setReason("");
+    forceCancelMutation.reset();
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (!next) reset();
+    onOpenChange(next);
+  }
+
+  const canSubmit = requestId.trim().length > 0 && reason.trim().length > 0;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    try {
+      await forceCancelMutation.mutateAsync({
+        requestId: requestId.trim(),
+        reason: reason.trim(),
+      });
+      handleOpenChange(false);
+    } catch {
+      // onError toast surfaces the backend message.
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Ban className="size-5 text-amber-500" />
+            Force-cancel merge request
+          </DialogTitle>
+          <DialogDescription>
+            Abandon a stuck request — works on a <strong>queued</strong> or
+            integrating request (the queued-state escape hatch force-reject
+            cannot reach). Admin-only, reason-required.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Abandons the request (overridden). Recorded in the audit log.
+          </span>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="force-cancel-request-id">Merge request ID</Label>
+            <Input
+              id="force-cancel-request-id"
+              placeholder="mr-…"
+              value={requestId}
+              onChange={(e) => setRequestId(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="force-cancel-reason">Reason</Label>
+            <Textarea
+              id="force-cancel-reason"
+              placeholder="content hand-landed out-of-band; clearing the stale queued entry"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleSubmit}
+            disabled={!canSubmit || forceCancelMutation.isPending}
+          >
+            {forceCancelMutation.isPending ? "Force-cancelling…" : "Force-cancel"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Force-release-lock dialog ───────────────────────────────────
 
 function ForceReleaseLockDialog({
@@ -463,6 +570,7 @@ function PauseResumeControl({ projectId }: { projectId: string }) {
 function BreakGlassControls({ projectId }: { projectId: string }) {
   const [forceLandOpen, setForceLandOpen] = useState(false);
   const [forceRejectOpen, setForceRejectOpen] = useState(false);
+  const [forceCancelOpen, setForceCancelOpen] = useState(false);
   const [forceReleaseOpen, setForceReleaseOpen] = useState(false);
 
   return (
@@ -482,7 +590,7 @@ function BreakGlassControls({ projectId }: { projectId: string }) {
         <PauseResumeControl projectId={projectId} />
 
         {/* Override actions */}
-        <div className="grid gap-3 border-t pt-4 sm:grid-cols-3">
+        <div className="grid gap-3 border-t pt-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Button
               variant="destructive"
@@ -506,7 +614,20 @@ function BreakGlassControls({ projectId }: { projectId: string }) {
               Force-reject…
             </Button>
             <p className="text-xs text-muted-foreground">
-              Reject a stuck request on policy grounds.
+              Reject a stuck integrating request on policy grounds.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={() => setForceCancelOpen(true)}
+            >
+              <Ban className="size-4" />
+              Force-cancel…
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Abandon a stuck queued or integrating request.
             </p>
           </div>
           <div className="space-y-2">
@@ -529,6 +650,10 @@ function BreakGlassControls({ projectId }: { projectId: string }) {
       <ForceRejectDialog
         open={forceRejectOpen}
         onOpenChange={setForceRejectOpen}
+      />
+      <ForceCancelDialog
+        open={forceCancelOpen}
+        onOpenChange={setForceCancelOpen}
       />
       <ForceReleaseLockDialog
         open={forceReleaseOpen}

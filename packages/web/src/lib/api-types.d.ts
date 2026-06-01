@@ -2587,6 +2587,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/proposals/{id}/force-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force-claim proposal (takeover)
+         * @description Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ForceClaimProposal"];
+                };
+            };
+            responses: {
+                /** @description Force-claim outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                                /** @enum {string} */
+                                status: "force_claimed";
+                                previousHolder: string;
+                                newHolder: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error (empty reason) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Forbidden (non-human targeting another agent) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Proposal or target user not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Proposal closed / not associated with a project */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/proposals/{id}/release": {
         parameters: {
             query?: never;
@@ -2947,6 +3070,129 @@ export interface paths {
                 };
                 /** @description Epic not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/epics/{id}/force-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force-claim epic (takeover)
+         * @description Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ForceClaimEpic"];
+                };
+            };
+            responses: {
+                /** @description Force-claim outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                                /** @enum {string} */
+                                status: "force_claimed";
+                                previousHolder: string;
+                                newHolder: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error (empty reason) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Forbidden (non-human targeting another agent) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Epic or target user not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Epic closed / not associated with a project */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3580,6 +3826,129 @@ export interface paths {
                 };
                 /** @description Task not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/force-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force-claim task (takeover)
+         * @description Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ForceClaimTask"];
+                };
+            };
+            responses: {
+                /** @description Force-claim outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                                /** @enum {string} */
+                                status: "force_claimed";
+                                previousHolder: string;
+                                newHolder: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error (empty reason) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Forbidden (non-human targeting another agent) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Task or target user not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Task closed / not associated with a project */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -10202,8 +10571,8 @@ export interface paths {
             parameters: {
                 query?: {
                     userId?: string;
-                    action?: "pause" | "resume" | "force_release_lock" | "force_land" | "force_reject" | "land" | "reject";
-                    targetType?: "merge_request" | "merge_group" | "merge_lock" | "train";
+                    action?: "pause" | "resume" | "force_release_lock" | "force_land" | "force_reject" | "force_cancel" | "land" | "reject" | "force_claim";
+                    targetType?: "merge_request" | "merge_group" | "merge_lock" | "train" | "task" | "epic" | "proposal";
                     targetId?: string;
                     from?: string;
                     to?: string;
@@ -10643,7 +11012,11 @@ export interface components {
         ClaimResult: {
             ok: boolean;
             /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed";
+            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed";
+        };
+        ForceClaimProposal: {
+            reason: string;
+            newAssigneeId?: string;
         };
         Epic: {
             id: string;
@@ -10698,7 +11071,11 @@ export interface components {
         EpicClaimResult: {
             ok: boolean;
             /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed";
+            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed";
+        };
+        ForceClaimEpic: {
+            reason: string;
+            newAssigneeId?: string;
         };
         Task: {
             id: string;
@@ -10828,7 +11205,11 @@ export interface components {
         TaskClaimResult: {
             ok: boolean;
             /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed";
+            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed";
+        };
+        ForceClaimTask: {
+            reason: string;
+            newAssigneeId?: string;
         };
         Awareness: {
             label: string | null;
