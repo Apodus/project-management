@@ -976,6 +976,19 @@ export async function forceReleaseLock(
   );
 }
 
+export async function getMergeRequests(
+  projectId: string,
+  params?: { resource?: string; status?: string },
+): Promise<MergeRequest[]> {
+  const qs = new URLSearchParams();
+  if (params?.resource) qs.set("resource", params.resource);
+  if (params?.status) qs.set("status", params.status);
+  const query = qs.toString();
+  return apiFetch<MergeRequest[]>(
+    `/projects/${projectId}/merge-requests${query ? `?${query}` : ""}`,
+  );
+}
+
 export async function forceLand(
   requestId: string,
   body: { landedSha: string; reason: string },

@@ -13,6 +13,7 @@ import {
   forceLand,
   forceReject,
   forceCancel,
+  getMergeRequests,
   type AuditFilters,
 } from "@/lib/api";
 
@@ -31,6 +32,10 @@ export const trainKeys = {
   // merge.* invalidation refreshes the audit log live.
   audit: (projectId: string, filters?: AuditFilters) =>
     [...trainKeys.all, "audit", projectId, { ...filters }] as const,
+  // Lives UNDER trainKeys.all so a force-* mutation (which invalidates
+  // trainKeys.all) refreshes the break-glass request pickers live.
+  mergeRequests: (projectId: string, statuses: readonly string[]) =>
+    [...trainKeys.all, "merge-requests", projectId, [...statuses]] as const,
 };
 
 export function useTrainMetrics(
@@ -226,5 +231,28 @@ export function useForceCancel() {
     onError: (err: Error) => {
       toast.error(err.message);
     },
+  });
+}
+
+/**
+ * Merge requests in the given lifecycle states — backs the break-glass request
+ * pickers. Fetches each status and merges (one query), so a force dialog can
+ * offer exactly the requests its operation is valid for. `enabled` lets a
+ * dialog defer the fetch until it opens.
+ */
+export function useMergeRequests(
+  projectId: string | undefined,
+  statuses: readonly string[],
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: trainKeys.mergeRequests(projectId!, statuses),
+    queryFn: async () => {
+      const lists = await Promise.all(
+        statuses.map((status) => getMergeRequests(projectId!, { status })),
+      );
+      return lists.flat();
+    },
+    enabled: (options?.enabled ?? true) && !!projectId,
   });
 }

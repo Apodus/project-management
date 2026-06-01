@@ -51,12 +51,13 @@ import {
   useForceLand,
   useForceReject,
   useForceReleaseLock,
+  useMergeRequests,
   usePauseTrain,
   useResumeTrain,
   useTrainState,
 } from "@/hooks/use-train";
 import { useCurrentUser } from "@/hooks/use-auth";
-import type { AuditFilters, AuditLogEntry } from "@/lib/api";
+import type { AuditFilters, AuditLogEntry, MergeRequest } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -93,14 +94,84 @@ function formatActionLabel(action: string): string {
   return action.replace(/_/g, " ");
 }
 
+// ─── Merge-request picker (shared by the force dialogs) ──────────
+
+/** Human-readable option label: branch handle · status · age · short id. */
+function mergeRequestLabel(r: MergeRequest): string {
+  const handle =
+    r.branch ?? (r.commitSha ? r.commitSha.slice(0, 7) : "(no branch)");
+  const age = r.enqueuedAt ? formatRelativeTime(r.enqueuedAt) : "";
+  return `${handle} · ${r.status}${age ? ` · ${age}` : ""} · …${r.id.slice(-5)}`;
+}
+
+/**
+ * A Select of the merge requests valid for the calling operation (filtered to
+ * `statuses` server-side), so the operator picks a request instead of typing a
+ * ULID. Defers the fetch until `open`, and refreshes after any force-* mutation
+ * (the hook lives under trainKeys.all).
+ */
+function MergeRequestPicker({
+  projectId,
+  open,
+  statuses,
+  value,
+  onChange,
+}: {
+  projectId: string;
+  open: boolean;
+  statuses: readonly string[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const { data, isLoading } = useMergeRequests(projectId, statuses, {
+    enabled: open,
+  });
+  const requests = data ?? [];
+  const empty = !isLoading && requests.length === 0;
+  const statusList = statuses.join(" or ");
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="mr-picker">Merge request</Label>
+      <Select value={value} onValueChange={onChange} disabled={isLoading || empty}>
+        <SelectTrigger id="mr-picker" className="w-full">
+          <SelectValue
+            placeholder={
+              isLoading
+                ? "Loading…"
+                : empty
+                  ? `No ${statusList} requests`
+                  : "Select a request"
+            }
+          />
+        </SelectTrigger>
+        <SelectContent>
+          {requests.map((r) => (
+            <SelectItem key={r.id} value={r.id}>
+              {mergeRequestLabel(r)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {empty && (
+        <p className="text-xs text-muted-foreground">
+          No {statusList} requests in this lane — nothing to act on.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Force-land dialog (two-step R1-override) ────────────────────
 
 function ForceLandDialog({
   open,
   onOpenChange,
+  projectId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projectId: string;
 }) {
   const [requestId, setRequestId] = useState("");
   const [landedSha, setLandedSha] = useState("");
@@ -164,16 +235,13 @@ function ForceLandDialog({
         </div>
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="force-land-request-id">Merge request ID</Label>
-            <Input
-              id="force-land-request-id"
-              placeholder="mr-…"
-              value={requestId}
-              onChange={(e) => setRequestId(e.target.value)}
-              autoFocus
-            />
-          </div>
+          <MergeRequestPicker
+            projectId={projectId}
+            open={open}
+            statuses={["integrating"]}
+            value={requestId}
+            onChange={setRequestId}
+          />
           <div className="space-y-2">
             <Label htmlFor="force-land-sha">Landed SHA</Label>
             <Input
@@ -217,9 +285,11 @@ function ForceLandDialog({
 function ForceRejectDialog({
   open,
   onOpenChange,
+  projectId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projectId: string;
 }) {
   const [requestId, setRequestId] = useState("");
   const [reason, setReason] = useState("");
@@ -276,16 +346,13 @@ function ForceRejectDialog({
         </div>
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="force-reject-request-id">Merge request ID</Label>
-            <Input
-              id="force-reject-request-id"
-              placeholder="mr-…"
-              value={requestId}
-              onChange={(e) => setRequestId(e.target.value)}
-              autoFocus
-            />
-          </div>
+          <MergeRequestPicker
+            projectId={projectId}
+            open={open}
+            statuses={["integrating"]}
+            value={requestId}
+            onChange={setRequestId}
+          />
           <div className="space-y-2">
             <Label htmlFor="force-reject-reason">Reason</Label>
             <Textarea
@@ -319,9 +386,11 @@ function ForceRejectDialog({
 function ForceCancelDialog({
   open,
   onOpenChange,
+  projectId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projectId: string;
 }) {
   const [requestId, setRequestId] = useState("");
   const [reason, setReason] = useState("");
@@ -379,16 +448,13 @@ function ForceCancelDialog({
         </div>
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="force-cancel-request-id">Merge request ID</Label>
-            <Input
-              id="force-cancel-request-id"
-              placeholder="mr-…"
-              value={requestId}
-              onChange={(e) => setRequestId(e.target.value)}
-              autoFocus
-            />
-          </div>
+          <MergeRequestPicker
+            projectId={projectId}
+            open={open}
+            statuses={["queued", "integrating"]}
+            value={requestId}
+            onChange={setRequestId}
+          />
           <div className="space-y-2">
             <Label htmlFor="force-cancel-reason">Reason</Label>
             <Textarea
@@ -646,14 +712,20 @@ function BreakGlassControls({ projectId }: { projectId: string }) {
         </div>
       </CardContent>
 
-      <ForceLandDialog open={forceLandOpen} onOpenChange={setForceLandOpen} />
+      <ForceLandDialog
+        open={forceLandOpen}
+        onOpenChange={setForceLandOpen}
+        projectId={projectId}
+      />
       <ForceRejectDialog
         open={forceRejectOpen}
         onOpenChange={setForceRejectOpen}
+        projectId={projectId}
       />
       <ForceCancelDialog
         open={forceCancelOpen}
         onOpenChange={setForceCancelOpen}
+        projectId={projectId}
       />
       <ForceReleaseLockDialog
         open={forceReleaseOpen}
