@@ -1,0 +1,25 @@
+{
+  "roadmap": "roadmaps/phase-7.6-conflict-resolution.md",
+  "campaign": "Phase 7.6 — Intelligent merge-conflict resolution",
+  "started_at": "2026-06-01",
+  "completed_steps": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  "current_step": 10,
+  "total_steps": 10,
+  "commits": [
+    {"step": 2, "hash": "f83b2ff", "summary": "settings.integrator.resolver config block"},
+    {"step": 3, "hash": "b17fbcf", "summary": "migration 0017: merge_resolutions + resolved_from"},
+    {"step": 4, "hash": "75557ce", "summary": "resolver lifecycle REST + 5 SSE events"},
+    {"step": 5, "hash": "b15fe40", "summary": "integrator conflict seam → resolver pool, off=inert"},
+    {"step": 6, "hash": "a0b43cb", "summary": "resolver worker: materialize + headless resolver + verify gate"},
+    {"step": 7, "hash": "157ef2c", "summary": "resubmit + escalation + no-recursion guard; engine complete"},
+    {"step": 8, "hash": "3de6680", "summary": "resolution lineage timeline + metrics + dashboard"},
+    {"step": 9, "hash": "cd21810", "summary": "operator guide §18 + canonical worker doc + distribute wiring"}
+  ],
+  "open_issues": [
+    "KNOWN: 7 failures in packages/web train-audit-page.test.tsx — claimed pre-existing. Step 10 MUST verify against base c18d5c1; fix if trivial else document as pre-existing-unrelated; must not block the 7.6 green gate.",
+    "v2 follow-up: resolving-reclaim sweep for the rare dangling row.",
+    "Drizzle meta snapshot chain broken; future migrations hand-authored only."
+  ],
+  "dag_drift": [],
+  "notes": "Step 10: full pnpm typecheck+lint+test green; investigate/resolve the train-audit pre-existing failures; PROVE off=inert (resolver.enabled=false byte-identical to 7.5); add the Phase 7.6 paragraph to CLAUDE.md (mirror the 7.5 paragraph style) + reference docs/design/phase-7.6-design.md."
+}
