@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import {
   Calendar,
@@ -480,9 +480,11 @@ export function MilestonesPage() {
 
   // Fetch project details
   const { data: project } = useProject(projectId);
-  if (project) {
-    setCurrentProject(project.id, project.name);
-  }
+  useEffect(() => {
+    if (project) {
+      setCurrentProject(project.id, project.name);
+    }
+  }, [project, setCurrentProject]);
 
   const { data: milestones, isLoading, error, refetch } = useMilestones(projectId);
 

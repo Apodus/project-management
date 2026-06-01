@@ -233,9 +233,11 @@ export function ActivityPage() {
 
   // Fetch project details
   const { data: project } = useProject(projectId);
-  if (project) {
-    setCurrentProject(project.id, project.name);
-  }
+  useEffect(() => {
+    if (project) {
+      setCurrentProject(project.id, project.name);
+    }
+  }, [project, setCurrentProject]);
 
   // Fetch users for actor name display
   const { data: users } = useUsers();

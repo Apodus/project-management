@@ -478,9 +478,11 @@ export function BoardPage() {
 
   // Fetch project details
   const { data: project } = useProject(projectId);
-  if (project) {
-    setCurrentProject(project.id, project.name);
-  }
+  useEffect(() => {
+    if (project) {
+      setCurrentProject(project.id, project.name);
+    }
+  }, [project, setCurrentProject]);
 
   // Filter state
   const [priorityFilter, setPriorityFilter] = useState<string>("");

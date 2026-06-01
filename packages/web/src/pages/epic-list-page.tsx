@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Milestone, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -139,9 +139,11 @@ export function EpicListPage() {
 
   // Fetch project details
   const { data: project } = useProject(projectId);
-  if (project) {
-    setCurrentProject(project.id, project.name);
-  }
+  useEffect(() => {
+    if (project) {
+      setCurrentProject(project.id, project.name);
+    }
+  }, [project, setCurrentProject]);
 
   const [statusFilter, setStatusFilter] = useState<string>("");
 

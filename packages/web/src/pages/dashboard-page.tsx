@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   Activity,
@@ -802,9 +803,11 @@ export function DashboardPage() {
 
   // Fetch project details
   const { data: project } = useProject(projectId);
-  if (project) {
-    setCurrentProject(project.id, project.name);
-  }
+  useEffect(() => {
+    if (project) {
+      setCurrentProject(project.id, project.name);
+    }
+  }, [project, setCurrentProject]);
 
   // Fetch current user for "My Tasks"
   const { data: currentUser } = useCurrentUser();
