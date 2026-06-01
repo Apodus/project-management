@@ -91,6 +91,7 @@ describe("mergeRequestSchema", () => {
     resource: "main",
     submittedBy: VALID_ULID,
     taskId: VALID_ULID,
+    resolvedFrom: null,
     branch: "feat/auth",
     commitSha: "abc123",
     verifyCmd: "pnpm test",
@@ -140,6 +141,14 @@ describe("mergeRequestSchema", () => {
 
   it("accepts a request with null taskId (post-task-deletion)", () => {
     expect(mergeRequestSchema.parse({ ...validRequest, taskId: null })).toBeTruthy();
+  });
+
+  it("accepts resolvedFrom null (a normal request) and a string (a resolved request)", () => {
+    expect(
+      mergeRequestSchema.parse({ ...validRequest, resolvedFrom: null }),
+    ).toBeTruthy();
+    const resolved = { ...validRequest, resolvedFrom: VALID_ULID };
+    expect(mergeRequestSchema.parse(resolved).resolvedFrom).toBe(VALID_ULID);
   });
 
   it("accepts all valid statuses", () => {

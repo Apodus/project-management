@@ -58,6 +58,9 @@ export const mergeRequestSchema = z.object({
   resource: z.string(),
   submittedBy: z.string(),
   taskId: z.string().nullable(),
+  // Phase 7.6 lineage: on a resolved request this holds the origin request
+  // id; null on every normal request (docs/design/phase-7.6-design.md §4.1).
+  resolvedFrom: z.string().nullable(),
   branch: z.string().nullable(),
   commitSha: z.string().nullable(),
   verifyCmd: z.string().nullable(),

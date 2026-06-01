@@ -5,8 +5,9 @@ import {
   index,
   uniqueIndex,
   primaryKey,
+  type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
-import type { VerifyStepResult } from "@pm/shared";
+import type { MergeResolutionDetail, VerifyStepResult } from "@pm/shared";
 
 // ─── workspaces ────────────────────────────────────────────────────
 export const workspaces = sqliteTable("workspaces", {
@@ -484,6 +485,15 @@ export const mergeRequests = sqliteTable(
     groupId: text("group_id").references(() => mergeRequestGroups.id, {
       onDelete: "set null",
     }),
+    // Phase 7.6 lineage (§4.1): on a resolved request this self-references
+    // the origin (conflicting) request id; null on every normal request.
+    // ON DELETE SET NULL so deleting an origin never cascades into the
+    // resolved request it spawned. The (): AnySQLiteColumn arrow is required
+    // for a self-reference within the same table definition.
+    resolvedFrom: text("resolved_from").references(
+      (): AnySQLiteColumn => mergeRequests.id,
+      { onDelete: "set null" },
+    ),
     // status enum lives in @pm/shared (MERGE_REQUEST_STATUSES) — added in
     // Step 3. Default "queued" matches the initial-state convention.
     status: text("status").notNull().default("queued"),
@@ -898,5 +908,71 @@ export const verifyCache = sqliteTable(
       table.resource,
       table.createdAt,
     ),
+  ],
+);
+
+// ─── merge_resolutions ─────────────────────────────────────────────
+// Phase 7.6 (§4.2): the durable record of a conflict-resolution attempt.
+// When the integrator hits a RebaseConflict and the resolver is enabled, it
+// rejects the origin request, releases the lane lock, and enqueues a
+// resolution row here. The resolver worker drives state transitions over the
+// REST surface (Step 6). PM owns the state; the integrator owns the in-flight
+// scheduling in memory (no batch tables — same stance as 7.2).
+//
+// State machine (§4.3, enum MERGE_RESOLUTION_STATES):
+//   pending → resolving → resolved | escalated | failed
+export const mergeResolutions = sqliteTable(
+  "merge_resolutions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    resource: text("resource").notNull().default("main"),
+    // The conflicting (origin) request. ON DELETE SET NULL so a deleted
+    // request never cascade-deletes the durable resolution record.
+    originRequestId: text("origin_request_id").references(
+      () => mergeRequests.id,
+      { onDelete: "set null" },
+    ),
+    // The new request the resolver submits once it produces a clean tree.
+    // Null until §5.3 resubmit; ON DELETE SET NULL for the same reason.
+    resolvedRequestId: text("resolved_request_id").references(
+      () => mergeRequests.id,
+      { onDelete: "set null" },
+    ),
+    // Resolution state machine (§4.3). Enum MERGE_RESOLUTION_STATES.
+    state: text("state").notNull().default("pending"),
+    // JSON-encoded string[] — the conflicting files, copied from the
+    // RebaseConflict that triggered this resolution.
+    conflictingFiles: text("conflicting_files", {
+      mode: "json",
+    }).$type<string[]>(),
+    attemptStartedAt: text("attempt_started_at"),
+    attemptEndedAt: text("attempt_ended_at"),
+    // Where an escalated/failed resolution is routed: "author" | "human" |
+    // null. Enum MERGE_ESCALATION_TARGETS.
+    escalationTarget: text("escalation_target"),
+    // Structured detail. JSON: { budgetConsumedSec?, tokensConsumed?,
+    // verifyVerdict?, escalationReason?, logUrl? }. Null until the resolver
+    // runs.
+    detail: text("detail", { mode: "json" }).$type<MergeResolutionDetail>(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_merge_resolutions_project_state").on(
+      table.projectId,
+      table.state,
+    ),
+    // The resolver-pickup hot path: pending resolutions for a lane, oldest
+    // first.
+    index("idx_merge_resolutions_resource_state").on(
+      table.projectId,
+      table.resource,
+      table.state,
+      table.createdAt,
+    ),
+    index("idx_merge_resolutions_origin").on(table.originRequestId),
   ],
 );

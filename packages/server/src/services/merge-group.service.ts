@@ -64,6 +64,7 @@ interface MergeRequestRow {
   resource: string;
   submittedBy: string;
   taskId: string | null;
+  resolvedFrom: string | null;
   branch: string | null;
   commitSha: string | null;
   verifyCmd: string | null;
@@ -258,6 +259,7 @@ function toMemberView(row: MergeRequestRow): MergeRequestView {
     resource: row.resource,
     submittedBy: row.submittedBy,
     taskId: row.taskId,
+    resolvedFrom: row.resolvedFrom,
     branch: row.branch,
     commitSha: row.commitSha,
     verifyCmd: row.verifyCmd,

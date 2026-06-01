@@ -174,6 +174,7 @@ function makeRequest(over: Partial<MergeRequestView>): MergeRequestView {
     resource: "main",
     submittedBy: "worker-1",
     taskId: null,
+    resolvedFrom: null,
     branch: null,
     commitSha: null,
     verifyCmd: null,

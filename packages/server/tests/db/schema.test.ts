@@ -22,6 +22,7 @@ import {
   mergeRequests,
   mergeRequestGroups,
   mergeIncidents,
+  mergeResolutions,
   auditLog,
   trainState,
 } from "../../src/db/index.js";
@@ -49,7 +50,7 @@ describe("Database schema", () => {
 
   // ── Table existence ──────────────────────────────────────────────
   describe("table existence", () => {
-    it("should create all 28 tables", () => {
+    it("should create all 29 tables", () => {
       const db = setupDb();
       const tableNames = db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' AND name NOT LIKE '%_fts%' ORDER BY name`,
@@ -75,6 +76,7 @@ describe("Database schema", () => {
         "merge_locks",
         "merge_request_groups",
         "merge_requests",
+        "merge_resolutions",
         "milestones",
         "projects",
         "proposals",
@@ -99,6 +101,15 @@ describe("Database schema", () => {
       );
       const names = (cols as any[]).map((c: any) => c.name);
       expect(names).toContain("steps");
+    });
+
+    it("migration 0017: merge_requests has the additive resolved_from column", () => {
+      const db = setupDb();
+      const cols = db.all<{ name: string }>(
+        sql`PRAGMA table_info(merge_requests)`,
+      );
+      const names = (cols as any[]).map((c: any) => c.name);
+      expect(names).toContain("resolved_from");
     });
   });
 
@@ -144,6 +155,9 @@ describe("Database schema", () => {
         "idx_train_state_project_resource",
         "idx_verify_cache_key",
         "idx_verify_cache_project_resource_created",
+        "idx_merge_resolutions_project_state",
+        "idx_merge_resolutions_resource_state",
+        "idx_merge_resolutions_origin",
       ].sort();
 
       for (const idx of expected) {
@@ -746,6 +760,212 @@ describe("Database schema", () => {
         .get();
       expect(request).toBeDefined();
       expect(request!.groupId).toBeNull();
+    });
+  });
+
+  // ── Merge resolutions (Phase 7.6) ────────────────────────────────
+  describe("merge resolutions", () => {
+    let db: AppDatabase;
+    let userId: string;
+    let projectId: string;
+
+    beforeEach(() => {
+      db = setupDb();
+      const workspaceId = db.select().from(workspaces).all()[0].id;
+      const ts = now();
+
+      userId = createId();
+      db.insert(users)
+        .values({
+          id: userId,
+          username: "resolveruser",
+          displayName: "Resolver User",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      projectId = createId();
+      db.insert(projects)
+        .values({
+          id: projectId,
+          workspaceId,
+          name: "Resolution Project",
+          slug: "resolution-project",
+          createdAt: ts,
+          updatedAt: ts,
+          createdBy: userId,
+        })
+        .run();
+    });
+
+    it("defaults resolved_from to null on a normal merge request", () => {
+      const requestId = createId();
+      const ts = now();
+      db.insert(mergeRequests)
+        .values({
+          id: requestId,
+          projectId,
+          submittedBy: userId,
+          enqueuedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const result = db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, requestId))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.resolvedFrom).toBeNull();
+    });
+
+    it("links a resolved request to its origin via resolved_from", () => {
+      const ts = now();
+      const originId = createId();
+      db.insert(mergeRequests)
+        .values({
+          id: originId,
+          projectId,
+          submittedBy: userId,
+          enqueuedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const resolvedId = createId();
+      db.insert(mergeRequests)
+        .values({
+          id: resolvedId,
+          projectId,
+          submittedBy: userId,
+          resolvedFrom: originId,
+          enqueuedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const result = db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, resolvedId))
+        .get();
+      expect(result!.resolvedFrom).toBe(originId);
+    });
+
+    it("inserts a resolution with default state=pending, resource=main, nullables null", () => {
+      const id = createId();
+      const ts = now();
+      db.insert(mergeResolutions)
+        .values({ id, projectId, createdAt: ts, updatedAt: ts })
+        .run();
+
+      const result = db
+        .select()
+        .from(mergeResolutions)
+        .where(eq(mergeResolutions.id, id))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.state).toBe("pending");
+      expect(result!.resource).toBe("main");
+      expect(result!.originRequestId).toBeNull();
+      expect(result!.resolvedRequestId).toBeNull();
+      expect(result!.conflictingFiles).toBeNull();
+      expect(result!.attemptStartedAt).toBeNull();
+      expect(result!.attemptEndedAt).toBeNull();
+      expect(result!.escalationTarget).toBeNull();
+      expect(result!.detail).toBeNull();
+    });
+
+    it("round-trips the conflicting_files and detail JSON columns", () => {
+      const id = createId();
+      const ts = now();
+      const conflictingFiles = ["src/foo.ts", "src/bar.ts"];
+      const detail = {
+        budgetConsumedSec: 120,
+        tokensConsumed: 8000,
+        verifyVerdict: "pass" as const,
+        escalationReason: "n/a",
+        logUrl: "file:///tmp/resolver.log",
+      };
+      db.insert(mergeResolutions)
+        .values({
+          id,
+          projectId,
+          state: "resolved",
+          conflictingFiles,
+          attemptStartedAt: ts,
+          attemptEndedAt: ts,
+          detail,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const result = db
+        .select()
+        .from(mergeResolutions)
+        .where(eq(mergeResolutions.id, id))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.conflictingFiles).toEqual(conflictingFiles);
+      expect(result!.detail).toEqual(detail);
+    });
+
+    it("SET NULL on origin_request_id when the origin request is deleted", () => {
+      const ts = now();
+      const originId = createId();
+      db.insert(mergeRequests)
+        .values({
+          id: originId,
+          projectId,
+          submittedBy: userId,
+          enqueuedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const resolutionId = createId();
+      db.insert(mergeResolutions)
+        .values({
+          id: resolutionId,
+          projectId,
+          originRequestId: originId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      // foreign_keys is ON → ON DELETE SET NULL nulls the reference rather
+      // than cascade-deleting the durable resolution record.
+      db.delete(mergeRequests).where(eq(mergeRequests.id, originId)).run();
+
+      const result = db
+        .select()
+        .from(mergeResolutions)
+        .where(eq(mergeResolutions.id, resolutionId))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.originRequestId).toBeNull();
+    });
+
+    it("rejects a resolution with an invalid project_id (FK enforced)", () => {
+      const ts = now();
+      expect(() => {
+        db.insert(mergeResolutions)
+          .values({
+            id: createId(),
+            projectId: "nonexistent",
+            createdAt: ts,
+            updatedAt: ts,
+          })
+          .run();
+      }).toThrow();
     });
   });
 

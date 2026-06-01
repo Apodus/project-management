@@ -120,6 +120,13 @@
       "when": 1781136000000,
       "tag": "0016_merge_attempt_steps",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1781222400000,
+      "tag": "0017_merge_resolutions",
+      "breakpoints": true
     }
   ]
 }
