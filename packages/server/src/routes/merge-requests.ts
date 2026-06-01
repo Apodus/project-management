@@ -100,6 +100,8 @@ const timelineEventSchema = z
       "attempt",
       "audit",
       "incident",
+      "resolution",
+      "resolution_origin",
     ]),
     // attempt
     attemptNumber: z.number().int().optional(),
@@ -129,6 +131,27 @@ const timelineEventSchema = z
     openedAt: z.string().optional(),
     resolvedAt: z.string().nullable().optional(),
     resolution: z.unknown().optional(),
+    // resolution lineage (Phase 7.6 §7). Additive optional fields — present on
+    // the "resolution" (origin-branch) and "resolution_origin" (back-link)
+    // kinds; absent on every pre-7.6 kind, so the wire stays backward-compatible.
+    resolutionId: z.string().optional(),
+    resolutionState: z.string().optional(),
+    originRequestId: z.string().optional(),
+    resolvedRequestId: z.string().nullable().optional(),
+    conflictingFiles: z.array(z.string()).nullable().optional(),
+    escalationTarget: z.enum(["author", "human"]).nullable().optional(),
+    attemptStartedAt: z.string().nullable().optional(),
+    attemptEndedAt: z.string().nullable().optional(),
+    detail: z
+      .object({
+        budgetConsumedSec: z.number().optional(),
+        tokensConsumed: z.number().optional(),
+        verifyVerdict: z.enum(["pass", "fail"]).optional(),
+        escalationReason: z.string().optional(),
+        logUrl: z.string().optional(),
+      })
+      .nullable()
+      .optional(),
   })
   .openapi("MergeRequestTimelineEvent");
 

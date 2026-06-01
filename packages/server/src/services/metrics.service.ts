@@ -4,8 +4,10 @@ import {
   integratorHealth,
   mergeAttempts,
   mergeRequests,
+  mergeResolutions,
   projects,
 } from "../db/index.js";
+import type { MergeResolutionDetail } from "@pm/shared";
 import { AppError } from "../types.js";
 import {
   getHealth,
@@ -94,6 +96,49 @@ export interface VerifyMetric {
   cacheMismatches: number;
 }
 
+/**
+ * The Phase 7.6 §7 resolution sub-block. ADDITIVE — a NEW field on the bundle,
+ * derived from the merge_resolutions rows over the same 24h window. Inert when
+ * the resolver is disabled: no rows ⇒ attempts 0, every ratio null. No SLO
+ * enforcement (recorded only, like the 7.4/7.5 blocks).
+ *
+ *   attempts                — resolution rows created in the window.
+ *   autoResolveSuccessRate  — (resolved rows whose resolved request LANDED) /
+ *                             attempts. An innerJoin to mergeRequests.status
+ *                             ===='landed' mirrors computeVerifySuccessRate.
+ *   escalationRate          — (escalated|failed rows) / attempts.
+ *   meanWallClockMs         — mean(attemptEndedAt − attemptStartedAt) over rows
+ *                             where BOTH timestamps are set (the null filter
+ *                             mirrors computeTimeToLand); null if none.
+ *   budgetUtilization       — mean(detail.budgetConsumedSec) and its ratio
+ *                             against settings.integrator.resolver.time_budget_sec.
+ */
+export interface ResolutionAutoResolveMetric {
+  ratio: number | null;
+  resolvedAndLanded: number;
+  attempts: number;
+}
+
+export interface ResolutionEscalationMetric {
+  ratio: number | null;
+  escalated: number;
+  attempts: number;
+}
+
+export interface ResolutionBudgetMetric {
+  ratio: number | null;
+  meanConsumedSec: number | null;
+  budgetSec: number;
+}
+
+export interface ResolutionMetric {
+  attempts: number;
+  autoResolveSuccessRate: ResolutionAutoResolveMetric;
+  escalationRate: ResolutionEscalationMetric;
+  meanWallClockMs: number | null;
+  budgetUtilization: ResolutionBudgetMetric;
+}
+
 export interface MetricsBundle {
   resource: string;
   queueDepth: number;
@@ -105,6 +150,7 @@ export interface MetricsBundle {
   health: IntegratorHealthView;
   slo: SloBlock;
   verify: VerifyMetric;
+  resolution: ResolutionMetric;
   windowHours: number;
   computedAt: string;
 }
@@ -465,6 +511,156 @@ function computeVerify(
 }
 
 /**
+ * The Phase 7.6 §7 resolution sub-block, computed over the same [cutoff, nowIso]
+ * window as the rest of the bundle. Reads merge_resolutions rows scoped by
+ * (project, resource) with createdAt >= cutoff.
+ *
+ * time_budget_sec is read from settings.integrator.resolver.time_budget_sec
+ * (default 600 — the shared schema default). budgetUtilization.ratio is null
+ * when there is no consumed-seconds sample.
+ *
+ * Inert when the resolver is disabled: no rows ⇒ attempts 0, every ratio null.
+ */
+function computeResolution(
+  projectId: string,
+  resource: string,
+  cutoff: string,
+): ResolutionMetric {
+  const db = getDb();
+
+  const settings = readSettings(projectId) as
+    | { integrator?: { resolver?: { time_budget_sec?: unknown } } }
+    | null;
+  const budgetSec =
+    typeof settings?.integrator?.resolver?.time_budget_sec === "number"
+      ? settings.integrator.resolver.time_budget_sec
+      : 600;
+
+  // attempts = every resolution row created in the window for this lane.
+  const attempts = Number(
+    db
+      .select({ c: sql<number>`count(*)` })
+      .from(mergeResolutions)
+      .where(
+        and(
+          eq(mergeResolutions.projectId, projectId),
+          eq(mergeResolutions.resource, resource),
+          sql`${mergeResolutions.createdAt} >= ${cutoff}`,
+        ),
+      )
+      .get()?.c ?? 0,
+  );
+
+  // resolvedAndLanded = resolved rows whose resolved request actually LANDED.
+  // An innerJoin to mergeRequests.status==='landed' mirrors
+  // computeVerifySuccessRate's join shape.
+  const resolvedAndLanded = Number(
+    db
+      .select({ c: sql<number>`count(*)` })
+      .from(mergeResolutions)
+      .innerJoin(
+        mergeRequests,
+        eq(mergeResolutions.resolvedRequestId, mergeRequests.id),
+      )
+      .where(
+        and(
+          eq(mergeResolutions.projectId, projectId),
+          eq(mergeResolutions.resource, resource),
+          eq(mergeResolutions.state, "resolved"),
+          eq(mergeRequests.status, "landed"),
+          sql`${mergeResolutions.createdAt} >= ${cutoff}`,
+        ),
+      )
+      .get()?.c ?? 0,
+  );
+
+  // escalated = escalated|failed rows (both route to a human/author — they are
+  // the "resolver couldn't auto-resolve" outcomes).
+  const escalated = Number(
+    db
+      .select({ c: sql<number>`count(*)` })
+      .from(mergeResolutions)
+      .where(
+        and(
+          eq(mergeResolutions.projectId, projectId),
+          eq(mergeResolutions.resource, resource),
+          inArray(mergeResolutions.state, ["escalated", "failed"]),
+          sql`${mergeResolutions.createdAt} >= ${cutoff}`,
+        ),
+      )
+      .get()?.c ?? 0,
+  );
+
+  // Wall-clock + budget rows: pull the timestamps + detail for the window.
+  const rows = db
+    .select({
+      attemptStartedAt: mergeResolutions.attemptStartedAt,
+      attemptEndedAt: mergeResolutions.attemptEndedAt,
+      detail: mergeResolutions.detail,
+    })
+    .from(mergeResolutions)
+    .where(
+      and(
+        eq(mergeResolutions.projectId, projectId),
+        eq(mergeResolutions.resource, resource),
+        sql`${mergeResolutions.createdAt} >= ${cutoff}`,
+      ),
+    )
+    .all() as Array<{
+    attemptStartedAt: string | null;
+    attemptEndedAt: string | null;
+    detail: MergeResolutionDetail | null;
+  }>;
+
+  // meanWallClockMs: mean(end − start) EXCLUDING rows where either timestamp is
+  // null (PRECISION NOTE 2 — mirrors computeTimeToLand's null filter).
+  const wallClocks = rows
+    .filter((r) => r.attemptStartedAt !== null && r.attemptEndedAt !== null)
+    .map(
+      (r) =>
+        Date.parse(r.attemptEndedAt as string) -
+        Date.parse(r.attemptStartedAt as string),
+    );
+  const meanWallClockMs =
+    wallClocks.length === 0
+      ? null
+      : wallClocks.reduce((a, b) => a + b, 0) / wallClocks.length;
+
+  // budgetUtilization: mean(detail.budgetConsumedSec) over rows that reported
+  // it, and the ratio of that mean against the configured time_budget_sec.
+  const consumed = rows
+    .map((r) => r.detail?.budgetConsumedSec)
+    .filter((s): s is number => typeof s === "number");
+  const meanConsumedSec =
+    consumed.length === 0
+      ? null
+      : consumed.reduce((a, b) => a + b, 0) / consumed.length;
+
+  return {
+    attempts,
+    autoResolveSuccessRate: {
+      ratio: attempts === 0 ? null : resolvedAndLanded / attempts,
+      resolvedAndLanded,
+      attempts,
+    },
+    escalationRate: {
+      ratio: attempts === 0 ? null : escalated / attempts,
+      escalated,
+      attempts,
+    },
+    meanWallClockMs,
+    budgetUtilization: {
+      ratio:
+        meanConsumedSec === null || budgetSec === 0
+          ? null
+          : meanConsumedSec / budgetSec,
+      meanConsumedSec,
+      budgetSec,
+    },
+  };
+}
+
+/**
  * The on-read, edge-triggered alert evaluation (§7.3). Called from
  * computeMetrics AFTER the bundle is assembled. Evaluates two conditions
  * against the assembled metrics + the oldest-queued age, latching each on the
@@ -582,6 +778,9 @@ export function computeMetrics(
   // §7.2 verify sub-block — same [cutoff, nowIso] window as the rest of the
   // bundle. Additive: a NEW field, every existing field unchanged.
   const verify = computeVerify(projectId, resource, cutoff, nowIso);
+  // §7 resolution sub-block — same 24h window. Additive: inert (zeros/nulls)
+  // when the resolver is disabled / no resolutions exist.
+  const resolution = computeResolution(projectId, resource, cutoff);
   const oldestQueuedAt = computeOldestQueuedAt(projectId, resource);
 
   const bundle: MetricsBundle = {
@@ -595,6 +794,7 @@ export function computeMetrics(
     health,
     slo,
     verify,
+    resolution,
     windowHours: WINDOW_HOURS,
     computedAt: nowIso,
   };

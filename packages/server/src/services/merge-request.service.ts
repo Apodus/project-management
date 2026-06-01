@@ -2,9 +2,11 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import type {
   MergeAttemptView,
+  MergeEscalationTarget,
   MergeRequestLand,
   MergeRequestReject,
   MergeRequestView,
+  MergeResolutionDetail,
   VerifyStepResult,
 } from "@pm/shared";
 import {
@@ -30,6 +32,7 @@ import {
   type AuditLogView,
 } from "./audit.service.js";
 import { list as listIncidents } from "./merge-incident.service.js";
+import { listByOriginRequest } from "./merge-resolution.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -533,7 +536,9 @@ export interface TimelineEvent {
     | "abandoned"
     | "attempt"
     | "audit"
-    | "incident";
+    | "incident"
+    | "resolution"
+    | "resolution_origin";
   // attempt fields
   attemptNumber?: number;
   baseSha?: string | null;
@@ -562,6 +567,18 @@ export interface TimelineEvent {
   openedAt?: string;
   resolvedAt?: string | null;
   resolution?: unknown;
+  // resolution lineage fields (Phase 7.6 §7). "resolution" is the origin-branch
+  // event (a conflict spawned an off-lane resolver attempt); "resolution_origin"
+  // is the resolved-branch back-link (this request was resubmitted by a resolver).
+  resolutionId?: string;
+  resolutionState?: string;
+  originRequestId?: string;
+  resolvedRequestId?: string | null;
+  conflictingFiles?: string[] | null;
+  escalationTarget?: MergeEscalationTarget | null;
+  attemptStartedAt?: string | null;
+  attemptEndedAt?: string | null;
+  detail?: MergeResolutionDetail | null;
 }
 
 export interface TimelineResult {
@@ -681,6 +698,38 @@ export function getTimeline(id: string): TimelineResult {
       openedAt: inc.openedAt,
       resolvedAt: inc.resolvedAt,
       resolution: inc.resolution,
+    });
+  }
+
+  // 5. Resolution lineage (Phase 7.6 §7). Two complementary branches:
+  //   (origin) every resolution spun off THIS request as its origin (a textual
+  //   rebase conflict triggered an off-lane resolver attempt) — push a
+  //   "resolution" event carrying the attempt state/timestamps/escalation.
+  //   (resolved) if THIS request was itself resubmitted by a resolver
+  //   (row.resolvedFrom != null), push a "resolution_origin" back-link to its
+  //   origin request at the moment it was enqueued.
+  // resolver-off deployments never write merge_resolutions rows and never set
+  // resolvedFrom, so both branches are inert (no events added).
+  for (const res of listByOriginRequest(id)) {
+    events.push({
+      at: res.attemptStartedAt ?? res.createdAt,
+      kind: "resolution",
+      resolutionId: res.id,
+      resolutionState: res.state,
+      originRequestId: res.originRequestId ?? id,
+      resolvedRequestId: res.resolvedRequestId,
+      conflictingFiles: res.conflictingFiles,
+      escalationTarget: res.escalationTarget,
+      attemptStartedAt: res.attemptStartedAt,
+      attemptEndedAt: res.attemptEndedAt,
+      detail: res.detail,
+    });
+  }
+  if (row.resolvedFrom !== null) {
+    events.push({
+      at: row.enqueuedAt,
+      kind: "resolution_origin",
+      originRequestId: row.resolvedFrom,
     });
   }
 

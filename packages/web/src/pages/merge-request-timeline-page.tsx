@@ -8,7 +8,9 @@ import {
   FlaskConical,
   Flag,
   GitMerge,
+  Loader2,
   ShieldAlert,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +78,24 @@ function kindVisual(event: MergeRequestTimelineEvent): {
         icon: AlertTriangle,
         accent: "text-red-500",
         label: "Incident",
+      };
+    case "resolution": {
+      // Accent by resolver outcome: in-flight (resolving/pending) = amber,
+      // resolved = green, escalated/failed = red.
+      const state = event.resolutionState;
+      const accent =
+        state === "resolved"
+          ? "text-green-500"
+          : state === "escalated" || state === "failed"
+            ? "text-red-500"
+            : "text-amber-500";
+      return { icon: Wrench, accent, label: "Conflict resolution" };
+    }
+    case "resolution_origin":
+      return {
+        icon: GitMerge,
+        accent: "text-muted-foreground",
+        label: "Resolved from origin",
       };
     case "landed":
       return { icon: CheckCircle2, accent: "text-green-500", label: "Landed" };
@@ -274,6 +294,108 @@ function IncidentBody({ event }: { event: MergeRequestTimelineEvent }) {
   );
 }
 
+function resolutionStateBadgeClass(state: string | undefined): string {
+  if (state === "resolved") {
+    return "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300";
+  }
+  if (state === "escalated" || state === "failed") {
+    return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300";
+  }
+  return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
+}
+
+// Origin-branch event: a textual conflict on THIS request spun an off-lane
+// resolver attempt. Shows the resolver state, the conflicting files, a live
+// in-flight indicator while resolving, and a forward link to the resolved
+// request's own timeline once it has been resubmitted.
+function ResolutionBody({ event }: { event: MergeRequestTimelineEvent }) {
+  const state = event.resolutionState;
+  const inFlight =
+    state === "pending" ||
+    state === "resolving" ||
+    (!event.attemptEndedAt && state !== "resolved");
+  const files = event.conflictingFiles ?? [];
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium">Conflict resolution</span>
+        {state && (
+          <Badge
+            variant="secondary"
+            className={cn("text-[10px]", resolutionStateBadgeClass(state))}
+          >
+            {formatStatus(state)}
+          </Badge>
+        )}
+        {inFlight && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+            <Loader2 className="size-3 animate-spin" />
+            in flight
+          </span>
+        )}
+        {event.escalationTarget && (
+          <Badge variant="outline" className="text-[10px]">
+            → {formatStatus(event.escalationTarget)}
+          </Badge>
+        )}
+      </div>
+
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {files.map((f) => (
+            <span key={f} className="font-mono">
+              {f}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {event.detail?.escalationReason && (
+        <p className="text-xs text-muted-foreground italic">
+          {event.detail.escalationReason}
+        </p>
+      )}
+
+      {event.resolvedRequestId && (
+        <Link
+          to="/merge-requests/$requestId/timeline"
+          params={{ requestId: event.resolvedRequestId }}
+          className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+        >
+          <ExternalLink className="size-3" />
+          View resolved request
+        </Link>
+      )}
+    </div>
+  );
+}
+
+// Resolved-branch event: THIS request was itself resubmitted by a resolver —
+// a back-link to the origin request that conflicted.
+function ResolutionOriginBody({
+  event,
+}: {
+  event: MergeRequestTimelineEvent;
+}) {
+  return (
+    <div className="space-y-1">
+      <span className="text-sm font-medium">Resolved from origin</span>
+      {event.originRequestId && (
+        <div>
+          <Link
+            to="/merge-requests/$requestId/timeline"
+            params={{ requestId: event.originRequestId }}
+            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+          >
+            <ArrowLeft className="size-3" />
+            View origin request
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TerminalBody({ event }: { event: MergeRequestTimelineEvent }) {
   if (event.kind === "landed") {
     return (
@@ -327,6 +449,10 @@ function EventBody({ event }: { event: MergeRequestTimelineEvent }) {
       return <AuditBody event={event} />;
     case "incident":
       return <IncidentBody event={event} />;
+    case "resolution":
+      return <ResolutionBody event={event} />;
+    case "resolution_origin":
+      return <ResolutionOriginBody event={event} />;
     case "landed":
     case "rejected":
     case "abandoned":

@@ -170,6 +170,55 @@ function nullSafeTimeline(): MergeRequestTimeline {
   };
 }
 
+// Phase 7.6: an origin request whose conflict spawned a resolver attempt that
+// resolved + resubmitted (carries a "resolution" event with a forward link),
+// plus a resolved request carrying a "resolution_origin" back-link.
+function resolutionTimeline(): MergeRequestTimeline {
+  const now = new Date().toISOString();
+  return {
+    request: {
+      ...seededTimeline().request,
+      id: "mr-origin-9999",
+      status: "rejected",
+      landedSha: null,
+      rejectCategory: "conflict",
+    },
+    events: [
+      { at: now, kind: "queued" },
+      { at: now, kind: "rejected", rejectCategory: "conflict" },
+      {
+        at: now,
+        kind: "resolution",
+        resolutionId: "res-1",
+        resolutionState: "resolved",
+        originRequestId: "mr-origin-9999",
+        resolvedRequestId: "mr-resolved-5555",
+        conflictingFiles: ["src/conflicted.ts"],
+      },
+    ],
+  };
+}
+
+function resolutionOriginTimeline(): MergeRequestTimeline {
+  const now = new Date().toISOString();
+  return {
+    request: {
+      ...seededTimeline().request,
+      id: "mr-resolved-5555",
+      resolvedFrom: "mr-origin-9999",
+      status: "landed",
+    },
+    events: [
+      {
+        at: now,
+        kind: "resolution_origin",
+        originRequestId: "mr-origin-9999",
+      },
+      { at: now, kind: "queued" },
+    ],
+  };
+}
+
 function q<T>(data: T | undefined, opts: Partial<{ isLoading: boolean; isError: boolean }> = {}) {
   return { data, isLoading: false, isError: false, ...opts } as unknown;
 }
@@ -277,6 +326,39 @@ describe("MergeRequestTimelinePage — null-safe", () => {
     expect(
       screen.queryByRole("link", { name: /view verify log/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("MergeRequestTimelinePage — resolution lineage (Phase 7.6)", () => {
+  it("renders the resolution event with state + conflicting files + a link to the resolved request", () => {
+    mocks.useMergeRequestTimeline.mockReturnValue(q(resolutionTimeline()));
+    render(<MergeRequestTimelinePage />);
+
+    // the resolution node label + its resolved state badge.
+    expect(screen.getByText("Conflict resolution")).toBeInTheDocument();
+    expect(screen.getByText("Resolved")).toBeInTheDocument();
+    // conflicting file surfaced.
+    expect(screen.getByText("src/conflicted.ts")).toBeInTheDocument();
+    // forward link to the resolved request's own timeline.
+    const link = screen.getByRole("link", { name: /view resolved request/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/merge-requests/mr-resolved-5555/timeline",
+    );
+  });
+
+  it("renders the resolution_origin back-link on the resolved request", () => {
+    mocks.useMergeRequestTimeline.mockReturnValue(
+      q(resolutionOriginTimeline()),
+    );
+    render(<MergeRequestTimelinePage />);
+
+    expect(screen.getByText("Resolved from origin")).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /view origin request/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/merge-requests/mr-origin-9999/timeline",
+    );
   });
 });
 

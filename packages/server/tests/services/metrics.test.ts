@@ -12,7 +12,9 @@ import {
   mergeAttempts,
   mergeRequestGroups,
   mergeRequests,
+  mergeResolutions,
 } from "../../src/db/index.js";
+import type { MergeResolutionDetail } from "@pm/shared";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
 import * as metrics from "../../src/services/metrics.service.js";
 
@@ -166,6 +168,43 @@ function seedGroup(
       resolutionReason: null,
       createdAt: ago(HOUR),
       updatedAt: ago(HOUR),
+    })
+    .run();
+  return id;
+}
+
+function seedResolution(
+  testApp: TestApp,
+  args: {
+    projectId: string;
+    resource?: string;
+    state: string;
+    originRequestId?: string | null;
+    resolvedRequestId?: string | null;
+    attemptStartedAt?: string | null;
+    attemptEndedAt?: string | null;
+    escalationTarget?: string | null;
+    detail?: MergeResolutionDetail | null;
+    createdAt?: string;
+  },
+): string {
+  const id = createId();
+  testApp.db
+    .insert(mergeResolutions)
+    .values({
+      id,
+      projectId: args.projectId,
+      resource: args.resource ?? "main",
+      originRequestId: args.originRequestId ?? null,
+      resolvedRequestId: args.resolvedRequestId ?? null,
+      state: args.state,
+      conflictingFiles: null,
+      attemptStartedAt: args.attemptStartedAt ?? null,
+      attemptEndedAt: args.attemptEndedAt ?? null,
+      escalationTarget: args.escalationTarget ?? null,
+      detail: args.detail ?? null,
+      createdAt: args.createdAt ?? ago(HOUR),
+      updatedAt: args.createdAt ?? ago(HOUR),
     })
     .run();
   return id;
@@ -535,5 +574,111 @@ describe("metrics service", () => {
     // Second read while still stale → latched, does NOT re-fire.
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(1);
+  });
+
+  // ── Resolution sub-block (Phase 7.6 §7) ──────────────────────────
+
+  it("computeResolution: attempts, auto-resolve-success, escalation, mean wall-clock, budget utilization against settings", () => {
+    // PRECISION NOTE 1 — the budget is read from
+    // settings.integrator.resolver.time_budget_sec. A wrong path → the default
+    // 600 would still be returned, so we set 600 explicitly AND assert the
+    // utilization ratio derived from it (0.5) to prove the read.
+    const project = createTestProject(testApp.db, {
+      settings: { integrator: { resolver: { time_budget_sec: 600 } } },
+    });
+    const user = createTestUser(testApp.db);
+
+    // A LANDED request that resolution A points at (counts toward success).
+    const landedReq = seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: user.id,
+      status: "landed",
+      resolvedAt: ago(HOUR),
+      landedSha: "landedaaa",
+    });
+    // A NON-landed (rejected) request that resolution B points at.
+    const rejectedReq = seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: user.id,
+      status: "rejected",
+      resolvedAt: ago(HOUR),
+    });
+
+    // Controlled wall-clocks: 100s, 200s, 300s, 400s → mean 250000ms.
+    const mkWindow = (durationMs: number) => {
+      const start = ago(2 * HOUR);
+      const end = new Date(Date.parse(start) + durationMs).toISOString();
+      return { attemptStartedAt: start, attemptEndedAt: end };
+    };
+
+    // A: resolved → LANDED request (the one success), 100s, budget 120s.
+    seedResolution(testApp, {
+      projectId: project.id,
+      state: "resolved",
+      resolvedRequestId: landedReq,
+      ...mkWindow(100_000),
+      detail: { budgetConsumedSec: 120 },
+    });
+    // B: resolved → rejected request (NOT a success), 200s, budget 240s.
+    seedResolution(testApp, {
+      projectId: project.id,
+      state: "resolved",
+      resolvedRequestId: rejectedReq,
+      ...mkWindow(200_000),
+      detail: { budgetConsumedSec: 240 },
+    });
+    // C: escalated, 300s, budget 360s.
+    seedResolution(testApp, {
+      projectId: project.id,
+      state: "escalated",
+      escalationTarget: "author",
+      ...mkWindow(300_000),
+      detail: { budgetConsumedSec: 360 },
+    });
+    // D: failed, 400s, budget 480s.
+    seedResolution(testApp, {
+      projectId: project.id,
+      state: "failed",
+      escalationTarget: "human",
+      ...mkWindow(400_000),
+      detail: { budgetConsumedSec: 480 },
+    });
+
+    const m = metrics.computeMetrics(project.id, "main", NOW);
+    const r = m.resolution;
+
+    expect(r.attempts).toBe(4);
+
+    // auto-resolve success: only A resolved AND landed → 1/4 = 0.25.
+    expect(r.autoResolveSuccessRate.resolvedAndLanded).toBe(1);
+    expect(r.autoResolveSuccessRate.attempts).toBe(4);
+    expect(r.autoResolveSuccessRate.ratio).toBeCloseTo(0.25, 10);
+
+    // escalation: C + D → 2/4 = 0.5.
+    expect(r.escalationRate.escalated).toBe(2);
+    expect(r.escalationRate.ratio).toBeCloseTo(0.5, 10);
+
+    // mean wall-clock = (100+200+300+400)s / 4 = 250000ms.
+    expect(r.meanWallClockMs).toBe(250_000);
+
+    // budget: mean consumed (120+240+360+480)/4 = 300s; budget 600s → 0.5.
+    expect(r.budgetUtilization.budgetSec).toBe(600);
+    expect(r.budgetUtilization.meanConsumedSec).toBe(300);
+    expect(r.budgetUtilization.ratio).toBeCloseTo(0.5, 10);
+  });
+
+  it("computeResolution: inert (zeros/nulls) when there are no resolutions", () => {
+    const project = createTestProject(testApp.db);
+    const m = metrics.computeMetrics(project.id, "main", NOW);
+    const r = m.resolution;
+
+    expect(r.attempts).toBe(0);
+    expect(r.autoResolveSuccessRate.ratio).toBeNull();
+    expect(r.escalationRate.ratio).toBeNull();
+    expect(r.meanWallClockMs).toBeNull();
+    expect(r.budgetUtilization.meanConsumedSec).toBeNull();
+    expect(r.budgetUtilization.ratio).toBeNull();
+    // Default budget when unset (the shared-schema default).
+    expect(r.budgetUtilization.budgetSec).toBe(600);
   });
 });

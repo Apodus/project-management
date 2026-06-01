@@ -207,6 +207,27 @@ const metricsBundleSchema = z
       ),
       cache_mismatches: z.number(),
     }),
+    // Phase 7.6 §7 — the additive resolution sub-block (resolver lineage
+    // observability). Inert (attempts 0, ratios null) when the resolver is off.
+    resolution: z.object({
+      attempts: z.number(),
+      auto_resolve_success_rate: z.object({
+        ratio: z.number().nullable(),
+        resolved_and_landed: z.number(),
+        attempts: z.number(),
+      }),
+      escalation_rate: z.object({
+        ratio: z.number().nullable(),
+        escalated: z.number(),
+        attempts: z.number(),
+      }),
+      mean_wall_clock_ms: z.number().nullable(),
+      budget_utilization: z.object({
+        ratio: z.number().nullable(),
+        mean_consumed_sec: z.number().nullable(),
+        budget_sec: z.number(),
+      }),
+    }),
     window_hours: z.number(),
     computed_at: z.string(),
   })
@@ -517,6 +538,26 @@ function metricsToResponse(
         fail_count: s.failCount,
       })),
       cache_mismatches: bundle.verify.cacheMismatches,
+    },
+    resolution: {
+      attempts: bundle.resolution.attempts,
+      auto_resolve_success_rate: {
+        ratio: bundle.resolution.autoResolveSuccessRate.ratio,
+        resolved_and_landed:
+          bundle.resolution.autoResolveSuccessRate.resolvedAndLanded,
+        attempts: bundle.resolution.autoResolveSuccessRate.attempts,
+      },
+      escalation_rate: {
+        ratio: bundle.resolution.escalationRate.ratio,
+        escalated: bundle.resolution.escalationRate.escalated,
+        attempts: bundle.resolution.escalationRate.attempts,
+      },
+      mean_wall_clock_ms: bundle.resolution.meanWallClockMs,
+      budget_utilization: {
+        ratio: bundle.resolution.budgetUtilization.ratio,
+        mean_consumed_sec: bundle.resolution.budgetUtilization.meanConsumedSec,
+        budget_sec: bundle.resolution.budgetUtilization.budgetSec,
+      },
     },
     window_hours: bundle.windowHours,
     computed_at: bundle.computedAt,

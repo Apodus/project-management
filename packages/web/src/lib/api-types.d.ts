@@ -12183,7 +12183,7 @@ export interface components {
         MergeRequestTimelineEvent: {
             at: string;
             /** @enum {string} */
-            kind: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "attempt" | "audit" | "incident";
+            kind: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "attempt" | "audit" | "incident" | "resolution" | "resolution_origin";
             attemptNumber?: number;
             baseSha?: string | null;
             treeSha?: string | null;
@@ -12212,6 +12212,23 @@ export interface components {
             openedAt?: string;
             resolvedAt?: string | null;
             resolution?: unknown;
+            resolutionId?: string;
+            resolutionState?: string;
+            originRequestId?: string;
+            resolvedRequestId?: string | null;
+            conflictingFiles?: string[] | null;
+            /** @enum {string|null} */
+            escalationTarget?: "author" | "human" | null;
+            attemptStartedAt?: string | null;
+            attemptEndedAt?: string | null;
+            detail?: {
+                budgetConsumedSec?: number;
+                tokensConsumed?: number;
+                /** @enum {string} */
+                verifyVerdict?: "pass" | "fail";
+                escalationReason?: string;
+                logUrl?: string;
+            } | null;
         };
         MergeRequestPickup: {
             batchId?: string;
@@ -12644,6 +12661,25 @@ export interface components {
                     fail_count: number;
                 }[];
                 cache_mismatches: number;
+            };
+            resolution: {
+                attempts: number;
+                auto_resolve_success_rate: {
+                    ratio: number | null;
+                    resolved_and_landed: number;
+                    attempts: number;
+                };
+                escalation_rate: {
+                    ratio: number | null;
+                    escalated: number;
+                    attempts: number;
+                };
+                mean_wall_clock_ms: number | null;
+                budget_utilization: {
+                    ratio: number | null;
+                    mean_consumed_sec: number | null;
+                    budget_sec: number;
+                };
             };
             window_hours: number;
             computed_at: string;

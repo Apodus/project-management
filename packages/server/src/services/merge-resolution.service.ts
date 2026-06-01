@@ -398,3 +398,26 @@ export function list(
 
   return rows.map(toView);
 }
+
+/**
+ * List the resolutions spawned off a given origin request, oldest-first
+ * (Phase 7.6 §7). Read-only lineage helper used by the per-request timeline
+ * weave (merge-request.service.ts:getTimeline) — the origin branch. Mirrors
+ * list() but keys on the indexed origin_request_id column
+ * (idx_merge_resolutions_origin), so it is project-agnostic by design (the
+ * origin id uniquely scopes the lane). Empty for a request that never
+ * conflicted under an enabled resolver.
+ */
+export function listByOriginRequest(
+  originRequestId: string,
+): MergeResolutionView[] {
+  const db = getDb();
+  const rows = db
+    .select()
+    .from(mergeResolutions)
+    .where(eq(mergeResolutions.originRequestId, originRequestId))
+    .orderBy(asc(mergeResolutions.createdAt))
+    .all() as MergeResolutionRow[];
+
+  return rows.map(toView);
+}

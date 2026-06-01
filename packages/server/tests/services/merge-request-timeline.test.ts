@@ -11,6 +11,7 @@ import * as requestSvc from "../../src/services/merge-request.service.js";
 import * as attemptSvc from "../../src/services/merge-attempt.service.js";
 import * as trainSvc from "../../src/services/train.service.js";
 import * as incidentSvc from "../../src/services/merge-incident.service.js";
+import * as resolutionSvc from "../../src/services/merge-resolution.service.js";
 
 describe("merge-request timeline (design §5.7)", () => {
   let testApp: TestApp;
@@ -284,6 +285,93 @@ describe("merge-request timeline (design §5.7)", () => {
 
     const timeline = requestSvc.getTimeline(r1.id);
     expect(timeline.events.some((e) => e.kind === "incident")).toBe(false);
+  });
+
+  it("Phase 7.6 origin chain: origin timeline carries a resolution event (state resolved + resolvedRequestId), ordered after the rejected milestone", () => {
+    const project = createTestProject(testApp.db);
+    const submitter = createTestUser(testApp.db);
+    const actor = agentActor();
+
+    // origin: submit → integrate → reject with a textual conflict
+    const origin = requestSvc.submit({
+      projectId: project.id,
+      submittedBy: submitter.id,
+      branch: "feat/origin",
+    });
+    requestSvc.transitionToIntegrating(origin.id, actor);
+    requestSvc.reject(
+      origin.id,
+      {
+        category: "conflict",
+        reason: "rebase conflict",
+        failedFiles: ["src/a.ts"],
+      },
+      actor,
+    );
+
+    // resolver opens + starts a resolution for the origin
+    const res = resolutionSvc.open(
+      {
+        projectId: project.id,
+        originRequestId: origin.id,
+        conflictingFiles: ["src/a.ts"],
+      },
+      actor,
+    );
+    resolutionSvc.start(res.id, actor);
+
+    // resolver resubmits the resolved tree as a NEW request (resolvedFrom → origin)
+    const resolved = requestSvc.submit({
+      projectId: project.id,
+      submittedBy: submitter.id,
+      branch: "feat/resolved",
+      resolvedFrom: origin.id,
+    });
+    resolutionSvc.resolved(
+      res.id,
+      { resolvedRequestId: resolved.id, detail: { budgetConsumedSec: 42 } },
+      actor,
+    );
+
+    const timeline = requestSvc.getTimeline(origin.id);
+    assertAscending(timeline.events);
+
+    const resolution = timeline.events.find((e) => e.kind === "resolution");
+    expect(resolution).toBeDefined();
+    expect(resolution!.resolutionState).toBe("resolved");
+    expect(resolution!.resolutionId).toBe(res.id);
+    expect(resolution!.originRequestId).toBe(origin.id);
+    expect(resolution!.resolvedRequestId).toBe(resolved.id);
+    expect(resolution!.conflictingFiles).toEqual(["src/a.ts"]);
+
+    // ordered after the rejected milestone (the resolution attempt started
+    // after the conflict reject).
+    const kinds = timeline.events.map((e) => e.kind);
+    expect(kinds.indexOf("rejected")).toBeLessThan(kinds.indexOf("resolution"));
+  });
+
+  it("Phase 7.6 resolved back-link: the resolved request timeline carries a resolution_origin event pointing at its origin", () => {
+    const project = createTestProject(testApp.db);
+    const submitter = createTestUser(testApp.db);
+
+    const origin = requestSvc.submit({
+      projectId: project.id,
+      submittedBy: submitter.id,
+      branch: "feat/origin2",
+    });
+    const resolved = requestSvc.submit({
+      projectId: project.id,
+      submittedBy: submitter.id,
+      branch: "feat/resolved2",
+      resolvedFrom: origin.id,
+    });
+
+    const timeline = requestSvc.getTimeline(resolved.id);
+    assertAscending(timeline.events);
+
+    const back = timeline.events.find((e) => e.kind === "resolution_origin");
+    expect(back).toBeDefined();
+    expect(back!.originRequestId).toBe(origin.id);
   });
 
   it("404 for an unknown request id", () => {

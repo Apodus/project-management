@@ -6,11 +6,14 @@ import {
   CheckCircle2,
   Database,
   Gauge,
+  Hash,
   Layers,
   PauseCircle,
   ShieldAlert,
   TrainFront,
   Timer,
+  TrendingUp,
+  Wrench,
   Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -614,6 +617,95 @@ function VerifyCacheSection({ projectId }: { projectId: string }) {
   );
 }
 
+// ─── Resolution lineage section (Phase 7.6) ──────────────────────
+
+function ResolutionSection({ projectId }: { projectId: string }) {
+  const { data: metrics, isLoading } = useTrainMetrics(projectId);
+
+  if (isLoading) {
+    return (
+      <Card className="py-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Conflict Resolution
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-8 w-48" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const resolution = metrics?.resolution;
+  if (!resolution) return null;
+
+  // No resolutions in the window (resolver off, or simply none) → muted notice.
+  if (resolution.attempts === 0) {
+    return (
+      <Card className="py-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Conflict Resolution
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center py-6">
+          <Wrench className="mb-2 size-8 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">No resolutions yet</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const budget = resolution.budget_utilization;
+  const budgetSub =
+    budget.mean_consumed_sec !== null
+      ? `${Math.round(budget.mean_consumed_sec)}s / ${budget.budget_sec}s`
+      : `budget ${budget.budget_sec}s`;
+
+  return (
+    <Card className="py-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          Conflict Resolution
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <MetricCard
+            label="Attempts"
+            value={String(resolution.attempts)}
+            icon={Hash}
+          />
+          <MetricCard
+            label="Auto-resolve success"
+            value={formatPercent(resolution.auto_resolve_success_rate.ratio)}
+            icon={CheckCircle2}
+            sub={`${resolution.auto_resolve_success_rate.resolved_and_landed}/${resolution.auto_resolve_success_rate.attempts} landed`}
+          />
+          <MetricCard
+            label="Escalation rate"
+            value={formatPercent(resolution.escalation_rate.ratio)}
+            icon={TrendingUp}
+            sub={`${resolution.escalation_rate.escalated}/${resolution.escalation_rate.attempts} escalated`}
+          />
+          <MetricCard
+            label="Mean resolver wall-clock"
+            value={formatDurationMs(resolution.mean_wall_clock_ms)}
+            icon={Timer}
+          />
+          <MetricCard
+            label="Budget utilization"
+            value={formatPercent(budget.ratio)}
+            icon={Gauge}
+            sub={budgetSub}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────────
 
 export function TrainDashboardPage() {
@@ -651,6 +743,9 @@ export function TrainDashboardPage() {
 
       {/* Verify cache + per-step metrics */}
       <VerifyCacheSection projectId={projectId} />
+
+      {/* Conflict-resolution lineage metrics (Phase 7.6) */}
+      <ResolutionSection projectId={projectId} />
 
       {/* Health + SLO */}
       <div className="grid gap-6 lg:grid-cols-2">

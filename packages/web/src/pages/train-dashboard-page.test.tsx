@@ -102,6 +102,21 @@ function seededMetrics(): TrainMetrics {
       ],
       cache_mismatches: 0,
     },
+    resolution: {
+      attempts: 8,
+      auto_resolve_success_rate: {
+        ratio: 0.5,
+        resolved_and_landed: 4,
+        attempts: 8,
+      },
+      escalation_rate: { ratio: 0.25, escalated: 2, attempts: 8 },
+      mean_wall_clock_ms: 250_000,
+      budget_utilization: {
+        ratio: 0.5,
+        mean_consumed_sec: 300,
+        budget_sec: 600,
+      },
+    },
     window_hours: 24,
     computed_at: new Date().toISOString(),
   };
@@ -139,6 +154,21 @@ function nullMetrics(): TrainMetrics {
       time_saved_ms: 0,
       per_step: [],
       cache_mismatches: 0,
+    },
+    resolution: {
+      attempts: 0,
+      auto_resolve_success_rate: {
+        ratio: null,
+        resolved_and_landed: 0,
+        attempts: 0,
+      },
+      escalation_rate: { ratio: null, escalated: 0, attempts: 0 },
+      mean_wall_clock_ms: null,
+      budget_utilization: {
+        ratio: null,
+        mean_consumed_sec: null,
+        budget_sec: 600,
+      },
     },
     window_hours: 24,
     computed_at: new Date().toISOString(),
@@ -267,6 +297,24 @@ describe("TrainDashboardPage — seeded data", () => {
     expect(screen.getByText("lint")).toBeInTheDocument();
     expect(screen.getByText("95%")).toBeInTheDocument();
   });
+
+  it("renders the conflict-resolution section metric cards (Phase 7.6)", () => {
+    render(<TrainDashboardPage />);
+    expect(screen.getByText("Conflict Resolution")).toBeInTheDocument();
+    // Attempts card.
+    expect(screen.getByText("Attempts")).toBeInTheDocument();
+    // Auto-resolve success: 0.5 → "50%" with the landed sub-line.
+    expect(screen.getByText("Auto-resolve success")).toBeInTheDocument();
+    expect(screen.getByText("4/8 landed")).toBeInTheDocument();
+    // Escalation rate: 0.25 → "25%".
+    expect(screen.getByText("Escalation rate")).toBeInTheDocument();
+    expect(screen.getByText("2/8 escalated")).toBeInTheDocument();
+    expect(screen.getByText("25%")).toBeInTheDocument();
+    // Mean wall-clock: 250000ms → "4m 10s".
+    expect(screen.getByText("4m 10s")).toBeInTheDocument();
+    // Budget utilization sub-line.
+    expect(screen.getByText("300s / 600s")).toBeInTheDocument();
+  });
 });
 
 describe("TrainDashboardPage — null-safe rendering (divide-by-null bug class)", () => {
@@ -299,6 +347,12 @@ describe("TrainDashboardPage — null-safe rendering (divide-by-null bug class)"
   it("shows the disabled verify-cache state without NaN (Phase 7.5)", () => {
     render(<TrainDashboardPage />);
     expect(screen.getByText("Verify cache disabled")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("NaN");
+  });
+
+  it("shows the empty conflict-resolution state when attempts are 0 (Phase 7.6)", () => {
+    render(<TrainDashboardPage />);
+    expect(screen.getByText("No resolutions yet")).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("NaN");
   });
 });

@@ -3734,7 +3734,9 @@
               "abandoned",
               "attempt",
               "audit",
-              "incident"
+              "incident",
+              "resolution",
+              "resolution_origin"
             ]
           },
           "attemptNumber": {
@@ -3832,6 +3834,68 @@
           },
           "resolution": {
             "nullable": true
+          },
+          "resolutionId": {
+            "type": "string"
+          },
+          "resolutionState": {
+            "type": "string"
+          },
+          "originRequestId": {
+            "type": "string"
+          },
+          "resolvedRequestId": {
+            "type": "string",
+            "nullable": true
+          },
+          "conflictingFiles": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "escalationTarget": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "author",
+              "human",
+              null
+            ]
+          },
+          "attemptStartedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "attemptEndedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "detail": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "budgetConsumedSec": {
+                "type": "number"
+              },
+              "tokensConsumed": {
+                "type": "number"
+              },
+              "verifyVerdict": {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "fail"
+                ]
+              },
+              "escalationReason": {
+                "type": "string"
+              },
+              "logUrl": {
+                "type": "string"
+              }
+            }
           }
         },
         "required": [
@@ -5563,6 +5627,86 @@
               "cache_mismatches"
             ]
           },
+          "resolution": {
+            "type": "object",
+            "properties": {
+              "attempts": {
+                "type": "number"
+              },
+              "auto_resolve_success_rate": {
+                "type": "object",
+                "properties": {
+                  "ratio": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "resolved_and_landed": {
+                    "type": "number"
+                  },
+                  "attempts": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "ratio",
+                  "resolved_and_landed",
+                  "attempts"
+                ]
+              },
+              "escalation_rate": {
+                "type": "object",
+                "properties": {
+                  "ratio": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "escalated": {
+                    "type": "number"
+                  },
+                  "attempts": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "ratio",
+                  "escalated",
+                  "attempts"
+                ]
+              },
+              "mean_wall_clock_ms": {
+                "type": "number",
+                "nullable": true
+              },
+              "budget_utilization": {
+                "type": "object",
+                "properties": {
+                  "ratio": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "mean_consumed_sec": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "budget_sec": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "ratio",
+                  "mean_consumed_sec",
+                  "budget_sec"
+                ]
+              }
+            },
+            "required": [
+              "attempts",
+              "auto_resolve_success_rate",
+              "escalation_rate",
+              "mean_wall_clock_ms",
+              "budget_utilization"
+            ]
+          },
           "window_hours": {
             "type": "number"
           },
@@ -5581,6 +5725,7 @@
           "health",
           "slo",
           "verify",
+          "resolution",
           "window_hours",
           "computed_at"
         ]
