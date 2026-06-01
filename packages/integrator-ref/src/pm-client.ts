@@ -689,4 +689,19 @@ export class PmClient {
       { originRequestId, resource, conflictingFiles },
     );
   }
+
+  /**
+   * Transition a resolution `pending → resolving` (§4.3 / §6). The resolver
+   * worker calls this FIRST, before any fallible work (worktree build, agent
+   * spawn), so the durable row reflects "the resolver picked this up" the moment
+   * processing starts. Params-only — no body (the id is in the path; PM records
+   * `attempt_started_at` + emits `merge.resolution.started`). Mirrors
+   * openResolution's request shape. POST /api/v1/merge-resolutions/{id}/start.
+   */
+  startResolution(resolutionId: string): Promise<MergeResolutionView> {
+    return this.request<MergeResolutionView>(
+      "POST",
+      `/merge-resolutions/${encodeURIComponent(resolutionId)}/start`,
+    );
+  }
 }

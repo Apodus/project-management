@@ -1,8 +1,18 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { rm } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
+import { killTree } from "./kill-tree.js";
+
+async function pathExistsLocal(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ─── Result types ─────────────────────────────────────────────────
 
@@ -18,6 +28,16 @@ export interface RebaseConflict {
 }
 
 export type RebaseResult = RebaseSuccess | RebaseConflict;
+
+/**
+ * Phase 7.6 §5.2 step 1. The result of materializing a textual rebase conflict
+ * IN PLACE — the worktree is left mid-rebase with conflict markers + `UU` index
+ * entries (the resolver agent's working material), unlike `rebaseOnto` which
+ * `--abort`s. `conflictingFiles` is the `--diff-filter=U` set git reported.
+ */
+export interface MaterializeConflictResult {
+  conflictingFiles: string[];
+}
 
 export interface PushSuccess {
   ok: true;
@@ -80,6 +100,35 @@ export interface GitOps {
   fetchFromPath(fromPath: string, sha: string): Promise<void>;
   checkout(ref: string): Promise<void>;
   rebaseOnto(base: string, branch: string): Promise<RebaseResult>;
+  /**
+   * Phase 7.6 §5.2 step 1. REPRODUCE the conflict the train's rebase hit, but
+   * leave the markers in the working tree (the resolver agent reconciles them)
+   * instead of `--abort`ing. Mechanism: `git checkout <ref>` then plain
+   * `git rebase <baseSha>`. A PLAIN rebase (unlike `rebaseOnto`'s flow, and
+   * unlike a rebase that auto-aborts on tooling error) halts WITH the conflict
+   * markers written + the index in `UU` state when it hits a textual conflict —
+   * so we SWALLOW the conflict throw and return the conflicting files, leaving
+   * the worktree mid-rebase for the agent. If the replay does NOT conflict
+   * (rare — main moved such that the conflict is gone), `conflictingFiles` is
+   * empty and the rebase already completed cleanly; the caller treats an empty
+   * set + clean tree as "nothing to resolve" downstream.
+   */
+  materializeConflict(
+    baseSha: string,
+    ref: string,
+  ): Promise<MaterializeConflictResult>;
+  /**
+   * Phase 7.6 §5.2. After the resolver agent has edited the conflicted files,
+   * COMMIT the resolution and complete the in-progress rebase. Stages everything
+   * (`git add -A`) then runs `git rebase --continue` NON-INTERACTIVELY (a
+   * `core.editor=true` / `GIT_EDITOR=true` no-op editor so `--continue` does not
+   * block on the commit-message prompt) and with an EXPLICIT identity (the exact
+   * pool-cloned-worktree pattern from `updateSubmoduleGitlink`, since these
+   * clones have no configured user). If the agent ALREADY committed the
+   * resolution (a clean tree with no rebase in progress), this resolves to the
+   * current HEAD. Returns the resolved commit SHA (the tree Step 7 pushes).
+   */
+  commitResolution(): Promise<string>;
   push(remote: string, branch: string): Promise<PushResult>;
   resolveRef(ref: string): Promise<string>;
   /**
@@ -194,32 +243,6 @@ function errText(err: unknown): string {
     return JSON.stringify(err);
   } catch {
     return String(err);
-  }
-}
-
-// ─── Process-tree kill (cross-platform) ───────────────────────────
-
-function killTree(pid: number, signal: NodeJS.Signals): void {
-  if (process.platform === "win32") {
-    // taskkill terminates the whole process tree. /T = tree, /F = force.
-    const tk = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
-      stdio: "ignore",
-    });
-    tk.on("error", () => {
-      /* best-effort */
-    });
-    return;
-  }
-  // POSIX: kill the process group (negative pid). spawn used detached so the
-  // child is its own group leader.
-  try {
-    process.kill(-pid, signal);
-  } catch {
-    try {
-      process.kill(pid, signal);
-    } catch {
-      /* already gone */
-    }
   }
 }
 
@@ -370,6 +393,72 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       }
       return { ok: false, conflictingFiles, stderr: errText(err) };
     }
+  }
+
+  async function conflictingFilesNow(): Promise<string[]> {
+    try {
+      const diff = await git.raw(["diff", "--name-only", "--diff-filter=U"]);
+      return diff
+        .split("\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  async function materializeConflict(
+    baseSha: string,
+    ref: string,
+  ): Promise<MaterializeConflictResult> {
+    // Replay `ref` onto `baseSha`, leaving the markers in place (do NOT abort).
+    await git.checkout(ref);
+    try {
+      await git.rebase([baseSha]);
+      // No conflict on replay (main moved so the collision is gone). The rebase
+      // already completed; report an empty conflict set.
+      return { conflictingFiles: [] };
+    } catch {
+      // Expected path: the rebase halted on a textual conflict. The markers +
+      // `UU` index entries are now in the working tree — exactly what the
+      // resolver agent reconciles. SWALLOW the throw (it is the conflict, not a
+      // failure) and report the conflicting files.
+      return { conflictingFiles: await conflictingFilesNow() };
+    }
+  }
+
+  async function commitResolution(): Promise<string> {
+    const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+    // Detect whether a rebase is still in progress. If the agent already
+    // committed the resolution and completed the rebase, there is nothing to
+    // continue — just resolve HEAD.
+    const rebaseInProgress =
+      (await pathExistsLocal(path.join(topLevel, ".git", "rebase-merge"))) ||
+      (await pathExistsLocal(path.join(topLevel, ".git", "rebase-apply")));
+
+    if (rebaseInProgress) {
+      // Stage the agent's resolution, then complete the rebase NON-INTERACTIVELY
+      // with an EXPLICIT identity (pool clones have no configured user) and a
+      // no-op editor so `--continue` does not block on the message prompt.
+      await git.add(["-A"]);
+      await runGit(
+        [
+          "-c",
+          "user.email=integrator@pm.local",
+          "-c",
+          "user.name=PM Integrator",
+          "-c",
+          "commit.gpgsign=false",
+          "-c",
+          "core.editor=true",
+          "rebase",
+          "--continue",
+        ],
+        topLevel,
+        { ...process.env, GIT_EDITOR: "true" },
+      );
+    }
+    return (await git.revparse(["HEAD"])).trim();
   }
 
   async function push(remote: string, branch: string): Promise<PushResult> {
@@ -615,6 +704,8 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     fetchFromPath,
     checkout,
     rebaseOnto,
+    materializeConflict,
+    commitResolution,
     push,
     resolveRef,
     updateSubmoduleGitlink,

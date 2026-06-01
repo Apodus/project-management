@@ -6,6 +6,7 @@ import { createLogger } from "./logger.js";
 import { createGitOps } from "./git-ops.js";
 import { createWorktreePool } from "./worktree-pool.js";
 import { createResolverPool } from "./resolver-pool.js";
+import { createClaudeResolverRunner } from "./resolver-runner.js";
 import { createSseSubscriber } from "./sse-subscriber.js";
 import { reclaimStrandedGroups, reclaimStrandedRequests } from "./recovery.js";
 import { runBatchLoop, type GroupLaneDeps } from "./batch.js";
@@ -146,6 +147,50 @@ async function main(): Promise<void> {
       gitRemote: cfg.gitRemote,
       gitMainBranch: cfg.gitMainBranch,
       maxConcurrent: cfg.resolver.maxConcurrent,
+      // ── Phase 7.6 Step 6 worker deps. ──
+      pmClient,
+      logger,
+      gitOps: makeGitOps,
+      verifySteps: cfg.verifySteps,
+      defaultVerifyCommand: cfg.verifyCommand,
+      verifyTimeoutSec: cfg.verifyTimeoutSec,
+      runner: createClaudeResolverRunner(cfg),
+      timeBudgetSec: cfg.resolver.timeBudgetSec,
+      tokenBudget: cfg.resolver.tokenBudget,
+      // ──────────────────────────────────────────────────────────────────
+      // STEP-7 SEAM (design §5.3/§5.4): the onOutcome handler.
+      //
+      // Step 7 replaces this stub with the real handler: on `resolved` it
+      // PUSHES the resolved commit from `outcome.worktreePath` (it is reachable
+      // ONLY in the resolver clone until pushed), then RESUBMITS it as a new
+      // merge request carrying `resolved_from = origin.id` and records
+      // `resolved_request_id` (→ resolved). On `escalate` it transitions the
+      // resolution (escalated/failed) and posts a `merge_rejection` comment on
+      // the origin task. Step 6 keeps the worktree LEASED until this resolves.
+      //
+      // For now: a logged no-op stub so the worker is exercisable end-to-end.
+      // ──────────────────────────────────────────────────────────────────
+      onOutcome: (outcome) => {
+        if (outcome.kind === "resolved") {
+          logger.info(
+            {
+              resolutionId: outcome.resolutionId,
+              resolvedCommitSha: outcome.resolvedCommitSha,
+              worktreePath: outcome.worktreePath,
+            },
+            "STEP-7 STUB: resolution resolved (push + resubmit not yet wired)",
+          );
+        } else {
+          logger.info(
+            {
+              resolutionId: outcome.resolutionId,
+              state: outcome.state,
+              reason: outcome.reason,
+            },
+            "STEP-7 STUB: resolution escalated (escalate + comment not yet wired)",
+          );
+        }
+      },
     });
     try {
       await resolverPool.gc();

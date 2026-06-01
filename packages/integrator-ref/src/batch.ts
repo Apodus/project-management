@@ -44,7 +44,6 @@ import {
   recoverOrphanedInner,
   type RecoverResult,
 } from "./group-recovery.js";
-import type { ResolutionJob } from "./resolver-pool.js";
 
 const LOG_EXCERPT_CAP = 4096;
 
