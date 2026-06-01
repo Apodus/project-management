@@ -1,8 +1,8 @@
 # Integrator deployment guide
 
 **Audience**: operators deploying and running the reference integrator (`@pm/integrator-ref`) for a PM project.
-**Scope**: the merge train — one integrator process per `(project, resource)` lane. Phase 7.1 (serial, `parallelism: 1`) is the baseline; **Phase 7.2 adds speculative batching** (`parallelism: N`, §13); **Phase 7.3 adds cross-repo atomicity** (linked inner/outer repos landing as a unit, §14).
-**Companion specs**: `docs/design/phase-7.1-design.md` (serial baseline), `docs/design/phase-7.2-design.md` (speculative batching — data model, lock protocol, observability, failure catalog), and `docs/design/phase-7.3-design.md` (cross-repo atomicity — linked-repo model, group + incident tables, assembled verify, atomic-land protocol, orphaned-inner recovery). When this guide and a design doc disagree on a contract detail, the design doc wins.
+**Scope**: the merge train — one integrator process per `(project, resource)` lane. Phase 7.1 (serial, `parallelism: 1`) is the baseline; **Phase 7.2 adds speculative batching** (`parallelism: N`, §13); **Phase 7.3 adds cross-repo atomicity** (linked inner/outer repos landing as a unit, §14); **Phase 7.4 adds observability + break-glass** (§15); **Phase 7.5 adds smart verification** (§16); **Phase 7.6 adds intelligent conflict resolution** (an opt-in headless resolver, §18).
+**Companion specs**: `docs/design/phase-7.1-design.md` (serial baseline), `docs/design/phase-7.2-design.md` (speculative batching — data model, lock protocol, observability, failure catalog), `docs/design/phase-7.3-design.md` (cross-repo atomicity — linked-repo model, group + incident tables, assembled verify, atomic-land protocol, orphaned-inner recovery), `docs/design/phase-7.4-design.md` (observability + break-glass), `docs/design/phase-7.5-design.md` (smart verification — verify DAG + verify-result cache), and `docs/design/phase-7.6-design.md` (intelligent conflict resolution — resolver config, resolution state machine, escalation ladder). When this guide and a design doc disagree on a contract detail, the design doc wins.
 
 This guide is written so a fresh operator can take a project from "integrator disabled" to "a test merge request landed" in about 30 minutes. The fast path is the checklist in §12; everything before it is reference.
 
@@ -63,6 +63,17 @@ The package declares a `pm-integrator` bin, but for deployment you typically inv
 ```bash
 node packages/integrator-ref/dist/index.js …
 ```
+
+> **Pre-bundled artifact (no monorepo checkout).** If you received a single-file
+> `pm-integrator.mjs` instead of the full repo (e.g. it was distributed into your
+> client repo under `tools/pm-integrator/`), you do **not** need to install or
+> build anything — skip this section. Run that file directly in place of the
+> `dist/index.js` path; every CLI flag and environment variable below is
+> identical:
+>
+> ```bash
+> node tools/pm-integrator/pm-integrator.mjs --project <id> --resource main --pm-url http://localhost:3000
+> ```
 
 ---
 
@@ -275,7 +286,7 @@ Every realistic Month 1 failure, its symptom, and the recovery path. "Operator a
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Integrator crash mid-attempt            | Request stuck `integrating`; no `merge.attempt.completed`; Stage 1 lock TTL expires within ≤5 min                                                                       | On restart the integrator scans stranded `integrating` requests and resets them to `queued` (open attempts → `cancelled`); the lock self-heals via TTL expiry | Restart the process (a supervisor does this on exit code 1). |
 | Verify timeout                          | `merge.attempt.completed` with `failureCategory=verify_timeout`; `merge.request.rejected` with `category=verify_timeout`                                                | Automatic: categorize → reject                                                                                                                                | None.                                                        |
-| Rebase conflict                         | `merge.request.rejected` with `category=conflict`; `failedFiles` captured from the conflicting paths                                                                    | Automatic: categorize → reject                                                                                                                                | Worker resolves locally and resubmits.                       |
+| Rebase conflict                         | `merge.request.rejected` with `category=conflict`; `failedFiles` captured from the conflicting paths                                                                    | Automatic: categorize → reject (or, with the resolver enabled, an opt-in headless auto-resolution attempt — see §18)                                          | Worker resolves locally and resubmits.                       |
 | Push race                               | `git push` is non-fast-forward after verify passed (main moved); verified tree is stale                                                                                 | Automatic: cancel the attempt, reset request to `queued`, release the lock; the next iteration rebases onto the new main and retries                          | None.                                                        |
 | Already-landed / no-op request          | The request's content is already on `main` (landed out-of-band under a different SHA, or a duplicate submission); after rebase the tree is byte-identical to live `main` | Automatic **no-op land**: under the lane lock, the land path detects `HEAD`'s tree == live `main`'s tree (`git diff --quiet`) and records the request `landed` at the **current** `main` SHA **without pushing** — never advancing `main` by an empty commit, never re-applying. A passing attempt is recorded; the linked task's `landed_sha` git_ref points at current `main`. | None (the queue self-clears; nothing to re-apply). |
 | Disk full                               | Verify / log write / worktree op fails with `ENOSPC`; rejected as `other` with the system error in `failureReason`                                                      | Automatic reject; integrator cannot make progress until space is freed                                                                                        | **Free disk space** on the integrator host.                  |
@@ -899,3 +910,103 @@ The "submit and walk away" contract requires a running integrator — PM never s
 ### 17.3 Cross-repo changes MUST be grouped
 
 A change spanning linked inner+outer repos must be submitted as ONE group, never two bare `pm_request_merge` calls. Ungrouped pairs defeat atomicity and can land a regressing outer gitlink. Worker: submit each repo's request, then bind with `pm_request_merge_group`; watch with `pm_get_merge_group`. The integrator lands the group inner-first-then-outer under one lane lock (§14).
+
+---
+
+## 18. Intelligent conflict resolution (Phase 7.6)
+
+Phase 7.6 lets the train **attempt to resolve a textual rebase conflict for you** before kicking the change back to a human. When the integrator rebases a request onto live `main` and hits a textual conflict, instead of rejecting straight back to the worker it may — behind an opt-in flag — spawn a **bounded headless resolver** (a `claude -p` session in an isolated worktree) to reconcile the two intents, run the **real verify gate** on the result, and resubmit it as a **linked new merge request** (tagged `resolved_from = <originalId>`). If the resolver can't produce a clean, verify-passing tree within its budget, the conflict is handed back along an **escalation ladder** (origin author → human). No proven work is ever discarded — the original commit stays intact — and `main` is only ever advanced by the normal verify-gated land path.
+
+This is **opt-in**. With `settings.integrator.resolver.enabled = false` (the default) the train is **byte-identical to 7.5**: a conflict rejects exactly as before, zero resolution rows are written, zero resolution events fire. This section is the operator-facing summary; the authoritative spec is `docs/design/phase-7.6-design.md`.
+
+Backing PM state (migration `0017`): a new `merge_resolutions` table (one row per resolution attempt — `state` transitions through `pending → resolving → resolved | escalated | failed`) and a nullable `merge_requests.resolved_from` lineage column. Like the 7.2 batch state, the integrator owns in-flight resolution scheduling in memory; `merge_resolutions` is the durable record, not the scheduler.
+
+### 18.1 Configuring the resolver
+
+Stored under `projects.settings.integrator.resolver` (snake_case, a sibling of `verify_steps` / `slo`). Canonical Zod-3 in `@pm/shared`; route-local Zod-4 mirror (the established split).
+
+| Field             | Type        | Default   | Notes                                                                                                                                                  |
+| ----------------- | ----------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`         | boolean     | `false`   | Master kill-switch. `false` ⇒ inert; a conflict rejects exactly as in 7.5. See §18.2.                                                                  |
+| `max_concurrent`  | integer ≥ 1 | `1`       | Size of the resolver pool — number of resolutions running at once. Separate from the verify worktree pool. See §18.3.                                  |
+| `time_budget_sec` | number > 0  | `600`     | Wall-clock cap on one resolution (SIGTERM then SIGKILL). Exceeding ⇒ escalate. See §18.3.                                                              |
+| `token_budget`    | number > 0  | (none)    | Optional model-token cap passed to the headless session. Exceeding ⇒ escalate.                                                                        |
+| `command`         | string      | (none)    | Optional override for how the headless agent is invoked. Default is `claude -p` against the resolver worktree. Lets operators swap the resolver binary. |
+
+These are the **only** five resolver fields. An **absent/empty** `resolver` block is treated as `{ enabled: false, max_concurrent: 1, time_budget_sec: 600 }` (the inner defaults fire). Set it via `PATCH /api/v1/projects/{id}` under `settings.integrator.resolver` — there is **no env var or CLI flag** (config lives on the project, exactly like the 7.5 cache):
+
+```json
+{
+  "settings": {
+    "integrator": {
+      "enabled": true,
+      "verify_command": "cargo build --workspace && cargo test --workspace",
+      "worktree_root": "/srv/game_one/integrators/main",
+      "resolver": {
+        "enabled": true,
+        "max_concurrent": 1,
+        "time_budget_sec": 600
+      }
+    }
+  }
+}
+```
+
+The `PATCH /projects/{id}` route validates this with the Zod schema (`max_concurrent ≥ 1`, `time_budget_sec > 0`); an invalid config returns 400.
+
+### 18.2 The kill-switch (default-off = inert)
+
+`resolver.enabled` is the master switch, and its default is **`false`**. With it off, a `RebaseConflict` categorizes and rejects **exactly as in 7.5** — every 7.6 code path is skipped: **zero `merge_resolutions` rows are written, zero `merge.resolution.*` events fire**. This is the prime backward-compatibility guarantee, and it is what lets the engine ship dark.
+
+- **Enable** by `PATCH`ing the project with `settings.integrator.resolver.enabled = true` (§18.1). The integrator re-reads settings on its next pass.
+- **Instant revert:** flip `enabled` back to `false`. The next conflict rejects the plain 7.5 way again. No restart, no risk.
+
+### 18.3 Budget + cost controls
+
+A resolution is **one bounded attempt** — there is **no retry loop**. Three controls bound its cost:
+
+- **`time_budget_sec`** (default `600`) — the wall-clock cap on one resolution. When it's exceeded the session is killed (SIGTERM, then SIGKILL after a grace period) and the resolution **escalates** to the author. A resolution is never allowed to run unbounded.
+- **`token_budget`** (optional) — a model-token cap passed to the headless session. Exceeding it likewise escalates.
+- **`max_concurrent`** (default `1`) — the size of the **resolver pool**: how many resolutions run at once. Each slot is **an isolated worktree _plus_ a spawned headless Claude session**, so size it against **CPU/RAM _and_ API cost**, not just disk — every concurrent slot is another live model session.
+
+> **The honest cost reality.** Each resolution spawns a **real headless Claude session** that consumes wall-clock and tokens **whether it succeeds or not** — a failed resolution still cost you a full agent run before it escalated. This is a genuine, metered cost, not free retry. **Start at `max_concurrent: 1`** and raise it only once you've watched the resolution metrics (§18.5) and decided the auto-resolve success rate justifies the spend.
+
+### 18.4 The escalation ladder
+
+A conflict travels down this ladder, stopping at the first rung that lands it:
+
+1. **Auto-resolve.** The resolver reconciles the conflict in an isolated worktree, runs a local verify pre-filter, and resubmits the result as a **new** merge request (`resolved_from = origin.id`, `task_id` copied from the origin). That resolved request **rides the train like anything else and passes the REAL verify gate again** before it can land — the local pre-verify is a fast filter, never the authority. On a clean pass it lands; `merge_resolutions.state = resolved`.
+2. **Author handback.** If the resolver can't produce a clean, verify-passing tree — the agent reports it's still conflicted, verify fails, or the time/token budget is exceeded — the conflict is handed **back to the origin author**. A `merge_rejection` comment is posted on the origin task carrying the **conflicting files**, the **verify verdict or budget reason**, and an explicit note that **auto-resolution was attempted and the original commit is intact — fix forward, don't redo**. The state is `escalated` (or `failed` for an infra error), `escalation_target = author`.
+3. **Human.** If the author can't resolve it either, normal human escalation applies — no new machinery, just an unresolved task with a clear trail.
+
+At no rung is work discarded: the origin request still holds the author's commit, and "redo the task from scratch" is never a path.
+
+### 18.5 What operators see
+
+- **Per-request timeline (lineage chain).** The timeline (`GET /api/v1/merge-requests/{id}/timeline`) renders the lineage `origin (rejected conflict) → resolution attempt (state) → resolved request (its own land timeline)`; the resolved request back-links to its origin via `resolved_from`. A resolution in `resolving` shows up as **in-flight composition** on the train dashboard, so a long-running resolver is visible rather than mysterious latency.
+- **Dashboard metrics sub-block.** The on-read metrics bundle (`GET .../train/metrics`) gains a `resolution` sub-block (snake_case, inert — `attempts: 0`, ratios `null` — when the resolver is off):
+
+  ```json
+  {
+    "resolution": {
+      "attempts": 12,
+      "auto_resolve_success_rate": { "ratio": 0.58, "resolved_and_landed": 7, "attempts": 12 },
+      "escalation_rate": { "ratio": 0.42, "escalated": 5, "attempts": 12 },
+      "mean_wall_clock_ms": 184000,
+      "budget_utilization": { "ratio": 0.31, "mean_consumed_sec": 184, "budget_sec": 600 }
+    }
+  }
+  ```
+
+- **Five SSE events** (relayed like the existing `merge.*` frames): `merge.resolution.pending`, `merge.resolution.started`, `merge.resolution.succeeded`, `merge.resolution.escalated`, `merge.resolution.failed`. Each is tagged with `origin_request_id` and `resolution_id` (and, on success, `resolved_request_id`).
+- **Inspection APIs** (any authenticated user — debug + dashboard): `GET /api/v1/projects/{projectId}/merge-resolutions` (list) and `GET /api/v1/merge-resolutions/{id}` (single detail). The integrator-driven writes (`POST .../merge-resolutions`, `.../{id}/start`, `.../{id}/resolved`, `.../{id}/escalate`) are `ai_agent`-only and HTTP-only — there are **no new worker MCP tools** (the resolver is integrator machinery, like the 7.4/7.5 channels).
+
+### 18.6 Failure + operational notes
+
+- **Off = inert.** `resolver.enabled = false` ⇒ a conflict rejects the plain 7.5 way; no rows, no events (§18.2).
+- **Infra failures escalate, tagged `failed`.** A resolver worktree build failure, a headless-agent spawn failure, or a missing `command` resolves the attempt as **`failed`** and escalates to the author. The origin was already rejected, so there is no `main` impact.
+- **"Too hard" escalates, tagged `escalated`.** The agent runs but its output is still conflicted, the verify fails, or the time/token budget is exceeded → **`escalated` → author** (an honest "too hard"). Work intact.
+- **No recursion.** If a **resolved** request conflicts or fails verify **again** on the train, it takes the **normal** reject path — the resolver does **not** re-engage (one-attempt rule, enforced by `resolved_from != null`). It goes to the author like any other rejection.
+- **The lane is never held across a resolution.** The lane lock is released at the conflict seam **before** any resolution begins (it maps to the existing `releaseLock` call), so a multi-minute resolver session never stalls the train. A PM I/O throw mid-resolution is best-effort: log + escalate; it **never blocks the lane**. Two integrators on the same lane don't double-run a resolution — it's keyed by the `merge_resolutions` row.
+- **v1 limitation — a dangling `resolving` row.** If the integrator **crashes mid-resolution**, the `merge_resolutions` row is stranded in `resolving`. **No work is lost** (the origin commit is intact and `main` is untouched), but there is **no auto crash-recovery sweep** for resolution rows yet — the stranded row simply sits in `resolving`. A v2 follow-up adds a reclaim sweep; until then, an operator can spot it via `GET .../merge-resolutions` and treat the origin as an ordinary rejected conflict.
+- **The honest limitation.** Verify is the **only** arbiter — the resolver's self-asserted confidence never gates a land. Resolution is bounded and **one-shot** (no iterative rounds in v1), and **conflict-only** (semantic verify failures and cross-repo group conflicts are out of scope for v1; group conflicts stay on the 7.3 reject/incident path). The prime invariant holds: **`main` is only ever advanced by the normal verify-gated land path** — the resolver only ever _submits a request_, never pushes `main` itself.
