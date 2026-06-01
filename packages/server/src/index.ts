@@ -34,11 +34,7 @@ if (isProduction) {
   } else {
     console.log(`Serving static files from ${webDistPath}`);
 
-    // Cache index.html content for SPA fallback
     const indexHtmlPath = path.join(webDistPath, "index.html");
-    const indexHtml = existsSync(indexHtmlPath)
-      ? readFileSync(indexHtmlPath, "utf-8")
-      : null;
 
     // Static file serving — serves JS, CSS, images, etc.
     app.use(
@@ -59,9 +55,26 @@ if (isProduction) {
     );
 
     // SPA fallback — any GET not matching /api/*, /health, or a static file
-    // returns index.html so client-side routing works
-    if (indexHtml) {
+    // returns index.html so client-side routing works.
+    if (existsSync(indexHtmlPath)) {
       app.get("*", (c) => {
+        // Do NOT fall back to index.html for asset-like requests (anything with
+        // a file extension). serveStatic already missed them, so they are
+        // genuinely absent — return a clean 404 instead of HTML. Serving
+        // text/html for a `.js`/`.css` request triggers the browser's strict
+        // module MIME check and blanks the whole SPA.
+        if (/\.[a-zA-Z0-9]+$/.test(c.req.path)) {
+          return c.notFound();
+        }
+        // Read index.html FRESH per request (never cached at startup). A dist
+        // rebuilt while the server is running otherwise leaves the fallback
+        // serving stale HTML that points at deleted hashed assets — which is
+        // exactly the blank-page-on-deep-route-refresh bug (root worked because
+        // serveStatic served the fresh on-disk index.html for "/").
+        const indexHtml = readFileSync(indexHtmlPath, "utf-8");
+        // Never let a browser cache the HTML shell, or it will keep requesting
+        // stale asset hashes after a deploy.
+        c.header("Cache-Control", "no-cache");
         return c.html(indexHtml);
       });
     }
