@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { FileText, MessageSquare, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -105,11 +105,16 @@ export function ProposalListPage() {
   const navigate = useNavigate();
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
 
-  // Fetch project details so we can set the project name in the store
+  // Fetch project details so we can set the project name in the store.
+  // Done in an effect — calling a store setter during render updates other
+  // subscribed components (sidebar/header) mid-render, which React 19 flags as
+  // an error.
   const { data: project } = useProject(projectId);
-  if (project) {
-    setCurrentProject(project.id, project.name);
-  }
+  useEffect(() => {
+    if (project) {
+      setCurrentProject(project.id, project.name);
+    }
+  }, [project, setCurrentProject]);
 
   const { data: currentUser } = useCurrentUser();
 
@@ -143,7 +148,7 @@ export function ProposalListPage() {
     if (!title.trim() || !projectId) return;
 
     try {
-      const proposal = await createProposal.mutateAsync({
+      await createProposal.mutateAsync({
         projectId,
         data: {
           title: title.trim(),
@@ -154,7 +159,8 @@ export function ProposalListPage() {
       setDialogOpen(false);
       setTitle("");
       setDescription("");
-      navigate({ to: "/proposals/$proposalId", params: { proposalId: proposal.id } });
+      // Stay on the proposals list — the list refetches via useCreateProposal's
+      // invalidation, so the new proposal appears here without navigating away.
     } catch {
       // Error is handled by TanStack Query
     }
@@ -181,7 +187,7 @@ export function ProposalListPage() {
               New Proposal
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <form onSubmit={handleCreateProposal}>
               <DialogHeader>
                 <DialogTitle>Create Proposal</DialogTitle>
@@ -220,6 +226,10 @@ export function ProposalListPage() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     rows={6}
+                    // field-sizing-content (the base Textarea style) auto-grows
+                    // to fit content; cap it so a long description scrolls inside
+                    // the field instead of pushing the dialog footer off-screen.
+                    className="max-h-[45vh]"
                   />
                 </div>
               </div>
