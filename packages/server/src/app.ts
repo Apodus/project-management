@@ -29,6 +29,7 @@ import { createMergeRequestRoutes } from "./routes/merge-requests.js";
 import { createMergeBatchRoutes } from "./routes/merge-batches.js";
 import { createMergeGroupRoutes } from "./routes/merge-groups.js";
 import { createMergeIncidentRoutes } from "./routes/merge-incidents.js";
+import { createMergeResolutionRoutes } from "./routes/merge-resolutions.js";
 import { createIntegratorHealthRoutes } from "./routes/integrator-health.js";
 import { createTrainRoutes } from "./routes/train.js";
 import { createVerifyCacheRoutes } from "./routes/verify-cache.js";
@@ -112,6 +113,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
   app.route("/", createMergeBatchRoutes());
   app.route("/", createMergeGroupRoutes());
   app.route("/", createMergeIncidentRoutes());
+  app.route("/", createMergeResolutionRoutes());
   app.route("/", createIntegratorHealthRoutes());
   app.route("/", createTrainRoutes());
   app.route("/", createVerifyCacheRoutes());

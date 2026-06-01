@@ -102,6 +102,17 @@ export const EVENT_NAMES = {
   // that disagrees with the real run. onAll auto-forwards it to the SSE stream;
   // action becomes "cache_mismatch".
   VERIFY_CACHE_MISMATCH: "verify.cache_mismatch",
+
+  // Merge resolution events (Phase 7.6 §7 — PM-owned, emitted by
+  // merge-resolution.service after each transition commits). The resolver
+  // lifecycle: pending → resolving → resolved | escalated | failed. onAll
+  // auto-forwards these to the SSE stream; routes/events.ts additively
+  // projects resolution_id / origin_request_id / resolved_request_id.
+  MERGE_RESOLUTION_PENDING: "merge.resolution.pending",
+  MERGE_RESOLUTION_STARTED: "merge.resolution.started",
+  MERGE_RESOLUTION_SUCCEEDED: "merge.resolution.succeeded",
+  MERGE_RESOLUTION_ESCALATED: "merge.resolution.escalated",
+  MERGE_RESOLUTION_FAILED: "merge.resolution.failed",
 } as const;
 
 export type EventName = (typeof EVENT_NAMES)[keyof typeof EVENT_NAMES];

@@ -9273,6 +9273,571 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/merge-resolutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List merge resolutions in a project
+         * @description Returns resolutions for the project ordered by createdAt asc. Optional filters: state, resource. Any authenticated user (debug + dashboard).
+         */
+        get: {
+            parameters: {
+                query?: {
+                    state?: "pending" | "resolving" | "resolved" | "escalated" | "failed";
+                    resource?: string;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Filtered list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeResolution"][];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Integrator opens a conflict resolution
+         * @description Durable PM record that the integrator hit a textual rebase conflict and (resolver enabled) spun a bounded resolution off-lane for an origin request. Inserts the resolution at state 'pending'. Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeResolutionOpen"];
+                };
+            };
+            responses: {
+                /** @description Opened resolution */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeResolution"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-resolutions/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a resolution (pending → resolving)
+         * @description The resolver built the worktree and spawned the headless agent. Sets attemptStartedAt. Legal only from 'pending'. Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Now resolving */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeResolution"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Resolution not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid transition from current state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-resolutions/{id}/resolved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a resolved resolution (resolving → resolved)
+         * @description The resolver produced a clean, locally-verified tree and resubmitted it as a new request. Records resolvedRequestId + attemptEndedAt. Legal only from 'resolving'. The resolved request still passes the real verify gate before landing. Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeResolutionResolved"];
+                };
+            };
+            responses: {
+                /** @description Now resolved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeResolution"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Resolution not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid transition from current state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-resolutions/{id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Escalate a resolution (resolving → escalated | failed)
+         * @description The resolver couldn't land a clean tree. 'escalated' = verify-fail / budget / agent-can't; 'failed' = infra error (tagged distinctly). Sets escalationTarget + attemptEndedAt + detail.escalationReason. Legal only from 'resolving'. Integrator (ai_agent) only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeResolutionEscalate"];
+                };
+            };
+            responses: {
+                /** @description Now escalated/failed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeResolution"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Integrator (ai_agent) only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Resolution not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid transition from current state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merge-resolutions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a merge resolution
+         * @description Returns the resolution row including its detail and lineage (originRequestId, resolvedRequestId). Any authenticated user.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resolution */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeResolution"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Resolution not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/integrator/heartbeat": {
         parameters: {
             query?: never;
@@ -11548,6 +12113,7 @@ export interface components {
             resource: string;
             submittedBy: string;
             taskId: string | null;
+            resolvedFrom: string | null;
             branch: string | null;
             commitSha: string | null;
             verifyCmd: string | null;
@@ -11730,6 +12296,7 @@ export interface components {
             resource: string;
             submittedBy: string;
             taskId: string | null;
+            resolvedFrom: string | null;
             branch: string | null;
             commitSha: string | null;
             verifyCmd: string | null;
@@ -11833,6 +12400,65 @@ export interface components {
             outerLandedSha?: string;
             resolvedByGroupId?: string;
             note?: string;
+        };
+        MergeResolution: {
+            id: string;
+            projectId: string;
+            resource: string;
+            originRequestId: string | null;
+            resolvedRequestId: string | null;
+            /** @enum {string} */
+            state: "pending" | "resolving" | "resolved" | "escalated" | "failed";
+            conflictingFiles: string[] | null;
+            attemptStartedAt: string | null;
+            attemptEndedAt: string | null;
+            /** @enum {string|null} */
+            escalationTarget: "author" | "human" | null;
+            detail: {
+                budgetConsumedSec?: number;
+                tokensConsumed?: number;
+                /** @enum {string} */
+                verifyVerdict?: "pass" | "fail";
+                escalationReason?: string;
+                logUrl?: string;
+            } | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        MergeResolutionOpen: {
+            originRequestId: string;
+            /** @default main */
+            resource: string;
+            conflictingFiles?: string[] | null;
+        };
+        MergeResolutionResolved: {
+            resolvedRequestId: string;
+            detail?: {
+                budgetConsumedSec?: number;
+                tokensConsumed?: number;
+                /** @enum {string} */
+                verifyVerdict?: "pass" | "fail";
+                escalationReason?: string;
+                logUrl?: string;
+            } | null;
+        };
+        MergeResolutionEscalate: {
+            /**
+             * @default escalated
+             * @enum {string}
+             */
+            state: "escalated" | "failed";
+            /** @enum {string} */
+            target: "author" | "human";
+            reason: string;
+            detail?: {
+                budgetConsumedSec?: number;
+                tokensConsumed?: number;
+                /** @enum {string} */
+                verifyVerdict?: "pass" | "fail";
+                escalationReason?: string;
+                logUrl?: string;
+            } | null;
         };
         IntegratorHealth: {
             resource: string;

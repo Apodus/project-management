@@ -92,6 +92,13 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
         let stepId: string | undefined;
         let cachedResult: string | undefined;
         let realResult: string | undefined;
+        // Phase 7.6 (§7): resolver-lifecycle identifying fields, read
+        // additively off payload.entity exactly like group_id/tree_sha so they
+        // ride the merge.resolution.* frames. Absent → omitted, so all
+        // 7.1–7.5 frames stay byte-identical.
+        let resolutionId: string | undefined;
+        let originRequestId: string | undefined;
+        let resolvedRequestId: string | undefined;
         if (payload.entity && typeof payload.entity === "object") {
           const entity = payload.entity as Record<string, unknown>;
           switch (payload.entityType) {
@@ -118,6 +125,13 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           if (typeof entity.stepId === "string") stepId = entity.stepId;
           if (typeof entity.cachedResult === "string") cachedResult = entity.cachedResult;
           if (typeof entity.realResult === "string") realResult = entity.realResult;
+          if (typeof entity.resolutionId === "string") resolutionId = entity.resolutionId;
+          if (typeof entity.originRequestId === "string") {
+            originRequestId = entity.originRequestId;
+          }
+          if (typeof entity.resolvedRequestId === "string") {
+            resolvedRequestId = entity.resolvedRequestId;
+          }
         }
 
         const ssePayload = {
@@ -139,6 +153,9 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           ...(stepId ? { step_id: stepId } : {}),
           ...(cachedResult ? { cached_result: cachedResult } : {}),
           ...(realResult ? { real_result: realResult } : {}),
+          ...(resolutionId ? { resolution_id: resolutionId } : {}),
+          ...(originRequestId ? { origin_request_id: originRequestId } : {}),
+          ...(resolvedRequestId ? { resolved_request_id: resolvedRequestId } : {}),
         };
 
         stream.writeSSE({
