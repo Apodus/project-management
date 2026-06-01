@@ -3531,6 +3531,10 @@
           "worktreePath": {
             "type": "string",
             "nullable": true
+          },
+          "resolvedFrom": {
+            "type": "string",
+            "nullable": true
           }
         }
       },

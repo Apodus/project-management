@@ -54,6 +54,7 @@ export interface SubmitParams {
   commitSha?: string | null;
   verifyCmd?: string | null;
   worktreePath?: string | null;
+  resolvedFrom?: string | null;
 }
 
 export interface ListParams {
@@ -409,6 +410,7 @@ export function submit(params: SubmitParams): MergeRequestView {
       commitSha: params.commitSha ?? null,
       verifyCmd: params.verifyCmd ?? null,
       worktreePath: params.worktreePath ?? null,
+      resolvedFrom: params.resolvedFrom ?? null,
       status: "queued",
       enqueuedAt: now,
       pickedUpAt: null,

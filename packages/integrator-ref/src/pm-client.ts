@@ -26,6 +26,8 @@ import type {
   VerifyStepResult,
   CacheMode,
   MergeResolutionView,
+  MergeResolutionDetail,
+  CommentType,
 } from "@pm/shared";
 // Type-only import (avoids a runtime circular import with batch.ts).
 import type { BatchEvent } from "./batch.js";
@@ -702,6 +704,95 @@ export class PmClient {
     return this.request<MergeResolutionView>(
       "POST",
       `/merge-resolutions/${encodeURIComponent(resolutionId)}/start`,
+    );
+  }
+
+  // ── Phase 7.6 Step 7: resolver onOutcome handler surface ───────────
+  /**
+   * Submit a NEW merge request (§5.3). The resolver resubmits a resolved tree
+   * as a fresh request carrying `resolvedFrom = origin.id` — the no-recursion
+   * marker (a conflict on a resolution product does NOT spin another resolution,
+   * design §5.4). MUST copy the origin's `verifyCmd` so the resubmitted request
+   * is gated by the SAME verify command the origin would have used (omitting it
+   * silently falls back to the project default = the WRONG gate).
+   * POST /api/v1/projects/{projectId}/merge-requests.
+   */
+  submitMergeRequest(params: {
+    projectId: string;
+    resource?: string;
+    taskId?: string | null;
+    branch?: string | null;
+    commitSha?: string | null;
+    verifyCmd?: string | null;
+    worktreePath?: string | null;
+    resolvedFrom?: string | null;
+  }): Promise<MergeRequestView> {
+    const { projectId, ...body } = params;
+    return this.request<MergeRequestView>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/merge-requests`,
+      body,
+    );
+  }
+
+  /**
+   * Record a resolved resolution — resolving → resolved (§4.3 / §5.3). Called
+   * AFTER the resolved tree has been pushed AND resubmitted as a new request;
+   * `resolvedRequestId` cross-links that new request. The resubmitted request
+   * still rides the real verify gate before it can land.
+   * POST /api/v1/merge-resolutions/{id}/resolved.
+   */
+  resolvedResolution(
+    resolutionId: string,
+    body: { resolvedRequestId: string; detail?: MergeResolutionDetail | null },
+  ): Promise<MergeResolutionView> {
+    return this.request<MergeResolutionView>(
+      "POST",
+      `/merge-resolutions/${encodeURIComponent(resolutionId)}/resolved`,
+      body,
+    );
+  }
+
+  /**
+   * Escalate a resolution — resolving → escalated | failed (§4.3 / §5.4).
+   * `state` distinguishes the model/verify couldn't (`escalated`) from the
+   * resolver itself broke (`failed`); `target` is the escalation audience
+   * ("author"); `reason` is the machine-readable cause.
+   * POST /api/v1/merge-resolutions/{id}/escalate.
+   */
+  escalateResolution(
+    resolutionId: string,
+    body: {
+      state: "escalated" | "failed";
+      target: string;
+      reason: string;
+      detail?: MergeResolutionDetail | null;
+    },
+  ): Promise<MergeResolutionView> {
+    return this.request<MergeResolutionView>(
+      "POST",
+      `/merge-resolutions/${encodeURIComponent(resolutionId)}/escalate`,
+      body,
+    );
+  }
+
+  /**
+   * Post a comment on a task (§5.4). The resolver posts a `merge_rejection`
+   * comment on the origin task when a resolution escalates, so the author sees
+   * the failure where they work. POST /api/v1/tasks/{taskId}/comments.
+   */
+  async postTaskComment(
+    taskId: string,
+    body: {
+      body: string;
+      commentType?: CommentType;
+      metadata?: Record<string, unknown> | null;
+    },
+  ): Promise<void> {
+    await this.request<unknown>(
+      "POST",
+      `/tasks/${encodeURIComponent(taskId)}/comments`,
+      body,
     );
   }
 }

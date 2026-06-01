@@ -12141,6 +12141,7 @@ export interface components {
             commitSha?: string | null;
             verifyCmd?: string | null;
             worktreePath?: string | null;
+            resolvedFrom?: string | null;
         };
         MergeRequestDetail: components["schemas"]["MergeRequest"] & {
             attempts: components["schemas"]["MergeAttempt"][];

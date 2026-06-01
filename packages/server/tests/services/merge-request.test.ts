@@ -56,6 +56,32 @@ describe("merge-request service", () => {
       expect(payload.actorId).toBe(submitter.id);
     });
 
+    it("submit with resolvedFrom persists it and round-trips on the view (Phase 7.6 Step 7)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const origin = svc.submit({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        branch: "feat/origin",
+      });
+
+      // A resolved request linked to its origin.
+      const resolved = svc.submit({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        branch: "pm/resolution-res-1",
+        resolvedFrom: origin.id,
+      });
+      expect(resolved.resolvedFrom).toBe(origin.id);
+
+      // Round-trips on the GET view.
+      const view = svc.getById(resolved.id);
+      expect(view.resolvedFrom).toBe(origin.id);
+
+      // A normal request defaults to null.
+      expect(origin.resolvedFrom).toBeNull();
+    });
+
     it("submit with cross-project taskId → 400 VALIDATION_ERROR", () => {
       const projectA = createTestProject(testApp.db);
       const projectB = createTestProject(testApp.db);

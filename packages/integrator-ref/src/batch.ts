@@ -303,9 +303,24 @@ export async function maybeOpenResolution(
     conflictingFiles: string[];
     baseSha: string;
     ref: string;
+    /**
+     * Phase 7.6 §5.4 no-recursion guard: the origin request's `resolvedFrom`.
+     * Non-null ⇒ the origin is ITSELF a resolution product (a resubmitted
+     * resolved tree). A conflict on it must NOT spin another resolution —
+     * otherwise a chronically-conflicting change loops the resolver forever.
+     * We skip + log instead.
+     */
+    originResolvedFrom: string | null;
   },
 ): Promise<void> {
   if (!deps.resolver?.enabled) return;
+  if (args.originResolvedFrom != null) {
+    deps.logger.info(
+      { originRequestId: args.originRequestId },
+      "origin is itself a resolution product (resolved_from set); skipping resolution (no-recursion)",
+    );
+    return;
+  }
   try {
     const resolutionId = await deps.resolver.openAndEnqueue({
       originRequestId: args.originRequestId,
@@ -673,6 +688,7 @@ export async function onMemberFailed(
       conflictingFiles: failure.conflictingFiles,
       baseSha: member.base?.liveMainSha ?? "",
       ref: member.request.branch ?? member.request.commitSha ?? "",
+      originResolvedFrom: member.request.resolvedFrom ?? null,
     });
     await invalidateSuffix(member, batch, deps, ctx);
     return { outcome: "rejected", category: "conflict" };

@@ -105,6 +105,51 @@ describe("Merge Requests API", () => {
       expect(row?.status).toBe("queued");
     });
 
+    it("persists resolvedFrom and round-trips it on the view (Phase 7.6 Step 7)", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+
+      // An origin request to point resolvedFrom at.
+      const originId = await submitRequest(project.id, agent.token, {
+        branch: "feature/origin",
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests`,
+        {
+          token: agent.token,
+          body: {
+            resource: "main",
+            branch: "pm/resolution-res-1",
+            resolvedFrom: originId,
+          },
+        },
+      );
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json.data.resolvedFrom).toBe(originId);
+
+      // Persisted on the row.
+      const row = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, json.data.id))
+        .get();
+      expect(row?.resolvedFrom).toBe(originId);
+
+      // Round-trips on the GET view.
+      const getRes = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/merge-requests/${json.data.id}`,
+        { token: agent.token },
+      );
+      const getJson = await getRes.json();
+      expect(getJson.data.resolvedFrom).toBe(originId);
+    });
+
     it("401 when unauthenticated", async () => {
       const project = createTestProject(testApp.db);
       const res = await testApp.app.request(

@@ -268,6 +268,7 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
         conflictingFiles: rebase.conflictingFiles,
         baseSha,
         ref,
+        originResolvedFrom: request.resolvedFrom ?? null,
       });
       return { kind: "rejected", requestId: request.id, category: "conflict" };
     }

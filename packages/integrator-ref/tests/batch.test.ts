@@ -1191,6 +1191,53 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(state.lockHeld).toBe(false);
   });
 
+  it("7.6 no-recursion: a conflicting request whose resolvedFrom is set ⇒ rejected conflict, NO openResolution, nothing enqueued", async () => {
+    const root = path.join(tmpRoot, "wt-res-norecurse");
+    // Same conflict shape as the "enabled" test, but the conflicting origin (B)
+    // is ITSELF a resolution product (resolvedFrom set). The no-recursion guard
+    // in maybeOpenResolution must short-circuit BEFORE openResolution.
+    const reqA = makeRequest({
+      id: "req-nr-a",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const reqB = makeRequest({
+      id: "req-nr-b",
+      branch: "feature/collidefeature",
+      verifyCmd: "echo ok",
+      // The marker: B is a resolution product. A conflict on it must NOT spin
+      // another resolution.
+      resolvedFrom: "req-origin-x",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      resolutions: [],
+    };
+    const enqueued: { resolutionId: string }[] = [];
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 2,
+      resolver: { enabled: true, enqueued },
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    // B is still genuinely rejected as a plain conflict.
+    expect(reqB.status).toBe("rejected");
+    expect(reqB.rejectCategory).toBe("conflict");
+    // The guard fired: NO resolution opened, NO row, NOTHING enqueued.
+    expect(state.calls).not.toContain("openResolution");
+    expect(state.resolutions).toEqual([]);
+    expect(enqueued).toEqual([]);
+    // The predecessor still landed; one clean lock cycle.
+    expect(reqA.status).toBe("landed");
+    expect(state.calls.filter((c) => c === "releaseLock").length).toBe(1);
+    expect(state.lockHeld).toBe(false);
+  });
+
   it("MANDATORY: conflict-then-refill chains onto the surviving predecessor, not the failed one", async () => {
     const root = path.join(tmpRoot, "wt-refill");
     // FIFO order: A (clean, pos 0) → B (collide, pos 1, conflicts at admit and

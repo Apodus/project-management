@@ -205,6 +205,7 @@ const submitBody = z
     commitSha: z.string().nullable().optional(),
     verifyCmd: z.string().nullable().optional(),
     worktreePath: z.string().nullable().optional(),
+    resolvedFrom: z.string().nullable().optional(),
   })
   .openapi("MergeRequestSubmit");
 
@@ -514,6 +515,7 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
       commitSha: body.commitSha ?? null,
       verifyCmd: body.verifyCmd ?? null,
       worktreePath: body.worktreePath ?? null,
+      resolvedFrom: body.resolvedFrom ?? null,
     });
     return c.json({ data: view }, 201);
   });
