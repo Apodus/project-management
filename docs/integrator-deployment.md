@@ -606,7 +606,7 @@ The dashboard renders "last heard Ns ago" from the derived `staleness_ms`, greyi
 
 ### 15.3 The five break-glass overrides
 
-All five are **admin-only HUMAN operator actions** (gated on the existing `admin` role via `requireAdmin` — NOT the `ai_agent` integrator gate; there is no `operator` role yet — that is Phase 7.6). **Every override writes exactly one `audit_log` row in the same database transaction as its state change** — the audit row is the accountability record and is the one thing that is never skipped.
+All six are **admin-only HUMAN operator actions** (gated on the existing `admin` role via `requireAdmin` — NOT the `ai_agent` integrator gate; there is no `operator` role yet — that is Phase 7.6). **Every override writes exactly one `audit_log` row in the same database transaction as its state change** — the audit row is the accountability record and is the one thing that is never skipped.
 
 | Override               | Endpoint                                                                 | Body                     | Reason                      | What it does                                                                                                                                                                                                                                                                                                      |
 | ---------------------- | ------------------------------------------------------------------------ | ------------------------ | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -615,8 +615,9 @@ All five are **admin-only HUMAN operator actions** (gated on the existing `admin
 | **Force-release lock** | `POST /api/v1/projects/{projectId}/merge-locks/{resource}/force-release` | `{ reason? }`            | optional                    | HARD-clears a stuck lane lock (for a dead integrator, without waiting out the 5-min lease TTL). Does NOT promote the queue head and does NOT touch in-flight merge_requests. Emits the existing `merge.lock.released` (with `forced: true`).                                                                      |
 | **Force-land**         | `POST /api/v1/merge-requests/{id}/force-land`                            | `{ landedSha, reason }`  | **REQUIRED** (400 if empty) | **THE R1 override** — see §15.3.1.                                                                                                                                                                                                                                                                                |
 | **Force-reject**       | `POST /api/v1/merge-requests/{id}/force-reject`                          | `{ reason }`             | **REQUIRED** (400 if empty) | Rejects a stuck `integrating` request on policy grounds (e.g. an integrator died mid-verify and you want the lane to clear rather than wait for crash-recovery to re-queue it). Completes/synthesizes the attempt as `failed`/`policy`, posts the `merge_rejection` comment, writes one `force_reject` audit row. |
+| **Force-cancel**       | `POST /api/v1/merge-requests/{id}/force-cancel`                          | `{ reason? }`            | optional (UI requires it)   | Abandons a stuck request — valid from **`queued` OR `integrating`** → `abandoned`. This is the queued-state escape hatch that force-reject/force-land (both `integrating`-only) cannot reach — use it to clear a stale queued request whose content was hand-landed out-of-band. Writes one `force_cancel` audit row; idempotent no-op (no audit) when already `abandoned`. |
 
-The seven audit actions recorded across the system are: `pause`, `resume`, `force_release_lock`, `force_land`, `force_reject` (the five overrides) plus `land` and `reject` (the integrator's natural verified outcomes — so the audit log is a complete record, not just overrides). Every audit row carries: `actor`, `action`, `target_type` (`merge_request`/`merge_lock`/`train`/`merge_group`), `target_id`, `reason`, `metadata_before`/`metadata_after`, and a timestamp. The audit log is **append-only** (no update, no delete; the table has no `updatedAt`) and queryable by user / action / target / time-window. Each override also emits `audit.recorded` on the SSE stream so the dashboard's audit view updates live.
+The audit actions recorded for the train are: `pause`, `resume`, `force_release_lock`, `force_land`, `force_reject`, `force_cancel` (the six overrides) plus `land` and `reject` (the integrator's natural verified outcomes — so the audit log is a complete record, not just overrides). Every audit row carries: `actor`, `action`, `target_type` (`merge_request`/`merge_lock`/`train`/`merge_group`), `target_id`, `reason`, `metadata_before`/`metadata_after`, and a timestamp. The audit log is **append-only** (no update, no delete; the table has no `updatedAt`) and queryable by user / action / target / time-window. Each override also emits `audit.recorded` on the SSE stream so the dashboard's audit view updates live.
 
 #### 15.3.1 Force-land — the R1 verify-gate override (the single most dangerous control)
 
@@ -852,3 +853,49 @@ Do not conflate the two: `metrics.verify.per_step[].step_id` (snake) vs `timelin
   ```
 
   (The debug GET in §16.3 shows the current rows for sizing.)
+
+---
+
+## 17. Runbooks (agent quick-reference)
+
+Terse, copy-paste procedures. `{id}` = a merge_request ULID; `{pid}` = project ULID. Auth: a logged-in admin can run the `fetch` snippets from the dashboard tab's devtools console (rides the session cookie); otherwise send `Authorization: Bearer <admin-token>`.
+
+### 17.1 Clear a stale / hand-landed queued request
+
+Symptom: a `queued` (or `integrating`) request whose content is already on `main` (landed out-of-band), or that must not be picked up. The integrator's `ai_agent` identity **cannot** kill it (`cancel` is submitter-or-admin → 403). Two paths:
+
+- **Submitter agent** (session under the request's `submittedBy`): `pm_cancel_merge_request({ id })`.
+- **Admin** (no submitter session): force-cancel — works on `queued` AND `integrating`.
+  - Dashboard: `/projects/{pid}/train/audit` → **Force-cancel…** → paste id + reason.
+  - Or console:
+    ```js
+    for (const id of ["{id1}", "{id2}"]) {
+      const r = await fetch(`/api/v1/merge-requests/${id}/force-cancel`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ reason: "content hand-landed out-of-band; clearing stale queued entry" }),
+      });
+      console.log(id, r.status, await r.text());
+    }
+    ```
+  - Result: `status: "abandoned"`, one `force_cancel` audit row. Do NOT use force-reject/force-land here — both are `integrating`-only (→ 409 on a queued request).
+
+Note: the daemon will not re-apply an already-landed request — at land it detects the rebased tree == live `main` and records a no-op land (§9). Abandoning is still preferred so the queue reflects reality.
+
+### 17.2 First daemon bring-up
+
+The "submit and walk away" contract requires a running integrator — PM never spawns builds. One process per `(project, resource)` lane.
+
+1. Project config (admin, once): `PATCH /api/v1/projects/{pid}` with `gitRepoUrl` (top-level) + `settings.integrator` = `{ enabled: true, verify_command, worktree_root }` (see §4).
+2. Need a PM `ai_agent` token (NOT a human token) for the integrator.
+3. Build + run on the integrator host:
+   ```bash
+   pnpm install && pnpm --filter @pm/integrator-ref build
+   PM_API_TOKEN=<ai_agent token> \
+   node packages/integrator-ref/dist/index.js --project {pid} --resource main --pm-url http://<pm-host>:3000
+   ```
+4. Verify: submit a test merge request, watch `GET /api/v1/events?project_id={pid}` for `merge.request.queued → .integrating → merge.attempt.* → merge.request.landed`, and confirm a `landed_sha` git_ref on the linked task.
+
+### 17.3 Cross-repo changes MUST be grouped
+
+A change spanning linked inner+outer repos must be submitted as ONE group, never two bare `pm_request_merge` calls. Ungrouped pairs defeat atomicity and can land a regressing outer gitlink. Worker: submit each repo's request, then bind with `pm_request_merge_group`; watch with `pm_get_merge_group`. The integrator lands the group inner-first-then-outer under one lane lock (§14).

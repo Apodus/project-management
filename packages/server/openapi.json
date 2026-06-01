@@ -22969,6 +22969,7 @@
                 "force_release_lock",
                 "force_land",
                 "force_reject",
+                "force_cancel",
                 "land",
                 "reject",
                 "force_claim"

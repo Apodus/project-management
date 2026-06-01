@@ -387,6 +387,43 @@ describe("merge-request service", () => {
       );
       expect(out.status).toBe("abandoned");
     });
+
+    it("writes exactly one force_cancel audit row on the proceed path", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const admin = createTestUser(testApp.db, { role: "admin" });
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      svc.forceCancel(
+        r.id,
+        { id: admin.id, role: "admin", type: "human" },
+        "content hand-landed out-of-band; clearing stale queued entry",
+      );
+      const rows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, r.id))
+        .all();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].action).toBe("force_cancel");
+      expect(rows[0].targetType).toBe("merge_request");
+      expect(rows[0].actorId).toBe(admin.id);
+      expect(rows[0].reason).toBe(
+        "content hand-landed out-of-band; clearing stale queued entry",
+      );
+    });
+
+    it("submitter cancel writes NO audit row (only force_cancel is audited)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" });
+      const rows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, r.id))
+        .all();
+      expect(rows).toHaveLength(0);
+    });
   });
 
   // ─── transitionToIntegrating ────────────────────────────────────

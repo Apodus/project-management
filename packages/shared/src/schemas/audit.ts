@@ -1,12 +1,11 @@
 import { z } from "zod";
 
 // ─── Enums ────────────────────────────────────────────────────────
-// The audit action taxonomy (design §2.3). The five break-glass overrides
-// plus the two natural integrator actions are the complete set. This is the
-// CANONICAL home (Step 8 hoist) — audit.service.ts re-exports these for
-// back-compat. Copied byte-for-byte (same order) from the prior local defs;
-// the DB column is plain `text` validated against this enum, so adding a
-// future action means editing this one array (no migration).
+// The audit action taxonomy (design §2.3). The break-glass overrides plus the
+// two natural integrator actions are the complete set. This is the CANONICAL
+// home (Step 8 hoist) — audit.service.ts re-exports these for back-compat. The
+// DB column is plain `text` validated against this enum, so adding a future
+// action means editing this one array (no migration).
 export const AUDIT_ACTIONS = [
   // ── Break-glass overrides (HUMAN operator actions, §4) ──
   "pause",
@@ -14,6 +13,9 @@ export const AUDIT_ACTIONS = [
   "force_release_lock",
   "force_land",
   "force_reject",
+  // force_cancel: admin abandon of a stuck queued|integrating request (the
+  // queued-state escape hatch force_reject/force_land cannot reach).
+  "force_cancel",
   // ── Natural train actions (ai_agent integrator actions, §2.5) ──
   "land",
   "reject",

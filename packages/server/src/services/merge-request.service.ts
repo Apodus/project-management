@@ -718,12 +718,18 @@ export function cancel(id: string, actor: Actor): MergeRequestView {
 }
 
 /**
- * Admin force-cancel — queued OR integrating → abandoned.
+ * Admin force-cancel — queued OR integrating → abandoned. The break-glass
+ * escape hatch for a stuck QUEUED request (force_reject/force_land only reach
+ * `integrating`).
  *
  * Authz: admin only (route layer enforces; service double-checks).
  *
  * State machine: per §6 — legal from queued or integrating.
  * abandoned is idempotent. All other states → 409 INVALID_TRANSITION.
+ *
+ * Unlike submitter `cancel`, this is a recorded override: the abandon and a
+ * `force_cancel` audit row commit in ONE transaction (the §1.4 invariant);
+ * the abandoned event + audit.recorded fire after commit.
  */
 export function forceCancel(
   id: string,
@@ -745,7 +751,54 @@ export function forceCancel(
     return toView(row);
   }
 
-  return applyAbandon(row, actor, reason);
+  const now = new Date().toISOString();
+  let auditId: string | null = null;
+  let auditView: AuditLogView | null = null;
+
+  const db = getDb();
+  db.transaction((tx) => {
+    tx.update(mergeRequests)
+      .set({ status: "abandoned", resolvedAt: now, updatedAt: now })
+      .where(eq(mergeRequests.id, row.id))
+      .run();
+
+    const before = { status: row.status };
+    const after = { status: "abandoned", overridden: true };
+    auditId = recordAudit(tx, {
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "force_cancel",
+      targetType: "merge_request",
+      targetId: row.id,
+      reason,
+      before,
+      after,
+      now,
+    });
+    auditView = {
+      id: auditId,
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "force_cancel",
+      targetType: "merge_request",
+      targetId: row.id,
+      reason,
+      metadataBefore: before,
+      metadataAfter: after,
+      createdAt: now,
+    };
+  });
+
+  const updated = readRequestOrThrow(row.id);
+  emit(EVENT_NAMES.MERGE_REQUEST_ABANDONED, updated, actor.id, {
+    cancelledBy: actor.id,
+    reason,
+    overridden: true,
+  });
+  if (auditId !== null && auditView !== null) {
+    emitAuditRecorded(auditId, row.projectId, actor.id, auditView);
+  }
+  return toView(updated);
 }
 
 function applyAbandon(

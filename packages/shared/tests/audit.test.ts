@@ -18,6 +18,7 @@ describe("AUDIT_ACTIONS", () => {
       "force_release_lock",
       "force_land",
       "force_reject",
+      "force_cancel",
       "land",
       "reject",
       "force_claim",
@@ -26,6 +27,10 @@ describe("AUDIT_ACTIONS", () => {
 
   it("includes force_claim", () => {
     expect(AUDIT_ACTIONS).toContain("force_claim");
+  });
+
+  it("includes force_cancel (queued-state break-glass)", () => {
+    expect(AUDIT_ACTIONS).toContain("force_cancel");
   });
 });
 
