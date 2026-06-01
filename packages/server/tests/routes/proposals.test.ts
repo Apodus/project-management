@@ -9,6 +9,11 @@ import {
   type TestApp,
 } from "../utils.js";
 import { createId } from "@pm/shared";
+import {
+  getEventBus,
+  type EventName,
+  type EventPayload,
+} from "../../src/events/event-bus.js";
 
 describe("Proposals API", () => {
   let testApp: TestApp;
@@ -720,6 +725,12 @@ describe("Proposals API", () => {
         token: aiAgent.token,
       });
 
+      // Capture bus events emitted by the comment (so idle views update live).
+      const events: { event: EventName; payload: EventPayload }[] = [];
+      const off = getEventBus().onAll((event, payload) =>
+        events.push({ event, payload }),
+      );
+
       // AI agent comments
       await authRequest(
         testApp.app,
@@ -732,6 +743,7 @@ describe("Proposals API", () => {
           },
         },
       );
+      off();
 
       // Verify the proposal status changed
       const proposalRes = await authRequest(
@@ -741,6 +753,41 @@ describe("Proposals API", () => {
       );
       const proposalBody = await proposalRes.json();
       expect(proposalBody.data.status).toBe("discussing");
+
+      // The comment must broadcast BOTH a proposal.commented and a
+      // proposal.transitioned (open→discussing) event — otherwise an idle
+      // proposal view never learns about the auto-transition.
+      expect(events.map((e) => e.event)).toContain("proposal.commented");
+      const transition = events.find((e) => e.event === "proposal.transitioned");
+      expect(transition).toBeDefined();
+      expect(transition!.payload.projectId).toBe(proposal.projectId);
+      expect(transition!.payload.changes?.status).toEqual({
+        from: "open",
+        to: "discussing",
+      });
+    });
+
+    it("should emit proposal.commented when a human comments (no auto-transition)", async () => {
+      const proposal = createTestProposal(testApp.db, {
+        status: "discussing",
+        createdBy: testApp.testUser.id,
+      });
+
+      const events: { event: EventName; payload: EventPayload }[] = [];
+      const off = getEventBus().onAll((event, payload) =>
+        events.push({ event, payload }),
+      );
+      await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/proposals/${proposal.id}/comments`,
+        { body: { body: "Looks good to me." } },
+      );
+      off();
+
+      expect(events.map((e) => e.event)).toContain("proposal.commented");
+      // No status change → no transition event.
+      expect(events.map((e) => e.event)).not.toContain("proposal.transitioned");
     });
 
     it("should NOT auto-transition when human comments on open proposal", async () => {

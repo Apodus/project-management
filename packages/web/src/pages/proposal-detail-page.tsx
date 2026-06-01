@@ -26,6 +26,7 @@ import {
   useProposalWorkItems,
 } from "@/hooks/use-proposals";
 import { useUsers } from "@/hooks/use-users";
+import { useProject } from "@/hooks/use-projects";
 import { useProjectStore } from "@/stores/project-store";
 import { formatRelativeTime, formatStatus, getStatusColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -313,6 +314,24 @@ export function ProposalDetailPage() {
   const updateProposal = useUpdateProposal();
   const transitionProposal = useTransitionProposal();
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
+  const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
+  const { data: proposalProject } = useProject(proposal?.projectId ?? undefined);
+
+  // This route is not nested under /projects/:id, so the global project context
+  // can lag behind the proposal being viewed (e.g. after a refresh or a
+  // cross-project jump). The SSE stream is project-scoped, so a stale context
+  // makes the server filter out THIS proposal's live events and the view goes
+  // stale. Align the context to the proposal's project so SSE re-subscribes.
+  useEffect(() => {
+    if (proposal?.projectId && proposal.projectId !== currentProjectId) {
+      setCurrentProject(proposal.projectId, proposalProject?.name ?? null);
+    }
+  }, [
+    proposal?.projectId,
+    currentProjectId,
+    proposalProject?.name,
+    setCurrentProject,
+  ]);
 
   const userMap = useMemo(() => {
     const map = new Map<string, { displayName: string; type: string }>();

@@ -527,18 +527,52 @@ export function addComment(proposalId: string, data: AddCommentInput) {
     .run();
 
   // Auto-transition: if proposal is "open" and commenter is AI agent, move to "discussing"
-  if (proposal.status === "open" && author && author.type === "ai_agent") {
+  const autoTransitioned =
+    proposal.status === "open" && !!author && author.type === "ai_agent";
+  if (autoTransitioned) {
     db.update(proposals)
       .set({ status: "discussing", updatedAt: now })
       .where(eq(proposals.id, proposalId))
       .run();
   }
 
-  return db
+  const comment = db
     .select()
     .from(comments)
     .where(eq(comments.id, commentId))
     .get()!;
+
+  // Broadcast so idle proposal views update live (SSE → query invalidation).
+  // Previously addComment emitted NOTHING, so neither the new comment nor the
+  // open→discussing auto-transition reached the client — the view stayed stale.
+  const bus = getEventBus();
+  bus.emit(EVENT_NAMES.PROPOSAL_COMMENTED, {
+    entity: comment,
+    entityType: "comment",
+    entityId: commentId,
+    projectId: proposal.projectId,
+    actorId: data.authorId,
+    timestamp: now,
+  });
+  if (autoTransitioned) {
+    const updated = db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.id, proposalId))
+      .get()!;
+    bus.emit(EVENT_NAMES.PROPOSAL_TRANSITIONED, {
+      entity: updated,
+      entityType: "proposal",
+      entityId: proposalId,
+      projectId: proposal.projectId,
+      actorId: data.authorId,
+      timestamp: now,
+      changes: { status: { from: "open", to: "discussing" } },
+      previousStatus: "open",
+    });
+  }
+
+  return comment;
 }
 
 /**
