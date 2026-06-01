@@ -127,6 +127,23 @@ const integratorSettingsSchema = z
         target_abandon_rate: z.number().min(0).max(1).optional(),
       })
       .optional(),
+    // Phase 7.6 — intelligent merge-conflict resolution (§3). Sibling of `slo`.
+    // NOTE: diverges from the Zod-3 canonical (`@pm/shared`) `.default({})` on
+    // purpose. Zod 3 and Zod 4 differ on a nested `.default({})` for the
+    // absent-key path: Zod 3 applies the inner field defaults, but Zod 4 (4.4.3,
+    // used by @hono/zod-openapi) yields a literal `{}` with inner defaults NOT
+    // applied. The contract is identical OUTPUT shape, so we use `.prefault({})`
+    // here — prefault feeds `{}` as INPUT, so the inner defaults DO run, yielding
+    // the same inert `{ enabled:false, max_concurrent:1, time_budget_sec:600 }`.
+    resolver: z
+      .object({
+        enabled: z.boolean().default(false),
+        max_concurrent: z.number().int().min(1).default(1),
+        time_budget_sec: z.number().positive().default(600),
+        token_budget: z.number().positive().optional(),
+        command: z.string().min(1).optional(),
+      })
+      .prefault({}),
   })
   // Phase 7.5 — DAG validation (§2.1): dup id / dangling depends_on / cycle -> 400.
   // Empty verify_steps = no issues (backward-compat inert).

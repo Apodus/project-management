@@ -485,6 +485,110 @@ describe("projectSettingsSchema", () => {
       }),
     ).toThrow();
   });
+
+  // ── Phase 7.6 resolver config (design §3) ──
+  it("accepts a valid resolver block (all 5 fields) and round-trips it", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: {
+        enabled: true,
+        verify_command: "pnpm verify",
+        worktree_root: "/tmp/wt",
+        resolver: {
+          enabled: true,
+          max_concurrent: 3,
+          time_budget_sec: 900,
+          token_budget: 50000,
+          command: "claude -p",
+        },
+      },
+    });
+    expect(parsed!.integrator!.resolver).toEqual({
+      enabled: true,
+      max_concurrent: 3,
+      time_budget_sec: 900,
+      token_budget: 50000,
+      command: "claude -p",
+    });
+  });
+
+  it("applies resolver field defaults when only enabled is given", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: {
+        enabled: true,
+        verify_command: "pnpm verify",
+        worktree_root: "/tmp/wt",
+        resolver: { enabled: true },
+      },
+    });
+    const r = parsed!.integrator!.resolver;
+    expect(r.enabled).toBe(true);
+    expect(r.max_concurrent).toBe(1);
+    expect(r.time_budget_sec).toBe(600);
+    expect(r.token_budget).toBeUndefined();
+    expect(r.command).toBeUndefined();
+  });
+
+  it("treats an absent resolver block as the inert default", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: { enabled: false },
+    });
+    expect(parsed!.integrator!.resolver).toEqual({
+      enabled: false,
+      max_concurrent: 1,
+      time_budget_sec: 600,
+    });
+  });
+
+  it("treats an empty resolver block as the inert default", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: { enabled: false, resolver: {} },
+    });
+    expect(parsed!.integrator!.resolver).toEqual({
+      enabled: false,
+      max_concurrent: 1,
+      time_budget_sec: 600,
+    });
+  });
+
+  it("rejects resolver.max_concurrent = 0", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        integrator: { enabled: false, resolver: { max_concurrent: 0 } },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects a non-integer resolver.max_concurrent (1.5)", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        integrator: { enabled: false, resolver: { max_concurrent: 1.5 } },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects resolver.time_budget_sec = 0", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        integrator: { enabled: false, resolver: { time_budget_sec: 0 } },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects a negative resolver.time_budget_sec (-5)", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        integrator: { enabled: false, resolver: { time_budget_sec: -5 } },
+      }),
+    ).toThrow();
+  });
 });
 
 describe("verify.ts schemas (Phase 7.5)", () => {

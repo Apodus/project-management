@@ -1174,6 +1174,110 @@ describe("Projects API", () => {
       });
       expect(res.status).toBe(400);
     });
+
+    // ── Phase 7.6 resolver config (design §3) ──
+    it("accepts a full resolver block (200) and round-trips it via PATCH→GET", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm verify",
+        worktree_root: "/tmp/wt",
+        resolver: {
+          enabled: true,
+          max_concurrent: 3,
+          time_budget_sec: 900,
+          token_budget: 50000,
+          command: "claude -p",
+        },
+      });
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      expect(body.data.settings.integrator.resolver).toEqual({
+        enabled: true,
+        max_concurrent: 3,
+        time_budget_sec: 900,
+        token_budget: 50000,
+        command: "claude -p",
+      });
+    });
+
+    it("applies resolver field defaults on PATCH when only enabled is given", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        resolver: { enabled: true },
+      });
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      const r = body.data.settings.integrator.resolver;
+      expect(r.enabled).toBe(true);
+      expect(r.max_concurrent).toBe(1);
+      expect(r.time_budget_sec).toBe(600);
+    });
+
+    // The absent-block test proves the Zod-4 mirror's `.prefault({})` form yields
+    // the full inert object (not a literal `{}`) on the route side, matching the
+    // Zod-3 canonical `.default({})`.
+    it("treats an absent resolver block as the full inert default through the route", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: false,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+      });
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      expect(body.data.settings.integrator.resolver).toEqual({
+        enabled: false,
+        max_concurrent: 1,
+        time_budget_sec: 600,
+      });
+    });
+
+    it("treats an empty resolver block as the full inert default through the route", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: false,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        resolver: {},
+      });
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      expect(body.data.settings.integrator.resolver).toEqual({
+        enabled: false,
+        max_concurrent: 1,
+        time_budget_sec: 600,
+      });
+    });
+
+    it("rejects resolver.max_concurrent = 0 with 400", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        resolver: { max_concurrent: 0 },
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects resolver.time_budget_sec = 0 with 400", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await patchIntegrator(project, {
+        enabled: true,
+        verify_command: "pnpm test",
+        worktree_root: "/tmp/wt",
+        resolver: { time_budget_sec: 0 },
+      });
+      expect(res.status).toBe(400);
+    });
   });
 
   // ── settings.webhooks validation (Phase 7.4 §7.2 — the Zod-4 mirror) ──

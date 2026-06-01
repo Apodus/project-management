@@ -129,6 +129,20 @@ export const integratorSettingsSchema = z
         target_abandon_rate: z.number().min(0).max(1).optional(),
       })
       .optional(),
+    // Phase 7.6 — intelligent merge-conflict resolution (§3). Inert until
+    // `enabled = true`; absent/empty block ⇒ `{ enabled:false, max_concurrent:1,
+    // time_budget_sec:600 }`. Zod 3 applies the inner defaults when the outer
+    // `.default({})` fires (the Zod-4 route mirror must use `.prefault({})` to
+    // match — see packages/server/src/routes/projects.ts).
+    resolver: z
+      .object({
+        enabled: z.boolean().default(false),
+        max_concurrent: z.number().int().min(1).default(1),
+        time_budget_sec: z.number().positive().default(600),
+        token_budget: z.number().positive().optional(),
+        command: z.string().min(1).optional(),
+      })
+      .default({}),
   })
   // Phase 7.5 — DAG validation (§2.1): duplicate id / dangling depends_on / cycle
   // are all 400s. An empty verify_steps array yields no issues (backward-compat inert).

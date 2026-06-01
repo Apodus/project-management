@@ -10808,6 +10808,17 @@ export interface components {
                         target_verify_success_rate?: number;
                         target_abandon_rate?: number;
                     };
+                    /** @default {} */
+                    resolver: {
+                        /** @default false */
+                        enabled: boolean;
+                        /** @default 1 */
+                        max_concurrent: number;
+                        /** @default 600 */
+                        time_budget_sec: number;
+                        token_budget?: number;
+                        command?: string;
+                    };
                 };
                 webhooks?: {
                     /** Format: uri */
@@ -10885,6 +10896,17 @@ export interface components {
                         target_p95_time_to_land_sec?: number;
                         target_verify_success_rate?: number;
                         target_abandon_rate?: number;
+                    };
+                    /** @default {} */
+                    resolver: {
+                        /** @default false */
+                        enabled: boolean;
+                        /** @default 1 */
+                        max_concurrent: number;
+                        /** @default 600 */
+                        time_budget_sec: number;
+                        token_budget?: number;
+                        command?: string;
                     };
                 };
                 webhooks?: {

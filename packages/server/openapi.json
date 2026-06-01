@@ -443,6 +443,36 @@
                         "maximum": 1
                       }
                     }
+                  },
+                  "resolver": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean",
+                        "default": false
+                      },
+                      "max_concurrent": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 1
+                      },
+                      "time_budget_sec": {
+                        "type": "number",
+                        "minimum": 0,
+                        "exclusiveMinimum": true,
+                        "default": 600
+                      },
+                      "token_budget": {
+                        "type": "number",
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                      },
+                      "command": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "default": {}
                   }
                 }
               },
@@ -723,6 +753,36 @@
                         "maximum": 1
                       }
                     }
+                  },
+                  "resolver": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean",
+                        "default": false
+                      },
+                      "max_concurrent": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 1
+                      },
+                      "time_budget_sec": {
+                        "type": "number",
+                        "minimum": 0,
+                        "exclusiveMinimum": true,
+                        "default": 600
+                      },
+                      "token_budget": {
+                        "type": "number",
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                      },
+                      "command": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "default": {}
                   }
                 }
               },
