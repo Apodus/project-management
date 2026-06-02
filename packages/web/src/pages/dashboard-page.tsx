@@ -400,6 +400,13 @@ function MyTasksSection({
     (t) => t.status !== "done" && t.status !== "cancelled",
   );
 
+  // Collapse to nothing when there's no work to show. An empty "My Tasks"
+  // card was reserving half the dashboard for a small team that's usually
+  // between assignments — the section should reserve zero space when empty.
+  if (!isLoading && tasks.length === 0) {
+    return null;
+  }
+
   return (
     <Card className="py-4">
       <CardHeader className="pb-2">
@@ -435,15 +442,6 @@ function MyTasksSection({
                 <Skeleton className="h-5 w-14" />
               </div>
             ))}
-          </div>
-        )}
-
-        {!isLoading && tasks.length === 0 && (
-          <div className="flex flex-col items-center py-6">
-            <ListTodo className="mb-2 size-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              No tasks assigned to you
-            </p>
           </div>
         )}
 
@@ -718,22 +716,13 @@ function AttentionSection({
   }
 
   if (blockedCount === 0 && openProposalCount === 0) {
+    // Collapse to a slim one-line notice — when nothing needs attention this
+    // widget should take a single row, not a full card's worth of estate.
     return (
-      <Card className="py-4">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Attention Needed
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center py-6">
-            <CheckCircle2 className="mb-2 size-8 text-green-500/60" />
-            <p className="text-sm text-muted-foreground">
-              All clear — nothing needs attention
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        <CheckCircle2 className="size-4 shrink-0 text-green-500/70" />
+        All clear — nothing needs attention
+      </div>
     );
   }
 
@@ -833,31 +822,30 @@ export function DashboardPage() {
         )}
       </div>
 
+      {/* Action-first: anything that needs attention rises to the top so it
+          never drowns under activity/agents. Collapses to a slim line when
+          all-clear (see AttentionSection). Kept OUTSIDE the masonry below so
+          its visual priority is never scrambled by column flow. */}
+      <AttentionSection projectId={projectId} />
+
       {/* Stats */}
       <StatsSection projectId={projectId} />
 
-      {/* Two-column layout for activity + tasks */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Recent Activity */}
+      {/* Secondary "dressing" widgets in a masonry (multi-column) flow: empty
+          sections collapse to nothing (e.g. My Tasks → null) and the column
+          flow reflows around them and around uneven heights (Active AI Agents
+          vs Proposal Pipeline) — no reserved dead space. */}
+      <div className="columns-1 gap-6 lg:columns-2 [&>*]:mb-6 [&>*]:break-inside-avoid">
         <RecentActivitySection projectId={projectId} userMap={userMap} />
-
-        {/* My Tasks */}
         {currentUser && (
           <MyTasksSection
             projectId={projectId}
             currentUserId={currentUser.id}
           />
         )}
-      </div>
-
-      {/* Active AI Agents + Proposal Pipeline */}
-      <div className="grid gap-6 lg:grid-cols-2">
         <ActiveAIAgentsSection projectId={projectId} userMap={userMap} />
         <ProposalPipelineSection projectId={projectId} />
       </div>
-
-      {/* Attention Needed */}
-      <AttentionSection projectId={projectId} />
     </div>
   );
 }
