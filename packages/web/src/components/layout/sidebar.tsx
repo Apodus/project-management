@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   ListTodo,
   Milestone,
+  Network,
   HelpCircle,
   Bell,
   Settings,
@@ -79,6 +80,12 @@ function getNavItems(projectId: string | null): NavItem[] {
       icon: Milestone,
       href: projectId ? `${base}/epics` : "/projects",
       matchPath: "/epics",
+    },
+    {
+      label: "Roadmap",
+      icon: Network,
+      href: projectId ? `${base}/roadmap` : "/projects",
+      matchPath: "/roadmap",
     },
     {
       label: "Milestones",

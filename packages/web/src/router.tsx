@@ -11,6 +11,7 @@ import { ActivityPage } from "@/pages/activity-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { EpicDetailPage } from "@/pages/epic-detail-page";
 import { EpicListPage } from "@/pages/epic-list-page";
+import { EpicTimelinePage } from "@/pages/epic-timeline-page";
 import { LoginPage } from "@/pages/login-page";
 import { MilestonesPage } from "@/pages/milestones-page";
 import { ProjectListPage } from "@/pages/project-list-page";
@@ -167,6 +168,13 @@ const projectEpicListRoute = createRoute({
   component: EpicListPage,
 });
 
+// /projects/$projectId/roadmap — timeline-DAG epic graph
+const projectRoadmapRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/roadmap",
+  component: EpicTimelinePage,
+});
+
 // /projects/$projectId/activity — activity feed
 const projectActivityRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -285,6 +293,7 @@ const routeTree = rootRoute.addChildren([
       projectBoardRoute,
       projectTaskListRoute,
       projectEpicListRoute,
+      projectRoadmapRoute,
       projectActivityRoute,
       projectMilestonesRoute,
       projectTrainRoute,

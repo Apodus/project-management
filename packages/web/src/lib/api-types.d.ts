@@ -3550,6 +3550,212 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/epic-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get epic graph
+         * @description Get the epic dependency graph for a project: nodes (epics + task summary) and derived blocks edges rolled up from the task dependency graph.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Epic graph */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["EpicGraph"];
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/epics/{epicId}/dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add explicit epic dependency
+         * @description Add an explicit planning-time dependency: epicId depends on dependsOnEpicId. Both epics must belong to the project. Self-dependencies and duplicates are rejected.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                    epicId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AddEpicDependency"];
+                };
+            };
+            responses: {
+                /** @description Epic dependency created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["EpicDependency"];
+                        };
+                    };
+                };
+                /** @description Validation error, self-dependency, or cross-project */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Epic not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Epic dependency already exists */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/epics/{epicId}/dependencies/{depId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove explicit epic dependency
+         * @description Remove an explicit epic dependency by its ID.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                    epicId: string;
+                    depId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Epic dependency removed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["EpicDependency"];
+                        };
+                    };
+                };
+                /** @description Epic dependency not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/tasks": {
         parameters: {
             query?: never;
@@ -12000,6 +12206,58 @@ export interface components {
         ForceClaimEpic: {
             reason: string;
             newAssigneeId?: string;
+        };
+        EpicGraph: {
+            nodes: components["schemas"]["EpicGraphNode"][];
+            edges: components["schemas"]["EpicGraphEdge"][];
+            hasCycle: boolean;
+            cycles?: string[][];
+        };
+        EpicGraphNode: {
+            id: string;
+            project_id: string;
+            name: string;
+            status: string;
+            priority: string;
+            target_date?: string | null;
+            created_at: string;
+            updated_at: string;
+            taskSummary: {
+                total: number;
+                done: number;
+                byStatus: {
+                    [key: string]: number;
+                };
+            };
+            /** @enum {string} */
+            health: "not_started" | "on_track" | "at_risk" | "blocked" | "done";
+            activity_recency: string;
+            time_window: {
+                start: string;
+                end: string | null;
+            };
+        };
+        EpicGraphEdge: {
+            from: string;
+            to: string;
+            /** @enum {string} */
+            dependency_type: "blocks" | "relates_to";
+            /** @enum {string} */
+            provenance: "derived" | "explicit";
+        };
+        EpicDependency: {
+            id: string;
+            projectId: string;
+            epicId: string;
+            dependsOnEpicId: string;
+            dependencyType: string;
+            createdAt: string;
+            createdBy: string | null;
+        };
+        AddEpicDependency: {
+            dependsOnEpicId: string;
+            /** @enum {string} */
+            dependencyType?: "blocks" | "relates_to";
         };
         Task: {
             id: string;

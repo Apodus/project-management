@@ -430,6 +430,14 @@ export async function updateEpic(
   });
 }
 
+export type EpicGraph = components["schemas"]["EpicGraph"];
+export type EpicGraphNode = components["schemas"]["EpicGraphNode"];
+export type EpicGraphEdge = components["schemas"]["EpicGraphEdge"];
+
+export async function getEpicGraph(projectId: string): Promise<EpicGraph> {
+  return apiFetch<EpicGraph>(`/projects/${projectId}/epic-graph`);
+}
+
 export async function claimEpic(id: string): Promise<EpicClaimResult> {
   return apiFetch<EpicClaimResult>(`/epics/${id}/claim`, {
     method: "POST",
