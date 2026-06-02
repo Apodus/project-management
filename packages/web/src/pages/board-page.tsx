@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   DndContext,
@@ -122,21 +122,6 @@ function getInitials(name: string): string {
     .map((part) => part.charAt(0).toUpperCase())
     .slice(0, 2)
     .join("");
-}
-
-function getPriorityDotColor(priority: string): string {
-  switch (priority) {
-    case "critical":
-      return "bg-red-500";
-    case "high":
-      return "bg-orange-500";
-    case "medium":
-      return "bg-blue-500";
-    case "low":
-      return "bg-gray-400";
-    default:
-      return "bg-gray-400";
-  }
 }
 
 // ---- Task Card ----
@@ -547,31 +532,6 @@ export function BoardPage() {
       (BOARD_STATUSES as readonly string[]).includes(t.status),
     );
   }, [data]);
-
-  // Group tasks by status
-  const tasksByStatus = useMemo(() => {
-    const map = new Map<string, Task[]>();
-    for (const s of BOARD_STATUSES) {
-      map.set(s, []);
-    }
-    for (const task of allTasks) {
-      const arr = map.get(task.status);
-      if (arr) arr.push(task);
-    }
-    return map;
-  }, [allTasks]);
-
-  // Group tasks by epic (for swimlanes)
-  const tasksByEpic = useMemo(() => {
-    if (!groupByEpic) return null;
-    const map = new Map<string | null, Task[]>();
-    for (const task of allTasks) {
-      const key = task.epicId;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(task);
-    }
-    return map;
-  }, [allTasks, groupByEpic]);
 
   // Drag state
   const [activeTask, setActiveTask] = useState<Task | null>(null);

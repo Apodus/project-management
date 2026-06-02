@@ -1337,18 +1337,6 @@ function PoolAgentRow({
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  function formatRelative(iso: string | null): string {
-    if (!iso) return "-";
-    const date = new Date(iso);
-    const now = new Date();
-    const diffMs = date.getTime() - now.getTime();
-    const diffMin = Math.round(diffMs / 60000);
-    if (diffMin < 0) return "expired";
-    if (diffMin < 1) return "< 1 min";
-    if (diffMin < 60) return `${diffMin} min`;
-    return `${Math.round(diffMin / 60)}h ${diffMin % 60}m`;
-  }
-
   async function handleSaveName() {
     if (!editName.trim() || editName.trim() === agent.user.displayName) {
       setIsEditing(false);

@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   BarChart3,
-  Check,
   Code2,
   Copy,
   ExternalLink,
@@ -590,110 +589,6 @@ function OrderedListEditor({
         </Button>
       </div>
     </div>
-  );
-}
-
-// ---- Editable text field ----
-
-function EditableTextField({
-  value,
-  onSave,
-  placeholder,
-  multiline,
-}: {
-  value: string;
-  onSave: (newValue: string) => void;
-  placeholder?: string;
-  multiline?: boolean;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
-  function save() {
-    const trimmed = draft.trim();
-    if (trimmed !== value) {
-      onSave(trimmed);
-    }
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <div className="space-y-2">
-        {multiline ? (
-          <Textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={4}
-            autoFocus
-            className="text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setDraft(value);
-                setEditing(false);
-              }
-            }}
-          />
-        ) : (
-          <Input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            autoFocus
-            className="h-8 text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") save();
-              if (e.key === "Escape") {
-                setDraft(value);
-                setEditing(false);
-              }
-            }}
-          />
-        )}
-        <div className="flex justify-end gap-2">
-          <Button
-            size="xs"
-            variant="outline"
-            onClick={() => {
-              setDraft(value);
-              setEditing(false);
-            }}
-          >
-            Cancel
-          </Button>
-          <Button size="xs" onClick={save}>
-            <Check className="size-3" />
-            Save
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        setDraft(value);
-        setEditing(true);
-      }}
-      className="group w-full text-left"
-    >
-      {value ? (
-        <p className="whitespace-pre-wrap text-sm">{value}</p>
-      ) : (
-        <p className="text-sm italic text-muted-foreground/50">
-          {placeholder ?? "Click to add..."}
-        </p>
-      )}
-      <span className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-        <Pencil className="size-3" />
-        Edit
-      </span>
-    </button>
   );
 }
 
