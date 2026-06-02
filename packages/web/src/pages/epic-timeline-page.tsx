@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useNavigate } from "@tanstack/react-router";
+import { useParams } from "@tanstack/react-router";
 import { Network } from "lucide-react";
 import {
   ReactFlow,
@@ -24,6 +24,7 @@ import { getEdgeStyling } from "@/lib/epic-graph-style";
 import { partitionEpics, recedeOpacity } from "@/lib/epic-graph-recency";
 import { EpicNode, type EpicNodeData } from "@/components/epic-node";
 import { MilestoneGuides } from "@/components/milestone-guides";
+import { EpicTasksPanel } from "@/components/epic-tasks-panel";
 
 // ---- Past rail ----
 
@@ -73,7 +74,6 @@ function PastRailPanel({
 
 export function EpicTimelinePage() {
   const { projectId } = useParams({ strict: false });
-  const navigate = useNavigate();
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
 
   const { data: project } = useProject(projectId);
@@ -91,6 +91,10 @@ export function EpicTimelinePage() {
 
   // Whether the collapsed "done-and-old" Past rail is expanded into the canvas.
   const [showPast, setShowPast] = useState(false);
+
+  // The epic whose task mini-DAG panel is open (null = none). Clicking the same
+  // epic again toggles the panel closed.
+  const [selectedEpicId, setSelectedEpicId] = useState<string | null>(null);
 
   const nodeTypes = useMemo(() => ({ epic: EpicNode }), []);
 
@@ -248,13 +252,13 @@ export function EpicTimelinePage() {
 
       {/* Canvas */}
       {!isLoading && graph && graph.nodes.length > 0 && (
-        <div className="min-h-0 flex-1 rounded-lg border">
+        <div className="relative min-h-0 flex-1 rounded-lg border">
           <ReactFlow
             nodes={rfNodes}
             edges={rfEdges}
             nodeTypes={nodeTypes}
             onNodeClick={(_, node) =>
-              navigate({ to: "/epics/$epicId", params: { epicId: node.id } })
+              setSelectedEpicId((cur) => (cur === node.id ? null : node.id))
             }
             onNodeMouseEnter={(_, node) => setFocusedId(node.id)}
             onNodeMouseLeave={() => setFocusedId(null)}
@@ -272,8 +276,8 @@ export function EpicTimelinePage() {
             {graph.hasCycle && (
               <Panel position="top-center">
                 <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-700 dark:text-amber-400">
-                  ⚠ {graph.cycles?.length ?? 1} dependency cycle(s) detected — some epics block
-                  each other
+                  ⚠ {graph.cycles?.length ?? 1} dependency cycle(s) detected — some epics block each
+                  other
                 </div>
               </Panel>
             )}
@@ -284,6 +288,14 @@ export function EpicTimelinePage() {
               activeNodeIds={partition.active.map((n) => n.id)}
             />
           </ReactFlow>
+          {selectedEpicId && (
+            <EpicTasksPanel
+              projectId={projectId}
+              epicId={selectedEpicId}
+              epicName={graph?.nodes.find((n) => n.id === selectedEpicId)?.name ?? ""}
+              onClose={() => setSelectedEpicId(null)}
+            />
+          )}
         </div>
       )}
     </div>

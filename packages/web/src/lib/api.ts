@@ -29,10 +29,8 @@ export type TrainInFlight = components["schemas"]["TrainInFlight"];
 export type IntegratorHealth = components["schemas"]["IntegratorHealth"];
 export type TrainState = components["schemas"]["TrainState"];
 export type MergeRequest = components["schemas"]["MergeRequest"];
-export type MergeRequestTimeline =
-  components["schemas"]["MergeRequestTimeline"];
-export type MergeRequestTimelineEvent =
-  components["schemas"]["MergeRequestTimelineEvent"];
+export type MergeRequestTimeline = components["schemas"]["MergeRequestTimeline"];
+export type MergeRequestTimelineEvent = components["schemas"]["MergeRequestTimelineEvent"];
 export type ResolverDefaults = components["schemas"]["ResolverDefaults"];
 
 /**
@@ -115,9 +113,7 @@ export async function apiFetch<T>(
 
 // ---- Project API ----
 
-export async function getProjects(
-  status?: string,
-): Promise<Project[]> {
+export async function getProjects(status?: string): Promise<Project[]> {
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   const query = params.toString();
@@ -135,10 +131,7 @@ export async function getProject(id: string): Promise<Project> {
   return apiFetch<Project>(`/projects/${id}`);
 }
 
-export async function updateProject(
-  id: string,
-  data: UpdateProject,
-): Promise<Project> {
+export async function updateProject(id: string, data: UpdateProject): Promise<Project> {
   return apiFetch<Project>(`/projects/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -157,22 +150,14 @@ export async function getResolverDefaults(): Promise<ResolverDefaults> {
 
 // ---- Proposal API ----
 
-export async function getProposals(
-  projectId: string,
-  status?: string,
-): Promise<Proposal[]> {
+export async function getProposals(projectId: string, status?: string): Promise<Proposal[]> {
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   const query = params.toString();
-  return apiFetch<Proposal[]>(
-    `/projects/${projectId}/proposals${query ? `?${query}` : ""}`,
-  );
+  return apiFetch<Proposal[]>(`/projects/${projectId}/proposals${query ? `?${query}` : ""}`);
 }
 
-export async function createProposal(
-  projectId: string,
-  data: CreateProposal,
-): Promise<Proposal> {
+export async function createProposal(projectId: string, data: CreateProposal): Promise<Proposal> {
   return apiFetch<Proposal>(`/projects/${projectId}/proposals`, {
     method: "POST",
     body: JSON.stringify(data),
@@ -183,10 +168,7 @@ export async function getProposal(id: string): Promise<ProposalDetail> {
   return apiFetch<ProposalDetail>(`/proposals/${id}`);
 }
 
-export async function updateProposal(
-  id: string,
-  data: UpdateProposal,
-): Promise<Proposal> {
+export async function updateProposal(id: string, data: UpdateProposal): Promise<Proposal> {
   return apiFetch<Proposal>(`/proposals/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -225,9 +207,7 @@ export async function addProposalComment(
 export async function getProposalWorkItems(
   id: string,
 ): Promise<{ epics: ProposalEpic[]; tasks: ProposalTask[] }> {
-  return apiFetch<{ epics: ProposalEpic[]; tasks: ProposalTask[] }>(
-    `/proposals/${id}/work-items`,
-  );
+  return apiFetch<{ epics: ProposalEpic[]; tasks: ProposalTask[] }>(`/proposals/${id}/work-items`);
 }
 
 // ---- Task API ----
@@ -256,10 +236,7 @@ export interface PaginatedTasks {
   };
 }
 
-export async function getTasks(
-  projectId: string,
-  filters?: TaskFilters,
-): Promise<PaginatedTasks> {
+export async function getTasks(projectId: string, filters?: TaskFilters): Promise<PaginatedTasks> {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.priority) params.set("priority", filters.priority);
@@ -273,20 +250,16 @@ export async function getTasks(
   if (filters?.page) params.set("page", String(filters.page));
   if (filters?.perPage) params.set("perPage", String(filters.perPage));
   const query = params.toString();
-  return apiFetch<PaginatedTasks>(
-    `/projects/${projectId}/tasks${query ? `?${query}` : ""}`,
-    { rawResponse: true },
-  );
+  return apiFetch<PaginatedTasks>(`/projects/${projectId}/tasks${query ? `?${query}` : ""}`, {
+    rawResponse: true,
+  });
 }
 
 export async function getTask(id: string): Promise<Task> {
   return apiFetch<Task>(`/tasks/${id}`);
 }
 
-export async function updateTask(
-  id: string,
-  data: UpdateTask,
-): Promise<Task> {
+export async function updateTask(id: string, data: UpdateTask): Promise<Task> {
   return apiFetch<Task>(`/tasks/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -362,10 +335,9 @@ export async function getProjectActivity(
   if (filters?.page) params.set("page", String(filters.page));
   if (filters?.per_page) params.set("per_page", String(filters.per_page));
   const query = params.toString();
-  return apiFetch<PaginatedActivity>(
-    `/projects/${projectId}/activity${query ? `?${query}` : ""}`,
-    { rawResponse: true },
-  );
+  return apiFetch<PaginatedActivity>(`/projects/${projectId}/activity${query ? `?${query}` : ""}`, {
+    rawResponse: true,
+  });
 }
 
 export async function getTaskActivity(
@@ -377,10 +349,9 @@ export async function getTaskActivity(
   if (page) params.set("page", String(page));
   if (perPage) params.set("per_page", String(perPage));
   const query = params.toString();
-  return apiFetch<PaginatedActivity>(
-    `/tasks/${taskId}/activity${query ? `?${query}` : ""}`,
-    { rawResponse: true },
-  );
+  return apiFetch<PaginatedActivity>(`/tasks/${taskId}/activity${query ? `?${query}` : ""}`, {
+    rawResponse: true,
+  });
 }
 
 // ---- Epic API ----
@@ -402,28 +373,20 @@ export interface EpicClaimResult {
     | "closed";
 }
 
-export async function getEpics(
-  projectId: string,
-  filters?: EpicFilters,
-): Promise<Epic[]> {
+export async function getEpics(projectId: string, filters?: EpicFilters): Promise<Epic[]> {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.milestone) params.set("milestone", filters.milestone);
   if (filters?.claim) params.set("claim", filters.claim);
   const query = params.toString();
-  return apiFetch<Epic[]>(
-    `/projects/${projectId}/epics${query ? `?${query}` : ""}`,
-  );
+  return apiFetch<Epic[]>(`/projects/${projectId}/epics${query ? `?${query}` : ""}`);
 }
 
 export async function getEpic(id: string): Promise<Epic> {
   return apiFetch<Epic>(`/epics/${id}`);
 }
 
-export async function updateEpic(
-  id: string,
-  data: UpdateEpic,
-): Promise<Epic> {
+export async function updateEpic(id: string, data: UpdateEpic): Promise<Epic> {
   return apiFetch<Epic>(`/epics/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -436,6 +399,14 @@ export type EpicGraphEdge = components["schemas"]["EpicGraphEdge"];
 
 export async function getEpicGraph(projectId: string): Promise<EpicGraph> {
   return apiFetch<EpicGraph>(`/projects/${projectId}/epic-graph`);
+}
+
+export type TaskGraph = components["schemas"]["TaskGraph"];
+export type TaskGraphNode = components["schemas"]["TaskGraphNode"];
+export type TaskGraphEdge = components["schemas"]["TaskGraphEdge"];
+
+export async function getTaskGraph(projectId: string, epicId: string): Promise<TaskGraph> {
+  return apiFetch<TaskGraph>(`/projects/${projectId}/epics/${epicId}/task-graph`);
 }
 
 export async function claimEpic(id: string): Promise<EpicClaimResult> {
@@ -456,12 +427,8 @@ export type Milestone = components["schemas"]["Milestone"];
 export type CreateMilestone = components["schemas"]["CreateMilestone"];
 export type UpdateMilestone = components["schemas"]["UpdateMilestone"];
 
-export async function getMilestones(
-  projectId: string,
-): Promise<Milestone[]> {
-  return apiFetch<Milestone[]>(
-    `/projects/${projectId}/milestones`,
-  );
+export async function getMilestones(projectId: string): Promise<Milestone[]> {
+  return apiFetch<Milestone[]>(`/projects/${projectId}/milestones`);
 }
 
 export async function createMilestone(
@@ -474,10 +441,7 @@ export async function createMilestone(
   });
 }
 
-export async function updateMilestone(
-  id: string,
-  data: UpdateMilestone,
-): Promise<Milestone> {
+export async function updateMilestone(id: string, data: UpdateMilestone): Promise<Milestone> {
   return apiFetch<Milestone>(`/milestones/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -492,10 +456,7 @@ export async function deleteMilestone(id: string): Promise<Milestone> {
 
 // ---- Export/Import API ----
 
-export async function exportProject(
-  projectId: string,
-  includeActivity?: boolean,
-): Promise<Blob> {
+export async function exportProject(projectId: string, includeActivity?: boolean): Promise<Blob> {
   const params = new URLSearchParams();
   if (includeActivity) params.set("include_activity", "true");
   const query = params.toString();
@@ -623,19 +584,14 @@ export async function createUser(data: CreateUserData): Promise<UserWithToken> {
   });
 }
 
-export async function updateUser(
-  id: string,
-  data: UpdateUserData,
-): Promise<AuthUser> {
+export async function updateUser(id: string, data: UpdateUserData): Promise<AuthUser> {
   return apiFetch<AuthUser>(`/users/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export async function rotateToken(
-  id: string,
-): Promise<{ apiToken: string }> {
+export async function rotateToken(id: string): Promise<{ apiToken: string }> {
   return apiFetch<{ apiToken: string }>(`/users/${id}/rotate-token`, {
     method: "POST",
   });
@@ -694,10 +650,7 @@ export interface CreateTemplateFromTaskData {
   description?: string;
 }
 
-export async function getTemplates(
-  projectId?: string,
-  type?: string,
-): Promise<Template[]> {
+export async function getTemplates(projectId?: string, type?: string): Promise<Template[]> {
   const params = new URLSearchParams();
   if (projectId) params.set("project_id", projectId);
   if (type) params.set("template_type", type);
@@ -705,19 +658,14 @@ export async function getTemplates(
   return apiFetch<Template[]>(`/templates${query ? `?${query}` : ""}`);
 }
 
-export async function createTemplate(
-  data: CreateTemplateData,
-): Promise<Template> {
+export async function createTemplate(data: CreateTemplateData): Promise<Template> {
   return apiFetch<Template>("/templates", {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export async function updateTemplate(
-  id: string,
-  data: UpdateTemplateData,
-): Promise<Template> {
+export async function updateTemplate(id: string, data: UpdateTemplateData): Promise<Template> {
   return apiFetch<Template>(`/templates/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -831,10 +779,7 @@ export async function deleteAgentPool(poolId: string): Promise<void> {
   });
 }
 
-export async function updateAgentPoolSecret(
-  poolId: string,
-  secret: string,
-): Promise<void> {
+export async function updateAgentPoolSecret(poolId: string, secret: string): Promise<void> {
   await apiFetch<{ message: string }>(`/auth/agent-pools/${poolId}/secret`, {
     method: "POST",
     body: JSON.stringify({ secret }),
@@ -862,10 +807,9 @@ export async function removeAgentFromPool(
   poolId: string,
   userId: string,
 ): Promise<RemoveAgentResult> {
-  return apiFetch<RemoveAgentResult>(
-    `/auth/agent-pools/${poolId}/agents/${userId}`,
-    { method: "DELETE" },
-  );
+  return apiFetch<RemoveAgentResult>(`/auth/agent-pools/${poolId}/agents/${userId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function forceReleaseAgent(userId: string): Promise<void> {
@@ -881,16 +825,11 @@ export async function getTrainState(projectId: string): Promise<TrainState> {
   return apiFetch<TrainState>(`/projects/${projectId}/train/state`);
 }
 
-export async function getTrainMetrics(
-  projectId: string,
-  resource?: string,
-): Promise<TrainMetrics> {
+export async function getTrainMetrics(projectId: string, resource?: string): Promise<TrainMetrics> {
   const params = new URLSearchParams();
   if (resource) params.set("resource", resource);
   const query = params.toString();
-  return apiFetch<TrainMetrics>(
-    `/projects/${projectId}/train/metrics${query ? `?${query}` : ""}`,
-  );
+  return apiFetch<TrainMetrics>(`/projects/${projectId}/train/metrics${query ? `?${query}` : ""}`);
 }
 
 export async function getTrainInFlight(
@@ -917,9 +856,7 @@ export async function getIntegratorHealth(
   );
 }
 
-export async function getMergeRequestTimeline(
-  id: string,
-): Promise<MergeRequestTimeline> {
+export async function getMergeRequestTimeline(id: string): Promise<MergeRequestTimeline> {
   return apiFetch<MergeRequestTimeline>(`/merge-requests/${id}/timeline`);
 }
 
@@ -965,10 +902,9 @@ export async function getAuditLog(
   if (filters?.page) params.set("page", String(filters.page));
   if (filters?.perPage) params.set("perPage", String(filters.perPage));
   const query = params.toString();
-  return apiFetch<PaginatedAudit>(
-    `/projects/${projectId}/audit-log${query ? `?${query}` : ""}`,
-    { rawResponse: true },
-  );
+  return apiFetch<PaginatedAudit>(`/projects/${projectId}/audit-log${query ? `?${query}` : ""}`, {
+    rawResponse: true,
+  });
 }
 
 export async function pauseTrain(
@@ -1032,26 +968,20 @@ export async function forceReject(
   requestId: string,
   body: { reason: string },
 ): Promise<ForceMergeRequest> {
-  return apiFetch<ForceMergeRequest>(
-    `/merge-requests/${requestId}/force-reject`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
+  return apiFetch<ForceMergeRequest>(`/merge-requests/${requestId}/force-reject`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function forceCancel(
   requestId: string,
   body: { reason: string },
 ): Promise<ForceMergeRequest> {
-  return apiFetch<ForceMergeRequest>(
-    `/merge-requests/${requestId}/force-cancel`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
+  return apiFetch<ForceMergeRequest>(`/merge-requests/${requestId}/force-cancel`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 // ---- Automation Rules API ----
@@ -1097,25 +1027,18 @@ export interface UpdateAutomationRuleData {
   isActive?: boolean;
 }
 
-export async function getAutomationRules(
-  projectId: string,
-): Promise<AutomationRule[]> {
-  return apiFetch<AutomationRule[]>(
-    `/projects/${projectId}/automation-rules`,
-  );
+export async function getAutomationRules(projectId: string): Promise<AutomationRule[]> {
+  return apiFetch<AutomationRule[]>(`/projects/${projectId}/automation-rules`);
 }
 
 export async function createAutomationRule(
   projectId: string,
   data: CreateAutomationRuleData,
 ): Promise<AutomationRule> {
-  return apiFetch<AutomationRule>(
-    `/projects/${projectId}/automation-rules`,
-    {
-      method: "POST",
-      body: JSON.stringify(data),
-    },
-  );
+  return apiFetch<AutomationRule>(`/projects/${projectId}/automation-rules`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function updateAutomationRule(
@@ -1128,18 +1051,13 @@ export async function updateAutomationRule(
   });
 }
 
-export async function deleteAutomationRule(
-  id: string,
-): Promise<{ deleted: boolean }> {
+export async function deleteAutomationRule(id: string): Promise<{ deleted: boolean }> {
   return apiFetch<{ deleted: boolean }>(`/automation-rules/${id}`, {
     method: "DELETE",
   });
 }
 
-export async function toggleAutomationRule(
-  id: string,
-  active: boolean,
-): Promise<AutomationRule> {
+export async function toggleAutomationRule(id: string, active: boolean): Promise<AutomationRule> {
   return apiFetch<AutomationRule>(`/automation-rules/${id}/toggle`, {
     method: "POST",
     body: JSON.stringify({ active }),

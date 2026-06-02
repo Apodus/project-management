@@ -3756,6 +3756,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/epics/{epicId}/task-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get task graph
+         * @description Get the intra-epic task dependency graph for an epic: nodes (the epic's tasks) and edges (their internal task dependencies, cross-epic deps excluded).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                    epicId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Task graph */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["TaskGraph"];
+                        };
+                    };
+                };
+                /** @description Epic not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/tasks": {
         parameters: {
             query?: never;
@@ -12258,6 +12316,29 @@ export interface components {
             dependsOnEpicId: string;
             /** @enum {string} */
             dependencyType?: "blocks" | "relates_to";
+        };
+        TaskGraph: {
+            nodes: components["schemas"]["TaskGraphNode"][];
+            edges: components["schemas"]["TaskGraphEdge"][];
+            hasCycle: boolean;
+            cycles?: string[][];
+        };
+        TaskGraphNode: {
+            id: string;
+            title: string;
+            status: string;
+            priority: string;
+            type: string;
+            assignee_id: string | null;
+            done: boolean;
+        };
+        TaskGraphEdge: {
+            from: string;
+            to: string;
+            /** @enum {string} */
+            dependency_type: "blocks" | "relates_to";
+            /** @enum {string} */
+            provenance: "derived" | "explicit";
         };
         Task: {
             id: string;
