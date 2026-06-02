@@ -1,0 +1,18 @@
+{
+  "roadmap": "roadmaps/vision-20260602-setup-distribution.md",
+  "campaign": "Setup & distribution UX (vision arc)",
+  "started_at": "2026-06-02",
+  "completed_at": "2026-06-02",
+  "status": "COMPLETE",
+  "type": "vision-arc",
+  "campaigns": {
+    "C1": {"status": "done", "commit": "48d21bc", "roadmap": "roadmaps/roadmap-20260602-c1-setup-entrypoint.md", "summary": "README + docs/SETUP.md + cross-platform scripts/distribute.mjs (config-driven) + .example + .gitignore + eslint scripts block + 13-test hermetic suite"},
+    "C2": {"status": "done", "commit": "b389fc3", "roadmap": "roadmaps/roadmap-20260602-c2-connect-agents.md", "summary": "4-step first-run wizard (admin->project->connect->done) + mcp-config-snippet.tsx, reusing use-agent-pool/use-projects; web tests 66 pass"}
+  },
+  "concurrency": "C1, C2 concurrency-eligible; plan+verify ran in parallel, execute serialized (shared-branch git-index safety)",
+  "open_issues": [
+    "REPO HYGIENE (separate follow-up, NOT done): no .gitattributes + Windows autocrlf + prettier endOfLine:lf ⇒ whole-repo `pnpm format` rewrites ~310 files. The C1 executor triggered this; the churn was stashed then dropped (zero real work). Fix: add .gitattributes (* text=auto eol=lf), a one-time normalization commit, pin prettier endOfLine. Until then executors must format ONLY their own files, never `pnpm format`.",
+    "C2 'done' Step union member is represented via a createdPool flag rather than a distinct step value (harmless)."
+  ],
+  "dag_drift": []
+}
