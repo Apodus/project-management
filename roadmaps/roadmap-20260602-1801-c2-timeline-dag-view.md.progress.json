@@ -1,0 +1,20 @@
+{
+  "campaign": "C2 — Timeline-DAG View",
+  "vision": "roadmaps/vision-20260602-epic-timeline-visualization.md",
+  "combined_effort": "C1 (DONE) -> C2 (in progress); C3/C4 parked",
+  "c1_complete": true,
+  "completed_steps": ["C2.P1", "C2.P2", "C2.P3", "C2.P4", "C2.P5"],
+  "current_step": "C2.P6 (FINAL)",
+  "commits": {
+    "C2.P1": "c604f8c", "C2.P2": "5d7b11e", "C2.P3": "a57eb78", "C2.P4": "a39365d", "C2.P5": "ef8d162"
+  },
+  "notes": {
+    "p5": "epic-graph-recency.ts (partitionEpics: done+old->past, only done hideable, never bury incomplete; recedeOpacity linear 0.4 floor). Page: showPast state, nodesForLayout, recede in node data, edge filter to rendered endpoints. PastRailPanel inside <ReactFlow> (Panel + useReactFlow().fitView, mounted-ref skips initial, rAF re-fit on toggle: expand->fit all, collapse->fit active). epic-node consumes recede (dim wins). Mock gained Panel + useReactFlow.",
+    "next": "P6 FINAL = milestone vertical guides (fetch milestones, scale.toX(target_date), render in flow coords - ViewportPortal?) + cycle-warning banner (hasCycle) + empty/loading polish + Playwright epic-timeline.spec (nodes+edges render, click drills, show-older expands). E2E gives the deferred real-browser visual verification (canvas non-zero, nodes visible)."
+  },
+  "open_issues": [
+    {"id": "drizzle-generate-broken", "severity": "low", "preexisting": true, "detail": "drizzle-kit generate non-functional; migrations hand-authored. NOT blocking."},
+    {"id": "deferred-visual-smoke", "severity": "low", "detail": "ReactFlow canvas non-zero-height + node visibility visually confirmed only via P6 Playwright E2E + a manual smoke. Container chain matches the canonical flex h-full min-h-0 solution."}
+  ],
+  "dag_drift": []
+}

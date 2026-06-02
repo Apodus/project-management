@@ -1,0 +1,19 @@
+{
+  "campaign": "C1 — Epic Graph Model",
+  "status": "COMPLETE",
+  "vision": "roadmaps/vision-20260602-epic-timeline-visualization.md",
+  "combined_effort": "C1 -> C2 (C3/C4 parked)",
+  "completed_steps": ["C1.P1", "C1.P2", "C1.P3", "C1.P4"],
+  "current_step": "C2.P1 (see roadmap-20260602-1801-c2-timeline-dag-view.md)",
+  "commits": {
+    "C1.P1": "fbfe3a6",
+    "C1.P2": "e967309",
+    "C1.P3": "9946b57",
+    "C1.P4": "e4e7b84"
+  },
+  "contract": "GET /api/v1/projects/{projectId}/epic-graph -> { nodes[{id,project_id,name,status,priority,target_date,created_at,updated_at,taskSummary{total,done,byStatus},health(enum EPIC_HEALTHS),activity_recency,time_window{start,end}}], edges[{from(prereq),to(dependent),dependency_type,provenance(derived|explicit)}], hasCycle, cycles? }",
+  "open_issues": [
+    {"id": "drizzle-generate-broken", "severity": "low", "preexisting": true, "detail": "drizzle-kit generate non-functional; migrations hand-authored. NOT blocking."}
+  ],
+  "dag_drift": []
+}
