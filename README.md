@@ -48,3 +48,5 @@ Open http://localhost:3000 and complete the first-run admin wizard.
   deploying the merge-train integrator (install, config, monitoring, break-glass).
 - **[scripts/distribute.mjs](scripts/distribute.mjs)** — cross-platform script to vendor the
   built MCP + integrator bundles and docs into a client repo (see SETUP.md → Distribution models).
+- **[docs/RELEASING.md](docs/RELEASING.md)** — versioning + npm-publishing status (the publish
+  scaffold is ready but **parked**), the release process, and what's left to publish.
