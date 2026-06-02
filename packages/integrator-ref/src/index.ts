@@ -158,6 +158,7 @@ async function main(): Promise<void> {
       runner: createClaudeResolverRunner(cfg),
       timeBudgetSec: cfg.resolver.timeBudgetSec,
       tokenBudget: cfg.resolver.tokenBudget,
+      prompt: cfg.resolver.prompt,
       // ──────────────────────────────────────────────────────────────────
       // STEP-7 SEAM (design §5.3/§5.4): the onOutcome handler. On `resolved` it
       // PUSHES the resolved commit from `outcome.worktreePath` (reachable ONLY

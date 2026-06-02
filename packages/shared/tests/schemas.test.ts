@@ -38,6 +38,7 @@ import {
   insertGitRefSchema,
   selectMilestoneSchema,
   insertMilestoneSchema,
+  DEFAULT_RESOLVER_PROMPT,
 } from "../src/index.js";
 
 // ============================================================
@@ -487,7 +488,7 @@ describe("projectSettingsSchema", () => {
   });
 
   // ── Phase 7.6 resolver config (design §3) ──
-  it("accepts a valid resolver block (all 5 fields) and round-trips it", () => {
+  it("accepts a valid resolver block (all 6 fields incl. prompt) and round-trips it", () => {
     const parsed = projectSettingsSchema.parse({
       ...validSettings,
       integrator: {
@@ -500,6 +501,7 @@ describe("projectSettingsSchema", () => {
           time_budget_sec: 900,
           token_budget: 50000,
           command: "claude -p",
+          prompt: "Reconcile {files} then run {verify_command}.",
         },
       },
     });
@@ -509,7 +511,13 @@ describe("projectSettingsSchema", () => {
       time_budget_sec: 900,
       token_budget: 50000,
       command: "claude -p",
+      prompt: "Reconcile {files} then run {verify_command}.",
     });
+  });
+
+  it("exports DEFAULT_RESOLVER_PROMPT with both placeholders", () => {
+    expect(DEFAULT_RESOLVER_PROMPT).toContain("{files}");
+    expect(DEFAULT_RESOLVER_PROMPT).toContain("{verify_command}");
   });
 
   it("applies resolver field defaults when only enabled is given", () => {

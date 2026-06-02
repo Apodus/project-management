@@ -2,6 +2,21 @@ import { z } from "zod";
 import { PROJECT_STATUSES, TASK_STATUSES, CACHE_MODES } from "../constants/enums.js";
 import { ulidSchema, timestampSchema, optionalText } from "./common.js";
 
+/**
+ * Phase 7.6 — the default reconcile instruction handed to the headless conflict
+ * resolver. `settings.integrator.resolver.prompt` overrides it. The `{files}` and
+ * `{verify_command}` placeholders are substituted at run time by the integrator's
+ * resolver runner; a custom prompt may use them too (or omit them). Single source
+ * of truth shared by the integrator (the runner) and the web UI (shown via the
+ * resolver-defaults endpoint, since the web package cannot import @pm/shared).
+ */
+export const DEFAULT_RESOLVER_PROMPT =
+  "Two changes touched these files: {files}. They produced a merge conflict that " +
+  "has been materialized in this worktree — the conflict markers (<<<<<<<, =======, " +
+  ">>>>>>>) are in place. Reconcile BOTH intents: edit the conflicted files so the " +
+  "combined change preserves what each side was trying to do, and remove every " +
+  "conflict marker. Then run the verify command and report the result: {verify_command}";
+
 export const aiAutonomySettingsSchema = z.object({
   can_self_assign: z.boolean(),
   can_create_subtasks: z.boolean(),
@@ -141,6 +156,10 @@ export const integratorSettingsSchema = z
         time_budget_sec: z.number().positive().default(600),
         token_budget: z.number().positive().optional(),
         command: z.string().min(1).optional(),
+        // Override for the reconcile instruction the headless resolver receives.
+        // Absent ⇒ DEFAULT_RESOLVER_PROMPT. The `{files}` and `{verify_command}`
+        // placeholders are substituted at run time (Phase 7.6 §5.2).
+        prompt: z.string().min(1).optional(),
       })
       .default({}),
   })

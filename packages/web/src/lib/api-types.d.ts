@@ -353,6 +353,34 @@ export interface paths {
                         };
                     };
                 };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
             };
         };
         put?: never;
@@ -391,6 +419,34 @@ export interface paths {
                                 createdAt: string;
                                 updatedAt: string;
                                 createdBy: string | null;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
                             };
                         };
                     };
@@ -473,6 +529,34 @@ export interface paths {
                         };
                     };
                 };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
                 /** @description Pool not found */
                 404: {
                     headers: {
@@ -514,6 +598,34 @@ export interface paths {
                     content: {
                         "application/json": {
                             data: {
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
                                 message: string;
                             };
                         };
@@ -577,6 +689,34 @@ export interface paths {
                         };
                     };
                 };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
                 /** @description Pool not found */
                 404: {
                     headers: {
@@ -633,6 +773,34 @@ export interface paths {
                     content: {
                         "application/json": {
                             data: {
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
                                 message: string;
                             };
                         };
@@ -709,6 +877,34 @@ export interface paths {
                         };
                     };
                 };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
                 /** @description Pool not found */
                 404: {
                     headers: {
@@ -774,6 +970,34 @@ export interface paths {
                 };
                 /** @description Agent does not belong to this pool */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1061,6 +1285,34 @@ export interface paths {
                         };
                     };
                 };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
             };
         };
         put?: never;
@@ -1107,6 +1359,34 @@ export interface paths {
                     content: {
                         "application/json": {
                             data: {
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
                                 message: string;
                             };
                         };
@@ -9838,6 +10118,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/resolver/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the default resolver configuration
+         * @description Returns the built-in defaults for settings.integrator.resolver (incl. the default reconcile prompt), so a UI can pre-fill fields and offer a 'revert to defaults' action. token_budget null = unlimited. Any authenticated user.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resolver defaults */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["ResolverDefaults"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/integrator/heartbeat": {
         parameters: {
             query?: never;
@@ -11383,6 +11718,7 @@ export interface components {
                         time_budget_sec: number;
                         token_budget?: number;
                         command?: string;
+                        prompt?: string;
                     };
                 };
                 webhooks?: {
@@ -11472,6 +11808,7 @@ export interface components {
                         time_budget_sec: number;
                         token_budget?: number;
                         command?: string;
+                        prompt?: string;
                     };
                 };
                 webhooks?: {
@@ -12477,6 +12814,14 @@ export interface components {
                 escalationReason?: string;
                 logUrl?: string;
             } | null;
+        };
+        ResolverDefaults: {
+            enabled: boolean;
+            max_concurrent: number;
+            time_budget_sec: number;
+            token_budget: number | null;
+            command: string | null;
+            prompt: string;
         };
         IntegratorHealth: {
             resource: string;

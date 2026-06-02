@@ -60,6 +60,7 @@ export interface IntegratorConfig {
     timeBudgetSec: number;
     tokenBudget?: number;
     command?: string;
+    prompt?: string;
   };
 }
 
@@ -175,6 +176,7 @@ export async function loadConfig(
       timeBudgetSec: ic.resolver?.time_budget_sec ?? 600,
       tokenBudget: ic.resolver?.token_budget,
       command: ic.resolver?.command,
+      prompt: ic.resolver?.prompt,
     },
   };
 }

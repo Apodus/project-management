@@ -21,6 +21,7 @@ import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { DEFAULT_RESOLVER_PROMPT } from "@pm/shared";
 import { killTree } from "./kill-tree.js";
 
 export interface ResolverRunInput {
@@ -29,6 +30,12 @@ export interface ResolverRunInput {
   verifyCommand: string;
   budget: { timeBudgetSec: number; tokenBudget?: number };
   logPath: string;
+  /**
+   * The reconcile instruction template (`settings.integrator.resolver.prompt`).
+   * Absent ⇒ DEFAULT_RESOLVER_PROMPT. `{files}` / `{verify_command}` are
+   * substituted before the prompt is handed to the agent.
+   */
+  promptTemplate?: string;
   /** External-cancel seam (parity with runVerify): abort kills the agent tree. */
   signal?: AbortSignal;
 }
@@ -55,21 +62,21 @@ const CONFLICT_MARKER = "<<<<<<<";
  * verify command so the agent has its full working contract: reconcile BOTH
  * intents, clear the markers, then verify.
  */
-function buildReconcilePrompt(
+export function buildReconcilePrompt(
+  template: string,
   conflictingFiles: string[],
   verifyCommand: string,
 ): string {
   const files = conflictingFiles.length
     ? conflictingFiles.join(", ")
     : "(the files with conflict markers in this worktree)";
-  return [
-    `Two changes touched these files: ${files}.`,
-    "They produced a merge conflict that has been materialized in this worktree —",
-    "the conflict markers (<<<<<<<, =======, >>>>>>>) are in place.",
-    "Reconcile BOTH intents: edit the conflicted files so the combined change",
-    "preserves what each side was trying to do, and remove every conflict marker.",
-    `Then run the verify command and report the result: ${verifyCommand}`,
-  ].join(" ");
+  // Substitute the dynamic placeholders. A custom prompt that omits a placeholder
+  // simply doesn't receive that detail — the substitution is replace-if-present.
+  return template
+    .split("{files}")
+    .join(files)
+    .split("{verify_command}")
+    .join(verifyCommand);
 }
 
 /** True iff any conflicting file still contains a `<<<<<<<` marker. */
@@ -110,6 +117,7 @@ export function createClaudeResolverRunner(cfg: {
       return new Promise<ResolverRunResult>((resolve) => {
         const logStream = createWriteStream(input.logPath, { flags: "a" });
         const prompt = buildReconcilePrompt(
+          input.promptTemplate ?? DEFAULT_RESOLVER_PROMPT,
           input.conflictingFiles,
           input.verifyCommand,
         );

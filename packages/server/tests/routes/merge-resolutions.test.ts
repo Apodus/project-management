@@ -392,4 +392,27 @@ describe("Merge Resolutions API", () => {
     );
     expect(res.status).toBe(401);
   });
+
+  // ─── H. GET resolver defaults ────────────────────────────────────
+  describe("GET /api/v1/resolver/defaults", () => {
+    it("returns the default resolver config incl. the default prompt (any authed user)", async () => {
+      const res = await authRequest(testApp.app, "GET", "/api/v1/resolver/defaults", {
+        token: testApp.testToken,
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: Record<string, unknown> };
+      expect(body.data.enabled).toBe(false);
+      expect(body.data.max_concurrent).toBe(1);
+      expect(body.data.time_budget_sec).toBe(600);
+      expect(body.data.token_budget).toBeNull();
+      expect(typeof body.data.prompt).toBe("string");
+      expect(body.data.prompt as string).toContain("{files}");
+      expect(body.data.prompt as string).toContain("{verify_command}");
+    });
+
+    it("401 when unauthenticated", async () => {
+      const res = await testApp.app.request("/api/v1/resolver/defaults");
+      expect(res.status).toBe(401);
+    });
+  });
 });

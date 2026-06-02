@@ -142,6 +142,7 @@ const integratorSettingsSchema = z
         time_budget_sec: z.number().positive().default(600),
         token_budget: z.number().positive().optional(),
         command: z.string().min(1).optional(),
+        prompt: z.string().min(1).optional(),
       })
       .prefault({}),
   })

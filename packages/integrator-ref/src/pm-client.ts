@@ -88,6 +88,7 @@ export interface IntegratorSettings {
     time_budget_sec?: number;
     token_budget?: number;
     command?: string;
+    prompt?: string;
   };
 }
 

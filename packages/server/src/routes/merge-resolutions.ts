@@ -1,5 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { MERGE_ESCALATION_TARGETS, MERGE_RESOLUTION_STATES } from "@pm/shared";
+import {
+  DEFAULT_RESOLVER_PROMPT,
+  MERGE_ESCALATION_TARGETS,
+  MERGE_RESOLUTION_STATES,
+} from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import { AppError } from "../types.js";
 import * as resolutionSvc from "../services/merge-resolution.service.js";
@@ -217,6 +221,33 @@ const getResolutionRoute = createRoute({
   },
 });
 
+const resolverDefaultsSchema = z
+  .object({
+    enabled: z.boolean(),
+    max_concurrent: z.number(),
+    time_budget_sec: z.number(),
+    token_budget: z.number().nullable(),
+    command: z.string().nullable(),
+    prompt: z.string(),
+  })
+  .openapi("ResolverDefaults");
+
+const resolverDefaultsRoute = createRoute({
+  method: "get",
+  path: "/api/v1/resolver/defaults",
+  tags: ["Merge Resolutions"],
+  summary: "Get the default resolver configuration",
+  description:
+    "Returns the built-in defaults for settings.integrator.resolver (incl. the default reconcile prompt), so a UI can pre-fill fields and offer a 'revert to defaults' action. token_budget null = unlimited. Any authenticated user.",
+  responses: {
+    200: {
+      description: "Resolver defaults",
+      content: { "application/json": { schema: z.object({ data: resolverDefaultsSchema }) } },
+    },
+    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
+  },
+});
+
 // ─── Helpers ──────────────────────────────────────────────────────
 
 function requireUser(user: AuthUser | null): AuthUser {
@@ -328,6 +359,25 @@ export function createMergeResolutionRoutes(): OpenAPIHono<{
     requireUser(c.get("currentUser") as AuthUser | null);
     const view = resolutionSvc.getById(id);
     return c.json({ data: view }, 200);
+  });
+
+  router.openapi(resolverDefaultsRoute, (c) => {
+    requireUser(c.get("currentUser") as AuthUser | null);
+    // Mirrors the canonical schema defaults (project.ts §resolver) + the shared
+    // default prompt. token_budget/command null = the optional-field absent state.
+    return c.json(
+      {
+        data: {
+          enabled: false,
+          max_concurrent: 1,
+          time_budget_sec: 600,
+          token_budget: null,
+          command: null,
+          prompt: DEFAULT_RESOLVER_PROMPT,
+        },
+      },
+      200,
+    );
   });
 
   return router;

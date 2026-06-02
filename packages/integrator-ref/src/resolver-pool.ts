@@ -121,6 +121,8 @@ export interface ResolverWorkerDeps {
   /** Resolver budget (design §3): wall-clock cap + optional token cap. */
   timeBudgetSec: number;
   tokenBudget?: number;
+  /** Reconcile-prompt override (`resolver.prompt`); absent ⇒ DEFAULT_RESOLVER_PROMPT. */
+  prompt?: string;
   /**
    * The STEP-7 SEAM. Invoked with the terminal outcome BEFORE the slot is
    * released (the resolved path needs the worktree alive for Step 7's push).
@@ -224,6 +226,7 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
           runner: opts.runner,
           timeBudgetSec: opts.timeBudgetSec ?? 600,
           tokenBudget: opts.tokenBudget,
+          prompt: opts.prompt,
           onOutcome: opts.onOutcome,
         }
       : null;
@@ -364,6 +367,7 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
           timeBudgetSec: w.timeBudgetSec,
           tokenBudget: w.tokenBudget,
         },
+        promptTemplate: w.prompt,
         logPath,
       });
 
