@@ -1579,6 +1579,133 @@
           "reason"
         ]
       },
+      "EpicGraph": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EpicGraphNode"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EpicGraphEdge"
+            }
+          },
+          "hasCycle": {
+            "type": "boolean"
+          },
+          "cycles": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "nodes",
+          "edges",
+          "hasCycle"
+        ]
+      },
+      "EpicGraphNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "target_date": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "taskSummary": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "number"
+              },
+              "done": {
+                "type": "number"
+              },
+              "byStatus": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              }
+            },
+            "required": [
+              "total",
+              "done",
+              "byStatus"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "status",
+          "priority",
+          "created_at",
+          "updated_at",
+          "taskSummary"
+        ]
+      },
+      "EpicGraphEdge": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "dependency_type": {
+            "type": "string",
+            "enum": [
+              "blocks",
+              "relates_to"
+            ]
+          },
+          "provenance": {
+            "type": "string",
+            "enum": [
+              "derived",
+              "explicit"
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "dependency_type",
+          "provenance"
+        ]
+      },
       "Task": {
         "type": "object",
         "properties": {
@@ -11951,6 +12078,77 @@
           },
           "404": {
             "description": "Epic not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/epic-graph": {
+      "get": {
+        "tags": [
+          "Epics"
+        ],
+        "summary": "Get epic graph",
+        "description": "Get the epic dependency graph for a project: nodes (epics + task summary) and derived blocks edges rolled up from the task dependency graph.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Epic graph",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EpicGraph"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
             "content": {
               "application/json": {
                 "schema": {
