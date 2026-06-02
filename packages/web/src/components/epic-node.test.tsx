@@ -7,9 +7,7 @@ import { EpicNode, type EpicNodeData } from "./epic-node";
 // NodeProps shape ReactFlow constructs (and the store context Handle needs),
 // rather than hand-rolling a partial NodeProps object.
 function renderNode(data: EpicNodeData) {
-  const nodes: Node<EpicNodeData>[] = [
-    { id: "n1", type: "epic", position: { x: 0, y: 0 }, data },
-  ];
+  const nodes: Node<EpicNodeData>[] = [{ id: "n1", type: "epic", position: { x: 0, y: 0 }, data }];
   return render(
     <ReactFlowProvider>
       <div style={{ width: 400, height: 300 }}>
@@ -49,6 +47,22 @@ describe("EpicNode", () => {
     expect(fill).toHaveStyle({ width: "60%" });
     // getHealthColor("on_track", "fill") → "bg-blue-500".
     expect(fill).toHaveClass("bg-blue-500");
+  });
+
+  it("marks a cycle member with a red ring", () => {
+    const { container } = renderNode(baseData({ inCycle: true }));
+    expect(container.querySelector(".ring-red-500")).not.toBeNull();
+  });
+
+  it("dims a node that is off the focused dependency chain", () => {
+    const { container } = renderNode(baseData({ dimmed: true }));
+    expect(container.querySelector(".opacity-25")).not.toBeNull();
+  });
+
+  it("applies neither ring nor dim when both flags are absent", () => {
+    const { container } = renderNode(baseData());
+    expect(container.querySelector(".ring-red-500")).toBeNull();
+    expect(container.querySelector(".opacity-25")).toBeNull();
   });
 
   it("handles a zero-task epic without crashing (0/0, 0%, empty underline)", () => {

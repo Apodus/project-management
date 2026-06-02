@@ -1,13 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "@tanstack/react-router";
 import { Network } from "lucide-react";
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  type Node,
-  type Edge,
-} from "@xyflow/react";
+import { ReactFlow, Background, Controls, type Node, type Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +10,8 @@ import { useProject } from "@/hooks/use-projects";
 import { useEpicGraph } from "@/hooks/use-epic-graph";
 import { useProjectStore } from "@/stores/project-store";
 import { computeEpicGraphLayout } from "@/lib/epic-graph-layout";
+import { computeChain, edgeKey } from "@/lib/epic-graph-chain";
+import { getEdgeStyling } from "@/lib/epic-graph-style";
 import { EpicNode, type EpicNodeData } from "@/components/epic-node";
 
 // ---- Main page ----
@@ -34,6 +30,9 @@ export function EpicTimelinePage() {
 
   const { data: graph, isLoading, error, refetch } = useEpicGraph(projectId);
 
+  // The hovered epic drives the dependency-chain highlight (null = no focus).
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+
   const nodeTypes = useMemo(() => ({ epic: EpicNode }), []);
 
   // The page is impure (injects a real clock); the layout module stays pure.
@@ -43,6 +42,24 @@ export function EpicTimelinePage() {
         now: new Date().toISOString(),
       }),
     [graph],
+  );
+
+  // Cycle members (from the payload) get marked; `?? []` guards the optional
+  // `cycles` field (fixtures may omit it).
+  const cycleIds = useMemo(() => new Set(graph?.cycles?.flat() ?? []), [graph]);
+
+  // Backwards-in-time edges, keyed by node PAIR (from->to WITHOUT
+  // dependency_type) — backwards is a property of the time relationship between
+  // two epics, and the layout only flags `blocks` edges.
+  const backwardsKeys = useMemo(
+    () => new Set(layout.backwardsEdges.map((b) => `${b.from}->${b.to}`)),
+    [layout],
+  );
+
+  // The dependency chain through the hovered node (null when nothing hovered).
+  const chain = useMemo(
+    () => (focusedId ? computeChain(focusedId, graph?.edges ?? []) : null),
+    [graph, focusedId],
   );
 
   const rfNodes = useMemo<Node<EpicNodeData>[]>(() => {
@@ -60,26 +77,37 @@ export function EpicTimelinePage() {
           progressPct: total > 0 ? Math.round((done / total) * 100) : 0,
           health: n.health,
           byStatus: n.taskSummary.byStatus,
+          dimmed: chain ? !chain.nodeIds.has(n.id) : false,
+          inCycle: cycleIds.has(n.id),
         },
       };
     });
-  }, [graph, layout]);
+  }, [graph, layout, chain, cycleIds]);
 
   const rfEdges = useMemo<Edge[]>(() => {
     if (!graph) return [];
-    // Default styling only — provenance/arrowheads/highlight land in P4.
-    return graph.edges.map((e) => ({
-      id: `${e.from}->${e.to}-${e.dependency_type}`,
-      source: e.from,
-      target: e.to,
-    }));
-  }, [graph]);
+    return graph.edges.map((e) => {
+      const key = edgeKey(e);
+      const isBackwards = backwardsKeys.has(`${e.from}->${e.to}`);
+      const highlightState = chain ? (chain.edgeKeys.has(key) ? "highlighted" : "dimmed") : "none";
+      return {
+        id: key,
+        source: e.from,
+        target: e.to,
+        ...getEdgeStyling({
+          provenance: e.provenance,
+          isBackwards,
+          highlightState,
+        }),
+      };
+    });
+  }, [graph, chain, backwardsKeys]);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <Network className="size-6 text-muted-foreground" />
+        <Network className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Roadmap</h1>
         {project && (
           <Badge variant="outline" className="text-xs font-normal">
@@ -90,8 +118,8 @@ export function EpicTimelinePage() {
 
       {/* Error state */}
       {error && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
-          <p className="text-sm text-destructive">Failed to load roadmap.</p>
+        <div className="border-destructive/50 bg-destructive/10 flex flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">Failed to load roadmap.</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             Retry
           </Button>
@@ -110,10 +138,8 @@ export function EpicTimelinePage() {
       {/* Empty state */}
       {!isLoading && graph && graph.nodes.length === 0 && (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-12">
-          <Network className="mb-3 size-10 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">
-            No epics in this roadmap yet.
-          </p>
+          <Network className="text-muted-foreground/40 mb-3 size-10" />
+          <p className="text-muted-foreground text-sm">No epics in this roadmap yet.</p>
         </div>
       )}
 
@@ -127,6 +153,8 @@ export function EpicTimelinePage() {
             onNodeClick={(_, node) =>
               navigate({ to: "/epics/$epicId", params: { epicId: node.id } })
             }
+            onNodeMouseEnter={(_, node) => setFocusedId(node.id)}
+            onNodeMouseLeave={() => setFocusedId(null)}
             fitView
             proOptions={{ hideAttribution: true }}
           >
