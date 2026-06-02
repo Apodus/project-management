@@ -1,0 +1,31 @@
+# Line-ending policy.
+#
+# The repo stores all text as LF and checks it out as LF on every platform,
+# overriding a local core.autocrlf=true. This keeps Prettier (endOfLine: lf)
+# idempotent so `pnpm format` no longer rewrites the whole tree on a Windows
+# checkout. Windows scripts are the deliberate exception (they need CRLF).
+
+* text=auto eol=lf
+
+# Windows scripts must stay CRLF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# POSIX shell scripts stay LF.
+*.sh    text eol=lf
+
+# Binary assets — never normalize (text=auto usually detects these; explicit for safety).
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.avif  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.pdf   binary
+*.db    binary
