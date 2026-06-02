@@ -9,6 +9,7 @@ data/
 .env
 .env.*
 !.env.example
+.mcp.json
 *.tsbuildinfo
 .claude/worktrees/
 playwright-report/
