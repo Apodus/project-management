@@ -123,11 +123,13 @@ node /path/to/pm-integrator.mjs --project <project-id> --resource main --pm-url 
 ## 6. Distribution models
 
 To run the MCP server and integrator **next to a client repo** (so agents and the daemon don't
-need this monorepo checked out), vendor the built bundles into the client.
+need this monorepo checked out), pick one of two distribution models. Both ship the same
+self-contained bundles; they differ in whether the bundle is vendored into the client or pulled
+from public npm at run time.
 
-- **Vendored bundle (today).** Build the bundles and copy the four artifacts (MCP bundle,
+- **(a) Vendored bundle (byte-exact).** Build the bundles and copy the four artifacts (MCP bundle,
   integrator daemon, operator guide, worker workflow doc) into each client target using the
-  cross-platform script:
+  cross-platform script. This is what we do for the game_one client:
 
   ```bash
   cp distribute.config.example.json distribute.config.json   # then edit the dest paths
@@ -141,5 +143,18 @@ need this monorepo checked out), vendor the built bundles into the client.
   small `distribute.bat` (or shell) wrapper that simply calls `node scripts/distribute.mjs` — the
   wrapper is local/gitignored; the script is the reproducible path.
 
-- **`npx` (future).** Publishing the MCP server and integrator as runnable packages so a client
-  can `npx @pm/mcp-server` without vendoring is a planned alternative; not available yet.
+- **(b) `npx` from public npm (zero vendoring).** The MCP server and integrator are published to
+  public npm as runnable, dependency-free packages, so a client can run them without checking out
+  or vendoring anything:
+
+  ```bash
+  npx @apodus/pm-mcp-server@0.1.0     # MCP server (stdio) — point .mcp.json's command at npx
+  npx @apodus/pm-integrator@0.1.0 --project <id> --resource main --pm-url http://localhost:3000
+  ```
+
+  Pin a version (e.g. `@0.1.0`) so the client is reproducible. The `.mcp.json` `command`/`args`
+  become `"npx"` + `["-y", "@apodus/pm-mcp-server@0.1.0"]` instead of `node` + an absolute path.
+
+In practice the **integrator is usually vendored** (it's a long-lived process you supervise on the
+host, so a pinned local bundle is simplest), while the **MCP server can be either** — `npx` is the
+lowest-friction way to wire an agent up, vendoring gives you a byte-exact pinned artifact.

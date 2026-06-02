@@ -1,6 +1,6 @@
 # Integrator deployment guide
 
-**Audience**: operators deploying and running the reference integrator (`@pm/integrator-ref`) for a PM project.
+**Audience**: operators deploying and running the reference integrator (`@apodus/pm-integrator`) for a PM project.
 **Scope**: the merge train — one integrator process per `(project, resource)` lane. Phase 7.1 (serial, `parallelism: 1`) is the baseline; **Phase 7.2 adds speculative batching** (`parallelism: N`, §13); **Phase 7.3 adds cross-repo atomicity** (linked inner/outer repos landing as a unit, §14); **Phase 7.4 adds observability + break-glass** (§15); **Phase 7.5 adds smart verification** (§16); **Phase 7.6 adds intelligent conflict resolution** (an opt-in headless resolver, §18).
 **Companion specs**: `docs/design/phase-7.1-design.md` (serial baseline), `docs/design/phase-7.2-design.md` (speculative batching — data model, lock protocol, observability, failure catalog), `docs/design/phase-7.3-design.md` (cross-repo atomicity — linked-repo model, group + incident tables, assembled verify, atomic-land protocol, orphaned-inner recovery), `docs/design/phase-7.4-design.md` (observability + break-glass), `docs/design/phase-7.5-design.md` (smart verification — verify DAG + verify-result cache), and `docs/design/phase-7.6-design.md` (intelligent conflict resolution — resolver config, resolution state machine, escalation ladder). When this guide and a design doc disagree on a contract detail, the design doc wins.
 
@@ -49,7 +49,7 @@ From the monorepo root:
 
 ```bash
 pnpm install
-pnpm --filter @pm/integrator-ref build
+pnpm --filter @apodus/pm-integrator build
 ```
 
 The build runs `tsc --build` and then adds an executable shebang to the entry file. It produces:
@@ -416,7 +416,7 @@ On `SIGTERM` / `SIGINT` the integrator finishes its current loop iteration (it d
 1. **Enable the integrator on the project.** `PATCH /api/v1/projects/{id}` with `settings.integrator.enabled = true` plus `verify_command` and `worktree_root` (see §4.3 for the sample body).
 2. **Set `gitRepoUrl`** on the project (top-level field) to a clonable repo URL.
 3. **Create an `ai_agent` user and API token** in PM; export it (e.g. `export PM_API_TOKEN=…`).
-4. **Build:** `pnpm install && pnpm --filter @pm/integrator-ref build`.
+4. **Build:** `pnpm install && pnpm --filter @apodus/pm-integrator build`.
 5. **Run:**
    ```bash
    node packages/integrator-ref/dist/index.js --project <id> --resource main --pm-url <url>
@@ -901,7 +901,7 @@ The "submit and walk away" contract requires a running integrator — PM never s
 2. Need a PM `ai_agent` token (NOT a human token) for the integrator.
 3. Build + run on the integrator host:
    ```bash
-   pnpm install && pnpm --filter @pm/integrator-ref build
+   pnpm install && pnpm --filter @apodus/pm-integrator build
    PM_API_TOKEN=<ai_agent token> \
    node packages/integrator-ref/dist/index.js --project {pid} --resource main --pm-url http://<pm-host>:3000
    ```

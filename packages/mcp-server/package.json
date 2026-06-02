@@ -1,8 +1,18 @@
 {
-  "name": "@pm/mcp-server",
+  "name": "@apodus/pm-mcp-server",
   "version": "0.1.0",
-  "private": true,
+  "description": "MCP server for the Human-AI Collaborative Project Management system — lets Claude (or any MCP-compatible agent) manage projects, proposals, tasks, and the merge train over the PM REST API.",
   "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/Apodus/project-management#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Apodus/project-management.git",
+    "directory": "packages/mcp-server"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -12,6 +22,10 @@
   "bin": {
     "pm-mcp-server": "./dist/bundle/pm-mcp-server.mjs"
   },
+  "files": [
+    "dist/bundle/*.mjs",
+    "README.md"
+  ],
   "scripts": {
     "gen-version": "node scripts/gen-version.mjs",
     "prebuild": "node scripts/gen-version.mjs",
@@ -24,18 +38,17 @@
     "pretypecheck": "node scripts/gen-version.mjs",
     "typecheck": "tsc --noEmit",
     "pretest": "node scripts/gen-version.mjs",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@pm/shared": "workspace:*",
-    "zod": "^3.25.76"
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@pm/shared": "workspace:*",
     "@types/node": "^22",
     "esbuild": "^0.28.0",
     "tsx": "^4",
     "typescript": "^5",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.7",
+    "zod": "^3.25.76"
   }
 }

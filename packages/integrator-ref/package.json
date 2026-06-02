@@ -1,8 +1,18 @@
 {
-  "name": "@pm/integrator-ref",
+  "name": "@apodus/pm-integrator",
   "version": "0.1.0",
-  "private": true,
+  "description": "Reference integrator daemon for the PM merge train — rebases queued merge requests onto live main in an isolated worktree, runs verify, and atomically lands or rejects them. One process per (project, resource) lane.",
   "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/Apodus/project-management#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Apodus/project-management.git",
+    "directory": "packages/integrator-ref"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -10,8 +20,12 @@
     }
   },
   "bin": {
-    "pm-integrator": "./dist/index.js"
+    "pm-integrator": "./dist/bundle/pm-integrator.mjs"
   },
+  "files": [
+    "dist/bundle/*.mjs",
+    "README.md"
+  ],
   "scripts": {
     "gen-version": "node scripts/gen-version.mjs",
     "prebuild": "node scripts/gen-version.mjs",
@@ -25,20 +39,19 @@
     "pretypecheck": "node scripts/gen-version.mjs",
     "typecheck": "tsc --noEmit",
     "pretest": "node scripts/gen-version.mjs",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@pm/shared": "workspace:*",
-    "commander": "^12.1.0",
-    "pino": "^9.5.0",
-    "simple-git": "^3.27.0"
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build && pnpm run bundle"
   },
   "devDependencies": {
     "@hono/node-server": "^1",
+    "@pm/shared": "workspace:*",
     "@types/node": "^22",
     "bcryptjs": "^3.0.3",
+    "commander": "^12.1.0",
     "drizzle-orm": "^0.45.2",
     "esbuild": "^0.28.0",
+    "pino": "^9.5.0",
+    "simple-git": "^3.27.0",
     "tsx": "^4",
     "typescript": "^5",
     "vitest": "^4.1.7"

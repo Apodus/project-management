@@ -1,0 +1,59 @@
+name: release
+
+# Tag-triggered npm publish for the two public packages:
+#   @apodus/pm-mcp-server  (packages/mcp-server)
+#   @apodus/pm-integrator  (packages/integrator-ref)
+#
+# Each package publishes its esbuild bundle as its `bin` (the bundle inlines
+# @pm/shared and all other deps), so the published tarballs have ZERO runtime
+# dependencies.
+#
+# ── One-time manual setup before the first release ──────────────────────────
+#   1. Create the public npm org `@apodus` (https://www.npmjs.com/org/create).
+#   2. Generate an npm **Automation** access token with publish rights for the
+#      org and add it as a repo secret named `NPM_TOKEN`
+#      (Settings → Secrets and variables → Actions → New repository secret).
+#   3. Publish by pushing a version tag, e.g.:
+#         git tag v0.1.0 && git push origin v0.1.0
+# ────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    name: build + publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build MCP server bundle
+        run: pnpm --filter @apodus/pm-mcp-server build
+
+      - name: Build integrator bundle
+        run: pnpm --filter @apodus/pm-integrator build && pnpm --filter @apodus/pm-integrator bundle
+
+      - name: Publish @apodus/pm-mcp-server
+        run: pnpm publish --filter @apodus/pm-mcp-server --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @apodus/pm-integrator
+        run: pnpm publish --filter @apodus/pm-integrator --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -54,7 +54,7 @@
  * GATING: runs iff git is available AND the integrator dist exists. Build with:
  *   pnpm --filter @pm/shared build
  *   pnpm --filter @pm/server build
- *   pnpm --filter @pm/integrator-ref build
+ *   pnpm --filter @apodus/pm-integrator build
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
