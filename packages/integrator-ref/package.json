@@ -1,5 +1,5 @@
 {
-  "name": "@apodus/pm-integrator",
+  "name": "@urtela/pm-integrator",
   "version": "0.1.0",
   "description": "Reference integrator daemon for the PM merge train — rebases queued merge requests onto live main in an isolated worktree, runs verify, and atomically lands or rejects them. One process per (project, resource) lane.",
   "type": "module",

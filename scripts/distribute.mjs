@@ -129,7 +129,7 @@ export function resolveSources(root) {
     if (!existsSync(path)) {
       const buildHint =
         key === "mcpBundle" || key === "integratorBundle"
-          ? " — did the build run? (the bundles are produced by `pnpm --filter @apodus/pm-mcp-server build` and `pnpm --filter @apodus/pm-integrator build && bundle`)"
+          ? " — did the build run? (the bundles are produced by `pnpm --filter @urtela/pm-mcp-server build` and `pnpm --filter @urtela/pm-integrator build && bundle`)"
           : "";
       throw new Error(`${labels[key]} not found at ${path}${buildHint}`);
     }
@@ -144,9 +144,9 @@ function pnpmCommand() {
 
 function runBuild(root) {
   const steps = [
-    ["--filter", "@apodus/pm-mcp-server", "build"],
-    ["--filter", "@apodus/pm-integrator", "build"],
-    ["--filter", "@apodus/pm-integrator", "bundle"],
+    ["--filter", "@urtela/pm-mcp-server", "build"],
+    ["--filter", "@urtela/pm-integrator", "build"],
+    ["--filter", "@urtela/pm-integrator", "bundle"],
   ];
   for (const stepArgs of steps) {
     console.log(`Running: pnpm ${stepArgs.join(" ")}`);

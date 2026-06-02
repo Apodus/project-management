@@ -148,12 +148,12 @@ from public npm at run time.
   or vendoring anything:
 
   ```bash
-  npx @apodus/pm-mcp-server@0.1.0     # MCP server (stdio) — point .mcp.json's command at npx
-  npx @apodus/pm-integrator@0.1.0 --project <id> --resource main --pm-url http://localhost:3000
+  npx @urtela/pm-mcp-server@0.1.0     # MCP server (stdio) — point .mcp.json's command at npx
+  npx @urtela/pm-integrator@0.1.0 --project <id> --resource main --pm-url http://localhost:3000
   ```
 
   Pin a version (e.g. `@0.1.0`) so the client is reproducible. The `.mcp.json` `command`/`args`
-  become `"npx"` + `["-y", "@apodus/pm-mcp-server@0.1.0"]` instead of `node` + an absolute path.
+  become `"npx"` + `["-y", "@urtela/pm-mcp-server@0.1.0"]` instead of `node` + an absolute path.
 
 In practice the **integrator is usually vendored** (it's a long-lived process you supervise on the
 host, so a pinned local bundle is simplest), while the **MCP server can be either** — `npx` is the

@@ -1,4 +1,4 @@
-# @apodus/pm-integrator
+# @urtela/pm-integrator
 
 Reference integrator daemon for the [PM merge train](https://github.com/Apodus/project-management).
 One long-lived process per `(project, resource)` lane.
@@ -15,14 +15,14 @@ bundle next to the client repo:
 
 ```bash
 PM_API_TOKEN=<ai_agent token> \
-  npx @apodus/pm-integrator \
+  npx @urtela/pm-integrator \
   --project <project-id> \
   --resource main \
   --pm-url http://localhost:3000
 ```
 
 The published package ships a single self-contained ESM bundle as its `pm-integrator` bin (no
-runtime dependencies). Pin a version for reproducibility, e.g. `npx @apodus/pm-integrator@0.1.0`.
+runtime dependencies). Pin a version for reproducibility, e.g. `npx @urtela/pm-integrator@0.1.0`.
 
 > The integrator authenticates as a PM **`ai_agent`** user. Create the agent and its API token in
 > PM (Settings → Users), then export the token under the env-var name passed to `--token` (default

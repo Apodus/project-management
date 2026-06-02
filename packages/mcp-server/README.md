@@ -1,4 +1,4 @@
-# @apodus/pm-mcp-server
+# @urtela/pm-mcp-server
 
 MCP server for the [Human-AI Collaborative Project Management system](https://github.com/Apodus/project-management).
 It lets Claude (or any MCP-compatible agent) manage projects, proposals, epics, tasks, the activity
@@ -15,10 +15,10 @@ reads its configuration from environment variables.
 ```bash
 PM_API_URL=http://localhost:3000 \
 PM_POOL_SECRET=your-pool-secret \
-  npx @apodus/pm-mcp-server
+  npx @urtela/pm-mcp-server
 ```
 
-Pin a version for reproducibility, e.g. `npx @apodus/pm-mcp-server@0.1.0`.
+Pin a version for reproducibility, e.g. `npx @urtela/pm-mcp-server@0.1.0`.
 
 ### Environment variables
 
@@ -43,7 +43,7 @@ process):
   "mcpServers": {
     "project-management": {
       "command": "npx",
-      "args": ["-y", "@apodus/pm-mcp-server@0.1.0"],
+      "args": ["-y", "@urtela/pm-mcp-server@0.1.0"],
       "env": {
         "PM_API_URL": "http://localhost:3000",
         "PM_POOL_SECRET": "your-pool-secret",
@@ -61,7 +61,7 @@ Static-token form:
   "mcpServers": {
     "project-management": {
       "command": "npx",
-      "args": ["-y", "@apodus/pm-mcp-server@0.1.0"],
+      "args": ["-y", "@urtela/pm-mcp-server@0.1.0"],
       "env": {
         "PM_API_URL": "http://localhost:3000",
         "PM_API_TOKEN": "the-token-shown-once"

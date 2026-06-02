@@ -72,7 +72,7 @@ pnpm format:check
 pnpm --filter @pm/server dev
 pnpm --filter @pm/web dev
 pnpm --filter @pm/shared build
-pnpm --filter @apodus/pm-mcp-server build
+pnpm --filter @urtela/pm-mcp-server build
 
 # Generate Drizzle migration after schema changes
 pnpm --filter @pm/server db:generate
@@ -131,7 +131,7 @@ cross-repo re-submissions are no-op'd naturally by the fast-forward push; see
 - **MCP tools** (worker-facing): `pm_request_merge`, `pm_list_merge_requests`,
   `pm_get_merge_request`, `pm_cancel_merge_request`. The integrator-facing operations
   (pickup, start/complete attempt, land, reject, reset-to-queued) are HTTP-only.
-- **Reference integrator**: `packages/integrator-ref` (`@apodus/pm-integrator`, bin `pm-integrator`).
+- **Reference integrator**: `packages/integrator-ref` (`@urtela/pm-integrator`, bin `pm-integrator`).
   Deploy one process per `(project, resource)` lane.
 
 **Speculative batching (Phase 7.2).** The integrator can run **N integrations in flight at once**,
@@ -332,7 +332,7 @@ pnpm test
 # Run tests for a specific package
 pnpm --filter @pm/server test
 pnpm --filter @pm/shared test
-pnpm --filter @apodus/pm-mcp-server test
+pnpm --filter @urtela/pm-mcp-server test
 
 # Run tests in watch mode (package-level)
 cd packages/server && npx vitest

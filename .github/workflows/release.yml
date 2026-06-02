@@ -1,19 +1,32 @@
 name: release
 
 # Tag-triggered npm publish for the two public packages:
-#   @apodus/pm-mcp-server  (packages/mcp-server)
-#   @apodus/pm-integrator  (packages/integrator-ref)
+#   @urtela/pm-mcp-server  (packages/mcp-server)
+#   @urtela/pm-integrator  (packages/integrator-ref)
 #
 # Each package publishes its esbuild bundle as its `bin` (the bundle inlines
 # @pm/shared and all other deps), so the published tarballs have ZERO runtime
 # dependencies.
 #
+# Publishing mechanism: npm **Trusted Publishing (OIDC)** — there is NO
+# long-lived NPM_TOKEN. GitHub Actions mints a short-lived OIDC token (hence
+# `id-token: write` below) that npm exchanges for publish rights, and
+# `--provenance` attaches a verifiable build-provenance attestation.
+#
 # ── One-time manual setup before the first release ──────────────────────────
-#   1. Create the public npm org `@apodus` (https://www.npmjs.com/org/create).
-#   2. Generate an npm **Automation** access token with publish rights for the
-#      org and add it as a repo secret named `NPM_TOKEN`
-#      (Settings → Secrets and variables → Actions → New repository secret).
-#   3. Publish by pushing a version tag, e.g.:
+#   1. Register a Trusted Publisher for EACH package on npmjs.com
+#      (Package → Settings → Trusted Publisher → GitHub Actions):
+#         organization/owner: Apodus
+#         repository:         project-management
+#         workflow filename:  release.yml
+#      Do this for both @urtela/pm-mcp-server and @urtela/pm-integrator.
+#   2. npm trusted publishing can pre-register a package that does not exist
+#      yet; however, if your npm account/CLI still requires it, the very FIRST
+#      publish may need a one-time granular publish token. Verify against npm's
+#      current Trusted Publishing docs when you go to publish.
+#   3. Requires npm >= 11.5.1 for OIDC — this workflow upgrades npm via
+#      `npm install -g npm@latest` before publishing.
+#   4. Publish by pushing a version tag, e.g.:
 #         git tag v0.1.0 && git push origin v0.1.0
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -22,9 +35,13 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+  id-token: write # REQUIRED for npm Trusted Publishing (OIDC) + provenance
+
 jobs:
   publish:
-    name: build + publish to npm
+    name: build + publish to npm (OIDC)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -43,17 +60,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build MCP server bundle
-        run: pnpm --filter @apodus/pm-mcp-server build
+        run: pnpm --filter @urtela/pm-mcp-server build
 
       - name: Build integrator bundle
-        run: pnpm --filter @apodus/pm-integrator build && pnpm --filter @apodus/pm-integrator bundle
+        run: pnpm --filter @urtela/pm-integrator build && pnpm --filter @urtela/pm-integrator bundle
 
-      - name: Publish @apodus/pm-mcp-server
-        run: pnpm publish --filter @apodus/pm-mcp-server --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Upgrade npm for OIDC (Trusted Publishing needs npm >= 11.5.1)
+        run: npm install -g npm@latest
 
-      - name: Publish @apodus/pm-integrator
-        run: pnpm publish --filter @apodus/pm-integrator --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish @urtela/pm-mcp-server
+        run: npm publish --provenance --access public
+        working-directory: packages/mcp-server
+
+      - name: Publish @urtela/pm-integrator
+        run: npm publish --provenance --access public
+        working-directory: packages/integrator-ref

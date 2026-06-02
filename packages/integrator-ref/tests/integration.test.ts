@@ -29,7 +29,7 @@
  * GATING: runs iff git is available AND the integrator dist exists. Build with
  *   pnpm --filter @pm/shared build
  *   pnpm --filter @pm/server build
- *   pnpm --filter @apodus/pm-integrator build
+ *   pnpm --filter @urtela/pm-integrator build
  *
  * ── Phase 7.2 Step 9 batch-of-one invariant (DO NOT silently break) ──────────
  * As of Step 9 the spawned integrator (`dist/index.js`) drives `runBatchLoop`,

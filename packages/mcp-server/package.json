@@ -1,5 +1,5 @@
 {
-  "name": "@apodus/pm-mcp-server",
+  "name": "@urtela/pm-mcp-server",
   "version": "0.1.0",
   "description": "MCP server for the Human-AI Collaborative Project Management system — lets Claude (or any MCP-compatible agent) manage projects, proposals, tasks, and the merge train over the PM REST API.",
   "type": "module",
