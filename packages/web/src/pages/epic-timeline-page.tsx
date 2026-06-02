@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "@tanstack/react-router";
 import { Network } from "lucide-react";
-import { ReactFlow, Background, Controls, type Node, type Edge } from "@xyflow/react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  Panel,
+  useReactFlow,
+  type Node,
+  type Edge,
+} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +20,52 @@ import { useProjectStore } from "@/stores/project-store";
 import { computeEpicGraphLayout } from "@/lib/epic-graph-layout";
 import { computeChain, edgeKey } from "@/lib/epic-graph-chain";
 import { getEdgeStyling } from "@/lib/epic-graph-style";
+import { partitionEpics, recedeOpacity } from "@/lib/epic-graph-recency";
 import { EpicNode, type EpicNodeData } from "@/components/epic-node";
+
+// ---- Past rail ----
+
+// A bottom-left toggle that collapses "done-and-old" epics behind an "N older"
+// chip. On toggle it re-frames the camera (the declarative `fitView` prop owns
+// only the INITIAL frame): expand reveals all, collapse re-fits the active set.
+// The mount guard skips the first effect run so StrictMode's mount/remount and
+// the very first real toggle behave; the camera is keyed on `showPast` alone.
+function PastRailPanel({
+  pastCount,
+  showPast,
+  onToggle,
+  activeNodeIds,
+}: {
+  pastCount: number;
+  showPast: boolean;
+  onToggle: () => void;
+  activeNodeIds: string[];
+}) {
+  const { fitView } = useReactFlow();
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return; // skip mount; declarative prop owns initial frame
+    }
+    const raf = requestAnimationFrame(() => {
+      if (showPast)
+        fitView({ duration: 400 }); // EXPAND -> reveal all
+      else fitView({ nodes: activeNodeIds.map((id) => ({ id })), duration: 400 }); // COLLAPSE -> frame active
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on showPast intentionally; fitView/activeNodeIds are read at toggle time.
+  }, [showPast]);
+
+  if (pastCount === 0) return null;
+  return (
+    <Panel position="bottom-left">
+      <Button variant="outline" size="sm" onClick={onToggle}>
+        {showPast ? "Hide past" : `${pastCount} older`}
+      </Button>
+    </Panel>
+  );
+}
 
 // ---- Main page ----
 
@@ -33,15 +86,35 @@ export function EpicTimelinePage() {
   // The hovered epic drives the dependency-chain highlight (null = no focus).
   const [focusedId, setFocusedId] = useState<string | null>(null);
 
+  // Whether the collapsed "done-and-old" Past rail is expanded into the canvas.
+  const [showPast, setShowPast] = useState(false);
+
   const nodeTypes = useMemo(() => ({ epic: EpicNode }), []);
 
-  // The page is impure (injects a real clock); the layout module stays pure.
+  // One injected clock drives layout, partition, and recede — the page is
+  // impure (real clock) while every helper it calls stays pure. The clock is
+  // re-sampled when a new graph payload arrives so recede/partition track the
+  // freshly-fetched data (intentional `graph` dep, not read in the body).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => new Date().toISOString(), [graph]);
+
+  // Split into active vs the receded Past rail. The rail's count drives the
+  // toggle; the active set is what the camera re-frames on collapse.
+  const partition = useMemo(() => partitionEpics(graph?.nodes ?? [], { now }), [graph, now]);
+
+  // When the rail is collapsed we lay out / render only the active epics; when
+  // expanded the full graph comes back (reflow-on-toggle is intended).
+  const nodesForLayout = useMemo(
+    () => (showPast ? (graph?.nodes ?? []) : partition.active),
+    [showPast, graph, partition],
+  );
+
   const layout = useMemo(
     () =>
-      computeEpicGraphLayout(graph?.nodes ?? [], graph?.edges ?? [], {
-        now: new Date().toISOString(),
+      computeEpicGraphLayout(nodesForLayout, graph?.edges ?? [], {
+        now,
       }),
-    [graph],
+    [nodesForLayout, graph, now],
   );
 
   // Cycle members (from the payload) get marked; `?? []` guards the optional
@@ -64,7 +137,7 @@ export function EpicTimelinePage() {
 
   const rfNodes = useMemo<Node<EpicNodeData>[]>(() => {
     if (!graph) return [];
-    return graph.nodes.map((n) => {
+    return nodesForLayout.map((n) => {
       const { total, done } = n.taskSummary;
       return {
         id: n.id,
@@ -79,29 +152,39 @@ export function EpicTimelinePage() {
           byStatus: n.taskSummary.byStatus,
           dimmed: chain ? !chain.nodeIds.has(n.id) : false,
           inCycle: cycleIds.has(n.id),
+          recede: recedeOpacity(n.activity_recency, { now }),
         },
       };
     });
-  }, [graph, layout, chain, cycleIds]);
+  }, [graph, nodesForLayout, layout, chain, cycleIds, now]);
 
   const rfEdges = useMemo<Edge[]>(() => {
     if (!graph) return [];
-    return graph.edges.map((e) => {
-      const key = edgeKey(e);
-      const isBackwards = backwardsKeys.has(`${e.from}->${e.to}`);
-      const highlightState = chain ? (chain.edgeKeys.has(key) ? "highlighted" : "dimmed") : "none";
-      return {
-        id: key,
-        source: e.from,
-        target: e.to,
-        ...getEdgeStyling({
-          provenance: e.provenance,
-          isBackwards,
-          highlightState,
-        }),
-      };
-    });
-  }, [graph, chain, backwardsKeys]);
+    // Only edges whose BOTH endpoints are currently rendered survive (a
+    // collapsed Past rail removes nodes; dangling edges must not be drawn).
+    const renderedIds = new Set(nodesForLayout.map((n) => n.id));
+    return graph.edges
+      .filter((e) => renderedIds.has(e.from) && renderedIds.has(e.to))
+      .map((e) => {
+        const key = edgeKey(e);
+        const isBackwards = backwardsKeys.has(`${e.from}->${e.to}`);
+        const highlightState = chain
+          ? chain.edgeKeys.has(key)
+            ? "highlighted"
+            : "dimmed"
+          : "none";
+        return {
+          id: key,
+          source: e.from,
+          target: e.to,
+          ...getEdgeStyling({
+            provenance: e.provenance,
+            isBackwards,
+            highlightState,
+          }),
+        };
+      });
+  }, [graph, nodesForLayout, chain, backwardsKeys]);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
@@ -160,6 +243,12 @@ export function EpicTimelinePage() {
           >
             <Background />
             <Controls />
+            <PastRailPanel
+              pastCount={partition.past.length}
+              showPast={showPast}
+              onToggle={() => setShowPast((v) => !v)}
+              activeNodeIds={partition.active.map((n) => n.id)}
+            />
           </ReactFlow>
         </div>
       )}

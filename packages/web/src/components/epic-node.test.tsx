@@ -65,6 +65,17 @@ describe("EpicNode", () => {
     expect(container.querySelector(".opacity-25")).toBeNull();
   });
 
+  it("applies the recede value as inline opacity when not dimmed", () => {
+    const { container } = renderNode(baseData({ recede: 0.5 }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).toHaveStyle({ opacity: "0.5" });
+  });
+
+  it("lets dim win over recede (class applies, no inline override)", () => {
+    const { container } = renderNode(baseData({ dimmed: true, recede: 0.5 }));
+    expect(container.querySelector(".opacity-25")).not.toBeNull();
+  });
+
   it("handles a zero-task epic without crashing (0/0, 0%, empty underline)", () => {
     renderNode(
       baseData({

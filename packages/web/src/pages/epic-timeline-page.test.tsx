@@ -14,11 +14,7 @@ vi.mock("@tanstack/react-router", () => ({
 // test we stub ReactFlow to a passthrough that renders each node's name, so
 // "node present" assertions still hold without the canvas machinery.
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({
-    nodes,
-  }: {
-    nodes: { id: string; data: { name: string } }[];
-  }) => (
+  ReactFlow: ({ nodes }: { nodes: { id: string; data: { name: string } }[] }) => (
     <div>
       {nodes.map((n) => (
         <div key={n.id} data-testid="rf-node">
@@ -29,6 +25,11 @@ vi.mock("@xyflow/react", () => ({
   ),
   Background: () => null,
   Controls: () => null,
+  // The mock discards Panel children, so the rAF/useReactFlow camera effect
+  // inside PastRailPanel never mounts — the state test stays free of canvas
+  // machinery while still exercising the active/past partition via `nodes`.
+  Panel: () => null,
+  useReactFlow: () => ({ fitView: () => {} }),
   ReactFlowProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   Handle: () => null,
   Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
@@ -82,6 +83,47 @@ function oneNodeGraph(): EpicGraph {
   };
 }
 
+// One in-flight epic + one done-and-old epic (activity well past the 45-day
+// recede threshold relative to the test clock). The collapsed default must
+// frame only the active node and keep the past node out of the canvas.
+function activeAndPastGraph(): EpicGraph {
+  const old = new Date(Date.now() - 200 * 86_400_000).toISOString();
+  return {
+    nodes: [
+      {
+        id: "active-1",
+        project_id: "proj-1",
+        name: "Active epic",
+        status: "active",
+        priority: "high",
+        target_date: null,
+        created_at: "2026-05-01T00:00:00.000Z",
+        updated_at: "2026-06-01T00:00:00.000Z",
+        taskSummary: { total: 4, done: 1, byStatus: {} },
+        health: "on_track",
+        activity_recency: "2026-06-01T00:00:00.000Z",
+        time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+      },
+      {
+        id: "past-1",
+        project_id: "proj-1",
+        name: "Ancient epic",
+        status: "active",
+        priority: "low",
+        target_date: null,
+        created_at: "2025-01-01T00:00:00.000Z",
+        updated_at: old,
+        taskSummary: { total: 3, done: 3, byStatus: {} },
+        health: "done",
+        activity_recency: old,
+        time_window: { start: "2025-01-01T00:00:00.000Z", end: old },
+      },
+    ],
+    edges: [],
+    hasCycle: false,
+  };
+}
+
 function q<T>(data: T | undefined, isLoading = false) {
   return { data, isLoading } as unknown;
 }
@@ -110,12 +152,16 @@ describe("EpicTimelinePage", () => {
   });
 
   it("renders the empty state when the graph has no nodes", () => {
-    mocks.useEpicGraph.mockReturnValue(
-      q({ nodes: [], edges: [], hasCycle: false }),
-    );
+    mocks.useEpicGraph.mockReturnValue(q({ nodes: [], edges: [], hasCycle: false }));
     render(<EpicTimelinePage />);
-    expect(
-      screen.getByText("No epics in this roadmap yet."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("No epics in this roadmap yet.")).toBeInTheDocument();
+  });
+
+  it("collapses done-and-old epics out of the default (focus-active) view", () => {
+    mocks.useEpicGraph.mockReturnValue(q(activeAndPastGraph()));
+    render(<EpicTimelinePage />);
+    // showPast defaults to false → only the active epic is laid out + rendered.
+    expect(screen.getByText("Active epic")).toBeInTheDocument();
+    expect(screen.queryByText("Ancient epic")).not.toBeInTheDocument();
   });
 });

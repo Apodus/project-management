@@ -26,13 +26,14 @@ export interface EpicNodeData {
   byStatus: Record<string, number>;
   dimmed?: boolean;
   inCycle?: boolean;
+  recede?: number;
   [key: string]: unknown;
 }
 
 export type EpicFlowNode = Node<EpicNodeData, "epic">;
 
 function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
-  const { name, done, total, progressPct, health, byStatus, dimmed, inCycle } = data;
+  const { name, done, total, progressPct, health, byStatus, dimmed, inCycle, recede } = data;
   const statusSum = STATUS_ORDER.reduce((acc, s) => acc + (byStatus[s] ?? 0), 0);
 
   return (
@@ -42,6 +43,9 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
         inCycle && "ring-2 ring-red-500",
         dimmed && "opacity-25 transition-opacity",
       )}
+      // Recency fade. Dim (chain-off) wins: when dimmed, leave inline opacity
+      // undefined so the `.opacity-25` class applies; otherwise apply recede.
+      style={{ opacity: dimmed ? undefined : (recede ?? 1) }}
     >
       {/* Required for edges to attach; visually unobtrusive. */}
       <Handle type="target" position={Position.Left} className="!opacity-0" />
