@@ -66,6 +66,7 @@ describe("Database schema", () => {
         "audit_log",
         "automation_rules",
         "comments",
+        "epic_dependencies",
         "epics",
         "git_refs",
         "integrator_health",
@@ -96,18 +97,14 @@ describe("Database schema", () => {
 
     it("migration 0016: merge_attempts has the additive steps column", () => {
       const db = setupDb();
-      const cols = db.all<{ name: string }>(
-        sql`PRAGMA table_info(merge_attempts)`,
-      );
+      const cols = db.all<{ name: string }>(sql`PRAGMA table_info(merge_attempts)`);
       const names = (cols as any[]).map((c: any) => c.name);
       expect(names).toContain("steps");
     });
 
     it("migration 0017: merge_requests has the additive resolved_from column", () => {
       const db = setupDb();
-      const cols = db.all<{ name: string }>(
-        sql`PRAGMA table_info(merge_requests)`,
-      );
+      const cols = db.all<{ name: string }>(sql`PRAGMA table_info(merge_requests)`);
       const names = (cols as any[]).map((c: any) => c.name);
       expect(names).toContain("resolved_from");
     });
@@ -189,9 +186,7 @@ describe("Database schema", () => {
       // pragma was set by checking it returns "memory" (expected for
       // in-memory) or "wal" (for file-based DBs).
       const db = setupDb();
-      const result = db.all<{ journal_mode: string }>(
-        sql`PRAGMA journal_mode`,
-      );
+      const result = db.all<{ journal_mode: string }>(sql`PRAGMA journal_mode`);
       const mode = (result as any[])[0].journal_mode;
       // In-memory SQLite uses "memory" journal mode; file-based would use "wal"
       expect(["wal", "memory"]).toContain(mode);
@@ -199,9 +194,7 @@ describe("Database schema", () => {
 
     it("should have foreign keys enabled", () => {
       const db = setupDb();
-      const result = db.all<{ foreign_keys: number }>(
-        sql`PRAGMA foreign_keys`,
-      );
+      const result = db.all<{ foreign_keys: number }>(sql`PRAGMA foreign_keys`);
       expect((result as any[])[0].foreign_keys).toBe(1);
     });
   });
@@ -288,11 +281,7 @@ describe("Database schema", () => {
     });
 
     it("should insert and read back a user", () => {
-      const result = db
-        .select()
-        .from(users)
-        .where(eq(users.id, userId))
-        .get();
+      const result = db.select().from(users).where(eq(users.id, userId)).get();
       expect(result).toBeDefined();
       expect(result!.username).toBe("testuser");
       expect(result!.displayName).toBe("Test User");
@@ -300,11 +289,7 @@ describe("Database schema", () => {
     });
 
     it("should insert and read back a project", () => {
-      const result = db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .get();
+      const result = db.select().from(projects).where(eq(projects.id, projectId)).get();
       expect(result).toBeDefined();
       expect(result!.name).toBe("Test Project");
       expect(result!.slug).toBe("test-project");
@@ -326,11 +311,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(proposals)
-        .where(eq(proposals.id, id))
-        .get();
+      const result = db.select().from(proposals).where(eq(proposals.id, id)).get();
       expect(result).toBeDefined();
       expect(result!.title).toBe("My Proposal");
       expect(result!.status).toBe("open");
@@ -371,11 +352,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(milestones)
-        .where(eq(milestones.id, id))
-        .get();
+      const result = db.select().from(milestones).where(eq(milestones.id, id)).get();
       expect(result).toBeDefined();
       expect(result!.name).toBe("v1.0");
       expect(result!.status).toBe("open");
@@ -427,11 +404,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(comments)
-        .where(eq(comments.id, commentId))
-        .get();
+      const result = db.select().from(comments).where(eq(comments.id, commentId)).get();
       expect(result).toBeDefined();
       expect(result!.body).toBe("This is a comment");
       expect(result!.commentType).toBe("comment");
@@ -469,11 +442,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(activityLog)
-        .where(eq(activityLog.id, id))
-        .get();
+      const result = db.select().from(activityLog).where(eq(activityLog.id, id)).get();
       expect(result).toBeDefined();
       expect(result!.action).toBe("created");
       expect(result!.entityType).toBe("task");
@@ -504,11 +473,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(gitRefs)
-        .where(eq(gitRefs.id, refId))
-        .get();
+      const result = db.select().from(gitRefs).where(eq(gitRefs.id, refId)).get();
       expect(result).toBeDefined();
       expect(result!.refType).toBe("branch");
       expect(result!.refValue).toBe("feat/my-feature");
@@ -688,11 +653,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(mergeRequests)
-        .where(eq(mergeRequests.id, requestId))
-        .get();
+      const result = db.select().from(mergeRequests).where(eq(mergeRequests.id, requestId)).get();
       expect(result).toBeDefined();
       expect(result!.groupId).toBe(groupId);
     });
@@ -741,9 +702,7 @@ describe("Database schema", () => {
 
       // Delete the group — FK ON DELETE SET NULL must null the references,
       // NOT cascade-delete the dependent rows. Requires foreign_keys=ON.
-      db.delete(mergeRequestGroups)
-        .where(eq(mergeRequestGroups.id, groupId))
-        .run();
+      db.delete(mergeRequestGroups).where(eq(mergeRequestGroups.id, groupId)).run();
 
       const incident = db
         .select()
@@ -753,11 +712,7 @@ describe("Database schema", () => {
       expect(incident).toBeDefined();
       expect(incident!.groupId).toBeNull();
 
-      const request = db
-        .select()
-        .from(mergeRequests)
-        .where(eq(mergeRequests.id, requestId))
-        .get();
+      const request = db.select().from(mergeRequests).where(eq(mergeRequests.id, requestId)).get();
       expect(request).toBeDefined();
       expect(request!.groupId).toBeNull();
     });
@@ -813,11 +768,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(mergeRequests)
-        .where(eq(mergeRequests.id, requestId))
-        .get();
+      const result = db.select().from(mergeRequests).where(eq(mergeRequests.id, requestId)).get();
       expect(result).toBeDefined();
       expect(result!.resolvedFrom).toBeNull();
     });
@@ -849,26 +800,16 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(mergeRequests)
-        .where(eq(mergeRequests.id, resolvedId))
-        .get();
+      const result = db.select().from(mergeRequests).where(eq(mergeRequests.id, resolvedId)).get();
       expect(result!.resolvedFrom).toBe(originId);
     });
 
     it("inserts a resolution with default state=pending, resource=main, nullables null", () => {
       const id = createId();
       const ts = now();
-      db.insert(mergeResolutions)
-        .values({ id, projectId, createdAt: ts, updatedAt: ts })
-        .run();
+      db.insert(mergeResolutions).values({ id, projectId, createdAt: ts, updatedAt: ts }).run();
 
-      const result = db
-        .select()
-        .from(mergeResolutions)
-        .where(eq(mergeResolutions.id, id))
-        .get();
+      const result = db.select().from(mergeResolutions).where(eq(mergeResolutions.id, id)).get();
       expect(result).toBeDefined();
       expect(result!.state).toBe("pending");
       expect(result!.resource).toBe("main");
@@ -906,11 +847,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(mergeResolutions)
-        .where(eq(mergeResolutions.id, id))
-        .get();
+      const result = db.select().from(mergeResolutions).where(eq(mergeResolutions.id, id)).get();
       expect(result).toBeDefined();
       expect(result!.conflictingFiles).toEqual(conflictingFiles);
       expect(result!.detail).toEqual(detail);
@@ -1025,11 +962,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.id, id))
-        .get();
+      const result = db.select().from(auditLog).where(eq(auditLog.id, id)).get();
       expect(result).toBeDefined();
       expect(result!.action).toBe("land");
       expect(result!.targetType).toBe("merge_request");
@@ -1113,15 +1046,9 @@ describe("Database schema", () => {
     it("should insert a train_state row with default state=running and resource=main", () => {
       const id = createId();
       const ts = now();
-      db.insert(trainState)
-        .values({ id, projectId, createdAt: ts, updatedAt: ts })
-        .run();
+      db.insert(trainState).values({ id, projectId, createdAt: ts, updatedAt: ts }).run();
 
-      const result = db
-        .select()
-        .from(trainState)
-        .where(eq(trainState.id, id))
-        .get();
+      const result = db.select().from(trainState).where(eq(trainState.id, id)).get();
       expect(result).toBeDefined();
       expect(result!.state).toBe("running");
       expect(result!.resource).toBe("main");
@@ -1171,11 +1098,7 @@ describe("Database schema", () => {
 
       db.delete(users).where(eq(users.id, opId)).run();
 
-      const result = db
-        .select()
-        .from(trainState)
-        .where(eq(trainState.id, id))
-        .get();
+      const result = db.select().from(trainState).where(eq(trainState.id, id)).get();
       expect(result).toBeDefined();
       expect(result!.changedBy).toBeNull();
       expect(result!.state).toBe("paused");
@@ -1290,9 +1213,7 @@ describe("Database schema", () => {
         .run();
 
       const labelId = createId();
-      db.insert(labels)
-        .values({ id: labelId, projectId, name: "bug" })
-        .run();
+      db.insert(labels).values({ id: labelId, projectId, name: "bug" }).run();
 
       db.insert(taskLabels).values({ taskId, labelId }).run();
 
@@ -1358,14 +1279,10 @@ describe("Database schema", () => {
         })
         .run();
 
-      db.insert(labels)
-        .values({ id: createId(), projectId, name: "bug" })
-        .run();
+      db.insert(labels).values({ id: createId(), projectId, name: "bug" }).run();
 
       expect(() => {
-        db.insert(labels)
-          .values({ id: createId(), projectId, name: "bug" })
-          .run();
+        db.insert(labels).values({ id: createId(), projectId, name: "bug" }).run();
       }).toThrow();
     });
 
@@ -1408,12 +1325,8 @@ describe("Database schema", () => {
         })
         .run();
 
-      db.insert(labels)
-        .values({ id: createId(), projectId: proj1, name: "bug" })
-        .run();
-      db.insert(labels)
-        .values({ id: createId(), projectId: proj2, name: "bug" })
-        .run();
+      db.insert(labels).values({ id: createId(), projectId: proj1, name: "bug" }).run();
+      db.insert(labels).values({ id: createId(), projectId: proj2, name: "bug" }).run();
 
       // Should not throw — different projects
       const all = db.select().from(labels).all();
@@ -1567,11 +1480,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(comments)
-        .where(eq(comments.id, commentId))
-        .get();
+      const result = db.select().from(comments).where(eq(comments.id, commentId)).get();
       expect(result).toBeDefined();
       expect(result!.proposalId).toBe(proposalId);
       expect(result!.taskId).toBeNull();
@@ -1696,11 +1605,7 @@ describe("Database schema", () => {
         })
         .run();
 
-      const result = db
-        .select()
-        .from(taskDependencies)
-        .where(eq(taskDependencies.id, depId))
-        .get();
+      const result = db.select().from(taskDependencies).where(eq(taskDependencies.id, depId)).get();
       expect(result).toBeDefined();
       expect(result!.taskId).toBe(task1);
       expect(result!.dependsOnTaskId).toBe(task2);

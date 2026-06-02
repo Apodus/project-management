@@ -7,6 +7,7 @@ import {
   milestones,
   proposals,
   epics,
+  epicDependencies,
   tasks,
   taskDependencies,
   labels,
@@ -139,6 +140,22 @@ export const epicsRelations = relations(epics, ({ one, many }) => ({
     relationName: "epicAssignee",
   }),
   tasks: many(tasks),
+  dependencies: many(epicDependencies, { relationName: "epicDeps" }),
+  dependents: many(epicDependencies, { relationName: "epicDependents" }),
+}));
+
+// ─── epic_dependencies ─────────────────────────────────────────────
+export const epicDependenciesRelations = relations(epicDependencies, ({ one }) => ({
+  epic: one(epics, {
+    fields: [epicDependencies.epicId],
+    references: [epics.id],
+    relationName: "epicDeps",
+  }),
+  dependsOnEpic: one(epics, {
+    fields: [epicDependencies.dependsOnEpicId],
+    references: [epics.id],
+    relationName: "epicDependents",
+  }),
 }));
 
 // ─── agent_claims ─────────────────────────────────────────────────
@@ -187,21 +204,18 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
 }));
 
 // ─── task_dependencies ─────────────────────────────────────────────
-export const taskDependenciesRelations = relations(
-  taskDependencies,
-  ({ one }) => ({
-    task: one(tasks, {
-      fields: [taskDependencies.taskId],
-      references: [tasks.id],
-      relationName: "taskDeps",
-    }),
-    dependsOnTask: one(tasks, {
-      fields: [taskDependencies.dependsOnTaskId],
-      references: [tasks.id],
-      relationName: "taskDependents",
-    }),
+export const taskDependenciesRelations = relations(taskDependencies, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskDependencies.taskId],
+    references: [tasks.id],
+    relationName: "taskDeps",
   }),
-);
+  dependsOnTask: one(tasks, {
+    fields: [taskDependencies.dependsOnTaskId],
+    references: [tasks.id],
+    relationName: "taskDependents",
+  }),
+}));
 
 // ─── labels ────────────────────────────────────────────────────────
 export const labelsRelations = relations(labels, ({ one, many }) => ({

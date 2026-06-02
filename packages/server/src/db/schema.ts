@@ -5,8 +5,10 @@ import {
   index,
   uniqueIndex,
   primaryKey,
+  check,
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 import type { MergeResolutionDetail, VerifyStepResult } from "@pm/shared";
 
 // ─── workspaces ────────────────────────────────────────────────────
@@ -75,12 +77,7 @@ export const projects = sqliteTable(
     updatedAt: text("updated_at").notNull(),
     createdBy: text("created_by").references(() => users.id),
   },
-  (table) => [
-    uniqueIndex("idx_projects_workspace_slug").on(
-      table.workspaceId,
-      table.slug,
-    ),
-  ],
+  (table) => [uniqueIndex("idx_projects_workspace_slug").on(table.workspaceId, table.slug)],
 );
 
 // ─── milestones ────────────────────────────────────────────────────
@@ -143,6 +140,37 @@ export const epics = sqliteTable("epics", {
   createdBy: text("created_by").references(() => users.id),
 });
 
+// ─── epic_dependencies ─────────────────────────────────────────────
+export const epicDependencies = sqliteTable(
+  "epic_dependencies",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    epicId: text("epic_id")
+      .notNull()
+      .references(() => epics.id),
+    dependsOnEpicId: text("depends_on_epic_id")
+      .notNull()
+      .references(() => epics.id),
+    dependencyType: text("dependency_type").notNull().default("blocks"),
+    createdAt: text("created_at").notNull(),
+    createdBy: text("created_by").references(() => users.id), // DB-nullable, mirrors epics.createdBy
+  },
+  (table) => [
+    index("idx_epic_deps_epic").on(table.epicId),
+    index("idx_epic_deps_depends_on").on(table.dependsOnEpicId),
+    index("idx_epic_deps_project").on(table.projectId),
+    uniqueIndex("idx_epic_deps_unique").on(
+      table.epicId,
+      table.dependsOnEpicId,
+      table.dependencyType,
+    ),
+    check("epic_deps_no_self", sql`${table.epicId} <> ${table.dependsOnEpicId}`),
+  ],
+);
+
 // ─── agent_claims ─────────────────────────────────────────────────
 export const agentClaims = sqliteTable("agent_claims", {
   id: text("id").primaryKey(),
@@ -191,11 +219,7 @@ export const tasks = sqliteTable(
     index("idx_tasks_assignee").on(table.assigneeId),
     index("idx_tasks_parent").on(table.parentTaskId),
     index("idx_tasks_priority").on(table.projectId, table.priority),
-    index("idx_tasks_status_priority").on(
-      table.projectId,
-      table.status,
-      table.priority,
-    ),
+    index("idx_tasks_status_priority").on(table.projectId, table.status, table.priority),
   ],
 );
 
@@ -231,9 +255,7 @@ export const labels = sqliteTable(
     color: text("color"),
     description: text("description"),
   },
-  (table) => [
-    uniqueIndex("idx_labels_project_name").on(table.projectId, table.name),
-  ],
+  (table) => [uniqueIndex("idx_labels_project_name").on(table.projectId, table.name)],
 );
 
 // ─── task_labels ───────────────────────────────────────────────────
@@ -302,11 +324,7 @@ export const activityLog = sqliteTable(
   },
   (table) => [
     index("idx_activity_project").on(table.projectId, table.createdAt),
-    index("idx_activity_entity").on(
-      table.entityType,
-      table.entityId,
-      table.createdAt,
-    ),
+    index("idx_activity_entity").on(table.entityType, table.entityId, table.createdAt),
   ],
 );
 
@@ -413,10 +431,7 @@ export const mergeLocks = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    uniqueIndex("idx_merge_locks_project_resource").on(
-      table.projectId,
-      table.resource,
-    ),
+    uniqueIndex("idx_merge_locks_project_resource").on(table.projectId, table.resource),
     index("idx_merge_locks_holder").on(table.holderId),
   ],
 );
@@ -490,10 +505,9 @@ export const mergeRequests = sqliteTable(
     // ON DELETE SET NULL so deleting an origin never cascades into the
     // resolved request it spawned. The (): AnySQLiteColumn arrow is required
     // for a self-reference within the same table definition.
-    resolvedFrom: text("resolved_from").references(
-      (): AnySQLiteColumn => mergeRequests.id,
-      { onDelete: "set null" },
-    ),
+    resolvedFrom: text("resolved_from").references((): AnySQLiteColumn => mergeRequests.id, {
+      onDelete: "set null",
+    }),
     // status enum lives in @pm/shared (MERGE_REQUEST_STATUSES) — added in
     // Step 3. Default "queued" matches the initial-state convention.
     status: text("status").notNull().default("queued"),
@@ -511,10 +525,7 @@ export const mergeRequests = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("idx_merge_requests_project_status").on(
-      table.projectId,
-      table.status,
-    ),
+    index("idx_merge_requests_project_status").on(table.projectId, table.status),
     index("idx_merge_requests_resource_status").on(
       table.projectId,
       table.resource,
@@ -562,10 +573,7 @@ export const mergeAttempts = sqliteTable(
     // UNIQUE structurally enforces monotonic numbering per request —
     // defense-in-depth against caller-discipline bugs. Service uses
     // MAX(attemptNumber)+1 within the same operation.
-    uniqueIndex("idx_merge_attempts_request_num").on(
-      table.requestId,
-      table.attemptNumber,
-    ),
+    uniqueIndex("idx_merge_attempts_request_num").on(table.requestId, table.attemptNumber),
   ],
 );
 
@@ -605,10 +613,7 @@ export const mergeRequestGroups = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("idx_merge_request_groups_project_state").on(
-      table.projectId,
-      table.state,
-    ),
+    index("idx_merge_request_groups_project_state").on(table.projectId, table.state),
     index("idx_merge_request_groups_resource_state").on(
       table.projectId,
       table.resource,
@@ -648,10 +653,9 @@ export const mergeIncidents = sqliteTable(
     orphanedSha: text("orphaned_sha").notNull(),
     outerRepo: text("outer_repo").notNull(),
     // The inner member request whose land orphaned. ON DELETE SET NULL.
-    innerRequestId: text("inner_request_id").references(
-      () => mergeRequests.id,
-      { onDelete: "set null" },
-    ),
+    innerRequestId: text("inner_request_id").references(() => mergeRequests.id, {
+      onDelete: "set null",
+    }),
     // The task the incident comment is posted on (from the inner member's
     // taskId at open time). ON DELETE SET NULL.
     taskId: text("task_id").references(() => tasks.id, {
@@ -673,19 +677,11 @@ export const mergeIncidents = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("idx_merge_incidents_project_state").on(
-      table.projectId,
-      table.state,
-    ),
+    index("idx_merge_incidents_project_state").on(table.projectId, table.state),
     index("idx_merge_incidents_group").on(table.groupId),
     // The recovery sweep's hot path: open orphaned_inner incidents for
     // this project, oldest first.
-    index("idx_merge_incidents_open").on(
-      table.projectId,
-      table.state,
-      table.type,
-      table.openedAt,
-    ),
+    index("idx_merge_incidents_open").on(table.projectId, table.state, table.type, table.openedAt),
   ],
 );
 
@@ -726,29 +722,18 @@ export const auditLog = sqliteTable(
     // service); optional/null for the rest.
     reason: text("reason"),
     // Structured snapshot of the target's relevant fields BEFORE the action.
-    metadataBefore: text("metadata_before", { mode: "json" }).$type<
-      Record<string, unknown>
-    >(),
+    metadataBefore: text("metadata_before", { mode: "json" }).$type<Record<string, unknown>>(),
     // Structured snapshot AFTER.
-    metadataAfter: text("metadata_after", { mode: "json" }).$type<
-      Record<string, unknown>
-    >(),
+    metadataAfter: text("metadata_after", { mode: "json" }).$type<Record<string, unknown>>(),
     createdAt: text("created_at").notNull(),
   },
   (table) => [
     // Query-by-time-window within a project (the audit-log view default).
-    index("idx_audit_log_project_created").on(
-      table.projectId,
-      table.createdAt,
-    ),
+    index("idx_audit_log_project_created").on(table.projectId, table.createdAt),
     // Query-by-actor (the "everything this operator did" view).
     index("idx_audit_log_actor").on(table.actorId, table.createdAt),
     // Query-by-target (the per-request / lock / lane history view).
-    index("idx_audit_log_target").on(
-      table.targetType,
-      table.targetId,
-      table.createdAt,
-    ),
+    index("idx_audit_log_target").on(table.targetType, table.targetId, table.createdAt),
   ],
 );
 
@@ -794,17 +779,12 @@ export const integratorHealth = sqliteTable(
     // current stale episode, so on-read detection (§3.4) fires exactly ONCE
     // per stale→healthy→stale cycle (edge-triggered, not level-triggered).
     // Reset to false on the next fresh heartbeat.
-    unhealthyNotified: integer("unhealthy_notified", { mode: "boolean" })
-      .notNull()
-      .default(false),
+    unhealthyNotified: integer("unhealthy_notified", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    uniqueIndex("idx_integrator_health_project_resource").on(
-      table.projectId,
-      table.resource,
-    ),
+    uniqueIndex("idx_integrator_health_project_resource").on(table.projectId, table.resource),
   ],
 );
 
@@ -839,21 +819,12 @@ export const trainState = sqliteTable(
     changedAt: text("changed_at"),
     // Edge-trigger debounce flags for the on-read alerts (§7.3). Each is set
     // true when its alert fires and reset to false when the condition clears.
-    stuckNotified: integer("stuck_notified", { mode: "boolean" })
-      .notNull()
-      .default(false),
-    abandonNotified: integer("abandon_notified", { mode: "boolean" })
-      .notNull()
-      .default(false),
+    stuckNotified: integer("stuck_notified", { mode: "boolean" }).notNull().default(false),
+    abandonNotified: integer("abandon_notified", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [
-    uniqueIndex("idx_train_state_project_resource").on(
-      table.projectId,
-      table.resource,
-    ),
-  ],
+  (table) => [uniqueIndex("idx_train_state_project_resource").on(table.projectId, table.resource)],
 );
 
 // ─── verify_cache ───────────────────────────────────────────────────
@@ -931,16 +902,14 @@ export const mergeResolutions = sqliteTable(
     resource: text("resource").notNull().default("main"),
     // The conflicting (origin) request. ON DELETE SET NULL so a deleted
     // request never cascade-deletes the durable resolution record.
-    originRequestId: text("origin_request_id").references(
-      () => mergeRequests.id,
-      { onDelete: "set null" },
-    ),
+    originRequestId: text("origin_request_id").references(() => mergeRequests.id, {
+      onDelete: "set null",
+    }),
     // The new request the resolver submits once it produces a clean tree.
     // Null until §5.3 resubmit; ON DELETE SET NULL for the same reason.
-    resolvedRequestId: text("resolved_request_id").references(
-      () => mergeRequests.id,
-      { onDelete: "set null" },
-    ),
+    resolvedRequestId: text("resolved_request_id").references(() => mergeRequests.id, {
+      onDelete: "set null",
+    }),
     // Resolution state machine (§4.3). Enum MERGE_RESOLUTION_STATES.
     state: text("state").notNull().default("pending"),
     // JSON-encoded string[] — the conflicting files, copied from the
@@ -961,10 +930,7 @@ export const mergeResolutions = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("idx_merge_resolutions_project_state").on(
-      table.projectId,
-      table.state,
-    ),
+    index("idx_merge_resolutions_project_state").on(table.projectId, table.state),
     // The resolver-pickup hot path: pending resolutions for a lane, oldest
     // first.
     index("idx_merge_resolutions_resource_state").on(
