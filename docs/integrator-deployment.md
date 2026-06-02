@@ -930,10 +930,14 @@ Stored under `projects.settings.integrator.resolver` (snake_case, a sibling of `
 | `enabled`         | boolean     | `false`   | Master kill-switch. `false` ⇒ inert; a conflict rejects exactly as in 7.5. See §18.2.                                                                  |
 | `max_concurrent`  | integer ≥ 1 | `1`       | Size of the resolver pool — number of resolutions running at once. Separate from the verify worktree pool. See §18.3.                                  |
 | `time_budget_sec` | number > 0  | `600`     | Wall-clock cap on one resolution (SIGTERM then SIGKILL). Exceeding ⇒ escalate. See §18.3.                                                              |
-| `token_budget`    | number > 0  | (none)    | Optional model-token cap passed to the headless session. Exceeding ⇒ escalate.                                                                        |
+| `token_budget`    | number > 0  | (none)    | Optional model-token cap passed to the headless session. Exceeding ⇒ escalate. **Absent ⇒ unlimited** (no token cap).                                  |
 | `command`         | string      | (none)    | Optional override for how the headless agent is invoked. Default is `claude -p` against the resolver worktree. Lets operators swap the resolver binary. |
+| `prompt`          | string      | (none)    | Optional override for the reconcile instruction the headless resolver receives. **Absent ⇒ the built-in default.** The `{files}` and `{verify_command}` placeholders are substituted at run time (a custom prompt may use them, or omit them). |
 
-These are the **only** five resolver fields. An **absent/empty** `resolver` block is treated as `{ enabled: false, max_concurrent: 1, time_budget_sec: 600 }` (the inner defaults fire). Set it via `PATCH /api/v1/projects/{id}` under `settings.integrator.resolver` — there is **no env var or CLI flag** (config lives on the project, exactly like the 7.5 cache):
+These are the resolver fields. An **absent/empty** `resolver` block is treated as `{ enabled: false, max_concurrent: 1, time_budget_sec: 600 }` (the inner defaults fire). Configure it in one of two ways:
+
+- **The web UI (recommended).** An admin-gated **enable toggle** sits on the train dashboard's Conflict Resolution section, and a full **settings page** lives at **`/projects/{id}/settings/conflict-resolution`** (sidebar → _Conflict Resolution_). The page exposes `enabled`, `max_concurrent`, `time_budget_sec`, `token_budget` (with an **"Unlimited"** checkbox = no cap), and the **editable prompt** (the built-in default is shown as the placeholder; the `{files}`/`{verify_command}` placeholders are documented inline). A **"Revert to defaults"** button resets the tuning knobs + prompt to the built-in defaults **without** changing `enabled`. The built-in defaults (including the default prompt) are served by `GET /api/v1/resolver/defaults` (any authenticated user).
+- **`PATCH /api/v1/projects/{id}`** directly, under `settings.integrator.resolver` — there is **no env var or CLI flag** (config lives on the project, exactly like the 7.5 cache):
 
 ```json
 {
@@ -958,8 +962,8 @@ The `PATCH /projects/{id}` route validates this with the Zod schema (`max_concur
 
 `resolver.enabled` is the master switch, and its default is **`false`**. With it off, a `RebaseConflict` categorizes and rejects **exactly as in 7.5** — every 7.6 code path is skipped: **zero `merge_resolutions` rows are written, zero `merge.resolution.*` events fire**. This is the prime backward-compatibility guarantee, and it is what lets the engine ship dark.
 
-- **Enable** by `PATCH`ing the project with `settings.integrator.resolver.enabled = true` (§18.1). The integrator re-reads settings on its next pass.
-- **Instant revert:** flip `enabled` back to `false`. The next conflict rejects the plain 7.5 way again. No restart, no risk.
+- **Enable** by flipping the **dashboard toggle** (or the settings page, §18.1), or by `PATCH`ing `settings.integrator.resolver.enabled = true`. The integrator re-reads settings on its next pass.
+- **Instant revert:** flip `enabled` back to `false` (toggle or `PATCH`). The next conflict rejects the plain 7.5 way again. No restart, no risk.
 
 ### 18.3 Budget + cost controls
 
