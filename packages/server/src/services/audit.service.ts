@@ -1,8 +1,6 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import {
   createId,
-  AUDIT_ACTIONS,
-  AUDIT_TARGET_TYPES,
   type AuditAction,
   type AuditTargetType,
   type AuditLogView,

@@ -53,7 +53,6 @@ const mergeGroupDetailSchema = mergeGroupSchema
   .extend({ members: z.array(mergeGroupMemberSchema) })
   .openapi("MergeGroupDetail");
 
-const mergeGroupDataEnvelope = z.object({ data: mergeGroupSchema });
 const mergeGroupDetailEnvelope = z.object({ data: mergeGroupDetailSchema });
 const mergeGroupMemberDataEnvelope = z.object({ data: mergeGroupMemberSchema });
 const mergeGroupListEnvelope = z.object({ data: z.array(mergeGroupSchema) });
@@ -335,15 +334,12 @@ export function createMergeGroupRoutes(): OpenAPIHono<{
     const { projectId } = c.req.valid("param");
     const user = requireUser(c.get("currentUser") as AuthUser | null);
     const body = c.req.valid("json");
-    const detail = groupSvc.createGroup(
-      {
-        projectId,
-        memberRequestIds: body.memberRequestIds,
-        resource: body.resource,
-        submittedBy: user.id,
-      },
-      actorOf(user),
-    );
+    const detail = groupSvc.createGroup({
+      projectId,
+      memberRequestIds: body.memberRequestIds,
+      resource: body.resource,
+      submittedBy: user.id,
+    });
     return c.json({ data: detail }, 201);
   });
 

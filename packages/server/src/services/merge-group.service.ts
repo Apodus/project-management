@@ -296,10 +296,7 @@ function withMembers(row: MergeGroupRow): GroupWithMembers {
  *
  * No event on create — merge.group.started fires at markIntegrating (§10.2).
  */
-export function createGroup(
-  params: CreateGroupParams,
-  _actor: Actor,
-): GroupWithMembers {
+export function createGroup(params: CreateGroupParams): GroupWithMembers {
   ensureProjectExists(params.projectId);
 
   if (params.memberRequestIds.length < 2) {

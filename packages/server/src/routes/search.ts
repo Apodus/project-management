@@ -1,5 +1,4 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { ENTITY_TYPES } from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as searchService from "../services/search.service.js";
 

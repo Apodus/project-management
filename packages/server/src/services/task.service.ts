@@ -1,12 +1,24 @@
-import { eq, and, like, isNull, or, desc, asc, count, sql, inArray } from "drizzle-orm";
+import {
+  eq,
+  and,
+  like,
+  isNull,
+  or,
+  desc,
+  asc,
+  count,
+  sql,
+  inArray,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { createId, isValidTaskTransition, getValidTaskTargets, findTaskTransitionPath } from "@pm/shared";
-import type { ClaimResult, ClaimStatus, TaskStatus, EffortSize, UserType } from "@pm/shared";
+import type { ClaimResult, ClaimStatus, TaskStatus, UserType } from "@pm/shared";
 import {
   getDb,
   getRawDb,
   tasks,
   taskLabels,
-  taskDependencies,
   labels,
   epics,
   projects,
@@ -14,7 +26,6 @@ import {
 } from "../db/index.js";
 import { AppError } from "../types.js";
 import type { AuthUser } from "../types.js";
-import * as dependencyService from "./dependency.service.js";
 import { computeChanges } from "./activity.service.js";
 import * as commentService from "./comment.service.js";
 import * as autonomyService from "./autonomy.service.js";
@@ -85,10 +96,11 @@ export interface TaskListFilters {
   perPage?: number;
 }
 
+export type TaskListItem = typeof tasks.$inferSelect &
+  EnrichedFields & { claimStatus: ClaimStatus };
+
 export interface TaskListResult {
-  data: ReturnType<typeof getDb>["select"] extends (...args: any[]) => any
-    ? any[]
-    : any[];
+  data: TaskListItem[];
   pagination: {
     page: number;
     perPage: number;
@@ -96,15 +108,6 @@ export interface TaskListResult {
     totalPages: number;
   };
 }
-
-// ─── Priority ordering helper ─────────────────────────────────────
-
-const PRIORITY_ORDER: Record<string, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-};
 
 // ─── Enrichment ───────────────────────────────────────────────────
 
@@ -284,7 +287,7 @@ export function list(
 ) {
   const db = getDb();
 
-  const conditions: ReturnType<typeof eq>[] = [eq(tasks.projectId, projectId)];
+  const conditions: SQL[] = [eq(tasks.projectId, projectId)];
 
   // Status filter (supports comma-separated values)
   if (filters?.status) {
@@ -297,7 +300,7 @@ export function list(
         sql`${tasks.status} IN (${sql.join(
           statuses.map((s) => sql`${s}`),
           sql`,`,
-        )})` as any,
+        )})`,
       );
     }
   }
@@ -347,7 +350,7 @@ export function list(
       sql`${tasks.id} IN (
         SELECT ${taskLabels.taskId} FROM ${taskLabels}
         WHERE ${taskLabels.labelId} = ${labelId}
-      )` as any,
+      )`,
     );
   }
 
@@ -361,7 +364,7 @@ export function list(
         isNull(tasks.assigneeId),
         eq(tasks.assigneeId, caller.id),
       );
-      if (availClause) conditions.push(availClause as any);
+      if (availClause) conditions.push(availClause);
     }
   }
 
@@ -377,7 +380,7 @@ export function list(
           SELECT td.task_id FROM task_dependencies td
           INNER JOIN tasks t2 ON t2.id = td.depends_on_task_id
           WHERE td.dependency_type = 'blocks' AND t2.status != 'done'
-        )` as any,
+        )`,
       );
     } else {
       // Tasks that either have no blocking deps, or all blocking deps are done
@@ -386,7 +389,7 @@ export function list(
           SELECT td.task_id FROM task_dependencies td
           INNER JOIN tasks t2 ON t2.id = td.depends_on_task_id
           WHERE td.dependency_type = 'blocks' AND t2.status != 'done'
-        )` as any,
+        )`,
       );
     }
   }
@@ -422,7 +425,7 @@ export function list(
     orderClause =
       orderDir === "asc" ? asc(priorityCase) : desc(priorityCase);
   } else {
-    const columnMap: Record<string, any> = {
+    const columnMap: Record<string, SQLWrapper> = {
       created_at: tasks.createdAt,
       updated_at: tasks.updatedAt,
       due_date: tasks.dueDate,

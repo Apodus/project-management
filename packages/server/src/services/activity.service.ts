@@ -1,4 +1,4 @@
-import { eq, and, desc, count, sql, gt, ne, inArray } from "drizzle-orm";
+import { eq, and, desc, count, gt, ne, inArray } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import { getDb, activityLog, tasks, epics, proposals, projects, users } from "../db/index.js";
 

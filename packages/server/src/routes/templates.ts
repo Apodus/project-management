@@ -1,6 +1,10 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { AppVariables } from "../types.js";
 import * as templateService from "../services/template.service.js";
+import type {
+  TaskTemplateData,
+  ProjectTemplateData,
+} from "../services/template.service.js";
 
 // ─── Response schemas ─────────────────────────────────────────────
 
@@ -254,7 +258,7 @@ export function createTemplateRoutes(): OpenAPIHono<{
       name: body.name,
       description: body.description ?? null,
       templateType: body.template_type,
-      templateData: body.template_data as any,
+      templateData: body.template_data as TaskTemplateData | ProjectTemplateData,
       createdBy: body.created_by ?? null,
     });
 
@@ -268,7 +272,7 @@ export function createTemplateRoutes(): OpenAPIHono<{
     const template = templateService.update(id, {
       name: body.name,
       description: body.description,
-      templateData: body.template_data as any,
+      templateData: body.template_data as TaskTemplateData | ProjectTemplateData,
     });
 
     return c.json({ data: template }, 200);
@@ -297,14 +301,14 @@ export function createTemplateRoutes(): OpenAPIHono<{
               message: "project_id is required for task templates.",
             },
           },
-          400 as any,
+          400,
         );
       }
 
       const result = templateService.instantiateTaskTemplate(
         id,
         body.project_id,
-        body.overrides as any,
+        body.overrides as Partial<TaskTemplateData> & { title?: string },
       );
 
       return c.json({ data: result }, 201);
@@ -319,7 +323,7 @@ export function createTemplateRoutes(): OpenAPIHono<{
               message: "workspace_id is required for project templates.",
             },
           },
-          400 as any,
+          400,
         );
       }
 
@@ -342,7 +346,7 @@ export function createTemplateRoutes(): OpenAPIHono<{
           message: `Unknown template type: ${template.templateType}`,
         },
       },
-      400 as any,
+      400,
     );
   });
 

@@ -1,5 +1,4 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { ENTITY_TYPES, ACTIVITY_ACTIONS } from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as activityService from "../services/activity.service.js";
 

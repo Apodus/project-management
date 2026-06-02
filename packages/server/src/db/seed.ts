@@ -1,4 +1,4 @@
-import { eq, count } from "drizzle-orm";
+import { count } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { createId } from "@pm/shared";
 import { workspaces } from "./schema.js";

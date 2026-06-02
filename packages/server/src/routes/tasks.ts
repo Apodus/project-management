@@ -13,17 +13,6 @@ import * as taskService from "../services/task.service.js";
 
 // ─── Response schemas ─────────────────────────────────────────────
 
-const taskContextSchema = z
-  .object({
-    relevant_files: z.array(z.string()).optional(),
-    codebase_areas: z.array(z.string()).optional(),
-    acceptance_criteria: z.array(z.string()).optional(),
-    design_references: z.array(z.string()).optional(),
-    notes: z.string().optional(),
-    implementation_hints: z.string().optional(),
-  })
-  .nullable();
-
 const taskSchema = z
   .object({
     id: z.string(),

@@ -1,4 +1,4 @@
-import { eq, and, or, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { createId, DEPENDENCY_TYPES } from "@pm/shared";
 import { getDb, taskDependencies, tasks } from "../db/index.js";
 import { AppError } from "../types.js";

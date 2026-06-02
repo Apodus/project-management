@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import type { AppVariables, AuthUser } from "../types.js";
 import * as agentPoolService from "../services/agent-pool.service.js";
 import * as authService from "../services/auth.service.js";
@@ -58,6 +59,21 @@ const errorEnvelope = z.object({
     message: z.string(),
   }),
 });
+
+// Shared 401/403 responses for the admin-gated routes. These routes bypass the
+// global auth middleware and validate the bearer token themselves (see
+// resolveUser), so they can return UNAUTHORIZED/FORBIDDEN at runtime — declaring
+// them here keeps the typed responses honest and the OpenAPI spec accurate.
+const authErrorResponses = {
+  401: {
+    description: "Authentication required",
+    content: { "application/json": { schema: errorEnvelope } },
+  },
+  403: {
+    description: "Admin role required",
+    content: { "application/json": { schema: errorEnvelope } },
+  },
+};
 
 const agentListSchema = z.object({
   data: z.array(
@@ -143,6 +159,7 @@ const createPoolRoute = createRoute({
       description: "Pool name already exists",
       content: { "application/json": { schema: errorEnvelope } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -157,6 +174,7 @@ const listPoolsRoute = createRoute({
       description: "Pool list",
       content: { "application/json": { schema: z.object({ data: z.array(poolSummarySchema) }) } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -187,6 +205,7 @@ const getPoolRoute = createRoute({
       description: "Pool not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -212,6 +231,7 @@ const updatePoolRoute = createRoute({
       description: "Pool not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -233,6 +253,7 @@ const deletePoolRoute = createRoute({
       description: "Pool not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -258,6 +279,7 @@ const updatePoolSecretRoute = createRoute({
       description: "Pool not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -283,6 +305,7 @@ const createPoolAgentsRoute = createRoute({
       description: "Pool not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -309,6 +332,7 @@ const removePoolAgentRoute = createRoute({
       description: "User not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -393,6 +417,7 @@ const legacyPoolStatusRoute = createRoute({
       description: "Pool list",
       content: { "application/json": { schema: z.object({ data: z.array(poolSummarySchema) }) } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -413,6 +438,7 @@ const forceReleaseRoute = createRoute({
       description: "Agent released",
       content: { "application/json": { schema: messageEnvelope } },
     },
+    ...authErrorResponses,
   },
 });
 
@@ -423,7 +449,9 @@ const forceReleaseRoute = createRoute({
  * Since these routes are under /api/v1/auth/*, the auth middleware skips them.
  * We need to validate the bearer token ourselves.
  */
-async function resolveUser(c: any): Promise<AuthUser | null> {
+async function resolveUser(
+  c: Context<{ Variables: AppVariables }>,
+): Promise<AuthUser | null> {
   // Check if middleware already resolved the user
   const existing = c.get("currentUser");
   if (existing) return existing;
@@ -450,7 +478,10 @@ async function resolveUser(c: any): Promise<AuthUser | null> {
   return null;
 }
 
-function requireAuth(user: AuthUser | null, c: any): Response | null {
+function requireAuth(
+  user: AuthUser | null,
+  c: Context<{ Variables: AppVariables }>,
+) {
   if (!user) {
     return c.json(
       { error: { code: "UNAUTHORIZED", message: "Valid authentication required" } },
@@ -460,7 +491,10 @@ function requireAuth(user: AuthUser | null, c: any): Response | null {
   return null;
 }
 
-function requireAdminRole(user: AuthUser, c: any): Response | null {
+function requireAdminRole(
+  user: AuthUser,
+  c: Context<{ Variables: AppVariables }>,
+) {
   if (user.role !== "admin") {
     return c.json(
       { error: { code: "FORBIDDEN", message: "Admin role required" } },
@@ -481,9 +515,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(createPoolRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const { name, secret, description } = c.req.valid("json");
     const pool = await agentPoolService.createPool(name, secret, description, user!.id);
@@ -494,9 +528,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(listPoolsRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const pools = agentPoolService.listPools();
     return c.json({ data: pools }, 200);
@@ -506,9 +540,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(getPoolRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const { id } = c.req.valid("param");
     const pool = agentPoolService.getPool(id);
@@ -527,9 +561,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(updatePoolRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
@@ -541,9 +575,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(deletePoolRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const { id } = c.req.valid("param");
     agentPoolService.deletePool(id);
@@ -554,9 +588,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(updatePoolSecretRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const { id } = c.req.valid("param");
     const { secret } = c.req.valid("json");
@@ -568,9 +602,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(createPoolAgentsRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const { id } = c.req.valid("param");
     const { count, namePrefix } = c.req.valid("json");
@@ -582,9 +616,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(removePoolAgentRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const { id, userId } = c.req.valid("param");
     const result = agentPoolService.removeAgentFromPool(id, userId);
@@ -645,9 +679,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(legacyPoolStatusRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const pools = agentPoolService.listPools();
     return c.json({ data: pools }, 200);
@@ -657,9 +691,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
   router.openapi(forceReleaseRoute, async (c) => {
     const user = await resolveUser(c);
     const authErr = requireAuth(user, c);
-    if (authErr) return authErr as any;
+    if (authErr) return authErr;
     const adminErr = requireAdminRole(user!, c);
-    if (adminErr) return adminErr as any;
+    if (adminErr) return adminErr;
 
     const { userId } = c.req.valid("json");
     agentPoolService.forceReleaseAgent(userId);

@@ -1,4 +1,4 @@
-import { eq, and, asc } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { createId, COMMENT_TYPES } from "@pm/shared";
 import { getDb, comments, tasks, proposals } from "../db/index.js";
 import { AppError } from "../types.js";

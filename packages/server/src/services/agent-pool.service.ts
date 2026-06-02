@@ -1,7 +1,7 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createId } from "@pm/shared";
-import { getDb, getRawDb, agentClaims, users, tasks, agentPools } from "../db/index.js";
+import { getDb, getRawDb, agentClaims, users, agentPools } from "../db/index.js";
 import * as authService from "./auth.service.js";
 import { AppError } from "../types.js";
 
@@ -167,14 +167,11 @@ export function updatePool(
   }
 
   const ts = new Date().toISOString();
-  const setValues: Record<string, unknown> = { updatedAt: ts };
+  const setValues: Partial<typeof agentPools.$inferInsert> = { updatedAt: ts };
   if (updates.name !== undefined) setValues.name = updates.name;
   if (updates.description !== undefined) setValues.description = updates.description;
 
-  db.update(agentPools)
-    .set(setValues as any)
-    .where(eq(agentPools.id, poolId))
-    .run();
+  db.update(agentPools).set(setValues).where(eq(agentPools.id, poolId)).run();
 
   return {
     id: pool.id,
@@ -609,12 +606,18 @@ export function removeAgentFromPool(poolId: string, userId: string): RemoveAgent
   try {
     rawDb.prepare("DELETE FROM users WHERE id = ?").run(userId);
     return { deleted: true, deactivated: false };
-  } catch (err: any) {
+  } catch (err: unknown) {
     // FK constraint error — deactivate and remove from pool instead
+    const code =
+      typeof err === "object" && err !== null && "code" in err
+        ? (err as { code?: unknown }).code
+        : undefined;
+    const message =
+      err instanceof Error ? err.message : undefined;
     if (
-      err?.code === "SQLITE_CONSTRAINT" ||
-      err?.code === "SQLITE_CONSTRAINT_FOREIGNKEY" ||
-      (typeof err?.message === "string" && err.message.includes("FOREIGN KEY"))
+      code === "SQLITE_CONSTRAINT" ||
+      code === "SQLITE_CONSTRAINT_FOREIGNKEY" ||
+      (typeof message === "string" && message.includes("FOREIGN KEY"))
     ) {
       db.update(users)
         .set({

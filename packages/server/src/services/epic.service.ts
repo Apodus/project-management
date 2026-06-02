@@ -1,10 +1,6 @@
 import { eq, and, count, isNull, or } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import {
-  type ClaimResult,
-  type ClaimStatus,
-  type UserType,
-} from "@pm/shared";
+import { type ClaimResult, type ClaimStatus } from "@pm/shared";
 import { getDb, epics, proposals, tasks } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";

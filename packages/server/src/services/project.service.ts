@@ -1,4 +1,4 @@
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import { getDb, projects, tasks, epics, proposals, workspaces } from "../db/index.js";
 import { AppError } from "../types.js";
