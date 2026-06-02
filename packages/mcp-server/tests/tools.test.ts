@@ -36,6 +36,8 @@ vi.mock("../src/api-client.js", () => ({
   pickNextTask: vi.fn(),
   addTaskComment: vi.fn(),
   addTaskDependency: vi.fn(),
+  addEpicDependency: vi.fn(),
+  removeEpicDependency: vi.fn(),
   createTask: vi.fn(),
   updateTask: vi.fn(),
   createGitRef: vi.fn(),
@@ -81,6 +83,8 @@ const mockTransitionTask = vi.mocked(apiClient.transitionTask);
 const mockPickNextTask = vi.mocked(apiClient.pickNextTask);
 const mockAddTaskComment = vi.mocked(apiClient.addTaskComment);
 const mockAddTaskDependency = vi.mocked(apiClient.addTaskDependency);
+const mockAddEpicDependency = vi.mocked(apiClient.addEpicDependency);
+const mockRemoveEpicDependency = vi.mocked(apiClient.removeEpicDependency);
 const mockCreateTask = vi.mocked(apiClient.createTask);
 const mockUpdateTask = vi.mocked(apiClient.updateTask);
 const mockCreateGitRef = vi.mocked(apiClient.createGitRef);
@@ -2003,6 +2007,158 @@ describe("MCP Tools", () => {
         url: "https://github.com/org/repo/pull/42",
         title: "Add caching feature",
       });
+    });
+  });
+
+  // ---- pm_link_epic_dependency / pm_unlink_epic_dependency ----
+
+  describe("pm_link_epic_dependency", () => {
+    const sampleDep = {
+      id: "epicdep_001",
+      projectId: "proj_001",
+      epicId: "epic_b",
+      dependsOnEpicId: "epic_a",
+      dependencyType: "blocks",
+      createdAt: "2026-01-03T00:00:00Z",
+      createdBy: null,
+    };
+
+    it("links an epic dependency and passes args through", async () => {
+      mockAddEpicDependency.mockResolvedValue(sampleDep);
+
+      const result = await client.callTool({
+        name: "pm_link_epic_dependency",
+        arguments: {
+          project_id: "proj_001",
+          epic_id: "epic_b",
+          depends_on_epic_id: "epic_a",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Epic dependency linked successfully");
+      expect(text).toContain("epicdep_001");
+      expect(text).toContain("epic_b");
+      expect(text).toContain("epic_a");
+      expect(mockAddEpicDependency).toHaveBeenCalledWith(
+        "epic_b",
+        "epic_a",
+        "proj_001",
+        undefined,
+      );
+    });
+
+    it("passes the dependency_type through", async () => {
+      mockAddEpicDependency.mockResolvedValue({
+        ...sampleDep,
+        dependencyType: "relates_to",
+      });
+
+      await client.callTool({
+        name: "pm_link_epic_dependency",
+        arguments: {
+          project_id: "proj_001",
+          epic_id: "epic_b",
+          depends_on_epic_id: "epic_a",
+          dependency_type: "relates_to",
+        },
+      });
+
+      expect(mockAddEpicDependency).toHaveBeenCalledWith(
+        "epic_b",
+        "epic_a",
+        "proj_001",
+        "relates_to",
+      );
+    });
+
+    it("surfaces a clean message on CONFLICT", async () => {
+      const { ApiError } = await import("../src/api-client.js");
+      mockAddEpicDependency.mockRejectedValue(
+        new ApiError(409, "CONFLICT", "This epic dependency already exists"),
+      );
+
+      const result = await client.callTool({
+        name: "pm_link_epic_dependency",
+        arguments: {
+          project_id: "proj_001",
+          epic_id: "epic_b",
+          depends_on_epic_id: "epic_a",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("already exists");
+    });
+
+    it("surfaces a clean message on SELF_DEPENDENCY", async () => {
+      const { ApiError } = await import("../src/api-client.js");
+      mockAddEpicDependency.mockRejectedValue(
+        new ApiError(400, "SELF_DEPENDENCY", "An epic cannot depend on itself"),
+      );
+
+      const result = await client.callTool({
+        name: "pm_link_epic_dependency",
+        arguments: {
+          project_id: "proj_001",
+          epic_id: "epic_a",
+          depends_on_epic_id: "epic_a",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("cannot depend on itself");
+    });
+
+    it("surfaces a clean message on CROSS_PROJECT", async () => {
+      const { ApiError } = await import("../src/api-client.js");
+      mockAddEpicDependency.mockRejectedValue(
+        new ApiError(400, "CROSS_PROJECT", "Both epics must belong to project"),
+      );
+
+      const result = await client.callTool({
+        name: "pm_link_epic_dependency",
+        arguments: {
+          project_id: "proj_001",
+          epic_id: "epic_b",
+          depends_on_epic_id: "epic_other",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("same project");
+    });
+  });
+
+  describe("pm_unlink_epic_dependency", () => {
+    it("removes an epic dependency and renders confirmation", async () => {
+      mockRemoveEpicDependency.mockResolvedValue({
+        id: "epicdep_001",
+        projectId: "proj_001",
+        epicId: "epic_b",
+        dependsOnEpicId: "epic_a",
+        dependencyType: "blocks",
+        createdAt: "2026-01-03T00:00:00Z",
+        createdBy: null,
+      });
+
+      const result = await client.callTool({
+        name: "pm_unlink_epic_dependency",
+        arguments: {
+          project_id: "proj_001",
+          epic_id: "epic_b",
+          dependency_id: "epicdep_001",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Epic dependency removed");
+      expect(text).toContain("epicdep_001");
+      expect(mockRemoveEpicDependency).toHaveBeenCalledWith(
+        "epic_b",
+        "epicdep_001",
+        "proj_001",
+      );
     });
   });
 

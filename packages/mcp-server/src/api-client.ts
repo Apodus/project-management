@@ -566,6 +566,47 @@ export async function addTaskDependency(
 }
 
 // ---------------------------------------------------------------------------
+// Typed API functions — Epic Dependencies
+// ---------------------------------------------------------------------------
+
+export interface EpicDependencyData {
+  id: string;
+  projectId: string;
+  epicId: string;
+  dependsOnEpicId: string;
+  dependencyType: string;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+export async function addEpicDependency(
+  epicId: string,
+  dependsOnEpicId: string,
+  projectId: string,
+  type?: string,
+): Promise<EpicDependencyData> {
+  return apiRequest<EpicDependencyData>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/epics/${encodeURIComponent(epicId)}/dependencies`,
+    {
+      dependsOnEpicId,
+      ...(type ? { dependencyType: type } : {}),
+    },
+  );
+}
+
+export async function removeEpicDependency(
+  epicId: string,
+  depId: string,
+  projectId: string,
+): Promise<EpicDependencyData> {
+  return apiRequest<EpicDependencyData>(
+    "DELETE",
+    `/projects/${encodeURIComponent(projectId)}/epics/${encodeURIComponent(epicId)}/dependencies/${encodeURIComponent(depId)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Typed API functions — Create / Update Tasks
 // ---------------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { DEPENDENCY_TYPES } from "@pm/shared";
-import type { AppVariables } from "../types.js";
+import type { AppVariables, AuthUser } from "../types.js";
 import * as epicGraphService from "../services/epic-graph.service.js";
 
 // ─── Route-local Zod-4 mirror of @pm/shared epicGraphSchema ───────
@@ -50,6 +50,29 @@ const epicGraphSchema = z
 
 const epicGraphEnvelope = z.object({ data: epicGraphSchema });
 
+// ─── Explicit epic-dependency row mirror + request body ───────────
+
+const epicDependencySchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    epicId: z.string(),
+    dependsOnEpicId: z.string(),
+    dependencyType: z.string(),
+    createdAt: z.string(),
+    createdBy: z.string().nullable(),
+  })
+  .openapi("EpicDependency");
+
+const epicDependencyEnvelope = z.object({ data: epicDependencySchema });
+
+const addEpicDependencyBody = z
+  .object({
+    dependsOnEpicId: z.string().min(1),
+    dependencyType: z.enum(DEPENDENCY_TYPES).optional(),
+  })
+  .openapi("AddEpicDependency");
+
 const errorEnvelope = z.object({
   error: z.object({
     code: z.string(),
@@ -59,6 +82,16 @@ const errorEnvelope = z.object({
 
 const projectIdParam = z.string().min(1).openapi({
   param: { name: "projectId", in: "path" },
+  example: "01HXYZ1234567890ABCDEFGHIJ",
+});
+
+const epicIdParam = z.string().min(1).openapi({
+  param: { name: "epicId", in: "path" },
+  example: "01HXYZ1234567890ABCDEFGHIJ",
+});
+
+const depIdParam = z.string().min(1).openapi({
+  param: { name: "depId", in: "path" },
   example: "01HXYZ1234567890ABCDEFGHIJ",
 });
 
@@ -87,6 +120,66 @@ const getEpicGraphRoute = createRoute({
   },
 });
 
+const addEpicDependencyRoute = createRoute({
+  method: "post",
+  path: "/api/v1/projects/{projectId}/epics/{epicId}/dependencies",
+  tags: ["Epics"],
+  summary: "Add explicit epic dependency",
+  description:
+    "Add an explicit planning-time dependency: epicId depends on dependsOnEpicId. " +
+    "Both epics must belong to the project. Self-dependencies and duplicates are rejected.",
+  request: {
+    params: z.object({ projectId: projectIdParam, epicId: epicIdParam }),
+    body: {
+      content: { "application/json": { schema: addEpicDependencyBody } },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      description: "Epic dependency created",
+      content: { "application/json": { schema: epicDependencyEnvelope } },
+    },
+    400: {
+      description: "Validation error, self-dependency, or cross-project",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Epic not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Epic dependency already exists",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const removeEpicDependencyRoute = createRoute({
+  method: "delete",
+  path: "/api/v1/projects/{projectId}/epics/{epicId}/dependencies/{depId}",
+  tags: ["Epics"],
+  summary: "Remove explicit epic dependency",
+  description: "Remove an explicit epic dependency by its ID.",
+  request: {
+    params: z.object({
+      projectId: projectIdParam,
+      epicId: epicIdParam,
+      depId: depIdParam,
+    }),
+  },
+  responses: {
+    200: {
+      description: "Epic dependency removed",
+      content: { "application/json": { schema: epicDependencyEnvelope } },
+    },
+    404: {
+      description: "Epic dependency not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createEpicGraphRoutes(): OpenAPIHono<{
@@ -104,6 +197,31 @@ export function createEpicGraphRoutes(): OpenAPIHono<{
     );
 
     return c.json({ data: graph }, 200);
+  });
+
+  // POST /api/v1/projects/:projectId/epics/:epicId/dependencies
+  router.openapi(addEpicDependencyRoute, (c) => {
+    const { projectId, epicId } = c.req.valid("param");
+    const { dependsOnEpicId, dependencyType } = c.req.valid("json");
+    const user = c.get("currentUser") as AuthUser | null;
+
+    const dependency = epicGraphService.createDependency({
+      projectId,
+      epicId,
+      dependsOnEpicId,
+      dependencyType,
+      createdBy: user?.id ?? null,
+    });
+
+    return c.json({ data: dependency }, 201);
+  });
+
+  // DELETE /api/v1/projects/:projectId/epics/:epicId/dependencies/:depId
+  router.openapi(removeEpicDependencyRoute, (c) => {
+    const { depId } = c.req.valid("param");
+    const dependency = epicGraphService.deleteDependency(depId);
+
+    return c.json({ data: dependency }, 200);
   });
 
   return router;

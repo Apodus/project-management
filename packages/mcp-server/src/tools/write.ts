@@ -1,7 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { DEPENDENCY_TYPES } from "@pm/shared";
 import {
   ApiError,
+  addEpicDependency,
   addTaskComment,
   addTaskDependency,
   createEpic,
@@ -9,6 +11,7 @@ import {
   createProposal,
   createTask,
   getTask,
+  removeEpicDependency,
   updateTask,
 } from "../api-client.js";
 import { claimDeniedText } from "./claim-display.js";
@@ -611,6 +614,124 @@ export function registerWriteTools(server: McpServer): void {
               `**Value:** ${gitRef.refValue}`,
               ...(gitRef.url ? [`**URL:** ${gitRef.url}`] : []),
               ...(gitRef.title ? [`**Title:** ${gitRef.title}`] : []),
+            ].join("\n"),
+          },
+        ],
+      };
+    },
+  );
+
+  // ---- pm_link_epic_dependency ----
+
+  server.tool(
+    "pm_link_epic_dependency",
+    "Add an explicit planning-time dependency between two epics: epic_id depends on depends_on_epic_id. Both epics must belong to the same project. Self-dependencies and duplicates are rejected.",
+    {
+      project_id: z.string().describe("The project both epics belong to"),
+      epic_id: z.string().describe("The dependent epic (the one that depends)"),
+      depends_on_epic_id: z
+        .string()
+        .describe("The prerequisite epic (the one depended on)"),
+      dependency_type: z
+        .enum(DEPENDENCY_TYPES)
+        .optional()
+        .describe('Dependency type (default: "blocks")'),
+    },
+    async ({ project_id, epic_id, depends_on_epic_id, dependency_type }) => {
+      try {
+        const dep = await addEpicDependency(
+          epic_id,
+          depends_on_epic_id,
+          project_id,
+          dependency_type,
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: [
+                "Epic dependency linked successfully.",
+                "",
+                `**Dependency ID:** ${dep.id}`,
+                `**Epic:** ${dep.epicId}`,
+                `**Depends on:** ${dep.dependsOnEpicId}`,
+                `**Type:** ${dep.dependencyType}`,
+              ].join("\n"),
+            },
+          ],
+        };
+      } catch (err) {
+        if (err instanceof ApiError) {
+          if (err.code === "CONFLICT") {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "This epic dependency already exists.",
+                },
+              ],
+            };
+          }
+          if (err.code === "SELF_DEPENDENCY") {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "An epic cannot depend on itself.",
+                },
+              ],
+            };
+          }
+          if (err.code === "CROSS_PROJECT") {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "Both epics must belong to the same project.",
+                },
+              ],
+            };
+          }
+          if (err.code === "NOT_FOUND") {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "One or both epics were not found.",
+                },
+              ],
+            };
+          }
+        }
+        throw err;
+      }
+    },
+  );
+
+  // ---- pm_unlink_epic_dependency ----
+
+  server.tool(
+    "pm_unlink_epic_dependency",
+    "Remove an explicit epic dependency by its ID.",
+    {
+      project_id: z.string().describe("The project the epic belongs to"),
+      epic_id: z.string().describe("The dependent epic the dependency is on"),
+      dependency_id: z.string().describe("The epic dependency ID to remove"),
+    },
+    async ({ project_id, epic_id, dependency_id }) => {
+      const dep = await removeEpicDependency(epic_id, dependency_id, project_id);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: [
+              "Epic dependency removed.",
+              "",
+              `**Dependency ID:** ${dep.id}`,
+              `**Epic:** ${dep.epicId}`,
+              `**Depended on:** ${dep.dependsOnEpicId}`,
             ].join("\n"),
           },
         ],
