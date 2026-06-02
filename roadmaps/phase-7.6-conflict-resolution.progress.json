@@ -2,8 +2,10 @@
   "roadmap": "roadmaps/phase-7.6-conflict-resolution.md",
   "campaign": "Phase 7.6 — Intelligent merge-conflict resolution",
   "started_at": "2026-06-01",
-  "completed_steps": [1, 2, 3, 4, 5, 6, 7, 8, 9],
-  "current_step": 10,
+  "completed_at": "2026-06-01",
+  "status": "COMPLETE",
+  "completed_steps": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  "current_step": null,
   "total_steps": 10,
   "commits": [
     {"step": 2, "hash": "f83b2ff", "summary": "settings.integrator.resolver config block"},
@@ -13,13 +15,16 @@
     {"step": 6, "hash": "a0b43cb", "summary": "resolver worker: materialize + headless resolver + verify gate"},
     {"step": 7, "hash": "157ef2c", "summary": "resubmit + escalation + no-recursion guard; engine complete"},
     {"step": 8, "hash": "3de6680", "summary": "resolution lineage timeline + metrics + dashboard"},
-    {"step": 9, "hash": "cd21810", "summary": "operator guide §18 + canonical worker doc + distribute wiring"}
+    {"step": 9, "hash": "cd21810", "summary": "operator guide §18 + canonical worker doc + distribute wiring"},
+    {"step": 10, "hash": "e1a8569", "summary": "CLAUDE.md Phase 7.6 paragraph"},
+    {"step": "artifacts", "hash": "145e078", "summary": "design doc + roadmap committed"}
   ],
-  "open_issues": [
-    "KNOWN: 7 failures in packages/web train-audit-page.test.tsx — claimed pre-existing. Step 10 MUST verify against base c18d5c1; fix if trivial else document as pre-existing-unrelated; must not block the 7.6 green gate.",
-    "v2 follow-up: resolving-reclaim sweep for the rare dangling row.",
-    "Drizzle meta snapshot chain broken; future migrations hand-authored only."
-  ],
+  "final_verification": {
+    "typecheck": "6/6 green",
+    "tests": "all 7.6 tests green (shared 381, server 1129, integrator 217); off=inert proven (verbatim-passing 7.5 conflict test + new off-test asserting zero resolver calls/rows/events)",
+    "lint": "63 errors — ALL pre-existing (identical count at base c18d5c1); campaign introduced zero",
+    "known_preexisting": "7 failures in packages/web train-audit-page.test.tsx (untouched by campaign, fail at base); 63 server lint errors (fail at base). Both predate c18d5c1, out of scope for 7.6."
+  },
   "dag_drift": [],
-  "notes": "Step 10: full pnpm typecheck+lint+test green; investigate/resolve the train-audit pre-existing failures; PROVE off=inert (resolver.enabled=false byte-identical to 7.5); add the Phase 7.6 paragraph to CLAUDE.md (mirror the 7.5 paragraph style) + reference docs/design/phase-7.6-design.md."
+  "notes": "SHIPPED. Resolver is OFF by default (resolver.enabled=false ⇒ byte-identical to 7.5). Pre-campaign deploy work (.gitignore/bundle.mjs/integrator-ref package.json+lock) left uncommitted — separate concern. Track A doc edit also live in game_one/docs/pm-workflow.md (client repo, uncommitted there)."
 }
