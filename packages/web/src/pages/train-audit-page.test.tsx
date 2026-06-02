@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AuditLogEntry } from "@/lib/api";
+import type { AuditLogEntry, MergeRequest } from "@/lib/api";
 
 // ── Mock the router param hook + Link ────────────────────────────
 vi.mock("@tanstack/react-router", () => ({
@@ -44,6 +44,8 @@ const trainMocks = vi.hoisted(() => ({
   useForceReleaseLock: vi.fn(),
   useForceLand: vi.fn(),
   useForceReject: vi.fn(),
+  useForceCancel: vi.fn(),
+  useMergeRequests: vi.fn(),
 }));
 vi.mock("@/hooks/use-train", () => trainMocks);
 
@@ -91,6 +93,41 @@ function seededAudit(): { data: AuditLogEntry[]; pagination: { total: number; pa
   };
 }
 
+/** A minimal-but-valid MergeRequest the picker can render + select. */
+function seededRequest(id: string, branch: string): MergeRequest {
+  return {
+    id,
+    projectId: "proj-1",
+    resource: "main",
+    submittedBy: "user-worker-1",
+    taskId: null,
+    resolvedFrom: null,
+    branch,
+    commitSha: null,
+    verifyCmd: null,
+    worktreePath: null,
+    status: "integrating",
+    enqueuedAt: new Date().toISOString(),
+    pickedUpAt: null,
+    resolvedAt: null,
+    landedSha: null,
+    rejectCategory: null,
+    rejectReason: null,
+    failedFiles: null,
+    logExcerpt: null,
+    logUrl: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+// The two force dialogs pick a request by id; seed both ids the payload
+// assertions expect, each with a distinct branch handle for the option label.
+const SEEDED_REQUESTS: MergeRequest[] = [
+  seededRequest("mr-123", "feat/force-land"),
+  seededRequest("mr-999", "feat/force-reject"),
+];
+
 let pauseMutation: ReturnType<typeof mutation>;
 let resumeMutation: ReturnType<typeof mutation>;
 let forceReleaseMutation: ReturnType<typeof mutation>;
@@ -113,6 +150,8 @@ beforeEach(() => {
   trainMocks.useForceReleaseLock.mockReturnValue(forceReleaseMutation);
   trainMocks.useForceLand.mockReturnValue(forceLandMutation);
   trainMocks.useForceReject.mockReturnValue(forceRejectMutation);
+  trainMocks.useForceCancel.mockReturnValue(mutation());
+  trainMocks.useMergeRequests.mockReturnValue(q(SEEDED_REQUESTS));
 });
 
 // ── Per-role gating (the load-bearing test) ──────────────────────
@@ -188,10 +227,23 @@ describe("TrainAuditPage — force-land dialog", () => {
     const submit = screen.getByRole("button", { name: "Force-land" });
     expect(submit).toBeDisabled();
 
-    // Fill request id + sha + reason.
-    fireEvent.change(screen.getByLabelText("Merge request ID"), {
-      target: { value: "mr-123" },
+    // Pick the request via the Radix Select picker (replaces the old text id).
+    act(() => {
+      fireEvent.click(screen.getByRole("combobox", { name: "Merge request" }));
     });
+    act(() => {
+      fireEvent.click(screen.getByRole("option", { name: /feat\/force-land/ }));
+    });
+    // Selecting closes the listbox + shows the chosen label on the trigger.
+    expect(
+      within(
+        screen.getByRole("combobox", { name: "Merge request" }),
+      ).getByText(/feat\/force-land/),
+    ).toBeInTheDocument();
+
+    // Still disabled — sha + reason missing.
+    expect(submit).toBeDisabled();
+
     fireEvent.change(screen.getByLabelText("Landed SHA"), {
       target: { value: "abc1234" },
     });
@@ -225,9 +277,19 @@ describe("TrainAuditPage — force-reject dialog", () => {
     const submit = screen.getByRole("button", { name: "Force-reject" });
     expect(submit).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Merge request ID"), {
-      target: { value: "mr-999" },
+    // Pick the request via the Radix Select picker (replaces the old text id).
+    act(() => {
+      fireEvent.click(screen.getByRole("combobox", { name: "Merge request" }));
     });
+    act(() => {
+      fireEvent.click(screen.getByRole("option", { name: /feat\/force-reject/ }));
+    });
+    expect(
+      within(
+        screen.getByRole("combobox", { name: "Merge request" }),
+      ).getByText(/feat\/force-reject/),
+    ).toBeInTheDocument();
+    // Still disabled — reason missing.
     expect(submit).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText("Reason"), {
