@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEPENDENCY_TYPES } from "../constants/enums.js";
+import { DEPENDENCY_TYPES, EPIC_HEALTHS } from "../constants/enums.js";
 import { ulidSchema, timestampSchema } from "./common.js";
 
 // Edge provenance: `derived` = rolled up from the task graph (P2);
@@ -22,10 +22,13 @@ export const epicGraphNodeSchema = z.object({
   created_at: timestampSchema,
   updated_at: timestampSchema,
   taskSummary: epicTaskSummarySchema,
-  // P4 enrichment — optional in skeleton so P2's enrichment-free payload validates.
-  health: z.string().optional(), // enum tightening deferred to P4; consumers treat as opaque
-  activity_recency: z.string().nullable().optional(),
-  time_window: z.object({ start: z.string().nullable(), end: z.string().nullable() }).optional(),
+  // P4 enrichment — finalized & REQUIRED. getGraph always emits all three:
+  //   health           — EPIC_HEALTHS enum (done > blocked > at_risk > not_started > on_track)
+  //   activity_recency — max(task.updated_at), falling back to epic.updated_at (NOT NULL ⇒ always present)
+  //   time_window      — { start: created_at (non-null), end: target_date | null }
+  health: z.enum(EPIC_HEALTHS),
+  activity_recency: z.string(),
+  time_window: z.object({ start: z.string(), end: z.string().nullable() }),
 });
 
 export const epicGraphEdgeSchema = z.object({

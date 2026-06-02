@@ -1,6 +1,11 @@
-import { eq, and, ne, isNotNull } from "drizzle-orm";
+import { eq, and, ne, isNotNull, max } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import { createId, DEPENDENCY_TYPES, type DependencyType } from "@pm/shared";
+import {
+  createId,
+  DEPENDENCY_TYPES,
+  type DependencyType,
+  type EpicHealth,
+} from "@pm/shared";
 import {
   getDb,
   tasks,
@@ -122,6 +127,53 @@ export function getGraph(projectId: string, caller?: { id: string } | null) {
   }
   const edges = [...edgeMap.values()];
 
+  // ── Node enrichment (P4): health / activity_recency / time_window ──
+  // (a) Recency — one grouped query: max(task.updated_at) per epic for the project.
+  const recencyRows = db
+    .select({ epicId: tasks.epicId, lastUpdated: max(tasks.updatedAt) })
+    .from(tasks)
+    .where(and(eq(tasks.projectId, projectId), isNotNull(tasks.epicId)))
+    .groupBy(tasks.epicId)
+    .all();
+  const recencyMap = new Map(recencyRows.map((r) => [r.epicId, r.lastUpdated]));
+
+  // (b) Two-pass health. Pass 1: every node's completion. Pass 2: a node is
+  // `blocked` if it has an inbound `blocks` edge whose prerequisite is incomplete.
+  // Using pass-1 results for prerequisites keeps the verdict deterministic
+  // (independent of node iteration order).
+  const completeById = new Map(
+    nodes.map((n) => [
+      n.id,
+      n.status === "completed" ||
+        (n.taskSummary.total > 0 && n.taskSummary.done === n.taskSummary.total),
+    ]),
+  );
+  const blockedById = new Set<string>();
+  for (const e of edges) {
+    if (e.dependency_type === "blocks" && completeById.get(e.from) === false) {
+      blockedById.add(e.to);
+    }
+  }
+  const now = new Date().toISOString();
+  const computeHealth = (n: (typeof nodes)[number]): EpicHealth => {
+    if (completeById.get(n.id)) return "done";
+    if (blockedById.has(n.id)) return "blocked";
+    // Lexical ISO compare — both target_date and now are ISO UTC strings; a
+    // date-only target ("2026-06-02") orders before a full ISO `now`, so a
+    // target due TODAY flags at_risk (intended).
+    if (n.target_date != null && n.target_date < now) return "at_risk";
+    if (n.taskSummary.done === 0) return "not_started";
+    return "on_track";
+  };
+
+  // (c) Inject enrichment, preserving every existing node field.
+  const enrichedNodes = nodes.map((n) => ({
+    ...n,
+    health: computeHealth(n),
+    activity_recency: recencyMap.get(n.id) ?? n.updated_at,
+    time_window: { start: n.created_at, end: n.target_date ?? null },
+  }));
+
   // ── Cycle detection over the `blocks` sub-graph ──
   const nodeIds = nodes.map((n) => n.id);
   const cycleResult = detectCycles(
@@ -130,7 +182,7 @@ export function getGraph(projectId: string, caller?: { id: string } | null) {
   );
 
   return {
-    nodes,
+    nodes: enrichedNodes,
     edges,
     hasCycle: cycleResult.hasCycle,
     ...(cycleResult.cycles.length ? { cycles: cycleResult.cycles } : {}),

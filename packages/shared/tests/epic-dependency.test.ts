@@ -76,7 +76,10 @@ describe("insertEpicDependencySchema", () => {
 // ─── epicGraphSchema ──────────────────────────────────────────────
 
 describe("epicGraphSchema", () => {
-  const nodeWithoutEnrichment = {
+  // The finalized P4 contract makes enrichment REQUIRED — getGraph always emits
+  // health/activity_recency/time_window. This valid node carries all three so the
+  // provenance/taskSummary rejection tests below isolate their INTENDED defect.
+  const validNode = {
     id: VALID_ULID,
     project_id: VALID_ULID,
     name: "Epic One",
@@ -85,9 +88,18 @@ describe("epicGraphSchema", () => {
     created_at: VALID_TIMESTAMP,
     updated_at: VALID_TIMESTAMP,
     taskSummary: { total: 3, done: 1, byStatus: { backlog: 2, done: 1 } },
+    health: "on_track" as const,
+    activity_recency: VALID_TIMESTAMP,
+    time_window: { start: VALID_TIMESTAMP, end: null },
   };
 
-  it("succeeds on a minimal enrichment-free payload (proves P2's payload is valid)", () => {
+  it("rejects an enrichment-omitted node (P4 contract is finalized & required)", () => {
+    const {
+      health: _h,
+      activity_recency: _a,
+      time_window: _t,
+      ...nodeWithoutEnrichment
+    } = validNode;
     const payload = {
       nodes: [nodeWithoutEnrichment],
       edges: [
@@ -100,14 +112,14 @@ describe("epicGraphSchema", () => {
       ],
       hasCycle: false,
     };
-    expect(epicGraphSchema.parse(payload)).toBeTruthy();
+    expect(() => epicGraphSchema.parse(payload)).toThrow();
   });
 
   it("succeeds on a full payload with enrichment + cycles (P4 forward-compat)", () => {
     const payload = {
       nodes: [
         {
-          ...nodeWithoutEnrichment,
+          ...validNode,
           target_date: VALID_TIMESTAMP,
           health: "on_track",
           activity_recency: VALID_TIMESTAMP,
@@ -130,7 +142,7 @@ describe("epicGraphSchema", () => {
 
   it("rejects an edge with unknown provenance", () => {
     const payload = {
-      nodes: [nodeWithoutEnrichment],
+      nodes: [validNode],
       edges: [
         {
           from: VALID_ULID_2,
@@ -145,7 +157,7 @@ describe("epicGraphSchema", () => {
   });
 
   it("rejects a node missing taskSummary", () => {
-    const { taskSummary: _, ...nodeNoSummary } = nodeWithoutEnrichment;
+    const { taskSummary: _, ...nodeNoSummary } = validNode;
     const payload = {
       nodes: [nodeNoSummary],
       edges: [],

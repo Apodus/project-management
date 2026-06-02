@@ -1662,6 +1662,35 @@
               "done",
               "byStatus"
             ]
+          },
+          "health": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "on_track",
+              "at_risk",
+              "blocked",
+              "done"
+            ]
+          },
+          "activity_recency": {
+            "type": "string"
+          },
+          "time_window": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "string"
+              },
+              "end": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ]
           }
         },
         "required": [
@@ -1672,7 +1701,10 @@
           "priority",
           "created_at",
           "updated_at",
-          "taskSummary"
+          "taskSummary",
+          "health",
+          "activity_recency",
+          "time_window"
         ]
       },
       "EpicGraphEdge": {

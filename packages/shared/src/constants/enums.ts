@@ -64,6 +64,11 @@ export type CommentType = (typeof COMMENT_TYPES)[number];
 export const DEPENDENCY_TYPES = ["blocks", "relates_to"] as const;
 export type DependencyType = (typeof DEPENDENCY_TYPES)[number];
 
+// Epic-graph node health (C1.P4). Precedence ladder (first match wins):
+//   done > blocked > at_risk > not_started > on_track
+export const EPIC_HEALTHS = ["not_started", "on_track", "at_risk", "blocked", "done"] as const;
+export type EpicHealth = (typeof EPIC_HEALTHS)[number];
+
 // Phase 7.5 — verify cache mode (design §2/§4.3). Per-project cache_mode
 // governs how the verify cache is used when cache_enabled is true:
 //   off    — never look up, never write (inert; same as cache_enabled:false)
