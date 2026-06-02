@@ -29,6 +29,10 @@ vi.mock("@xyflow/react", () => ({
   // inside PastRailPanel never mounts — the state test stays free of canvas
   // machinery while still exercising the active/past partition via `nodes`.
   Panel: () => null,
+  // ViewportPortal is in the explicit allowlist so the page (which now renders
+  // MilestoneGuides) doesn't throw "Element type is invalid"; the passthrough
+  // surfaces its children.
+  ViewportPortal: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useReactFlow: () => ({ fitView: () => {} }),
   ReactFlowProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   Handle: () => null,
@@ -47,6 +51,12 @@ vi.mock("@/hooks/use-epic-graph", () => ({
 }));
 vi.mock("@/hooks/use-projects", () => ({
   useProject: mocks.useProject,
+}));
+// The page now fetches milestones for the guide lines. There's no
+// QueryClientProvider in this render, so a real query would throw "No
+// QueryClient set" — stub the hook to an empty list.
+vi.mock("@/hooks/use-milestones", () => ({
+  useMilestones: () => ({ data: [] }),
 }));
 
 // The page calls useProjectStore((s) => s.setCurrentProject) — stub the

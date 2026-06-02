@@ -16,12 +16,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProject } from "@/hooks/use-projects";
 import { useEpicGraph } from "@/hooks/use-epic-graph";
+import { useMilestones } from "@/hooks/use-milestones";
 import { useProjectStore } from "@/stores/project-store";
 import { computeEpicGraphLayout } from "@/lib/epic-graph-layout";
 import { computeChain, edgeKey } from "@/lib/epic-graph-chain";
 import { getEdgeStyling } from "@/lib/epic-graph-style";
 import { partitionEpics, recedeOpacity } from "@/lib/epic-graph-recency";
 import { EpicNode, type EpicNodeData } from "@/components/epic-node";
+import { MilestoneGuides } from "@/components/milestone-guides";
 
 // ---- Past rail ----
 
@@ -82,6 +84,7 @@ export function EpicTimelinePage() {
   }, [project, setCurrentProject]);
 
   const { data: graph, isLoading, error, refetch } = useEpicGraph(projectId);
+  const { data: milestones } = useMilestones(projectId);
 
   // The hovered epic drives the dependency-chain highlight (null = no focus).
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -116,6 +119,20 @@ export function EpicTimelinePage() {
       }),
     [nodesForLayout, graph, now],
   );
+
+  // Vertical span for the milestone/today guides: tall enough to bracket every
+  // rendered lane plus padding above and below. Derived from the laid-out node
+  // y-values (fallbacks cover the empty-positions case).
+  const { yTop, ySpan } = useMemo(() => {
+    const ys = Array.from(layout.positions.values(), (p) => p.y);
+    if (ys.length === 0) {
+      const fallbackSpan = layout.laneCount * 90 + 600;
+      return { yTop: -200, ySpan: fallbackSpan };
+    }
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    return { yTop: minY - 100, ySpan: maxY - minY + 300 };
+  }, [layout]);
 
   // Cycle members (from the payload) get marked; `?? []` guards the optional
   // `cycles` field (fixtures may omit it).
@@ -223,6 +240,9 @@ export function EpicTimelinePage() {
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-12">
           <Network className="text-muted-foreground/40 mb-3 size-10" />
           <p className="text-muted-foreground text-sm">No epics in this roadmap yet.</p>
+          <p className="text-muted-foreground/70 mt-1 text-xs">
+            Create epics to see them on the timeline.
+          </p>
         </div>
       )}
 
@@ -243,6 +263,20 @@ export function EpicTimelinePage() {
           >
             <Background />
             <Controls />
+            <MilestoneGuides
+              scale={layout.scale}
+              milestones={milestones ?? []}
+              yTop={yTop}
+              ySpan={ySpan}
+            />
+            {graph.hasCycle && (
+              <Panel position="top-center">
+                <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-700 dark:text-amber-400">
+                  ⚠ {graph.cycles?.length ?? 1} dependency cycle(s) detected — some epics block
+                  each other
+                </div>
+              </Panel>
+            )}
             <PastRailPanel
               pastCount={partition.past.length}
               showPast={showPast}
