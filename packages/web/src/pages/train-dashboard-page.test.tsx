@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { TrainInFlight, TrainMetrics } from "@/lib/api";
 
@@ -46,6 +46,18 @@ const authMocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(() => ({ data: { role: "admin" } })),
 }));
 vi.mock("@/hooks/use-auth", () => authMocks);
+
+// The ResolutionSection's resolver toggle reads the project + a resolver
+// update mutation. Mock both (defaults: resolver disabled).
+const projectMocks = vi.hoisted(() => ({
+  useProject: vi.fn(),
+  useUpdateResolverConfig: vi.fn(),
+  resolverMutate: vi.fn(),
+}));
+vi.mock("@/hooks/use-projects", () => ({
+  useProject: projectMocks.useProject,
+  useUpdateResolverConfig: projectMocks.useUpdateResolverConfig,
+}));
 
 import { TrainDashboardPage } from "./train-dashboard-page";
 
@@ -221,12 +233,27 @@ function q<T>(data: T | undefined, isLoading = false) {
   return { data, isLoading } as unknown;
 }
 
+function projectWithResolver(enabled: boolean) {
+  return {
+    data: {
+      id: "proj-1",
+      settings: { integrator: { resolver: { enabled, max_concurrent: 1 } } },
+    },
+  } as unknown;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.useTrainState.mockReturnValue(q({ state: "running", reason: null }));
   mocks.useTrainHealth.mockReturnValue(q(seededMetrics().health));
   mocks.useTrainInFlight.mockReturnValue(q(seededInFlight()));
   mocks.useTrainMetrics.mockReturnValue(q(seededMetrics()));
+  authMocks.useCurrentUser.mockReturnValue({ data: { role: "admin" } });
+  projectMocks.useProject.mockReturnValue(projectWithResolver(false));
+  projectMocks.useUpdateResolverConfig.mockReturnValue({
+    mutate: projectMocks.resolverMutate,
+    isPending: false,
+  });
 });
 
 describe("TrainDashboardPage — seeded data", () => {
@@ -354,5 +381,50 @@ describe("TrainDashboardPage — null-safe rendering (divide-by-null bug class)"
     render(<TrainDashboardPage />);
     expect(screen.getByText("No resolutions yet")).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("NaN");
+  });
+});
+
+describe("TrainDashboardPage — resolver enable toggle (Phase 7.6)", () => {
+  it("admin sees the toggle reflecting the project's enabled state (off)", () => {
+    projectMocks.useProject.mockReturnValue(projectWithResolver(false));
+    render(<TrainDashboardPage />);
+    const toggle = screen.getByRole("switch", {
+      name: "Auto-resolve conflicts",
+    });
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(toggle).not.toBeDisabled();
+  });
+
+  it("reflects the enabled state when on", () => {
+    projectMocks.useProject.mockReturnValue(projectWithResolver(true));
+    render(<TrainDashboardPage />);
+    const toggle = screen.getByRole("switch", {
+      name: "Auto-resolve conflicts",
+    });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("toggling calls the update mutation with the inverted enabled flag", () => {
+    projectMocks.useProject.mockReturnValue(projectWithResolver(false));
+    render(<TrainDashboardPage />);
+    const toggle = screen.getByRole("switch", {
+      name: "Auto-resolve conflicts",
+    });
+    fireEvent.click(toggle);
+    expect(projectMocks.resolverMutate).toHaveBeenCalledTimes(1);
+    expect(projectMocks.resolverMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: true }),
+    );
+  });
+
+  it("non-admin sees the toggle disabled", () => {
+    authMocks.useCurrentUser.mockReturnValue({ data: { role: "user" } });
+    projectMocks.useProject.mockReturnValue(projectWithResolver(false));
+    render(<TrainDashboardPage />);
+    const toggle = screen.getByRole("switch", {
+      name: "Auto-resolve conflicts",
+    });
+    expect(toggle).toBeDisabled();
   });
 });

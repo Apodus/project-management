@@ -33,6 +33,21 @@ export type MergeRequestTimeline =
   components["schemas"]["MergeRequestTimeline"];
 export type MergeRequestTimelineEvent =
   components["schemas"]["MergeRequestTimelineEvent"];
+export type ResolverDefaults = components["schemas"]["ResolverDefaults"];
+
+/**
+ * The persisted `settings.integrator.resolver` shape (Phase 7.6). `command` is
+ * NOT surfaced in the UI but is preserved on round-trip. An absent
+ * `token_budget` means unlimited; an absent `prompt` means the built-in default.
+ */
+export interface ResolverConfig {
+  enabled: boolean;
+  max_concurrent: number;
+  time_budget_sec: number;
+  token_budget?: number;
+  command?: string;
+  prompt?: string;
+}
 
 // ---- API client ----
 
@@ -132,6 +147,12 @@ export async function updateProject(
 
 export async function getProjectStats(id: string): Promise<ProjectStats> {
   return apiFetch<ProjectStats>(`/projects/${id}/stats`);
+}
+
+// Built-in resolver defaults (Phase 7.6). Static — sources the default reconcile
+// prompt + the "revert to defaults" values. Any authenticated user.
+export async function getResolverDefaults(): Promise<ResolverDefaults> {
+  return apiFetch<ResolverDefaults>("/resolver/defaults");
 }
 
 // ---- Proposal API ----

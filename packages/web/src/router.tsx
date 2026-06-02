@@ -28,6 +28,7 @@ import { BackupPage } from "@/pages/settings/backup-page";
 import { TemplatesPage } from "@/pages/settings/templates-page";
 import { AutomationPage } from "@/pages/settings/automation-page";
 import { NotificationsPage } from "@/pages/settings/notifications-page";
+import { ConflictResolutionPage } from "@/pages/settings/conflict-resolution-page";
 import { HelpPage } from "@/pages/help-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
 
@@ -257,6 +258,13 @@ const projectNotificationsRoute = createRoute({
   component: NotificationsPage,
 });
 
+// /projects/$projectId/settings/conflict-resolution — auto-resolve config (admin)
+const projectConflictResolutionRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/settings/conflict-resolution",
+  component: ConflictResolutionPage,
+});
+
 // /help — getting started and MCP setup
 const helpRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
@@ -283,6 +291,7 @@ const routeTree = rootRoute.addChildren([
       projectTrainAuditRoute,
       projectAutomationRoute,
       projectNotificationsRoute,
+      projectConflictResolutionRoute,
     ]),
     proposalDetailRoute,
     taskDetailRoute,

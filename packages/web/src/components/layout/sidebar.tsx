@@ -15,6 +15,7 @@ import {
   Bell,
   Settings,
   TrainFront,
+  Wrench,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -293,6 +294,18 @@ export function Sidebar() {
               icon: Bell,
               href: `/projects/${currentProjectId}/settings/notifications`,
               matchPath: "/settings/notifications",
+            }}
+            collapsed={collapsed}
+          />
+        )}
+
+        {currentProjectId && (
+          <NavLink
+            item={{
+              label: "Conflict Resolution",
+              icon: Wrench,
+              href: `/projects/${currentProjectId}/settings/conflict-resolution`,
+              matchPath: "/settings/conflict-resolution",
             }}
             collapsed={collapsed}
           />

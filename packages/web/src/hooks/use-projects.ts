@@ -5,9 +5,12 @@ import {
   getProjectStats,
   createProject,
   updateProject,
+  getResolverDefaults,
   type CreateProject,
   type UpdateProject,
+  type ResolverConfig,
 } from "@/lib/api";
+import { trainKeys } from "@/hooks/use-train";
 
 export const projectKeys = {
   all: ["projects"] as const,
@@ -61,6 +64,61 @@ export function useUpdateProject() {
       queryClient.invalidateQueries({
         queryKey: projectKeys.detail(variables.id),
       });
+    },
+  });
+}
+
+// ─── Resolver config (Phase 7.6) ─────────────────────────────────
+
+export const resolverKeys = {
+  defaults: ["resolver", "defaults"] as const,
+};
+
+/**
+ * Built-in resolver defaults — static, so cached aggressively. Sources the
+ * default reconcile prompt and the "revert to defaults" values.
+ */
+export function useResolverDefaults() {
+  return useQuery({
+    queryKey: resolverKeys.defaults,
+    queryFn: getResolverDefaults,
+    staleTime: Infinity,
+  });
+}
+
+/**
+ * Update only the `settings.integrator.resolver` block. Fetches the current
+ * project, MERGES the new resolver block into `settings.integrator` (preserving
+ * sibling integrator fields like verify_command/verify_steps/cache and all
+ * other settings sub-blocks), PATCHes, and invalidates the project + train
+ * queries (the dashboard reads the resolver state through the project).
+ */
+export function useUpdateResolverConfig(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (resolver: ResolverConfig) => {
+      if (!projectId) throw new Error("No project selected");
+      // Fetch fresh so we merge onto the latest settings, not a stale cache.
+      const project = await getProject(projectId);
+      const existing = (project.settings ?? {}) as Record<string, unknown>;
+      const integrator = (existing.integrator ?? {}) as Record<string, unknown>;
+      const settings = {
+        ...existing,
+        integrator: { ...integrator, resolver },
+      };
+      // settings is opaque JSON on the wire; round-tripping the server's own
+      // settings untouched, so the cast onto the structured type is safe.
+      return updateProject(projectId, { settings } as UpdateProject);
+    },
+    onSuccess: () => {
+      if (projectId) {
+        queryClient.invalidateQueries({
+          queryKey: projectKeys.detail(projectId),
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
+      // The dashboard reads resolver metrics under trainKeys.all.
+      queryClient.invalidateQueries({ queryKey: trainKeys.all });
     },
   });
 }

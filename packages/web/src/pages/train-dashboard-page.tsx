@@ -38,6 +38,9 @@ import {
   useTrainMetrics,
   useTrainState,
 } from "@/hooks/use-train";
+import { useProject, useUpdateResolverConfig } from "@/hooks/use-projects";
+import { Switch } from "@/components/ui/switch";
+import { resolverConfigFromProject } from "@/lib/resolver";
 import {
   formatDurationMs,
   formatFreshness,
@@ -619,17 +622,67 @@ function VerifyCacheSection({ projectId }: { projectId: string }) {
 
 // ─── Resolution lineage section (Phase 7.6) ──────────────────────
 
-function ResolutionSection({ projectId }: { projectId: string }) {
+// Admin-gated quick enable/disable toggle for the resolver, reading the
+// project's persisted `settings.integrator.resolver.enabled`. A full-config
+// surface lives at the conflict-resolution settings page.
+function ResolverToggle({
+  projectId,
+  isAdmin,
+}: {
+  projectId: string;
+  isAdmin: boolean;
+}) {
+  const { data: project } = useProject(projectId);
+  const update = useUpdateResolverConfig(projectId);
+
+  const config = resolverConfigFromProject(project);
+  const enabled = config.enabled;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground">Auto-resolve</span>
+      <Switch
+        aria-label="Auto-resolve conflicts"
+        checked={enabled}
+        disabled={!isAdmin || !project || update.isPending}
+        onCheckedChange={(checked) =>
+          update.mutate({ ...config, enabled: checked })
+        }
+      />
+    </div>
+  );
+}
+
+function ResolutionSection({
+  projectId,
+  isAdmin,
+}: {
+  projectId: string;
+  isAdmin: boolean;
+}) {
   const { data: metrics, isLoading } = useTrainMetrics(projectId);
+
+  const header = (
+    <CardHeader className="pb-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Conflict Resolution
+          </CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground/70">
+            Spawn a bounded headless resolver on a textual conflict instead of
+            rejecting the request.
+          </p>
+        </div>
+        <ResolverToggle projectId={projectId} isAdmin={isAdmin} />
+      </div>
+    </CardHeader>
+  );
 
   if (isLoading) {
     return (
       <Card className="py-4">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Conflict Resolution
-          </CardTitle>
-        </CardHeader>
+        {header}
         <CardContent>
           <Skeleton className="h-8 w-48" />
         </CardContent>
@@ -638,17 +691,13 @@ function ResolutionSection({ projectId }: { projectId: string }) {
   }
 
   const resolution = metrics?.resolution;
-  if (!resolution) return null;
 
   // No resolutions in the window (resolver off, or simply none) → muted notice.
-  if (resolution.attempts === 0) {
+  // We still render the header + toggle so an admin can enable it from here.
+  if (!resolution || resolution.attempts === 0) {
     return (
       <Card className="py-4">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Conflict Resolution
-          </CardTitle>
-        </CardHeader>
+        {header}
         <CardContent className="flex flex-col items-center py-6">
           <Wrench className="mb-2 size-8 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">No resolutions yet</p>
@@ -665,11 +714,7 @@ function ResolutionSection({ projectId }: { projectId: string }) {
 
   return (
     <Card className="py-4">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          Conflict Resolution
-        </CardTitle>
-      </CardHeader>
+      {header}
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <MetricCard
@@ -744,8 +789,8 @@ export function TrainDashboardPage() {
       {/* Verify cache + per-step metrics */}
       <VerifyCacheSection projectId={projectId} />
 
-      {/* Conflict-resolution lineage metrics (Phase 7.6) */}
-      <ResolutionSection projectId={projectId} />
+      {/* Conflict-resolution lineage metrics + enable toggle (Phase 7.6) */}
+      <ResolutionSection projectId={projectId} isAdmin={isAdmin} />
 
       {/* Health + SLO */}
       <div className="grid gap-6 lg:grid-cols-2">
