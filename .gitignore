@@ -18,3 +18,8 @@ distribute.bat
 distribute.config.json
 start_claude_code.bat
 recovery-*.log
+
+# Generated at dev/build time from package.json (single source of truth for
+# the runtime-reported version). See packages/*/scripts/gen-version.mjs.
+packages/mcp-server/src/version.ts
+packages/integrator-ref/src/version.ts

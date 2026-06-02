@@ -15,12 +15,13 @@ import type { RepoLane } from "./group-integration.js";
 import { chaosFailOuterPushOnce } from "./chaos.js";
 import type { GitOps, PushResult } from "./git-ops.js";
 import { buildHeartbeat } from "./heartbeat.js";
+import { VERSION } from "./version.js";
 
 async function main(): Promise<void> {
   const program = new Command()
     .name("pm-integrator")
     .description("Reference integrator process for the PM merge train")
-    .version("0.0.0")
+    .version(VERSION)
     .option("--project <id>", "Project ULID")
     .option("--resource <name>", "Train lane resource name", "main")
     .option("--pm-url <url>", "PM API base URL")
@@ -31,8 +32,9 @@ async function main(): Promise<void> {
 
   const args = program.opts() as CliArgs & { pollIntervalSec?: string };
   // Phase 7.4 §3.2: the integrator's package version, reported on every
-  // heartbeat. Commander's no-arg .version() returns the configured string.
-  const version = program.version() ?? "0.0.0";
+  // heartbeat. Sourced from the generated version.ts (single source of truth =
+  // package.json), which is also what we pass to commander's .version() above.
+  const version = VERSION;
   const logger = createLogger(
     args.logLevel ?? process.env.PM_LOG_LEVEL ?? "info",
   );
