@@ -1,11 +1,40 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { ReactNode } from "react";
 import type { EpicGraph } from "@/lib/api";
 
-// ── Mock the router param hook ───────────────────────────────────
+// ── Mock the router (param hook + navigate) ──────────────────────
 vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ projectId: "proj-1" }),
+  useNavigate: () => vi.fn(),
 }));
+
+// ── Mock React Flow ──────────────────────────────────────────────
+// The real canvas needs layout measurement + a DOM-heavy store; for a state
+// test we stub ReactFlow to a passthrough that renders each node's name, so
+// "node present" assertions still hold without the canvas machinery.
+vi.mock("@xyflow/react", () => ({
+  ReactFlow: ({
+    nodes,
+  }: {
+    nodes: { id: string; data: { name: string } }[];
+  }) => (
+    <div>
+      {nodes.map((n) => (
+        <div key={n.id} data-testid="rf-node">
+          {n.data.name}
+        </div>
+      ))}
+    </div>
+  ),
+  Background: () => null,
+  Controls: () => null,
+  ReactFlowProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  Handle: () => null,
+  Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
+  MarkerType: {},
+}));
+vi.mock("@xyflow/react/dist/style.css", () => ({}));
 
 // ── Mock the query hooks the page calls ──────────────────────────
 const mocks = vi.hoisted(() => ({
@@ -64,20 +93,18 @@ beforeEach(() => {
 });
 
 describe("EpicTimelinePage", () => {
-  it("renders a node card with name, task ratio, and health badge", () => {
+  it("renders a node on the canvas for each epic in the graph", () => {
     render(<EpicTimelinePage />);
+    // The ReactFlow stub passes node data through; the epic name proves the
+    // page mapped the graph node into an rfNode and fed it to the canvas.
     expect(screen.getByText("Auth epic")).toBeInTheDocument();
-    // EpicCard completion vocabulary: "1 of 4 tasks done" + percentage.
-    expect(screen.getByText("1 of 4 tasks done")).toBeInTheDocument();
-    expect(screen.getByText("25%")).toBeInTheDocument();
-    // Health badge formatted via formatStatus("on_track") → "On Track".
-    expect(screen.getByText("On Track")).toBeInTheDocument();
+    expect(screen.getByTestId("rf-node")).toBeInTheDocument();
   });
 
   it("renders a loading affordance while fetching", () => {
     mocks.useEpicGraph.mockReturnValue(q(undefined, true));
     render(<EpicTimelinePage />);
-    // The header is always present; the node card is not yet rendered.
+    // The header is always present; the canvas/node is not yet rendered.
     expect(screen.getByText("Roadmap")).toBeInTheDocument();
     expect(screen.queryByText("Auth epic")).not.toBeInTheDocument();
   });

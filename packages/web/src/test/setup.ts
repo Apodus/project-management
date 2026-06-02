@@ -30,3 +30,16 @@ if (typeof window.PointerEvent === "undefined") {
     }
   } as unknown as typeof window.PointerEvent;
 }
+
+// ── ResizeObserver polyfill (React Flow / ReactFlowProvider) ──────
+// jsdom has no ResizeObserver; React Flow's store observes its container on
+// mount. A no-op shim is sufficient for component tests.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver =
+    ResizeObserverStub as unknown as typeof globalThis.ResizeObserver;
+}

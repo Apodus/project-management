@@ -1,3 +1,5 @@
+import type { EpicGraphNode } from "./api";
+
 /**
  * Format a date string as a relative time string (e.g. "2 hours ago").
  */
@@ -118,6 +120,51 @@ export function formatStatus(status: string): string {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+/**
+ * Map an epic-graph health value to a Tailwind class string.
+ *
+ * `getStatusColor` does not cover the epic-graph health vocabulary, so this
+ * owns it. Two variants:
+ *  - "badge": the soft tint + text classes used by the timeline header badge
+ *    (visually identical to the original page-local helper).
+ *  - "fill": a solid swatch for the completion-fill layer of an epic node.
+ */
+export function getHealthColor(
+  health: EpicGraphNode["health"],
+  variant: "badge" | "fill" = "badge",
+): string {
+  if (variant === "fill") {
+    switch (health) {
+      case "not_started":
+        return "bg-gray-400 dark:bg-gray-600";
+      case "on_track":
+        return "bg-blue-500";
+      case "at_risk":
+        return "bg-amber-500";
+      case "blocked":
+        return "bg-red-500";
+      case "done":
+        return "bg-green-500";
+      default:
+        return "bg-gray-400 dark:bg-gray-600";
+    }
+  }
+  switch (health) {
+    case "not_started":
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900/40 dark:text-gray-300";
+    case "on_track":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300";
+    case "at_risk":
+      return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
+    case "blocked":
+      return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300";
+    case "done":
+      return "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300";
+    default:
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900/40 dark:text-gray-300";
+  }
 }
 
 /**
