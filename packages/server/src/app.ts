@@ -9,6 +9,7 @@ import { createProjectRoutes } from "./routes/projects.js";
 import { createProposalRoutes } from "./routes/proposals.js";
 import { createEpicRoutes } from "./routes/epics.js";
 import { createEpicGraphRoutes } from "./routes/epic-graph.js";
+import { createTaskGraphRoutes } from "./routes/task-graph.js";
 import { createTaskRoutes } from "./routes/tasks.js";
 import { createCommentRoutes } from "./routes/comments.js";
 import { createLabelRoutes } from "./routes/labels.js";
@@ -98,6 +99,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
   app.route("/", createProposalRoutes());
   app.route("/", createEpicRoutes());
   app.route("/", createEpicGraphRoutes());
+  app.route("/", createTaskGraphRoutes());
   app.route("/", createTaskRoutes());
   app.route("/", createCommentRoutes());
   app.route("/", createLabelRoutes());

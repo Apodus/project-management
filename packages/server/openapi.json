@@ -1793,6 +1793,107 @@
           "dependsOnEpicId"
         ]
       },
+      "TaskGraph": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskGraphNode"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskGraphEdge"
+            }
+          },
+          "hasCycle": {
+            "type": "boolean"
+          },
+          "cycles": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "nodes",
+          "edges",
+          "hasCycle"
+        ]
+      },
+      "TaskGraphNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "assignee_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "done": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "priority",
+          "type",
+          "assignee_id",
+          "done"
+        ]
+      },
+      "TaskGraphEdge": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "dependency_type": {
+            "type": "string",
+            "enum": [
+              "blocks",
+              "relates_to"
+            ]
+          },
+          "provenance": {
+            "type": "string",
+            "enum": [
+              "derived",
+              "explicit"
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "dependency_type",
+          "provenance"
+        ]
+      },
       "Task": {
         "type": "object",
         "properties": {
@@ -12478,6 +12579,87 @@
           },
           "404": {
             "description": "Epic dependency not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/epics/{epicId}/task-graph": {
+      "get": {
+        "tags": [
+          "Epics"
+        ],
+        "summary": "Get task graph",
+        "description": "Get the intra-epic task dependency graph for an epic: nodes (the epic's tasks) and edges (their internal task dependencies, cross-epic deps excluded).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "epicId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task graph",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TaskGraph"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Epic not found",
             "content": {
               "application/json": {
                 "schema": {

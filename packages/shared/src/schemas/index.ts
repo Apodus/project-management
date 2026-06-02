@@ -12,6 +12,7 @@ export * from "./task-label.js";
 export * from "./task-dependency.js";
 export * from "./epic-dependency.js";
 export * from "./epic-graph.js";
+export * from "./task-graph.js";
 export * from "./activity-log.js";
 export * from "./git-ref.js";
 export * from "./milestone.js";
