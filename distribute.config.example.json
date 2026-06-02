@@ -1,0 +1,12 @@
+{
+  "_comment": "Copy to distribute.config.json (gitignored), set absolute dest paths, run: node scripts/distribute.mjs",
+  "targets": [
+    {
+      "name": "game_one",
+      "mcpDest": "D:/code/game_one/tools/pm-mcp-server/pm-mcp-server.mjs",
+      "integratorDest": "D:/code/game_one/tools/pm-integrator/pm-integrator.mjs",
+      "docsDest": "D:/code/game_one/docs/integrator-deployment.md",
+      "workerDocDest": "D:/code/game_one/docs/pm-workflow.md"
+    }
+  ]
+}

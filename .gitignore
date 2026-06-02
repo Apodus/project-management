@@ -15,5 +15,6 @@ data/
 playwright-report/
 test-results/
 distribute.bat
+distribute.config.json
 start_claude_code.bat
 recovery-*.log
