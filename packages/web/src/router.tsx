@@ -30,6 +30,7 @@ import { TemplatesPage } from "@/pages/settings/templates-page";
 import { AutomationPage } from "@/pages/settings/automation-page";
 import { NotificationsPage } from "@/pages/settings/notifications-page";
 import { ConflictResolutionPage } from "@/pages/settings/conflict-resolution-page";
+import { CategoriesPage } from "@/pages/settings/categories-page";
 import { HelpPage } from "@/pages/help-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
 
@@ -280,6 +281,13 @@ const projectConflictResolutionRoute = createRoute({
   component: ConflictResolutionPage,
 });
 
+// /projects/$projectId/settings/categories — epic category palette
+const projectCategoriesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/settings/categories",
+  component: CategoriesPage,
+});
+
 // /help — getting started and MCP setup
 const helpRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
@@ -309,6 +317,7 @@ const routeTree = rootRoute.addChildren([
       projectAutomationRoute,
       projectNotificationsRoute,
       projectConflictResolutionRoute,
+      projectCategoriesRoute,
     ]),
     proposalDetailRoute,
     taskDetailRoute,

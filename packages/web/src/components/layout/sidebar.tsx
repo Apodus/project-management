@@ -14,6 +14,7 @@ import {
   HelpCircle,
   Bell,
   Settings,
+  Tags,
   TrainFront,
   Wrench,
   Zap,
@@ -308,6 +309,18 @@ export function Sidebar() {
               icon: Wrench,
               href: `/projects/${currentProjectId}/settings/conflict-resolution`,
               matchPath: "/settings/conflict-resolution",
+            }}
+            collapsed={collapsed}
+          />
+        )}
+
+        {currentProjectId && (
+          <NavLink
+            item={{
+              label: "Categories",
+              icon: Tags,
+              href: `/projects/${currentProjectId}/settings/categories`,
+              matchPath: "/settings/categories",
             }}
             collapsed={collapsed}
           />

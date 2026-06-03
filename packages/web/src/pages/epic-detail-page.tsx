@@ -36,6 +36,8 @@ import {
 } from "@/hooks/use-epics";
 import { useTasks } from "@/hooks/use-tasks";
 import { useMilestones } from "@/hooks/use-milestones";
+import { useProject } from "@/hooks/use-projects";
+import { epicCategoriesFromProject } from "@/lib/epic-categories";
 import { useUsers } from "@/hooks/use-users";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
@@ -203,6 +205,8 @@ export function EpicDetailPage() {
   // Fetch milestones for the dropdown
   const projectId = epic?.projectId ?? currentProjectId;
   const { data: milestones } = useMilestones(projectId ?? undefined);
+  const { data: project } = useProject(projectId ?? undefined);
+  const categories = epicCategoriesFromProject(project);
 
   // Fetch tasks scoped to this epic
   const { data: tasksData, isLoading: tasksLoading } = useTasks(
@@ -567,6 +571,41 @@ export function EpicDetailPage() {
                     >
                       {formatStatus(p)}
                     </Badge>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </MetadataField>
+
+          {/* Category */}
+          <MetadataField label="Category">
+            <Select
+              value={epic.category ?? "__none__"}
+              onValueChange={(value) =>
+                handleFieldChange(
+                  "category",
+                  value === "__none__" ? null : value,
+                )
+              }
+            >
+              <SelectTrigger
+                size="sm"
+                className="h-7 w-[130px] text-xs"
+                aria-label="Category"
+              >
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.name} value={c.name}>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="inline-block size-2 rounded-full"
+                        style={{ backgroundColor: c.color }}
+                      />
+                      {c.name}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>

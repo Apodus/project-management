@@ -11990,6 +11990,11 @@ export interface components {
                     discord_url?: string;
                     alerts_enabled?: boolean;
                 };
+                epic_categories?: {
+                    name: string;
+                    color: string;
+                    sort_order: number;
+                }[];
             } | null;
             sortOrder?: number;
         };
@@ -12080,6 +12085,11 @@ export interface components {
                     discord_url?: string;
                     alerts_enabled?: boolean;
                 };
+                epic_categories?: {
+                    name: string;
+                    color: string;
+                    sort_order: number;
+                }[];
             } | null;
             sortOrder?: number;
         };
@@ -12219,6 +12229,7 @@ export interface components {
             status: string;
             priority: string;
             targetDate: string | null;
+            category: string | null;
             sortOrder: number;
             createdAt: string;
             updatedAt: string;
@@ -12241,6 +12252,7 @@ export interface components {
             proposalId?: string | null;
             milestoneId?: string | null;
             targetDate?: string | null;
+            category?: string | null;
             sortOrder?: number;
             createdBy?: string;
         };
@@ -12254,6 +12266,7 @@ export interface components {
             proposalId?: string | null;
             milestoneId?: string | null;
             targetDate?: string | null;
+            category?: string | null;
             sortOrder?: number;
         };
         EpicClaimResult: {
@@ -12278,6 +12291,7 @@ export interface components {
             status: string;
             priority: string;
             target_date?: string | null;
+            category?: string | null;
             created_at: string;
             updated_at: string;
             taskSummary: {
