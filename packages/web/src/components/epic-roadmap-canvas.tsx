@@ -25,6 +25,11 @@ import { EpicTasksPanel } from "@/components/epic-tasks-panel";
 // Caps fit-zoom so sparse graphs don't balloon; manual zoom unaffected.
 const ROADMAP_FIT_OPTIONS = { padding: 0.2, maxZoom: 0.65 } as const;
 
+// Stable empty-set reference: handed to the layout as `unscheduledIds` while
+// the Backlog rail is collapsed, so the layout memo's dep stays referentially
+// stable across renders (no spurious reflow).
+const EMPTY_SET: ReadonlySet<string> = new Set();
+
 // Field-by-field equality for a node's render-affecting data. `byStatus` is a
 // reference compare on purpose — it's stable per graph payload (a hover never
 // re-fetches), so only an actual data change (e.g. `dimmed` flipping) trips it.
@@ -44,23 +49,30 @@ function sameEpicNodeData(a: EpicNodeData, b: EpicNodeData): boolean {
   );
 }
 
-// ---- Past rail ----
+// ---- Rail (Past / Backlog) ----
 
-// A bottom-left toggle that collapses "done-and-old" epics behind an "N older"
-// chip. On toggle it re-frames the camera (the declarative `fitView` prop owns
-// only the INITIAL frame): expand reveals all, collapse re-fits the active set.
-// The mount guard skips the first effect run so StrictMode's mount/remount and
-// the very first real toggle behave; the camera is keyed on `showPast` alone.
-function PastRailPanel({
-  pastCount,
-  showPast,
+// A corner toggle that collapses a side-bucket of epics behind a chip — "N
+// older" for the bottom-left Past rail, "N unscheduled" for the bottom-right
+// future Backlog rail. On toggle it re-frames the camera to fit ALL currently
+// visible nodes (the declarative `fitView` prop owns only the INITIAL frame);
+// since each toggle reflows the layout, re-fitting everything reveals the newly
+// shown block and re-frames the remainder on collapse. The mount guard skips
+// the first effect run so StrictMode's mount/remount and the first real toggle
+// behave; the camera is keyed on `expanded` alone.
+function RailPanel({
+  position,
+  count,
+  expanded,
   onToggle,
-  activeNodeIds,
+  collapsedLabel,
+  expandedLabel,
 }: {
-  pastCount: number;
-  showPast: boolean;
+  position: "bottom-left" | "bottom-right";
+  count: number;
+  expanded: boolean;
   onToggle: () => void;
-  activeNodeIds: string[];
+  collapsedLabel: string;
+  expandedLabel: string;
 }) {
   const { fitView } = useReactFlow();
   const mounted = useRef(false);
@@ -70,24 +82,17 @@ function PastRailPanel({
       return; // skip mount; declarative prop owns initial frame
     }
     const raf = requestAnimationFrame(() => {
-      if (showPast)
-        fitView({ ...ROADMAP_FIT_OPTIONS, duration: 400 }); // EXPAND -> reveal all
-      else
-        fitView({
-          ...ROADMAP_FIT_OPTIONS,
-          nodes: activeNodeIds.map((id) => ({ id })),
-          duration: 400,
-        }); // COLLAPSE -> frame active
+      fitView({ ...ROADMAP_FIT_OPTIONS, duration: 400 }); // re-fit all visible nodes
     });
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on showPast intentionally; fitView/activeNodeIds are read at toggle time.
-  }, [showPast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on `expanded` intentionally; fitView is read at toggle time.
+  }, [expanded]);
 
-  if (pastCount === 0) return null;
+  if (count === 0) return null;
   return (
-    <Panel position="bottom-left">
+    <Panel position={position}>
       <Button variant="outline" size="sm" onClick={onToggle}>
-        {showPast ? "Hide past" : `${pastCount} older`}
+        {expanded ? expandedLabel : collapsedLabel}
       </Button>
     </Panel>
   );
@@ -111,6 +116,9 @@ export function EpicRoadmapCanvas({
   // Whether the collapsed "done-and-old" Past rail is expanded into the canvas.
   const [showPast, setShowPast] = useState(false);
 
+  // Whether the collapsed future "Backlog" rail (unscheduled epics) is expanded.
+  const [showBacklog, setShowBacklog] = useState(false);
+
   // The epic whose task mini-DAG panel is open (null = none). Clicking the same
   // epic again toggles the panel closed.
   const [selectedEpicId, setSelectedEpicId] = useState<string | null>(null);
@@ -124,23 +132,38 @@ export function EpicRoadmapCanvas({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const now = useMemo(() => new Date().toISOString(), [graph]);
 
-  // Split into active vs the receded Past rail. The rail's count drives the
-  // toggle; the active set is what the camera re-frames on collapse.
+  // Split into active vs the receded Past rail vs the future Backlog rail. Each
+  // rail's count drives its toggle; expanding a rail folds its bucket back into
+  // the laid-out set (reflow-on-toggle is intended).
   const partition = useMemo(() => partitionEpics(graph?.nodes ?? [], { now }), [graph, now]);
 
-  // When the rail is collapsed we lay out / render only the active epics; when
-  // expanded the full graph comes back (reflow-on-toggle is intended).
+  // The nodes handed to the layout: always the active set, plus the past bucket
+  // when its rail is expanded, plus the unscheduled bucket when its rail is.
   const nodesForLayout = useMemo(
-    () => (showPast ? (graph?.nodes ?? []) : partition.active),
-    [showPast, graph, partition],
+    () => [
+      ...partition.active,
+      ...(showPast ? partition.past : []),
+      ...(showBacklog ? partition.unscheduled : []),
+    ],
+    [partition, showPast, showBacklog],
+  );
+
+  // Ids the layout should pull into the future Backlog zone. Only meaningful
+  // while the rail is expanded (those nodes are in `nodesForLayout`); collapsed
+  // → the stable empty set so the layout stays byte-identical and the memo dep
+  // doesn't churn.
+  const unscheduledIds = useMemo(
+    () => (showBacklog ? new Set(partition.unscheduled.map((n) => n.id)) : EMPTY_SET),
+    [showBacklog, partition],
   );
 
   const layout = useMemo(
     () =>
       computeEpicGraphLayout(nodesForLayout, graph?.edges ?? [], {
         now,
+        unscheduledIds,
       }),
-    [nodesForLayout, graph, now],
+    [nodesForLayout, graph, now, unscheduledIds],
   );
 
   // Vertical span for the milestone/today guides: tall enough to bracket every
@@ -320,11 +343,21 @@ export function EpicRoadmapCanvas({
                 </div>
               </Panel>
             )}
-            <PastRailPanel
-              pastCount={partition.past.length}
-              showPast={showPast}
+            <RailPanel
+              position="bottom-left"
+              count={partition.past.length}
+              expanded={showPast}
               onToggle={() => setShowPast((v) => !v)}
-              activeNodeIds={partition.active.map((n) => n.id)}
+              collapsedLabel={`${partition.past.length} older`}
+              expandedLabel="Hide past"
+            />
+            <RailPanel
+              position="bottom-right"
+              count={partition.unscheduled.length}
+              expanded={showBacklog}
+              onToggle={() => setShowBacklog((v) => !v)}
+              collapsedLabel={`${partition.unscheduled.length} unscheduled`}
+              expandedLabel="Hide backlog"
             />
           </ReactFlow>
           {selectedEpicId && (

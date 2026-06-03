@@ -31,6 +31,14 @@ export interface LayoutOptions {
   nodeWidth?: number;
   laneHeight?: number;
   minSpanMs?: number;
+  /**
+   * Ids of UNSCHEDULED epics (not_started + no target end). When present and
+   * non-empty, these are pulled OUT of the time-driven timeline and laid out as
+   * a stacked block in a reserved FUTURE zone on the right; the timeline scale
+   * is derived from the scheduled nodes only. Absent/empty → byte-identical to
+   * the pre-backlog layout (every node placed by time across the full width).
+   */
+  unscheduledIds?: ReadonlySet<string>;
 }
 
 export interface NodePosition {
@@ -97,13 +105,47 @@ export function computeEpicGraphLayout(
   const parsedNow = Date.parse(opts.now);
   const nowMs = Number.isNaN(parsedNow) ? 0 : parsedNow;
 
-  // Step 1: representative time per node.
+  // The future Backlog zone. When unscheduled epics are present, the timeline
+  // gives up its rightmost slice to a reserved block where unscheduled epics
+  // stack by created_at (NOT by representativeTime in the active region). Absent
+  // / empty → the timeline owns the full width and the layout is byte-identical
+  // to the pre-backlog engine.
+  const unscheduledIds = opts.unscheduledIds;
+  const hasBacklog = unscheduledIds != null && unscheduledIds.size > 0;
+
+  // Partition into the time-driven timeline (`scheduled`) and the future block
+  // (`unscheduled`). Without a backlog, ALL nodes are scheduled and the domain
+  // seed below folds every node — exactly as before.
+  const scheduled = hasBacklog ? nodes.filter((n) => !unscheduledIds.has(n.id)) : nodes;
+  const unscheduled = hasBacklog ? nodes.filter((n) => unscheduledIds.has(n.id)) : [];
+
+  // Geometry of the timeline vs the backlog zone. `timelineRight` is where the
+  // time scale's right edge falls; with no backlog it is the full inner-right
+  // edge (`width - xPad`), preserving the original `inner = width - 2*xPad`.
+  const BACKLOG_FRACTION = 0.25;
+  const GAP = 40;
+  const inner = width - 2 * xPad;
+  let timelineRight = width - xPad;
+  let backlogLeft = width - xPad;
+  let backlogWidth = 0;
+  if (hasBacklog) {
+    backlogWidth = inner * BACKLOG_FRACTION;
+    backlogLeft = width - xPad - backlogWidth;
+    timelineRight = backlogLeft - GAP;
+    // Degenerate-width clamp: keep everything finite (no negative span / NaN).
+    if (timelineRight <= xPad) {
+      timelineRight = xPad;
+      backlogLeft = xPad;
+    }
+  }
+
+  // Step 1: representative time per scheduled node (the timeline domain).
   const nodeTime = new Map<string, number>();
-  for (const node of nodes) {
+  for (const node of scheduled) {
     nodeTime.set(node.id, representativeTime(node, nowMs));
   }
 
-  // Step 2: time scale. Domain = all node times union {nowMs}.
+  // Step 2: time scale. Domain = scheduled node times union {nowMs}.
   // P5 seam: recency-collapse refines this domain later (older work recedes /
   // collapses into a Past rail); `t` is exposed per node so that refinement can
   // remap x without re-deriving each node's representative time.
@@ -116,8 +158,11 @@ export function computeEpicGraphLayout(
   const span = Math.max(maxMs - minMs, minSpanMs);
   maxMs = minMs + span;
 
-  const inner = width - 2 * xPad;
-  const toX = (ms: number): number => xPad + ((ms - minMs) / span) * inner;
+  // The timeline maps onto [xPad, timelineRight] (== [xPad, width-xPad] with no
+  // backlog → identical to `inner = width - 2*xPad`). `width` stays full width
+  // on the scale so MilestoneGuides culls against the real canvas extent.
+  const innerTimeline = timelineRight - xPad;
+  const toX = (ms: number): number => xPad + ((ms - minMs) / span) * innerTimeline;
 
   const scale: TimeScale = { minMs, maxMs, nowMs, xPad, width, toX };
 
@@ -129,11 +174,32 @@ export function computeEpicGraphLayout(
     left: number;
     right: number;
   }
-  const placed: Placed[] = nodes.map((node) => {
+
+  const placed: Placed[] = scheduled.map((node) => {
     const t = nodeTime.get(node.id)!;
     const left = toX(t);
     return { id: node.id, t, left, right: left + nodeWidth };
   });
+
+  // Unscheduled epics stack across the backlog zone, ordered by created_at
+  // (NaN-guarded → nowMs) with an id tie-break. Rank r in [0, count-1] maps to
+  // an even spread across [backlogLeft, backlogLeft + backlogWidth]; a single
+  // node pins to backlogLeft. `t` carries the created_at ms for downstream use.
+  if (unscheduled.length > 0) {
+    const ranked = unscheduled.map((node) => {
+      const parsed = Date.parse(node.created_at);
+      const t = Number.isNaN(parsed) ? nowMs : parsed;
+      return { id: node.id, t };
+    });
+    ranked.sort((a, b) => (a.t !== b.t ? a.t - b.t : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const count = ranked.length;
+    for (let r = 0; r < count; r++) {
+      const { id, t } = ranked[r];
+      const x = count > 1 ? backlogLeft + (r / (count - 1)) * backlogWidth : backlogLeft;
+      placed.push({ id, t, left: x, right: x + nodeWidth });
+    }
+  }
+
   placed.sort((a, b) => (a.left !== b.left ? a.left - b.left : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   const positions = new Map<string, NodePosition>();

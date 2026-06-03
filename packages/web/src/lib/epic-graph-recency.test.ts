@@ -5,12 +5,27 @@ import { partitionEpics, recedeOpacity, PAST_THRESHOLD_MS } from "./epic-graph-r
 const NOW = "2026-06-02T00:00:00.000Z";
 const NOW_MS = Date.parse(NOW);
 
-// Minimal node carrying only the two fields the recency helpers read.
+// Minimal node carrying only the fields the recency helpers read. `time_window`
+// defaults to a non-null end (so a fixture is "scheduled" unless it explicitly
+// passes `end: null`); `created_at` rides along to satisfy the widened generic.
 function makeNode(
   id: string,
-  opts: { recency: string; health: EpicGraphNode["health"] },
-): Pick<EpicGraphNode, "health" | "activity_recency"> & { id: string } {
-  return { id, health: opts.health, activity_recency: opts.recency };
+  opts: {
+    recency: string;
+    health: EpicGraphNode["health"];
+    end?: string | null;
+  },
+): Pick<EpicGraphNode, "health" | "activity_recency" | "time_window"> & {
+  id: string;
+  created_at: string;
+} {
+  return {
+    id,
+    health: opts.health,
+    activity_recency: opts.recency,
+    created_at: opts.recency,
+    time_window: { start: opts.recency, end: opts.end === undefined ? opts.recency : opts.end },
+  };
 }
 
 // Helpers to land a recency a given number of ms before NOW.
@@ -63,7 +78,7 @@ describe("partitionEpics", () => {
 
   it("empty input → empty buckets", () => {
     const r = partitionEpics([], { now: NOW });
-    expect(r).toEqual({ active: [], past: [] });
+    expect(r).toEqual({ active: [], past: [], unscheduled: [] });
   });
 
   it("preserves input order within each bucket", () => {
@@ -72,12 +87,82 @@ describe("partitionEpics", () => {
     const nodes = [
       makeNode("p1", { recency: oldRecency, health: "done" }),
       makeNode("a1", { recency: recentRecency, health: "on_track" }),
+      makeNode("u1", { recency: recentRecency, health: "not_started", end: null }),
       makeNode("p2", { recency: oldRecency, health: "done" }),
       makeNode("a2", { recency: oldRecency, health: "blocked" }),
+      makeNode("u2", { recency: recentRecency, health: "not_started", end: null }),
     ];
     const r = partitionEpics(nodes, { now: NOW });
     expect(r.past.map((n) => n.id)).toEqual(["p1", "p2"]);
     expect(r.active.map((n) => n.id)).toEqual(["a1", "a2"]);
+    expect(r.unscheduled.map((n) => n.id)).toEqual(["u1", "u2"]);
+  });
+
+  it("not_started + no target → unscheduled", () => {
+    const n = makeNode("a", { recency: recencyAgo(86_400_000), health: "not_started", end: null });
+    const r = partitionEpics([n], { now: NOW });
+    expect(r.unscheduled.map((x) => x.id)).toEqual(["a"]);
+    expect(r.active).toEqual([]);
+    expect(r.past).toEqual([]);
+  });
+
+  it("not_started + has target → active (a committed window keeps it on the timeline)", () => {
+    const n = makeNode("a", {
+      recency: recencyAgo(86_400_000),
+      health: "not_started",
+      end: NOW,
+    });
+    const r = partitionEpics([n], { now: NOW });
+    expect(r.active.map((x) => x.id)).toEqual(["a"]);
+    expect(r.unscheduled).toEqual([]);
+  });
+
+  it("in-flight health + no target → active (only not_started parks to the backlog)", () => {
+    for (const health of ["on_track", "at_risk", "blocked"] as EpicGraphNode["health"][]) {
+      const n = makeNode("a", { recency: recencyAgo(86_400_000), health, end: null });
+      const r = partitionEpics([n], { now: NOW });
+      expect(r.active.map((x) => x.id)).toEqual(["a"]);
+      expect(r.unscheduled).toEqual([]);
+      expect(r.past).toEqual([]);
+    }
+  });
+
+  it("done + old wins over the unscheduled rule (priority order)", () => {
+    // not_started would be unscheduled, but done+old is checked first; a done
+    // epic is never unscheduled.
+    const n = makeNode("a", {
+      recency: recencyAgo(PAST_THRESHOLD_MS + 86_400_000),
+      health: "done",
+      end: null,
+    });
+    const r = partitionEpics([n], { now: NOW });
+    expect(r.past.map((x) => x.id)).toEqual(["a"]);
+    expect(r.unscheduled).toEqual([]);
+  });
+
+  it("is deterministic + disjoint: a shuffle yields identical buckets, every node in exactly one", () => {
+    const oldRecency = recencyAgo(PAST_THRESHOLD_MS + 86_400_000);
+    const recent = recencyAgo(86_400_000);
+    const nodes = [
+      makeNode("p1", { recency: oldRecency, health: "done" }),
+      makeNode("a1", { recency: recent, health: "on_track" }),
+      makeNode("u1", { recency: recent, health: "not_started", end: null }),
+      makeNode("u2", { recency: recent, health: "not_started", end: null }),
+      makeNode("a2", { recency: recent, health: "not_started", end: NOW }),
+    ];
+    const shuffled = [nodes[3], nodes[0], nodes[4], nodes[2], nodes[1]];
+    const r1 = partitionEpics(nodes, { now: NOW });
+    const r2 = partitionEpics(shuffled, { now: NOW });
+    const buckets = (r: typeof r1) => ({
+      active: new Set(r.active.map((n) => n.id)),
+      past: new Set(r.past.map((n) => n.id)),
+      unscheduled: new Set(r.unscheduled.map((n) => n.id)),
+    });
+    expect(buckets(r1)).toEqual(buckets(r2));
+    // Disjoint + total: each of the 5 ids lands in exactly one bucket.
+    const all = [...r1.active, ...r1.past, ...r1.unscheduled].map((n) => n.id);
+    expect(all.sort()).toEqual(["a1", "a2", "p1", "u1", "u2"]);
+    expect(new Set(all).size).toBe(5);
   });
 
   it("honors a custom pastThresholdMs", () => {

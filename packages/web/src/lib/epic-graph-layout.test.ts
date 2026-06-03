@@ -6,7 +6,7 @@ const NOW = "2026-06-02T00:00:00.000Z";
 
 function makeNode(
   id: string,
-  window: { start: string; end?: string | null },
+  window: { start: string; end?: string | null; created_at?: string },
 ): EpicGraphNode {
   return {
     id,
@@ -15,7 +15,7 @@ function makeNode(
     status: "active",
     priority: "medium",
     target_date: null,
-    created_at: window.start,
+    created_at: window.created_at ?? window.start,
     updated_at: window.end ?? window.start,
     taskSummary: { total: 0, done: 0, byStatus: {} },
     health: "on_track",
@@ -243,5 +243,102 @@ describe("computeEpicGraphLayout — edge cases", () => {
       expect(Number.isFinite(pos.x)).toBe(true);
       expect(Number.isFinite(pos.y)).toBe(true);
     }
+  });
+});
+
+describe("computeEpicGraphLayout — backlog zone", () => {
+  // A scheduled timeline of three nodes plus two unscheduled (future, no end).
+  function backlogFixture() {
+    return {
+      nodes: [
+        makeNode("S1", { start: "2025-01-01", end: "2025-06-01" }),
+        makeNode("S2", { start: "2026-01-01", end: "2026-05-01" }),
+        makeNode("S3", { start: "2026-03-01", end: "2026-04-01" }),
+        // Unscheduled (no end); distinct created_at to order the block.
+        makeNode("U1", { start: "2026-02-01", end: null, created_at: "2026-02-10" }),
+        makeNode("U2", { start: "2026-02-01", end: null, created_at: "2026-02-20" }),
+      ],
+      scheduledIds: ["S1", "S2", "S3"],
+      unscheduledIds: new Set(["U1", "U2"]),
+    };
+  }
+
+  it("places every unscheduled node strictly right of every scheduled node", () => {
+    const { nodes, scheduledIds, unscheduledIds } = backlogFixture();
+    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds });
+    const maxScheduledX = Math.max(...scheduledIds.map((id) => r.positions.get(id)!.x));
+    for (const id of unscheduledIds) {
+      expect(r.positions.get(id)!.x).toBeGreaterThan(maxScheduledX);
+    }
+  });
+
+  it("orders >=2 unscheduled nodes by created_at with distinct x", () => {
+    const { nodes, unscheduledIds } = backlogFixture();
+    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds });
+    const u1 = r.positions.get("U1")!;
+    const u2 = r.positions.get("U2")!;
+    expect(u1.x).not.toBe(u2.x);
+    // U1 created before U2 → earlier rank → smaller x.
+    expect(u1.x).toBeLessThan(u2.x);
+  });
+
+  it("is deterministic across shuffled nodes and set insertion order", () => {
+    const { nodes, unscheduledIds } = backlogFixture();
+    const shuffledNodes = [nodes[4], nodes[1], nodes[3], nodes[0], nodes[2]];
+    const shuffledSet = new Set(["U2", "U1"]);
+    const r1 = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds });
+    const r2 = computeEpicGraphLayout(shuffledNodes, [], { now: NOW, unscheduledIds: shuffledSet });
+    expect(sortedEntries(r1)).toEqual(sortedEntries(r2));
+    expect(r1.laneCount).toBe(r2.laneCount);
+  });
+
+  it("REGRESSION: an empty unscheduledIds set is byte-identical to omitting it", () => {
+    const nodes = [makeNode("N", { start: NOW, end: NOW })];
+    const a = computeEpicGraphLayout(nodes, [], { now: NOW });
+    const b = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds: new Set() });
+    expect(sortedEntries(a)).toEqual(sortedEntries(b));
+    expect(a.laneCount).toBe(b.laneCount);
+    expect(a.scale.minMs).toBe(b.scale.minMs);
+    expect(a.scale.maxMs).toBe(b.scale.maxMs);
+    expect(a.scale.nowMs).toBe(b.scale.nowMs);
+    expect(a.scale.xPad).toBe(b.scale.xPad);
+    expect(a.scale.width).toBe(b.scale.width);
+    const sample = Date.parse("2025-09-01");
+    expect(a.scale.toX(sample)).toBe(b.scale.toX(sample));
+  });
+
+  it("all-unscheduled (zero scheduled) stays finite with a floored span", () => {
+    const nodes = [
+      makeNode("U1", { start: "2026-02-01", end: null, created_at: "2026-02-10" }),
+      makeNode("U2", { start: "2026-02-01", end: null, created_at: "2026-02-20" }),
+    ];
+    const r = computeEpicGraphLayout(nodes, [], {
+      now: NOW,
+      unscheduledIds: new Set(["U1", "U2"]),
+    });
+    expect(r.scale.maxMs).toBeGreaterThan(r.scale.minMs);
+    for (const pos of r.positions.values()) {
+      expect(Number.isFinite(pos.x)).toBe(true);
+      expect(Number.isFinite(pos.y)).toBe(true);
+    }
+  });
+
+  it("a single unscheduled node is finite", () => {
+    const nodes = [
+      makeNode("S1", { start: "2025-01-01", end: "2025-06-01" }),
+      makeNode("U1", { start: "2026-02-01", end: null, created_at: "2026-02-10" }),
+    ];
+    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds: new Set(["U1"]) });
+    const u1 = r.positions.get("U1")!;
+    expect(Number.isFinite(u1.x)).toBe(true);
+    expect(u1.x).toBeGreaterThan(r.positions.get("S1")!.x);
+  });
+
+  it("an unscheduled node's t equals its created_at ms", () => {
+    const nodes = [
+      makeNode("U1", { start: "2026-02-01", end: null, created_at: "2026-02-10" }),
+    ];
+    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds: new Set(["U1"]) });
+    expect(r.positions.get("U1")!.t).toBe(Date.parse("2026-02-10"));
   });
 });
