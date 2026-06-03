@@ -1412,7 +1412,26 @@ describe("MCP Tools", () => {
         proposalId: "prop_001",
         milestoneId: null,
         targetDate: null,
+        category: null,
       });
+    });
+
+    it("passes a supplied category through to createEpic", async () => {
+      mockCreateEpic.mockResolvedValue({ ...sampleEpic });
+
+      await client.callTool({
+        name: "pm_create_epic",
+        arguments: {
+          project_id: "proj_001",
+          name: "Categorized epic",
+          category: "Backend",
+        },
+      });
+
+      expect(mockCreateEpic).toHaveBeenCalledWith(
+        "proj_001",
+        expect.objectContaining({ category: "Backend" }),
+      );
     });
 
     it("surfaces a clean message when CLAIM_DENIED", async () => {

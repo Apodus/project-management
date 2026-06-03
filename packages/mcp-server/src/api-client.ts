@@ -837,6 +837,7 @@ export interface EpicSummary {
   status: string;
   priority: string;
   targetDate: string | null;
+  category?: string | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -856,6 +857,7 @@ export interface CreateEpicData {
   proposalId?: string | null;
   milestoneId?: string | null;
   targetDate?: string | null;
+  category?: string | null;
 }
 
 export async function listEpics(

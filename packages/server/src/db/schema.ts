@@ -134,6 +134,7 @@ export const epics = sqliteTable("epics", {
   status: text("status").notNull().default("draft"),
   priority: text("priority").notNull().default("medium"),
   targetDate: text("target_date"),
+  category: text("category"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

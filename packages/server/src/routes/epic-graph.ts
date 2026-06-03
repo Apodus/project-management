@@ -24,6 +24,7 @@ const epicGraphNodeSchema = z
     status: z.string(),
     priority: z.string(),
     target_date: z.string().nullable().optional(),
+    category: z.string().nullable().optional(),
     created_at: z.string(),
     updated_at: z.string(),
     taskSummary: epicGraphTaskSummarySchema,

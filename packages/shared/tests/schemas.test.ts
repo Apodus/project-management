@@ -19,6 +19,7 @@ import {
   insertProposalSchema,
   selectEpicSchema,
   insertEpicSchema,
+  epicGraphNodeSchema,
   selectTaskSchema,
   insertTaskSchema,
   taskContextSchema,
@@ -597,6 +598,73 @@ describe("projectSettingsSchema", () => {
       }),
     ).toThrow();
   });
+
+  // ── Epic categories (P1: data + contract) ──
+  it("accepts a valid epic_categories array and round-trips it", () => {
+    const withCategories = {
+      ...validSettings,
+      epic_categories: [
+        { name: "Backend", color: "#FF0000", sort_order: 0 },
+        { name: "Frontend", color: "#00FF00", sort_order: 1 },
+      ],
+    };
+    expect(projectSettingsSchema.parse(withCategories)).toEqual(withCategories);
+  });
+
+  it("accepts settings with epic_categories omitted", () => {
+    expect(projectSettingsSchema.parse(validSettings).epic_categories).toBeUndefined();
+  });
+
+  it("rejects an epic_categories entry with an empty name", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        epic_categories: [{ name: "", color: "#FF0000", sort_order: 0 }],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects an epic_categories entry missing sort_order", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        epic_categories: [{ name: "Backend", color: "#FF0000" }],
+      }),
+    ).toThrow();
+  });
+});
+
+describe("epicGraphNodeSchema (epic categories)", () => {
+  const validNode = {
+    id: VALID_ULID,
+    project_id: VALID_ULID,
+    name: "Auth",
+    status: "active",
+    priority: "high",
+    target_date: null,
+    created_at: VALID_TIMESTAMP,
+    updated_at: VALID_TIMESTAMP,
+    taskSummary: { total: 0, done: 0, byStatus: {} },
+    health: "not_started" as const,
+    activity_recency: VALID_TIMESTAMP,
+    time_window: { start: VALID_TIMESTAMP, end: null },
+  };
+
+  it("accepts a node with a category string", () => {
+    expect(
+      epicGraphNodeSchema.parse({ ...validNode, category: "Backend" }).category,
+    ).toBe("Backend");
+  });
+
+  it("accepts a node with a null category", () => {
+    expect(
+      epicGraphNodeSchema.parse({ ...validNode, category: null }).category,
+    ).toBeNull();
+  });
+
+  it("accepts a node with category omitted (optional)", () => {
+    expect(epicGraphNodeSchema.parse(validNode).category).toBeUndefined();
+  });
 });
 
 describe("verify.ts schemas (Phase 7.5)", () => {
@@ -794,6 +862,22 @@ describe("selectEpicSchema", () => {
   it("rejects missing project_id", () => {
     const { project_id: _, ...e } = validEpic;
     expect(() => selectEpicSchema.parse(e)).toThrow();
+  });
+
+  it("accepts a category string", () => {
+    expect(
+      selectEpicSchema.parse({ ...validEpic, category: "Backend" }).category,
+    ).toBe("Backend");
+  });
+
+  it("accepts a null category", () => {
+    expect(
+      selectEpicSchema.parse({ ...validEpic, category: null }).category,
+    ).toBeNull();
+  });
+
+  it("accepts an omitted category (optional)", () => {
+    expect(selectEpicSchema.parse(validEpic).category).toBeUndefined();
   });
 });
 

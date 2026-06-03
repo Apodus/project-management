@@ -191,6 +191,14 @@ const webhooksSettingsSchema = z.object({
   alerts_enabled: z.boolean().optional(),
 });
 
+// Zod-4 mirror of @pm/shared/epicCategorySchema. MUST stay identical to the
+// canonical shape or PATCH silently strips epic_categories.
+const epicCategorySchema = z.object({
+  name: z.string().min(1),
+  color: z.string().min(1),
+  sort_order: z.number().int(),
+});
+
 const projectSettingsSchema = z
   .object({
     ai_autonomy: aiAutonomySettingsSchema,
@@ -198,6 +206,7 @@ const projectSettingsSchema = z
     git: gitSettingsSchema,
     integrator: integratorSettingsSchema.optional(),
     webhooks: webhooksSettingsSchema.optional(),
+    epic_categories: z.array(epicCategorySchema).optional(),
   })
   .nullable()
   .optional();

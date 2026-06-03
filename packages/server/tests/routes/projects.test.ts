@@ -1340,6 +1340,81 @@ describe("Projects API", () => {
     });
   });
 
+  // ── settings.epic_categories validation (the Zod-4 mirror) ──
+  describe("settings.epic_categories validation", () => {
+    const validBaseSettings = {
+      ai_autonomy: {
+        can_self_assign: true,
+        can_create_subtasks: true,
+        can_create_tasks: false,
+        can_change_priority: false,
+        can_close_epics: false,
+        max_concurrent_tasks: 3,
+      },
+      workflow: {
+        statuses: ["backlog", "ready", "in_progress", "in_review", "done", "cancelled"],
+      },
+      git: { branch_prefix: "feat/", auto_link_branches: true },
+    };
+
+    it("round-trips a valid epic_categories array through PATCH → GET", async () => {
+      const project = createTestProject(testApp.db);
+      const epic_categories = [
+        { name: "Backend", color: "#FF0000", sort_order: 0 },
+        { name: "Frontend", color: "#00FF00", sort_order: 1 },
+      ];
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: { settings: { ...validBaseSettings, epic_categories } },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      // Proves the mirror does NOT strip epic_categories.
+      expect(body.data.settings.epic_categories).toEqual(epic_categories);
+    });
+
+    it("rejects an epic_categories entry with an empty name with 400", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              epic_categories: [{ name: "", color: "#FF0000", sort_order: 0 }],
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects an epic_categories entry missing sort_order with 400", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              epic_categories: [{ name: "Backend", color: "#FF0000" }],
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+  });
+
   // ── OpenAPI spec ──────────────────────────────────────────────────
   describe("OpenAPI spec", () => {
     it("should include project endpoints in the spec", async () => {

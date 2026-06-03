@@ -491,6 +491,30 @@
                     "type": "boolean"
                   }
                 }
+              },
+              "epic_categories": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "color": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sort_order": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "color",
+                    "sort_order"
+                  ]
+                }
               }
             },
             "required": [
@@ -804,6 +828,30 @@
                   "alerts_enabled": {
                     "type": "boolean"
                   }
+                }
+              },
+              "epic_categories": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "color": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sort_order": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "color",
+                    "sort_order"
+                  ]
                 }
               }
             },
@@ -1385,6 +1433,10 @@
             "type": "string",
             "nullable": true
           },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
           "sortOrder": {
             "type": "number"
           },
@@ -1433,6 +1485,7 @@
           "status",
           "priority",
           "targetDate",
+          "category",
           "sortOrder",
           "createdAt",
           "updatedAt",
@@ -1478,6 +1531,10 @@
             "nullable": true
           },
           "targetDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
             "type": "string",
             "nullable": true
           },
@@ -1531,6 +1588,10 @@
             "nullable": true
           },
           "targetDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
             "type": "string",
             "nullable": true
           },
@@ -1632,6 +1693,10 @@
             "type": "string"
           },
           "target_date": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
             "type": "string",
             "nullable": true
           },

@@ -215,6 +215,36 @@ describe("Epics API", () => {
       expect(body.data.sortOrder).toBe(5);
     });
 
+    it("should echo a category on create", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/epics`,
+        { body: { name: "Categorized Epic", category: "Backend" } },
+      );
+      expect(res.status).toBe(201);
+
+      const body = await res.json();
+      expect(body.data.category).toBe("Backend");
+    });
+
+    it("should default category to null when omitted", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/epics`,
+        { body: { name: "Uncategorized Epic" } },
+      );
+      expect(res.status).toBe(201);
+
+      const body = await res.json();
+      expect(body.data.category).toBeNull();
+    });
+
     it("should reject missing name", async () => {
       const project = createTestProject(testApp.db);
 
@@ -391,6 +421,24 @@ describe("Epics API", () => {
       expect(body.data.taskSummary.byStatus.in_progress).toBe(1);
     });
 
+    it("should return the epic's category", async () => {
+      const project = createTestProject(testApp.db);
+      const user = createTestUser(testApp.db);
+      const epic = createTestEpic(testApp.db, {
+        projectId: project.id,
+        createdBy: user.id,
+        category: "Infra",
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/epics/${epic.id}`,
+      );
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.category).toBe("Infra");
+    });
+
     it("should return 404 for non-existent epic", async () => {
       const fakeId = createId();
       const res = await authRequest(
@@ -475,6 +523,33 @@ describe("Epics API", () => {
       const afterBody = await res.json();
 
       expect(afterBody.data.updatedAt).not.toBe(beforeBody.data.updatedAt);
+    });
+
+    it("should set then clear (null) the category", async () => {
+      const project = createTestProject(testApp.db);
+      const user = createTestUser(testApp.db);
+      const epic = createTestEpic(testApp.db, {
+        projectId: project.id,
+        createdBy: user.id,
+      });
+
+      const setRes = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/epics/${epic.id}`,
+        { body: { category: "Frontend" } },
+      );
+      expect(setRes.status).toBe(200);
+      expect((await setRes.json()).data.category).toBe("Frontend");
+
+      const clearRes = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/epics/${epic.id}`,
+        { body: { category: null } },
+      );
+      expect(clearRes.status).toBe(200);
+      expect((await clearRes.json()).data.category).toBeNull();
     });
 
     it("should return 404 for non-existent epic", async () => {

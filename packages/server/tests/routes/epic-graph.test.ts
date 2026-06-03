@@ -58,6 +58,35 @@ describe("GET /api/v1/projects/:projectId/epic-graph", () => {
     ]);
     expect(body.data.hasCycle).toBe(false);
   });
+
+  it("carries each epic's category onto its graph node", async () => {
+    const project = createTestProject(testApp.db);
+    const categorized = createTestEpic(testApp.db, {
+      projectId: project.id,
+      category: "Backend",
+    });
+    const uncategorized = createTestEpic(testApp.db, {
+      projectId: project.id,
+    });
+
+    const res = await authRequest(
+      testApp.app,
+      "GET",
+      `/api/v1/projects/${project.id}/epic-graph`,
+    );
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    const nodeById = new Map(
+      body.data.nodes.map((n: { id: string }) => [n.id, n]),
+    );
+    expect((nodeById.get(categorized.id) as { category: unknown }).category).toBe(
+      "Backend",
+    );
+    expect(
+      (nodeById.get(uncategorized.id) as { category: unknown }).category,
+    ).toBeNull();
+  });
 });
 
 describe("Epic dependency CRUD routes", () => {

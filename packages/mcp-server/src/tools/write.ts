@@ -83,6 +83,12 @@ export function registerWriteTools(server: McpServer): void {
         .string()
         .optional()
         .describe("Target completion date (ISO 8601)"),
+      category: z
+        .string()
+        .optional()
+        .describe(
+          "Optional category name (matches one of the project's epic_categories; unknown values render uncategorized).",
+        ),
     },
     async ({
       project_id,
@@ -92,6 +98,7 @@ export function registerWriteTools(server: McpServer): void {
       proposal_id,
       milestone_id,
       target_date,
+      category,
     }) => {
       try {
         const epic = await createEpic(project_id, {
@@ -101,6 +108,7 @@ export function registerWriteTools(server: McpServer): void {
           proposalId: proposal_id ?? null,
           milestoneId: milestone_id ?? null,
           targetDate: target_date ?? null,
+          category: category ?? null,
         });
 
         const sections: string[] = [

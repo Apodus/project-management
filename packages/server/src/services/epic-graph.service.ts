@@ -59,6 +59,7 @@ export function getGraph(projectId: string, caller?: { id: string } | null) {
     status: e.status,
     priority: e.priority,
     target_date: e.targetDate,
+    category: e.category,
     created_at: e.createdAt,
     updated_at: e.updatedAt,
     taskSummary: e.taskSummary,

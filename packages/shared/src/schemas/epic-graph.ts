@@ -19,6 +19,7 @@ export const epicGraphNodeSchema = z.object({
   status: z.string(),
   priority: z.string(),
   target_date: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
   created_at: timestampSchema,
   updated_at: timestampSchema,
   taskSummary: epicTaskSummarySchema,

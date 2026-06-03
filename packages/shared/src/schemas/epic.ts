@@ -13,6 +13,7 @@ export const selectEpicSchema = z.object({
   status: z.enum(EPIC_STATUSES),
   priority: z.enum(PRIORITIES),
   target_date: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
   sort_order: z.number().int(),
   claim_status: z.enum(CLAIM_STATUSES),
   created_at: timestampSchema,

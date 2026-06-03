@@ -210,6 +210,16 @@ export const webhooksSettingsSchema = z.object({
   alerts_enabled: z.boolean().optional(),
 });
 
+// Per-project epic category — a named, colored bucket epics can be tagged with
+// (P1: data + contract only; web UI / DAG coloring land in later phases). An
+// epic's `category` field holds the `name` of one of these; an unknown value
+// renders uncategorized (no FK enforcement — the set is free-form project config).
+export const epicCategorySchema = z.object({
+  name: z.string().min(1),
+  color: z.string().min(1),
+  sort_order: z.number().int(),
+});
+
 export const projectSettingsSchema = z
   .object({
     ai_autonomy: aiAutonomySettingsSchema,
@@ -217,6 +227,7 @@ export const projectSettingsSchema = z
     git: gitSettingsSchema,
     integrator: integratorSettingsSchema.optional(),
     webhooks: webhooksSettingsSchema.optional(),
+    epic_categories: z.array(epicCategorySchema).optional(),
   })
   .nullable()
   .optional();

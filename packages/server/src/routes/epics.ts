@@ -25,6 +25,7 @@ const epicSchema = z
     status: z.string(),
     priority: z.string(),
     targetDate: z.string().nullable(),
+    category: z.string().nullable(),
     sortOrder: z.number(),
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -95,6 +96,7 @@ const createEpicBody = z
     proposalId: z.string().nullable().optional(),
     milestoneId: z.string().nullable().optional(),
     targetDate: z.string().nullable().optional(),
+    category: z.string().nullable().optional(),
     sortOrder: z.number().int().optional(),
     createdBy: z.string().min(1).optional(),
   })
@@ -109,6 +111,7 @@ const updateEpicBody = z
     proposalId: z.string().nullable().optional(),
     milestoneId: z.string().nullable().optional(),
     targetDate: z.string().nullable().optional(),
+    category: z.string().nullable().optional(),
     sortOrder: z.number().int().optional(),
   })
   .openapi("UpdateEpic");

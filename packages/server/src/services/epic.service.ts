@@ -25,6 +25,7 @@ export interface CreateEpicInput {
   proposalId?: string | null;
   milestoneId?: string | null;
   targetDate?: string | null;
+  category?: string | null;
   sortOrder?: number;
   createdBy?: string | null;
 }
@@ -37,6 +38,7 @@ export interface UpdateEpicInput {
   proposalId?: string | null;
   milestoneId?: string | null;
   targetDate?: string | null;
+  category?: string | null;
   sortOrder?: number;
 }
 
@@ -236,6 +238,7 @@ export function create(
       proposalId: data.proposalId ?? null,
       milestoneId: data.milestoneId ?? null,
       targetDate: data.targetDate ?? null,
+      category: data.category ?? null,
       sortOrder: data.sortOrder ?? 0,
       createdAt: now,
       updatedAt: now,
@@ -284,6 +287,7 @@ export function update(
   if (data.proposalId !== undefined) values.proposalId = data.proposalId;
   if (data.milestoneId !== undefined) values.milestoneId = data.milestoneId;
   if (data.targetDate !== undefined) values.targetDate = data.targetDate;
+  if (data.category !== undefined) values.category = data.category;
   if (data.sortOrder !== undefined) values.sortOrder = data.sortOrder;
 
   if (data.status !== undefined && TERMINAL_STATUSES.has(data.status)) {

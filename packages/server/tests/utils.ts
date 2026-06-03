@@ -305,6 +305,7 @@ export function createTestEpic(
     proposalId: string | null;
     milestoneId: string | null;
     targetDate: string | null;
+    category: string | null;
     sortOrder: number;
     createdBy: string;
   }> = {},
@@ -338,6 +339,7 @@ export function createTestEpic(
       proposalId: overrides.proposalId ?? null,
       milestoneId: overrides.milestoneId ?? null,
       targetDate: overrides.targetDate ?? null,
+      category: overrides.category ?? null,
       sortOrder: overrides.sortOrder ?? 0,
       createdAt: ts,
       updatedAt: ts,
