@@ -10,12 +10,18 @@ export function CategoryLegend({
   rows,
   hidden,
   onToggle,
+  frontierRow,
 }: {
   rows: { key: string; name: string; color?: string }[];
   hidden: Set<string>;
   onToggle: (key: string) => void;
+  // R2: an optional static (non-toggle) row keying the now-frontier emerald
+  // ready-ring. Rendered below the category rows; lets the legend mount for an
+  // uncategorized roadmap that still has a frontier to explain.
+  frontierRow?: { label: string };
 }) {
-  if (rows.length === 0) return null;
+  // Mount when there's anything to show — category rows OR the frontier key.
+  if (rows.length === 0 && !frontierRow) return null;
 
   return (
     <Panel position="top-left">
@@ -40,6 +46,15 @@ export function CategoryLegend({
             </button>
           );
         })}
+        {frontierRow && (
+          // Static (non-button) key for the now-frontier. The swatch is a RING
+          // (matching the node's emerald ready-ring), NOT a filled category
+          // square, so it reads as "a treatment" rather than "a category".
+          <div className="flex items-center gap-1.5 text-left">
+            <span className="size-3 rounded-[3px] ring-1 ring-emerald-500/60" />
+            <span className="truncate">{frontierRow.label}</span>
+          </div>
+        )}
       </div>
     </Panel>
   );

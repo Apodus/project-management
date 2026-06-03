@@ -45,4 +45,34 @@ describe("CategoryLegend", () => {
     expect(gfx).toHaveAttribute("aria-pressed", "false");
     expect(gfx.querySelector("span:last-child")).toHaveClass("line-through");
   });
+
+  it("renders the frontier row when the frontierRow prop is present", () => {
+    render(
+      <CategoryLegend
+        rows={rows}
+        hidden={new Set()}
+        onToggle={() => {}}
+        frontierRow={{ label: "Ready to start" }}
+      />,
+    );
+    expect(screen.getByText("Ready to start")).toBeInTheDocument();
+  });
+
+  it("renders the frontier row even when there are no category rows", () => {
+    render(
+      <CategoryLegend
+        rows={[]}
+        hidden={new Set()}
+        onToggle={() => {}}
+        frontierRow={{ label: "Ready to start" }}
+      />,
+    );
+    expect(screen.getByTestId("panel")).toBeInTheDocument();
+    expect(screen.getByText("Ready to start")).toBeInTheDocument();
+  });
+
+  it("omits the frontier row when the prop is absent", () => {
+    render(<CategoryLegend rows={rows} hidden={new Set()} onToggle={() => {}} />);
+    expect(screen.queryByText("Ready to start")).not.toBeInTheDocument();
+  });
 });

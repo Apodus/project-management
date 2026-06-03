@@ -27,6 +27,7 @@ export interface EpicNodeData {
   byStatus: Record<string, number>;
   dimmed?: boolean;
   inCycle?: boolean;
+  ready?: boolean;
   recede?: number;
   categoryColor?: string;
   lifecycle?: Lifecycle;
@@ -45,6 +46,7 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
     byStatus,
     dimmed,
     inCycle,
+    ready,
     recede,
     categoryColor,
     lifecycle,
@@ -68,6 +70,10 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
   return (
     <div
       data-lifecycle={lifecycle}
+      // Reflects the EFFECTIVE ready treatment: absent when suppressed by a
+      // cycle (the red cycle ring is the more urgent signal), so tests assert
+      // the real rendered state, not the raw flag.
+      data-ready={ready && !inCycle ? "true" : undefined}
       className={cn(
         "bg-card group relative w-[200px] overflow-hidden rounded-md border",
         // ALWAYS-ON opacity transition. This is the anti-flicker fix: the
@@ -80,6 +86,10 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
         // redirects the in-flight interpolation; current state is never reset.
         "transition-opacity duration-150",
         inCycle && "ring-2 ring-red-500",
+        // Now-frontier emerald ready-ring (structure mode). Gated on !inCycle so
+        // the red cycle ring ALWAYS wins deterministically — rings don't stack in
+        // Tailwind, so the more urgent cycle signal must take precedence.
+        !dimmed && ready && !inCycle && "ring-1 ring-emerald-500/60",
         categoryColor && "border-l-4",
         // Lifecycle treatment (structure mode only; orthogonal to the category
         // accent + cycle ring). done → desaturate ("behind us"): mutes the

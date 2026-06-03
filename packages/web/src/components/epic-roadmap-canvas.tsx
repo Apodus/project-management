@@ -23,7 +23,7 @@ import {
 import { computeChain, edgeKey } from "@/lib/epic-graph-chain";
 import { getEdgeStyling } from "@/lib/epic-graph-style";
 import { partitionEpics, recedeOpacity } from "@/lib/epic-graph-recency";
-import { lifecycle } from "@/lib/epic-lifecycle";
+import { lifecycle, actionableNow } from "@/lib/epic-lifecycle";
 import { EpicNode, type EpicNodeData } from "@/components/epic-node";
 import { MilestoneGuides } from "@/components/milestone-guides";
 import { EpicTasksPanel } from "@/components/epic-tasks-panel";
@@ -58,6 +58,7 @@ function sameEpicNodeData(a: EpicNodeData, b: EpicNodeData): boolean {
     a.byStatus === b.byStatus &&
     a.dimmed === b.dimmed &&
     a.inCycle === b.inCycle &&
+    a.ready === b.ready &&
     a.recede === b.recede &&
     a.categoryColor === b.categoryColor &&
     a.lifecycle === b.lifecycle
@@ -267,6 +268,23 @@ export function EpicRoadmapCanvas({
   // `cycles` field (fixtures may omit it).
   const cycleIds = useMemo(() => new Set(graph?.cycles?.flat() ?? []), [graph]);
 
+  // The "now-frontier": active epics whose every blocks-prereq is done — the
+  // work startable right now. Structure-gated (timeline keys on recency, not
+  // phase) → EMPTY_SET in timeline so the ready ring never appears there.
+  //
+  // BINDING CONTRACT: this MUST run on graph.nodes/graph.edges (the FULL
+  // payload), NOT nodesForLayout. A hidden-category prerequisite would otherwise
+  // be dropped from the node set and `actionableNow` would skip its gating edge,
+  // falsely marking the dependent ready. The full graph is in scope here on
+  // purpose.
+  const actionableIds = useMemo(
+    () =>
+      effectiveMode === "structure"
+        ? actionableNow(graph?.nodes ?? [], graph?.edges ?? [])
+        : EMPTY_SET,
+    [graph, effectiveMode],
+  );
+
   // Backwards-in-time edges, keyed by node PAIR (from->to WITHOUT
   // dependency_type) — backwards is a property of the time relationship between
   // two epics, and the layout only flags `blocks` edges.
@@ -315,6 +333,7 @@ export function EpicRoadmapCanvas({
         byStatus: n.taskSummary.byStatus,
         dimmed: chain ? !chain.nodeIds.has(n.id) : false,
         inCycle: cycleIds.has(n.id),
+        ready: actionableIds.has(n.id) || undefined,
         recede: isStructure ? undefined : recedeOpacity(n.activity_recency, { now }),
         categoryColor,
         lifecycle: isStructure ? lifecycle(n) : undefined,
@@ -330,7 +349,7 @@ export function EpicRoadmapCanvas({
     // Drop cache entries for nodes no longer rendered (e.g. collapsed Past rail).
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
     return next;
-  }, [graph, nodesForLayout, layout, chain, cycleIds, now, colorMap, effectiveMode]);
+  }, [graph, nodesForLayout, layout, chain, cycleIds, actionableIds, now, colorMap, effectiveMode]);
 
   // Same stable-reference cache for edges. An edge's visual is fully determined
   // by (provenance, isBackwards, highlightState), so a one-line signature decides
@@ -393,6 +412,12 @@ export function EpicRoadmapCanvas({
   // The legend is only worth showing when at least one DEFINED category is
   // present (an all-uncategorized roadmap has nothing meaningful to filter by).
   const hasDefinedPresent = legendRows.some((r) => r.key !== UNCATEGORIZED);
+
+  // R2: even an uncategorized structure-mode roadmap deserves the legend if it
+  // has a now-frontier to explain (the emerald ring needs a key). The frontier
+  // row is appended below the category rows; in structure mode with ≥1 ready
+  // node it forces the legend to mount even when no defined category exists.
+  const showFrontierRow = effectiveMode === "structure" && actionableIds.size > 0;
 
   const toggleCategory = useCallback(
     (key: string) =>
@@ -463,11 +488,12 @@ export function EpicRoadmapCanvas({
                 />
               </Panel>
             )}
-            {variant !== "compact" && hasDefinedPresent && (
+            {variant !== "compact" && (hasDefinedPresent || showFrontierRow) && (
               <CategoryLegend
                 rows={legendRows}
                 hidden={hiddenCategories}
                 onToggle={toggleCategory}
+                frontierRow={showFrontierRow ? { label: "Ready to start" } : undefined}
               />
             )}
             {layout.mode === "timeline" && (

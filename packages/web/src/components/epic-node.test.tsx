@@ -179,6 +179,55 @@ describe("EpicNode", () => {
     expect(root).toHaveClass("ring-red-500");
   });
 
+  // ── Now-frontier ready ring (structure mode) ────────────────────
+  // The canvas passes `ready` only for actionable-now epics in structure mode.
+  // The emerald ring is gated on !dimmed && !inCycle so the cycle ring always
+  // wins; `data-ready` reflects the EFFECTIVE (rendered) state.
+
+  it("rings a ready epic emerald and stamps data-ready=true", () => {
+    const { container } = renderNode(baseData({ ready: true, lifecycle: "active" }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root.getAttribute("data-ready")).toBe("true");
+    expect(root).toHaveClass("ring-1");
+    expect(root).toHaveClass("ring-emerald-500/60");
+  });
+
+  it("draws no emerald ring and no data-ready when not ready", () => {
+    const { container } = renderNode(baseData({ lifecycle: "active" }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).not.toHaveClass("ring-emerald-500/60");
+    expect(root.getAttribute("data-ready")).toBeNull();
+  });
+
+  it("suppresses the ready ring when the node is dimmed (chain-off)", () => {
+    const { container } = renderNode(baseData({ ready: true, dimmed: true }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).toHaveStyle({ opacity: "0.25" });
+    expect(root).not.toHaveClass("ring-emerald-500/60");
+  });
+
+  it("lets the cycle ring win over the ready ring (R1 cycle precedence)", () => {
+    const { container } = renderNode(baseData({ ready: true, inCycle: true }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    // The red cycle ring is present…
+    expect(root).toHaveClass("ring-red-500");
+    // …and the emerald ready ring is suppressed by the !inCycle gate…
+    expect(root).not.toHaveClass("ring-emerald-500/60");
+    // …so the EFFECTIVE ready state (data-ready) is null.
+    expect(root.getAttribute("data-ready")).toBeNull();
+  });
+
+  it("keeps the ready ring orthogonal to the category accent (not in a cycle)", () => {
+    const { container } = renderNode(
+      baseData({ ready: true, lifecycle: "active", categoryColor: "#3b82f6" }),
+    );
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).toHaveClass("ring-emerald-500/60");
+    expect(root).toHaveClass("border-l-4");
+    expect(root).toHaveStyle({ borderLeftColor: "#3b82f6" });
+    expect(root).toHaveStyle({ opacity: "1" });
+  });
+
   it("mounts all four handles under a real ReactFlow store without crashing", () => {
     // The node now declares four Handles (two unnamed forward + two id'd
     // facing-side back-edge). Each Handle reads the ReactFlow store on mount; a

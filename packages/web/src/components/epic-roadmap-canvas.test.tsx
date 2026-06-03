@@ -21,7 +21,7 @@ vi.mock("@xyflow/react", () => ({
     edges,
     children,
   }: {
-    nodes: { id: string; data: { name: string; lifecycle?: string } }[];
+    nodes: { id: string; data: { name: string; lifecycle?: string; ready?: boolean } }[];
     edges?: {
       id: string;
       sourceHandle?: string | null;
@@ -32,7 +32,12 @@ vi.mock("@xyflow/react", () => ({
   }) => (
     <div>
       {nodes.map((n) => (
-        <div key={n.id} data-testid="rf-node" data-lifecycle={n.data.lifecycle ?? ""}>
+        <div
+          key={n.id}
+          data-testid="rf-node"
+          data-lifecycle={n.data.lifecycle ?? ""}
+          data-ready={n.data.ready ? "true" : ""}
+        >
           {n.data.name}
         </div>
       ))}
@@ -234,6 +239,68 @@ function cycleGraph(): EpicGraph {
   };
 }
 
+// Three active epics root→mid→leaf (`blocks` edges root→mid, mid→leaf). root is
+// done, mid + leaf on_track. Oracle (actionableNow on the full graph): mid is
+// ready (its only prereq root is done), root is NOT (done → not active), leaf is
+// NOT (its prereq mid is not done). NO categories → drives the R2 uncategorized
+// frontier legend.
+function frontierGraph(): EpicGraph {
+  const node = (id: string, name: string, health: "done" | "on_track") => ({
+    id,
+    project_id: "proj-1",
+    name,
+    status: "active" as const,
+    priority: "high" as const,
+    target_date: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-06-01T00:00:00.000Z",
+    taskSummary: { total: 4, done: health === "done" ? 4 : 1, byStatus: {} },
+    health,
+    activity_recency: "2026-06-01T00:00:00.000Z",
+    time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+  });
+  return {
+    nodes: [
+      node("root", "Root epic", "done"),
+      node("mid", "Mid epic", "on_track"),
+      node("leaf", "Leaf epic", "on_track"),
+    ],
+    edges: [
+      { from: "root", to: "mid", dependency_type: "blocks", provenance: "explicit" },
+      { from: "mid", to: "leaf", dependency_type: "blocks", provenance: "explicit" },
+    ],
+    hasCycle: false,
+  };
+}
+
+// Edge-bearing categorized fixture for the BINDING-CONTRACT test: `prereq`
+// (active, NOT done, category "Terrain") blocks `gated` (active, category
+// "Graphics"). gated is NOT ready initially (prereq not done). Hiding "Terrain"
+// drops prereq from nodesForLayout — but actionableNow runs on the FULL graph,
+// so gated must STAY not-ready (the hidden prereq's gating edge still counts).
+function gatedGraph(): EpicGraph {
+  const node = (id: string, name: string, category: string) => ({
+    id,
+    project_id: "proj-1",
+    name,
+    status: "active" as const,
+    priority: "high" as const,
+    target_date: null,
+    category,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-06-01T00:00:00.000Z",
+    taskSummary: { total: 4, done: 1, byStatus: {} },
+    health: "on_track" as const,
+    activity_recency: "2026-06-01T00:00:00.000Z",
+    time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+  });
+  return {
+    nodes: [node("prereq", "Prereq epic", "Terrain"), node("gated", "Gated epic", "Graphics")],
+    edges: [{ from: "prereq", to: "gated", dependency_type: "blocks", provenance: "explicit" }],
+    hasCycle: false,
+  };
+}
+
 function q<T>(data: T | undefined, isLoading = false) {
   return { data, isLoading } as unknown;
 }
@@ -356,5 +423,58 @@ describe("EpicRoadmapCanvas", () => {
     // Nodes still render (accents are node-data driven), but no legend buttons.
     expect(screen.getByText("Graphics epic")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Graphics" })).not.toBeInTheDocument();
+  });
+
+  // ── Now-frontier (C2.P3) ────────────────────────────────────────
+
+  it("marks exactly the actionable-now epics ready in structure mode", () => {
+    mocks.useEpicGraph.mockReturnValue(q(frontierGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // mid is ready (prereq root is done); root (done → not active) + leaf (prereq
+    // mid not done) are not.
+    const mid = screen.getByText("Mid epic").closest("[data-testid='rf-node']");
+    const root = screen.getByText("Root epic").closest("[data-testid='rf-node']");
+    const leaf = screen.getByText("Leaf epic").closest("[data-testid='rf-node']");
+    expect(mid?.getAttribute("data-ready")).toBe("true");
+    expect(root?.getAttribute("data-ready")).toBe("");
+    expect(leaf?.getAttribute("data-ready")).toBe("");
+  });
+
+  it("clears all ready markers in timeline mode (recency path, not frontier)", () => {
+    mocks.useEpicGraph.mockReturnValue(q(frontierGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    fireEvent.click(screen.getByRole("radio", { name: "Timeline" }));
+    for (const n of screen.getAllByTestId("rf-node")) {
+      expect(n.getAttribute("data-ready")).toBe("");
+    }
+  });
+
+  it("computes the now-frontier on the FULL graph, not the category-filtered layout set", () => {
+    // BINDING CONTRACT: prereq (Terrain) blocks gated (Graphics). gated is not
+    // ready while prereq is incomplete. Hiding Terrain removes prereq from
+    // nodesForLayout — but actionableNow ran on graph.nodes/graph.edges, so the
+    // gating edge still counts and gated must STAY not-ready.
+    // (This fails if the impl wrongly used nodesForLayout: the hidden prereq's
+    // edge would be skipped and gated would flip to ready.)
+    mocks.useEpicGraph.mockReturnValue(q(gatedGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    const gatedBefore = screen.getByText("Gated epic").closest("[data-testid='rf-node']");
+    expect(gatedBefore?.getAttribute("data-ready")).toBe("");
+    // Toggle OFF "Terrain" via the proven category-hide mechanism (a button row).
+    fireEvent.click(screen.getByRole("button", { name: "Terrain" }));
+    // prereq left nodesForLayout, but gated must NOT have flipped to ready.
+    expect(screen.queryByText("Prereq epic")).not.toBeInTheDocument();
+    const gatedAfter = screen.getByText("Gated epic").closest("[data-testid='rf-node']");
+    expect(gatedAfter?.getAttribute("data-ready")).toBe("");
+  });
+
+  it("shows the now-frontier legend row for an uncategorized roadmap (R2)", () => {
+    // frontierGraph has no categories → no category buttons, but a ready node
+    // (mid) → the frontier legend row must still mount.
+    mocks.useEpicGraph.mockReturnValue(q(frontierGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    expect(screen.queryByRole("button", { name: "Graphics" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Terrain" })).not.toBeInTheDocument();
+    expect(screen.getByText("Ready to start")).toBeInTheDocument();
   });
 });

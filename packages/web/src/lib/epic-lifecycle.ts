@@ -16,9 +16,12 @@ import type { EpicGraphEdge, EpicGraphNode } from "./api";
  *
  * (b) `actionableNow` is the work startable *right now*: an `active` epic whose
  *     every `blocks`-prerequisite is lifecycle-`done`. No prereqs → vacuously
- *     actionable. One-hop only (no transitive walk), so cycles need no special
- *     handling — a live cycle member always has a non-done prereq, so it is
- *     never actionable.
+ *     actionable. One-hop only (no transitive walk): a cycle needs no special
+ *     handling here — but note a cycle member CAN be actionable if its direct
+ *     prereqs happen to be done (cycle detection is structural / health-
+ *     independent, e.g. a done↔active 2-cycle makes the active member actionable
+ *     because its prereq is done). The canvas suppresses the ready marker on
+ *     in-cycle nodes (the cycle is the more urgent signal).
  *
  * EQUIVALENCE (no forked completion calc). On server-consistent data,
  * `actionableNow(n) ⟺ active(n) ∧ server health !== "blocked"`: the server sets
