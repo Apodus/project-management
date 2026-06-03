@@ -119,8 +119,16 @@ Shortcut: from `open`/`discussing`, the AI agent (or human) can transition direc
 
 - `pm_create_proposal(project_id, title, description)` — when you discover work mid-execution that should be discussed first. Starts `open` and **unclaimed**; claim it before commenting/transitioning.
 - `pm_create_task(project_id, title, ...)` — create a task. No `reporterId` needed.
-- `pm_create_epic(project_id, name, proposal_id?=...)` — create an epic, optionally linked to a proposal. **If `proposal_id` is set, you must hold the claim** on that proposal.
+- `pm_create_epic(project_id, name, proposal_id?=..., category?=...)` — create an epic, optionally linked to a proposal. **If `proposal_id` is set, you must hold the claim** on that proposal. `category` tags it for the roadmap (see below).
 - `pm_implement_proposal(id, epics, tasks)` — bulk-create epics+tasks from an accepted proposal and move it to `in_progress`. Requires the claim.
+
+### Epic structure: dependencies & categories (this is the roadmap DAG)
+
+The director's primary view is a **roadmap DAG** — nodes are epics (colored/grouped by category), edges are epic dependencies. Keep this structure accurate as you plan; it is how the director reads "where is the project."
+
+- **Epic dependencies — author these explicitly.** `pm_link_epic_dependency(project_id, epic_id, depends_on_epic_id, dependency_type?)` records that `epic_id` (the dependent) depends on `depends_on_epic_id` (the prerequisite); `dependency_type` is `blocks` (default) or `relates_to`. This is the right tool for **planning-time epic sequencing** — "B can't start until A ships", "C2 follows C1", "gated on Epic 1". Remove with `pm_unlink_epic_dependency(project_id, epic_id, dependency_id)`. Self-deps and duplicates are rejected; cycles are surfaced (not blocked).
+- **Derived edges are automatic — but only CROSS-epic.** Epic edges are also rolled up from cross-epic task `blocks` deps (a task in B blocking a task in A ⇒ edge A→B). You don't author those. Note: phase ordering *within* one epic (P1→P2→P3 via task `depends_on`) is intra-epic and produces **no** epic edge — so use explicit `pm_link_epic_dependency` for epic-level sequencing; don't expect it to fall out of phase deps.
+- **Category.** Pass `category="<name>"` to `pm_create_epic` to group/color the epic on the roadmap (e.g. `rendering`, `terrain`, `editor`). The set is project-defined by the director — match an existing epic's category where you can (`pm_list_epics` shows them); if you don't know the set, leave it unset rather than invent one.
 
 ## Landing changes: the merge train
 
