@@ -12,9 +12,14 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useEpicGraph } from "@/hooks/use-epic-graph";
 import { useMilestones } from "@/hooks/use-milestones";
-import { computeEpicGraphLayout } from "@/lib/epic-graph-layout";
+import {
+  computeEpicGraphLayout,
+  type LayoutMode,
+  type LayoutOptions,
+} from "@/lib/epic-graph-layout";
 import { computeChain, edgeKey } from "@/lib/epic-graph-chain";
 import { getEdgeStyling } from "@/lib/epic-graph-style";
 import { partitionEpics, recedeOpacity } from "@/lib/epic-graph-recency";
@@ -106,6 +111,26 @@ function RailPanel({
   );
 }
 
+// ---- Mode toggle ----
+
+// Single-select segmented control flipping the canvas between the topological
+// "Structure" DAG (default) and the calendar-scaled "Timeline". The `m &&`
+// guard at the call site drops the empty-string a single-select deselect emits.
+function ModeToggle({
+  value,
+  onValueChange,
+}: {
+  value: LayoutMode;
+  onValueChange: (m: string) => void;
+}) {
+  return (
+    <ToggleGroup type="single" value={value} onValueChange={onValueChange}>
+      <ToggleGroupItem value="structure">Structure</ToggleGroupItem>
+      <ToggleGroupItem value="timeline">Timeline</ToggleGroupItem>
+    </ToggleGroup>
+  );
+}
+
 // ---- Canvas ----
 
 export function EpicRoadmapCanvas({
@@ -151,6 +176,12 @@ export function EpicRoadmapCanvas({
   // epic again toggles the panel closed.
   const [selectedEpicId, setSelectedEpicId] = useState<string | null>(null);
 
+  // Layout mode. Defaults to the topological "structure" view; the compact
+  // embed is always pinned to structure (no toggle), so `effectiveMode` is what
+  // actually drives the layout + calendar-artifact gating below.
+  const [mode, setMode] = useState<LayoutMode>("structure");
+  const effectiveMode: LayoutMode = variant === "compact" ? "structure" : mode;
+
   const nodeTypes = useMemo(() => ({ epic: EpicNode }), []);
 
   // One injected clock drives layout, partition, and recede — the component is
@@ -168,14 +199,19 @@ export function EpicRoadmapCanvas({
   // The rail-composed set: active, plus the past bucket when its rail is
   // expanded, plus the unscheduled bucket when its rail is. This is the
   // PRE-filter set (the legend reads it so toggling a category off doesn't drop
-  // its own legend row).
+  // its own legend row). The Past/Backlog rails are TIMELINE affordances
+  // (recency-collapse / future-scheduling) — in structure mode the whole
+  // topological DAG is shown, so every bucket is folded in unconditionally.
   const railComposed = useMemo(
-    () => [
-      ...partition.active,
-      ...(showPast ? partition.past : []),
-      ...(showBacklog ? partition.unscheduled : []),
-    ],
-    [partition, showPast, showBacklog],
+    () =>
+      effectiveMode === "structure"
+        ? [...partition.active, ...partition.past, ...partition.unscheduled]
+        : [
+            ...partition.active,
+            ...(showPast ? partition.past : []),
+            ...(showBacklog ? partition.unscheduled : []),
+          ],
+    [effectiveMode, partition, showPast, showBacklog],
   );
 
   // The nodes handed to the layout: railComposed minus any category the user has
@@ -195,21 +231,21 @@ export function EpicRoadmapCanvas({
   // layout never gets an id it wasn't given). Predicate matches partitionEpics's
   // unscheduled bucket exactly (not_started + no end date).
   const unscheduledIds = useMemo(() => {
-    if (!showBacklog) return EMPTY_SET;
+    if (effectiveMode !== "timeline" || !showBacklog) return EMPTY_SET;
     const ids = new Set<string>();
     for (const n of nodesForLayout)
       if (n.health === "not_started" && n.time_window.end == null) ids.add(n.id);
     return ids;
-  }, [showBacklog, nodesForLayout]);
+  }, [effectiveMode, showBacklog, nodesForLayout]);
 
-  const layout = useMemo(
-    () =>
-      computeEpicGraphLayout(nodesForLayout, graph?.edges ?? [], {
-        now,
-        unscheduledIds,
-      }),
-    [nodesForLayout, graph, now, unscheduledIds],
-  );
+  // Route through a `LayoutOptions`-typed variable so the call resolves to the
+  // UNION overload (`LayoutResult`), not a concrete variant. This makes a bare
+  // `layout.scale` read a COMPILE error until narrowed on `layout.mode` — the
+  // type system enforces that calendar artifacts only render in timeline mode.
+  const layout = useMemo(() => {
+    const opts: LayoutOptions = { now, unscheduledIds, mode: effectiveMode };
+    return computeEpicGraphLayout(nodesForLayout, graph?.edges ?? [], opts);
+  }, [nodesForLayout, graph, now, unscheduledIds, effectiveMode]);
 
   // Vertical span for the milestone/today guides: tall enough to bracket every
   // rendered lane plus padding above and below. Derived from the laid-out node
@@ -407,6 +443,14 @@ export function EpicRoadmapCanvas({
           >
             <Background />
             {variant !== "compact" && <Controls />}
+            {variant !== "compact" && (
+              <Panel position="top-right">
+                <ModeToggle
+                  value={mode}
+                  onValueChange={(m) => m && setMode(m as LayoutMode)}
+                />
+              </Panel>
+            )}
             {variant !== "compact" && hasDefinedPresent && (
               <CategoryLegend
                 rows={legendRows}
@@ -414,12 +458,14 @@ export function EpicRoadmapCanvas({
                 onToggle={toggleCategory}
               />
             )}
-            <MilestoneGuides
-              scale={layout.scale}
-              milestones={milestones ?? []}
-              yTop={yTop}
-              ySpan={ySpan}
-            />
+            {layout.mode === "timeline" && (
+              <MilestoneGuides
+                scale={layout.scale}
+                milestones={milestones ?? []}
+                yTop={yTop}
+                ySpan={ySpan}
+              />
+            )}
             {graph.hasCycle && (
               <Panel position="top-center">
                 <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-700 dark:text-amber-400">
@@ -428,22 +474,28 @@ export function EpicRoadmapCanvas({
                 </div>
               </Panel>
             )}
-            <RailPanel
-              position="bottom-left"
-              count={partition.past.length}
-              expanded={showPast}
-              onToggle={() => setShowPast((v) => !v)}
-              collapsedLabel={`${partition.past.length} older`}
-              expandedLabel="Hide past"
-            />
-            <RailPanel
-              position="bottom-right"
-              count={partition.unscheduled.length}
-              expanded={showBacklog}
-              onToggle={() => setShowBacklog((v) => !v)}
-              collapsedLabel={`${partition.unscheduled.length} unscheduled`}
-              expandedLabel="Hide backlog"
-            />
+            {/* Past/Backlog rails are timeline-only affordances; structure mode
+                lays out the whole DAG so the buckets are already on-canvas. */}
+            {effectiveMode === "timeline" && (
+              <>
+                <RailPanel
+                  position="bottom-left"
+                  count={partition.past.length}
+                  expanded={showPast}
+                  onToggle={() => setShowPast((v) => !v)}
+                  collapsedLabel={`${partition.past.length} older`}
+                  expandedLabel="Hide past"
+                />
+                <RailPanel
+                  position="bottom-right"
+                  count={partition.unscheduled.length}
+                  expanded={showBacklog}
+                  onToggle={() => setShowBacklog((v) => !v)}
+                  collapsedLabel={`${partition.unscheduled.length} unscheduled`}
+                  expandedLabel="Hide backlog"
+                />
+              </>
+            )}
           </ReactFlow>
           {selectedEpicId && (
             <EpicTasksPanel

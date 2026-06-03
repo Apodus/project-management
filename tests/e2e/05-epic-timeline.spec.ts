@@ -67,6 +67,29 @@ test.describe("Epic Timeline (Roadmap)", () => {
       timeout: 10_000,
     });
 
+    // Structure-default prerequisite-left: the default mode is the topological
+    // DAG, where the prerequisite (Foundation epic / epicA) is laid out strictly
+    // left of its dependent (Dependent epic / epicB). Poll until the fitView
+    // animation settles and both nodes report a bounding box.
+    await expect(async () => {
+      const aBox = await page
+        .locator(".react-flow__node", { hasText: "Foundation epic" })
+        .boundingBox();
+      const bBox = await page
+        .locator(".react-flow__node", { hasText: "Dependent epic" })
+        .boundingBox();
+      expect(aBox).not.toBeNull();
+      expect(bBox).not.toBeNull();
+      expect(aBox!.x).toBeLessThan(bBox!.x);
+    }).toPass({ timeout: 10_000 });
+
+    // The mode toggle flips between Structure and Timeline. The "Today" line
+    // renders ONLY in timeline mode, so it is the observable discriminator.
+    await page.getByRole("radio", { name: "Timeline" }).click();
+    await expect(page.getByText("Today")).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("radio", { name: "Structure" }).click();
+    await expect(page.getByText("Today")).toHaveCount(0);
+
     // Clicking an epic node opens the floating task panel IN PLACE — it no
     // longer navigates away (that changed when the floating task mini-DAG
     // shipped). The panel's "Open full epic →" link is the drill-through.

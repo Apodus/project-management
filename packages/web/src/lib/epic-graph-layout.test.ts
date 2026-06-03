@@ -40,7 +40,7 @@ function sortedEntries(result: LayoutResult): [string, unknown][] {
 
 describe("computeEpicGraphLayout — degenerate inputs", () => {
   it("case 1: empty input produces an empty, floored layout", () => {
-    const r = computeEpicGraphLayout([], [], { now: NOW });
+    const r = computeEpicGraphLayout([], [], { now: NOW, mode: "timeline" });
     expect(r.positions.size).toBe(0);
     expect(r.backwardsEdges).toEqual([]);
     expect(r.laneCount).toBe(0);
@@ -52,7 +52,7 @@ describe("computeEpicGraphLayout — degenerate inputs", () => {
     const r = computeEpicGraphLayout(
       [makeNode("A", { start: "2026-01-01", end: "2026-03-01" })],
       [],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     expect(r.positions.size).toBe(1);
     const a = r.positions.get("A")!;
@@ -83,8 +83,8 @@ describe("computeEpicGraphLayout — determinism", () => {
     const shuffledNodes = [nodes[3], nodes[0], nodes[4], nodes[1], nodes[2]];
     const shuffledEdges = [edges[2], edges[0], edges[3], edges[1]];
 
-    const r1 = computeEpicGraphLayout(nodes, edges, { now: NOW });
-    const r2 = computeEpicGraphLayout(shuffledNodes, shuffledEdges, { now: NOW });
+    const r1 = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "timeline" });
+    const r2 = computeEpicGraphLayout(shuffledNodes, shuffledEdges, { now: NOW, mode: "timeline" });
 
     expect(sortedEntries(r1)).toEqual(sortedEntries(r2));
     expect(r1.backwardsEdges).toEqual(r2.backwardsEdges);
@@ -106,7 +106,7 @@ describe("computeEpicGraphLayout — time on x", () => {
         makeNode("B", { start: "2026-01-01", end: "2026-05-01" }),
       ],
       [],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     expect(r.positions.get("B")!.x).toBeGreaterThan(r.positions.get("A")!.x);
 
@@ -118,7 +118,7 @@ describe("computeEpicGraphLayout — time on x", () => {
         makeNode("MID", { start: "2025-01-01", end: "2025-06-01" }),
       ],
       [],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     expect(r2.positions.get("FUTURE")!.x).toBeGreaterThan(
       r2.positions.get("MID")!.x,
@@ -134,7 +134,7 @@ describe("computeEpicGraphLayout — lane assignment (no overlap)", () => {
         makeNode("B", { start: "2025-01-01", end: "2026-01-01" }),
       ],
       [],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     const a = r.positions.get("A")!;
     const b = r.positions.get("B")!;
@@ -149,7 +149,7 @@ describe("computeEpicGraphLayout — lane assignment (no overlap)", () => {
         makeNode("C", { start: "2025-01-01", end: "2026-01-01" }),
       ],
       [],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     const lanes = [
       r3.positions.get("A")!.lane,
@@ -169,7 +169,7 @@ describe("computeEpicGraphLayout — dependency invariants", () => {
         makeNode("B", { start: "2025-06-01", end: "2026-01-01" }),
       ],
       [makeEdge("A", "B")],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     expect(r.positions.get("A")!.x).toBeLessThan(r.positions.get("B")!.x);
     expect(r.backwardsEdges).toEqual([]);
@@ -182,7 +182,7 @@ describe("computeEpicGraphLayout — dependency invariants", () => {
         makeNode("EARLY", { start: "2025-01-01", end: "2025-05-01" }),
       ],
       [makeEdge("LATE", "EARLY", "blocks"), makeEdge("LATE", "EARLY", "relates_to")],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     expect(r.backwardsEdges).toHaveLength(1);
     expect(r.backwardsEdges[0].from).toBe("LATE");
@@ -200,7 +200,7 @@ describe("computeEpicGraphLayout — edge cases", () => {
         makeNode("LATER", { start: "2026-01-01", end: "2026-04-01" }),
       ],
       [],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     const nullEnd = r.positions.get("NULLEND")!;
     expect(Number.isFinite(nullEnd.x)).toBe(true);
@@ -210,6 +210,7 @@ describe("computeEpicGraphLayout — edge cases", () => {
   it("case 9: t == now maps exactly to toX(nowMs), finite and in range", () => {
     const r = computeEpicGraphLayout([makeNode("N", { start: NOW, end: NOW })], [], {
       now: NOW,
+      mode: "timeline",
     });
     const n = r.positions.get("N")!;
     expect(n.x).toBe(r.scale.toX(r.scale.nowMs));
@@ -222,7 +223,7 @@ describe("computeEpicGraphLayout — edge cases", () => {
     const r = computeEpicGraphLayout(
       [makeNode("P", { start: "2025-01-01", end: "2026-01-01" })],
       [makeEdge("P", "GHOST")],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     expect(r.backwardsEdges).toEqual([]);
     expect(r.positions.has("GHOST")).toBe(false);
@@ -236,7 +237,7 @@ describe("computeEpicGraphLayout — edge cases", () => {
         makeNode("C", { start: "2025-05-01", end: "2025-05-01" }),
       ],
       [],
-      { now: NOW },
+      { now: NOW, mode: "timeline" },
     );
     expect(r.scale.maxMs).toBeGreaterThan(r.scale.minMs);
     for (const pos of r.positions.values()) {
@@ -265,7 +266,7 @@ describe("computeEpicGraphLayout — backlog zone", () => {
 
   it("places every unscheduled node strictly right of every scheduled node", () => {
     const { nodes, scheduledIds, unscheduledIds } = backlogFixture();
-    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds });
+    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds, mode: "timeline" });
     const maxScheduledX = Math.max(...scheduledIds.map((id) => r.positions.get(id)!.x));
     for (const id of unscheduledIds) {
       expect(r.positions.get(id)!.x).toBeGreaterThan(maxScheduledX);
@@ -274,7 +275,7 @@ describe("computeEpicGraphLayout — backlog zone", () => {
 
   it("orders >=2 unscheduled nodes by created_at with distinct x", () => {
     const { nodes, unscheduledIds } = backlogFixture();
-    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds });
+    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds, mode: "timeline" });
     const u1 = r.positions.get("U1")!;
     const u2 = r.positions.get("U2")!;
     expect(u1.x).not.toBe(u2.x);
@@ -286,16 +287,24 @@ describe("computeEpicGraphLayout — backlog zone", () => {
     const { nodes, unscheduledIds } = backlogFixture();
     const shuffledNodes = [nodes[4], nodes[1], nodes[3], nodes[0], nodes[2]];
     const shuffledSet = new Set(["U2", "U1"]);
-    const r1 = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds });
-    const r2 = computeEpicGraphLayout(shuffledNodes, [], { now: NOW, unscheduledIds: shuffledSet });
+    const r1 = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds, mode: "timeline" });
+    const r2 = computeEpicGraphLayout(shuffledNodes, [], {
+      now: NOW,
+      unscheduledIds: shuffledSet,
+      mode: "timeline",
+    });
     expect(sortedEntries(r1)).toEqual(sortedEntries(r2));
     expect(r1.laneCount).toBe(r2.laneCount);
   });
 
   it("REGRESSION: an empty unscheduledIds set is byte-identical to omitting it", () => {
     const nodes = [makeNode("N", { start: NOW, end: NOW })];
-    const a = computeEpicGraphLayout(nodes, [], { now: NOW });
-    const b = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds: new Set() });
+    const a = computeEpicGraphLayout(nodes, [], { now: NOW, mode: "timeline" });
+    const b = computeEpicGraphLayout(nodes, [], {
+      now: NOW,
+      unscheduledIds: new Set(),
+      mode: "timeline",
+    });
     expect(sortedEntries(a)).toEqual(sortedEntries(b));
     expect(a.laneCount).toBe(b.laneCount);
     expect(a.scale.minMs).toBe(b.scale.minMs);
@@ -315,6 +324,7 @@ describe("computeEpicGraphLayout — backlog zone", () => {
     const r = computeEpicGraphLayout(nodes, [], {
       now: NOW,
       unscheduledIds: new Set(["U1", "U2"]),
+      mode: "timeline",
     });
     expect(r.scale.maxMs).toBeGreaterThan(r.scale.minMs);
     for (const pos of r.positions.values()) {
@@ -328,7 +338,11 @@ describe("computeEpicGraphLayout — backlog zone", () => {
       makeNode("S1", { start: "2025-01-01", end: "2025-06-01" }),
       makeNode("U1", { start: "2026-02-01", end: null, created_at: "2026-02-10" }),
     ];
-    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds: new Set(["U1"]) });
+    const r = computeEpicGraphLayout(nodes, [], {
+      now: NOW,
+      unscheduledIds: new Set(["U1"]),
+      mode: "timeline",
+    });
     const u1 = r.positions.get("U1")!;
     expect(Number.isFinite(u1.x)).toBe(true);
     expect(u1.x).toBeGreaterThan(r.positions.get("S1")!.x);
@@ -338,7 +352,11 @@ describe("computeEpicGraphLayout — backlog zone", () => {
     const nodes = [
       makeNode("U1", { start: "2026-02-01", end: null, created_at: "2026-02-10" }),
     ];
-    const r = computeEpicGraphLayout(nodes, [], { now: NOW, unscheduledIds: new Set(["U1"]) });
+    const r = computeEpicGraphLayout(nodes, [], {
+      now: NOW,
+      unscheduledIds: new Set(["U1"]),
+      mode: "timeline",
+    });
     expect(r.positions.get("U1")!.t).toBe(Date.parse("2026-02-10"));
   });
 });

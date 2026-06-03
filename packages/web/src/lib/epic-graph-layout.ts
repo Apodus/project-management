@@ -24,7 +24,7 @@ import { computeOrder } from "./epic-graph-order";
  * tie-breaks, and the `positions` Map is populated in stable sorted order.
  *
  * Mode seam: `computeEpicGraphLayout` dispatches on `opts.mode` over a
- * discriminated `LayoutResult` (timeline default; structure deferred to P4).
+ * discriminated `LayoutResult` (structure default; timeline opt-in).
  */
 
 const ONE_DAY_MS = 86_400_000;
@@ -35,7 +35,8 @@ const STRUCTURE_X_PAD = 80; // left margin
 
 export interface LayoutOptions {
   /**
-   * Layout mode. Defaults to "timeline" in P1; flips to "structure" in P5.
+   * Layout mode. Defaults to "structure" (the topological DAG); pass
+   * "timeline" to opt into the calendar-scaled view.
    */
   mode?: LayoutMode;
   now: string;
@@ -328,13 +329,13 @@ function computeStructureLayout(
 export function computeEpicGraphLayout(
   nodes: EpicGraphNode[],
   edges: EpicGraphEdge[],
-  opts: LayoutOptions & { mode?: "timeline" },
-): TimelineLayoutResult;
+  opts: LayoutOptions & { mode?: "structure" },
+): StructureLayoutResult;
 export function computeEpicGraphLayout(
   nodes: EpicGraphNode[],
   edges: EpicGraphEdge[],
-  opts: LayoutOptions & { mode: "structure" },
-): StructureLayoutResult;
+  opts: LayoutOptions & { mode: "timeline" },
+): TimelineLayoutResult;
 export function computeEpicGraphLayout(
   nodes: EpicGraphNode[],
   edges: EpicGraphEdge[],
@@ -345,7 +346,7 @@ export function computeEpicGraphLayout(
   edges: EpicGraphEdge[],
   opts: LayoutOptions,
 ): LayoutResult {
-  const mode = opts.mode ?? "timeline";
+  const mode = opts.mode ?? "structure";
   if (mode === "structure") {
     return computeStructureLayout(nodes, edges);
   }
