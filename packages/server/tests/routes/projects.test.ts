@@ -626,6 +626,34 @@ describe("Projects API", () => {
       expect(body.data.settings?.integrator).toBeUndefined();
     });
 
+    it("accepts a PARTIAL settings PATCH that omits ai_autonomy/workflow/git", async () => {
+      // Regression: a project whose stored settings are null/partial (created via
+      // the API or MCP without a full seed) must still be able to save a single
+      // settings sub-block. The web settings pages each read-merge-write one block,
+      // so requiring the three core blocks made every settings page un-saveable.
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              integrator: {
+                resolver: { enabled: true, max_concurrent: 1, time_budget_sec: 600 },
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.settings.integrator.resolver.enabled).toBe(true);
+      expect(body.data.settings.ai_autonomy).toBeUndefined();
+      expect(body.data.settings.workflow).toBeUndefined();
+      expect(body.data.settings.git).toBeUndefined();
+    });
+
     it("accepts integrator.enabled = false and applies defaults", async () => {
       const res = await authRequest(testApp.app, "POST", "/api/v1/projects", {
         body: {

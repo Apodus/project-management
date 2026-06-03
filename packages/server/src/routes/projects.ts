@@ -199,11 +199,17 @@ const epicCategorySchema = z.object({
   sort_order: z.number().int(),
 });
 
+// Settings writes are PARTIAL by nature (the web settings pages each read-merge-write
+// a single sub-block) and every sub-block is read tolerantly with per-field defaults
+// (autonomy.service, etc.) — so the three "core" blocks are .optional() here. Requiring
+// them would make ANY project whose stored settings are null/partial (created via the API
+// or MCP without a full seed) unable to save ANY settings page. Keep in lockstep with the
+// canonical @pm/shared/projectSettingsSchema.
 const projectSettingsSchema = z
   .object({
-    ai_autonomy: aiAutonomySettingsSchema,
-    workflow: workflowSettingsSchema,
-    git: gitSettingsSchema,
+    ai_autonomy: aiAutonomySettingsSchema.optional(),
+    workflow: workflowSettingsSchema.optional(),
+    git: gitSettingsSchema.optional(),
     integrator: integratorSettingsSchema.optional(),
     webhooks: webhooksSettingsSchema.optional(),
     epic_categories: z.array(epicCategorySchema).optional(),

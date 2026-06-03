@@ -220,11 +220,16 @@ export const epicCategorySchema = z.object({
   sort_order: z.number().int(),
 });
 
+// The three "core" sub-blocks are .optional() because settings are written PARTIALLY
+// (each web settings page read-merge-writes a single sub-block) and read TOLERANTLY
+// (consumers like autonomy.service fall back to per-field defaults). Requiring them would
+// make any project with null/partial stored settings unable to save settings at all.
+// Keep in lockstep with the Zod-4 route mirror in packages/server/src/routes/projects.ts.
 export const projectSettingsSchema = z
   .object({
-    ai_autonomy: aiAutonomySettingsSchema,
-    workflow: workflowSettingsSchema,
-    git: gitSettingsSchema,
+    ai_autonomy: aiAutonomySettingsSchema.optional(),
+    workflow: workflowSettingsSchema.optional(),
+    git: gitSettingsSchema.optional(),
     integrator: integratorSettingsSchema.optional(),
     webhooks: webhooksSettingsSchema.optional(),
     epic_categories: z.array(epicCategorySchema).optional(),
