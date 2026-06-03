@@ -342,3 +342,167 @@ describe("computeEpicGraphLayout — backlog zone", () => {
     expect(r.positions.get("U1")!.t).toBe(Date.parse("2026-02-10"));
   });
 });
+
+const STRUCTURE_X_GAP = 320;
+const STRUCTURE_ROW_HEIGHT = 104;
+
+describe("computeEpicGraphLayout — structure mode", () => {
+  const W = { start: "2025-01-01", end: "2025-06-01" };
+
+  it("case S1: prerequisite strictly left of dependent for every forward blocks edge", () => {
+    const nodes = [
+      makeNode("A", W),
+      makeNode("B", W),
+      makeNode("C", W),
+      makeNode("D", W),
+    ];
+    const edges = [
+      makeEdge("A", "B"),
+      makeEdge("B", "C"),
+      makeEdge("A", "D", "relates_to"),
+    ];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    expect(r.positions.get("A")!.x).toBeLessThan(r.positions.get("B")!.x);
+    expect(r.positions.get("B")!.x).toBeLessThan(r.positions.get("C")!.x);
+    // Generic invariant for every forward blocks edge.
+    for (const e of edges) {
+      if (e.dependency_type !== "blocks") continue;
+      expect(r.positions.get(e.from)!.x).toBeLessThan(r.positions.get(e.to)!.x);
+    }
+  });
+
+  it("case S2: no overlap — distinct (x,y); same-rank ΔY≥rowHeight, diff-rank ΔX≥gap", () => {
+    // A→C, B→C: A,B rank 0; C rank 1.
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+    const edges = [makeEdge("A", "C"), makeEdge("B", "C")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+
+    const entries = [...r.positions.entries()];
+    // distinct (x,y).
+    const seen = new Set<string>();
+    for (const [, p] of entries) {
+      const key = `${p.x},${p.y}`;
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
+
+    const a = r.positions.get("A")!;
+    const b = r.positions.get("B")!;
+    const c = r.positions.get("C")!;
+    // A,B same rank → ΔX 0, ΔY ≥ rowHeight.
+    expect(a.x).toBe(b.x);
+    expect(Math.abs(a.y - b.y)).toBeGreaterThanOrEqual(STRUCTURE_ROW_HEIGHT);
+    // C different rank → ΔX ≥ gap.
+    expect(Math.abs(c.x - a.x)).toBeGreaterThanOrEqual(STRUCTURE_X_GAP);
+    expect(Math.abs(c.x - b.x)).toBeGreaterThanOrEqual(STRUCTURE_X_GAP);
+  });
+
+  describe("case S3: degenerate / finite geometry", () => {
+    it("empty → empty positions, no backwards edges, laneCount 0", () => {
+      const r = computeEpicGraphLayout([], [], { now: NOW, mode: "structure" as const });
+      expect(r.positions.size).toBe(0);
+      expect(r.backwardsEdges).toEqual([]);
+      expect(r.laneCount).toBe(0);
+    });
+
+    it("single node, no edges → finite, y=0, lane=0, laneCount 1", () => {
+      const r = computeEpicGraphLayout([makeNode("A", W)], [], {
+        now: NOW,
+        mode: "structure" as const,
+      });
+      expect(r.positions.size).toBe(1);
+      const a = r.positions.get("A")!;
+      expect(Number.isFinite(a.x)).toBe(true);
+      expect(a.y).toBe(0);
+      expect(a.lane).toBe(0);
+      expect(r.laneCount).toBe(1);
+    });
+
+    it("all relates_to → single rank-0 layer of 3, equal x, distinct y, laneCount 3", () => {
+      const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+      const edges = [
+        makeEdge("A", "B", "relates_to"),
+        makeEdge("B", "C", "relates_to"),
+        makeEdge("A", "C", "relates_to"),
+      ];
+      const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+      const a = r.positions.get("A")!;
+      const b = r.positions.get("B")!;
+      const c = r.positions.get("C")!;
+      expect(a.x).toBe(b.x);
+      expect(b.x).toBe(c.x);
+      const ys = new Set([a.y, b.y, c.y]);
+      expect(ys.size).toBe(3);
+      expect(r.laneCount).toBe(3);
+      expect(r.backwardsEdges).toEqual([]);
+      for (const p of [a, b, c]) {
+        expect(Number.isFinite(p.x)).toBe(true);
+        expect(Number.isFinite(p.y)).toBe(true);
+      }
+    });
+
+    it("full cycle A→B→C→A → all finite geometry, ≥1 backwards edge", () => {
+      const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+      const edges = [makeEdge("A", "B"), makeEdge("B", "C"), makeEdge("C", "A")];
+      const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+      for (const p of r.positions.values()) {
+        expect(Number.isFinite(p.x)).toBe(true);
+        expect(Number.isFinite(p.y)).toBe(true);
+      }
+      expect(Number.isFinite(r.laneCount)).toBe(true);
+      expect(r.backwardsEdges.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("case S4: deterministic across shuffled nodes AND edges", () => {
+    const nodes = [
+      makeNode("A", W),
+      makeNode("B", W),
+      makeNode("C", W),
+      makeNode("D", W),
+      makeNode("E", W),
+    ];
+    const edges = [
+      makeEdge("A", "B"),
+      makeEdge("B", "C"),
+      makeEdge("C", "A"), // cycle back-edge
+      makeEdge("A", "D"),
+      makeEdge("B", "E", "relates_to"),
+    ];
+    const shuffledNodes = [nodes[3], nodes[0], nodes[4], nodes[1], nodes[2]];
+    const shuffledEdges = [edges[2], edges[0], edges[4], edges[1], edges[3]];
+
+    const r1 = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    const r2 = computeEpicGraphLayout(shuffledNodes, shuffledEdges, {
+      now: NOW,
+      mode: "structure" as const,
+    });
+    expect(sortedEntries(r1)).toEqual(sortedEntries(r2));
+    expect(r1.backwardsEdges).toEqual(r2.backwardsEdges);
+    expect(r1.laneCount).toBe(r2.laneCount);
+  });
+
+  it("case S5: backwardsEdges have fromX > toX (points against rank)", () => {
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+    const edges = [makeEdge("A", "B"), makeEdge("B", "C"), makeEdge("C", "A")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    expect(r.backwardsEdges.length).toBeGreaterThanOrEqual(1);
+    for (const be of r.backwardsEdges) {
+      expect(be.fromX).toBeGreaterThan(be.toX);
+      expect(r.positions.get(be.from)!.x).toBeGreaterThan(r.positions.get(be.to)!.x);
+    }
+  });
+
+  it("case S6: lane === order; laneCount === tallest layer", () => {
+    // 3-node layer (rank 0: A,B,C all blocking D) + 1-node layer (rank 1: D).
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W), makeNode("D", W)];
+    const edges = [makeEdge("A", "D"), makeEdge("B", "D"), makeEdge("C", "D")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+
+    const wide = ["A", "B", "C"].map((id) => r.positions.get(id)!);
+    const lanes = wide.map((p) => p.lane).sort((x, y) => x - y);
+    expect(lanes).toEqual([0, 1, 2]);
+    expect(r.positions.get("D")!.lane).toBe(0);
+    expect(r.laneCount).toBe(3);
+  });
+});

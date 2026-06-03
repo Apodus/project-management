@@ -1,4 +1,6 @@
 import type { EpicGraphEdge, EpicGraphNode } from "./api";
+import { computeRanks } from "./epic-graph-rank";
+import { computeOrder } from "./epic-graph-order";
 
 /**
  * Pure, deterministic layout engine for the epic timeline-DAG view.
@@ -26,6 +28,10 @@ import type { EpicGraphEdge, EpicGraphNode } from "./api";
  */
 
 const ONE_DAY_MS = 86_400_000;
+
+const STRUCTURE_X_GAP = 320; // px between adjacent ranks (node is 200px wide → 120px edge channel)
+const STRUCTURE_ROW_HEIGHT = 104; // px between adjacent orders within a layer
+const STRUCTURE_X_PAD = 80; // left margin
 
 export interface LayoutOptions {
   /**
@@ -276,6 +282,49 @@ function computeTimelineLayout(
   return { mode: "timeline", positions, scale, laneCount, backwardsEdges };
 }
 
+function computeStructureLayout(
+  nodes: EpicGraphNode[],
+  edges: EpicGraphEdge[],
+): StructureLayoutResult {
+  // Compose the pure P2 rank pass + P3 order pass; both are deterministic
+  // (id-sorted, no clock), so structure layout inherits that.
+  const rank = computeRanks(nodes, edges);
+  const order = computeOrder(rank);
+
+  // Coordinate pass. x = rank * gap (strictly increasing → prerequisite always
+  // left of dependent). y = within-layer order, each layer CENTERED on y=0
+  // (closed-form barycenter; no iterative solver): a layer of size k maps order
+  // o → (o - (k-1)/2) * rowHeight, so all layers share a common axis & edges stay short.
+  const positions = new Map<string, BaseNodePosition>();
+  let laneCount = 0;
+  for (let r = 0; r < order.layers.length; r++) {
+    const layer = order.layers[r];
+    const k = layer.length;
+    if (k > laneCount) laneCount = k; // tallest layer; loop form avoids Math.max(...[]) = -Infinity on empty
+    const x = STRUCTURE_X_PAD + r * STRUCTURE_X_GAP;
+    for (let o = 0; o < k; o++) {
+      const y = (o - (k - 1) / 2) * STRUCTURE_ROW_HEIGHT;
+      positions.set(layer[o], { x, y, lane: o });
+    }
+  }
+
+  // Re-semanticized cycle back-edges: each points AGAINST rank, so fromX > toX
+  // (the "backwards" signal the canvas/getEdgeStyling key on). Skip absent
+  // endpoints defensively. Sort with the SAME comparator as timeline backwardsEdges.
+  const backwardsEdges: BackwardsEdge[] = [];
+  for (const be of rank.excludedBackEdges) {
+    const fromPos = positions.get(be.from);
+    const toPos = positions.get(be.to);
+    if (!fromPos || !toPos) continue;
+    backwardsEdges.push({ from: be.from, to: be.to, fromX: fromPos.x, toX: toPos.x });
+  }
+  backwardsEdges.sort((a, b) =>
+    a.from < b.from ? -1 : a.from > b.from ? 1 : a.to < b.to ? -1 : a.to > b.to ? 1 : 0,
+  );
+
+  return { mode: "structure", positions, laneCount, backwardsEdges };
+}
+
 export function computeEpicGraphLayout(
   nodes: EpicGraphNode[],
   edges: EpicGraphEdge[],
@@ -298,7 +347,7 @@ export function computeEpicGraphLayout(
 ): LayoutResult {
   const mode = opts.mode ?? "timeline";
   if (mode === "structure") {
-    throw new Error("structure layout mode not implemented until C1.P4");
+    return computeStructureLayout(nodes, edges);
   }
   return computeTimelineLayout(nodes, edges, opts);
 }
