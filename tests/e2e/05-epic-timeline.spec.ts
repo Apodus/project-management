@@ -83,6 +83,23 @@ test.describe("Epic Timeline (Roadmap)", () => {
       expect(aBox!.x).toBeLessThan(bBox!.x);
     }).toPass({ timeout: 10_000 });
 
+    // P1 readability win, end-to-end: a single-prerequisite dependent renders within
+    // the alignment band of its prerequisite (assignCoordinates lands an n=1 dependent
+    // on its prereq's exact y; band absorbs node-height + fitView <=0.65 zoom slack).
+    await expect(async () => {
+      const aBox = await page
+        .locator(".react-flow__node", { hasText: "Foundation epic" })
+        .boundingBox();
+      const bBox = await page
+        .locator(".react-flow__node", { hasText: "Dependent epic" })
+        .boundingBox();
+      expect(aBox).not.toBeNull();
+      expect(bBox).not.toBeNull();
+      const aCenterY = aBox!.y + aBox!.height / 2;
+      const bCenterY = bBox!.y + bBox!.height / 2;
+      expect(Math.abs(aCenterY - bCenterY)).toBeLessThan(140);
+    }).toPass({ timeout: 10_000 });
+
     // The mode toggle flips between Structure and Timeline. The "Today" line
     // renders ONLY in timeline mode, so it is the observable discriminator.
     await page.getByRole("radio", { name: "Timeline" }).click();
