@@ -1,6 +1,7 @@
 import type { EpicGraphEdge, EpicGraphNode } from "./api";
 import { computeRanks } from "./epic-graph-rank";
 import { computeOrder } from "./epic-graph-order";
+import { assignCoordinates } from "./epic-graph-coords";
 
 /**
  * Pure, deterministic layout engine for the epic timeline-DAG view.
@@ -293,19 +294,21 @@ function computeStructureLayout(
   const order = computeOrder(rank);
 
   // Coordinate pass. x = rank * gap (strictly increasing → prerequisite always
-  // left of dependent). y = within-layer order, each layer CENTERED on y=0
-  // (closed-form barycenter; no iterative solver): a layer of size k maps order
-  // o → (o - (k-1)/2) * rowHeight, so all layers share a common axis & edges stay short.
+  // left of dependent; owned here). y is owned by the neighbor-aligned solver
+  // (epic-graph-coords): dependents are pulled toward their prerequisites' y via
+  // a balanced median sweep that preserves within-layer order and a >= rowHeight
+  // gap — so edges stay short and same-rank nodes never overlap. lane === order.
+  const yById = assignCoordinates(order.layers, rank.forwardEdges, {
+    rowHeight: STRUCTURE_ROW_HEIGHT,
+  });
   const positions = new Map<string, BaseNodePosition>();
   let laneCount = 0;
   for (let r = 0; r < order.layers.length; r++) {
     const layer = order.layers[r];
-    const k = layer.length;
-    if (k > laneCount) laneCount = k; // tallest layer; loop form avoids Math.max(...[]) = -Infinity on empty
+    if (layer.length > laneCount) laneCount = layer.length; // tallest layer; loop form avoids Math.max(...[]) = -Infinity on empty
     const x = STRUCTURE_X_PAD + r * STRUCTURE_X_GAP;
-    for (let o = 0; o < k; o++) {
-      const y = (o - (k - 1) / 2) * STRUCTURE_ROW_HEIGHT;
-      positions.set(layer[o], { x, y, lane: o });
+    for (let o = 0; o < layer.length; o++) {
+      positions.set(layer[o], { x, y: yById.get(layer[o])!, lane: o });
     }
   }
 

@@ -389,6 +389,44 @@ describe("computeEpicGraphLayout — structure mode", () => {
     }
   });
 
+  it("case Sa: single-prereq dependent aligns to its prereq (|ΔY| ≤ rowHeight)", () => {
+    // A→B, each alone in its rank → B should land on A's y (within one row).
+    const nodes = [makeNode("A", W), makeNode("B", W)];
+    const edges = [makeEdge("A", "B")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    const a = r.positions.get("A")!;
+    const b = r.positions.get("B")!;
+    expect(Math.abs(b.y - a.y)).toBeLessThanOrEqual(STRUCTURE_ROW_HEIGHT + 1);
+  });
+
+  it("case Sf: empty-slot — a dependent aligns deep to its prereq, sibling leaves a gap", () => {
+    // Four prereqs G0..G3 on rank 0; A,B on rank 1. G0→A pins A near the TOP,
+    // G3→B pins B near the BOTTOM (G1,G2 have no dependents → an empty slot
+    // between A and B). Mirrors the corrected coords fixture at layout level:
+    // both dependents align to their prereq, a real vertical gap between them.
+    const nodes = [
+      makeNode("G0", W),
+      makeNode("G1", W),
+      makeNode("G2", W),
+      makeNode("G3", W),
+      makeNode("A", W),
+      makeNode("B", W),
+    ];
+    const edges = [makeEdge("G0", "A"), makeEdge("G3", "B")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    const a = r.positions.get("A")!;
+    const b = r.positions.get("B")!;
+    const g0 = r.positions.get("G0")!;
+    const g3 = r.positions.get("G3")!;
+    // A and B share rank 1 → same x, distinct lanes.
+    expect(a.x).toBe(b.x);
+    expect(a.lane).not.toBe(b.lane);
+    // Each dependent aligns to its single prereq; a real gap separates A from B.
+    expect(Math.abs(a.y - g0.y)).toBeLessThanOrEqual(STRUCTURE_ROW_HEIGHT + 1);
+    expect(Math.abs(b.y - g3.y)).toBeLessThanOrEqual(STRUCTURE_ROW_HEIGHT + 1);
+    expect(Math.abs(b.y - a.y)).toBeGreaterThanOrEqual(2 * STRUCTURE_ROW_HEIGHT);
+  });
+
   it("case S2: no overlap — distinct (x,y); same-rank ΔY≥rowHeight, diff-rank ΔX≥gap", () => {
     // A→C, B→C: A,B rank 0; C rank 1.
     const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
