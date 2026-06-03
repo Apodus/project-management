@@ -20,11 +20,18 @@ import type { EpicGraphEdge, EpicGraphNode } from "./api";
  * Date inside this module. The only clock input is the injected `opts.now`
  * string. All ordering is via explicit comparators with id / (from,to)
  * tie-breaks, and the `positions` Map is populated in stable sorted order.
+ *
+ * Mode seam: `computeEpicGraphLayout` dispatches on `opts.mode` over a
+ * discriminated `LayoutResult` (timeline default; structure deferred to P4).
  */
 
 const ONE_DAY_MS = 86_400_000;
 
 export interface LayoutOptions {
+  /**
+   * Layout mode. Defaults to "timeline" in P1; flips to "structure" in P5.
+   */
+  mode?: LayoutMode;
   now: string;
   width?: number;
   xPad?: number;
@@ -41,12 +48,25 @@ export interface LayoutOptions {
   unscheduledIds?: ReadonlySet<string>;
 }
 
-export interface NodePosition {
+export type LayoutMode = "structure" | "timeline";
+
+/** Geometry common to every mode. */
+export interface BaseNodePosition {
   x: number;
   y: number;
   lane: number;
+}
+
+/** Timeline mode additionally carries the representative-time ms (`t`). */
+export interface TimelineNodePosition extends BaseNodePosition {
   t: number;
 }
+
+/**
+ * Back-compat alias: the timeline variant is the full historical shape.
+ * Kept so existing imports of `NodePosition` keep resolving to the same fields.
+ */
+export type NodePosition = TimelineNodePosition;
 
 export interface TimeScale {
   minMs: number;
@@ -64,12 +84,26 @@ export interface BackwardsEdge {
   toX: number;
 }
 
-export interface LayoutResult {
-  positions: Map<string, NodePosition>;
-  scale: TimeScale;
+interface BaseLayoutResult {
+  positions: Map<string, BaseNodePosition>;
   laneCount: number;
   backwardsEdges: BackwardsEdge[];
 }
+
+/** Timeline mode: calendar scale + per-node `t` present. */
+export interface TimelineLayoutResult extends BaseLayoutResult {
+  mode: "timeline";
+  positions: Map<string, TimelineNodePosition>;
+  scale: TimeScale;
+}
+
+/** Structure mode: NO calendar scale, NO per-node `t`. Unpopulated until P4. */
+export interface StructureLayoutResult extends BaseLayoutResult {
+  mode: "structure";
+  positions: Map<string, BaseNodePosition>;
+}
+
+export type LayoutResult = TimelineLayoutResult | StructureLayoutResult;
 
 /**
  * Representative time for a node, in epoch ms.
@@ -89,11 +123,11 @@ function representativeTime(node: EpicGraphNode, nowMs: number): number {
   return nowMs;
 }
 
-export function computeEpicGraphLayout(
+function computeTimelineLayout(
   nodes: EpicGraphNode[],
   edges: EpicGraphEdge[],
   opts: LayoutOptions,
-): LayoutResult {
+): TimelineLayoutResult {
   const width = opts.width ?? 1200;
   const xPad = opts.xPad ?? 80;
   const nodeWidth = opts.nodeWidth ?? 220;
@@ -239,5 +273,32 @@ export function computeEpicGraphLayout(
     a.from < b.from ? -1 : a.from > b.from ? 1 : a.to < b.to ? -1 : a.to > b.to ? 1 : 0,
   );
 
-  return { positions, scale, laneCount, backwardsEdges };
+  return { mode: "timeline", positions, scale, laneCount, backwardsEdges };
+}
+
+export function computeEpicGraphLayout(
+  nodes: EpicGraphNode[],
+  edges: EpicGraphEdge[],
+  opts: LayoutOptions & { mode?: "timeline" },
+): TimelineLayoutResult;
+export function computeEpicGraphLayout(
+  nodes: EpicGraphNode[],
+  edges: EpicGraphEdge[],
+  opts: LayoutOptions & { mode: "structure" },
+): StructureLayoutResult;
+export function computeEpicGraphLayout(
+  nodes: EpicGraphNode[],
+  edges: EpicGraphEdge[],
+  opts: LayoutOptions,
+): LayoutResult;
+export function computeEpicGraphLayout(
+  nodes: EpicGraphNode[],
+  edges: EpicGraphEdge[],
+  opts: LayoutOptions,
+): LayoutResult {
+  const mode = opts.mode ?? "timeline";
+  if (mode === "structure") {
+    throw new Error("structure layout mode not implemented until C1.P4");
+  }
+  return computeTimelineLayout(nodes, edges, opts);
 }
