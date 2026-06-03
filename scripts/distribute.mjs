@@ -138,8 +138,17 @@ export function resolveSources(root) {
   return sources;
 }
 
-function pnpmCommand() {
-  return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+/**
+ * Spawn `pnpm <args>` cross-platform WITHOUT `shell:true`. On Windows `pnpm` is a
+ * `.cmd` shim that recent Node refuses to spawn directly (EINVAL, CVE-2024-27980
+ * hardening); `shell:true` works but trips DEP0190 (unescaped args). Routing
+ * through `cmd.exe /c` avoids both — cmd.exe is a real executable and resolves
+ * the `pnpm` shim itself. On POSIX, spawn `pnpm` directly.
+ */
+function spawnPnpm(args, opts) {
+  return process.platform === "win32"
+    ? spawnSync("cmd.exe", ["/c", "pnpm", ...args], opts)
+    : spawnSync("pnpm", args, opts);
 }
 
 function runBuild(root) {
@@ -150,7 +159,7 @@ function runBuild(root) {
   ];
   for (const stepArgs of steps) {
     console.log(`Running: pnpm ${stepArgs.join(" ")}`);
-    const result = spawnSync(pnpmCommand(), stepArgs, {
+    const result = spawnPnpm(stepArgs, {
       cwd: root,
       stdio: "inherit",
     });
