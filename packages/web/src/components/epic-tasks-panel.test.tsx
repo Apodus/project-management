@@ -34,6 +34,7 @@ vi.mock("@xyflow/react", () => ({
     </div>
   ),
   Background: () => null,
+  Controls: () => null,
   Handle: () => null,
   Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
   MarkerType: {},
@@ -90,6 +91,11 @@ describe("EpicTasksPanel", () => {
     render(<EpicTasksPanel projectId="p1" epicId="e1" epicName="Auth epic" onClose={() => {}} />);
     expect(screen.getByText("Wire up auth")).toBeInTheDocument();
     expect(screen.getByText("Add login form")).toBeInTheDocument();
+  });
+
+  it("renders a resize handle (draggable/resizable window affordance)", () => {
+    render(<EpicTasksPanel projectId="p1" epicId="e1" epicName="Auth epic" onClose={() => {}} />);
+    expect(screen.getByTestId("panel-resize-handle")).toBeInTheDocument();
   });
 
   it("calls onClose when the ✕ button is clicked", () => {

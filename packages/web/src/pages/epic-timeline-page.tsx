@@ -26,6 +26,9 @@ import { EpicNode, type EpicNodeData } from "@/components/epic-node";
 import { MilestoneGuides } from "@/components/milestone-guides";
 import { EpicTasksPanel } from "@/components/epic-tasks-panel";
 
+// Caps fit-zoom so sparse graphs don't balloon; manual zoom unaffected.
+const ROADMAP_FIT_OPTIONS = { padding: 0.2, maxZoom: 0.65 } as const;
+
 // ---- Past rail ----
 
 // A bottom-left toggle that collapses "done-and-old" epics behind an "N older"
@@ -53,8 +56,13 @@ function PastRailPanel({
     }
     const raf = requestAnimationFrame(() => {
       if (showPast)
-        fitView({ duration: 400 }); // EXPAND -> reveal all
-      else fitView({ nodes: activeNodeIds.map((id) => ({ id })), duration: 400 }); // COLLAPSE -> frame active
+        fitView({ ...ROADMAP_FIT_OPTIONS, duration: 400 }); // EXPAND -> reveal all
+      else
+        fitView({
+          ...ROADMAP_FIT_OPTIONS,
+          nodes: activeNodeIds.map((id) => ({ id })),
+          duration: 400,
+        }); // COLLAPSE -> frame active
     });
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on showPast intentionally; fitView/activeNodeIds are read at toggle time.
@@ -263,6 +271,7 @@ export function EpicTimelinePage() {
             onNodeMouseEnter={(_, node) => setFocusedId(node.id)}
             onNodeMouseLeave={() => setFocusedId(null)}
             fitView
+            fitViewOptions={ROADMAP_FIT_OPTIONS}
             proOptions={{ hideAttribution: true }}
           >
             <Background />

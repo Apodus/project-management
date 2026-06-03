@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { X } from "lucide-react";
-import { ReactFlow, Background, type Node, type Edge } from "@xyflow/react";
+import { ReactFlow, Background, Controls, type Node, type Edge } from "@xyflow/react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTaskGraph } from "@/hooks/use-task-graph";
+import { useFloatingPanel } from "@/hooks/use-floating-panel";
 import { computeTaskGraphLayout } from "@/lib/task-graph-layout";
 import { getEdgeStyling } from "@/lib/epic-graph-style";
 import { TaskNode, type TaskNodeData } from "@/components/task-node";
@@ -28,6 +29,7 @@ const taskNodeTypes = { task: TaskNode };
 export function EpicTasksPanel({ projectId, epicId, epicName, onClose }: EpicTasksPanelProps) {
   const navigate = useNavigate();
   const { data: graph, isLoading, error } = useTaskGraph(projectId, epicId);
+  const { panelRef, style, dragHandleProps, resizeHandleProps } = useFloatingPanel();
 
   const layout = useMemo(
     () =>
@@ -78,20 +80,30 @@ export function EpicTasksPanel({ projectId, epicId, epicName, onClose }: EpicTas
   const isEmpty = !isLoading && !error && graph && graph.nodes.length === 0;
 
   return (
-    <Card className="absolute right-4 top-4 z-10 flex h-[28rem] w-96 flex-col gap-0 py-0 shadow-lg">
-      {/* Header */}
-      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
+    <Card ref={panelRef} style={style} className="flex flex-col gap-0 py-0 shadow-lg">
+      {/* Header (drag handle) */}
+      <div
+        className="flex shrink-0 cursor-move touch-none select-none items-center gap-2 border-b px-3 py-2"
+        {...dragHandleProps}
+      >
         <span className="flex-1 truncate text-sm font-semibold" title={epicName}>
           {epicName || "Epic"}
         </span>
         <Link
           to="/epics/$epicId"
           params={{ epicId }}
+          data-no-drag
           className="text-muted-foreground hover:text-foreground whitespace-nowrap text-xs"
         >
           Open full epic →
         </Link>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close panel">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          aria-label="Close panel"
+          data-no-drag
+        >
           <X className="size-4" />
         </Button>
       </div>
@@ -127,12 +139,22 @@ export function EpicTasksPanel({ projectId, epicId, epicName, onClose }: EpicTas
               navigate({ to: "/tasks/$taskId", params: { taskId: node.id } })
             }
             fitView
+            fitViewOptions={{ padding: 0.2, maxZoom: 0.65 }}
             proOptions={{ hideAttribution: true }}
           >
             <Background />
+            <Controls showInteractive={false} />
           </ReactFlow>
         )}
       </div>
+
+      {/* Resize grip (bottom-right) */}
+      <div
+        data-testid="panel-resize-handle"
+        aria-hidden
+        className="border-muted-foreground/40 absolute bottom-0 right-0 size-4 cursor-nwse-resize touch-none border-b-2 border-r-2"
+        {...resizeHandleProps}
+      />
     </Card>
   );
 }
