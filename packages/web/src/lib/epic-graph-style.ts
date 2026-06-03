@@ -20,18 +20,20 @@ import type { CSSProperties } from "react";
 const STROKE_BASE = "#94a3b8"; // slate-400
 const STROKE_BACKWARDS = "#f59e0b"; // amber-500
 const STROKE_HIGHLIGHT = "#475569"; // slate-600 (brightened resting stroke)
+const STROKE_RELATES = "#cbd5e1"; // slate-300 (soft, non-sequencing)
 
 const MARKER_SIZE = 16;
 
 export interface EdgeVisualInput {
   provenance: "derived" | "explicit";
+  dependencyType: "blocks" | "relates_to";
   isBackwards: boolean;
   highlightState: "none" | "highlighted" | "dimmed";
 }
 
 export interface EdgeVisual {
   style: CSSProperties;
-  markerEnd: {
+  markerEnd?: {
     type: MarkerType;
     width: number;
     height: number;
@@ -43,7 +45,31 @@ export interface EdgeVisual {
 }
 
 export function getEdgeStyling(input: EdgeVisualInput): EdgeVisual {
-  const { provenance, isBackwards, highlightState } = input;
+  const { provenance, dependencyType, isBackwards, highlightState } = input;
+
+  const transition = "opacity 150ms ease, stroke 150ms ease, stroke-width 150ms ease";
+
+  // relates_to (non-sequencing) edges — SECOND precedence tier, after backwards.
+  // A backwards (data-contradiction) edge stays amber/curved regardless of type;
+  // but a forward relates_to edge fully owns its soft dotted style and returns
+  // here, short-circuiting the provenance dash block so its "2 4" can never be
+  // overwritten by derived "6 4". No arrowhead: relates_to is non-directional.
+  if (!isBackwards && dependencyType === "relates_to") {
+    const relatesStroke =
+      highlightState === "highlighted" ? STROKE_HIGHLIGHT : STROKE_RELATES;
+    return {
+      style: {
+        stroke: relatesStroke,
+        strokeWidth: highlightState === "highlighted" ? 2 : 1,
+        opacity: highlightState === "dimmed" ? 0.12 : 1,
+        strokeDasharray: "2 4",
+        transition,
+      },
+      type: "default",
+      zIndex: highlightState === "highlighted" ? 10 : 0,
+      animated: false,
+    };
+  }
 
   // Stroke color: amber for backwards (and it stays amber even when
   // highlighted); otherwise slate, brightened on highlight.
@@ -75,7 +101,7 @@ export function getEdgeStyling(input: EdgeVisualInput): EdgeVisual {
     // smoothly (same anti-flicker rule as the nodes: never reset current state,
     // only move the target). Unconditional so a flapping hover target redirects
     // the in-flight interpolation instead of snapping.
-    transition: "opacity 150ms ease, stroke 150ms ease, stroke-width 150ms ease",
+    transition,
   };
   // Provenance: derived dashes, explicit is solid (no dash property at all).
   if (provenance === "derived") {

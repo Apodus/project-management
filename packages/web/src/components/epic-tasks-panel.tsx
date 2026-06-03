@@ -62,6 +62,7 @@ export function EpicTasksPanel({ projectId, epicId, epicName, onClose }: EpicTas
       target: e.to,
       ...getEdgeStyling({
         provenance: e.provenance,
+        dependencyType: e.dependency_type,
         isBackwards: false,
         highlightState: "none",
       }),

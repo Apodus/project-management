@@ -419,7 +419,7 @@ export function EpicRoadmapCanvas({
         const routeSig = route
           ? route.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(";")
           : "";
-        const sig = `${e.provenance}|${isBackwards}|${highlightState}|${routeSig}`;
+        const sig = `${e.provenance}|${e.dependency_type}|${isBackwards}|${highlightState}|${routeSig}`;
         const cached = cache.get(key);
         if (cached && cached.sig === sig) return cached.edge; // unchanged → reuse
         const edge: Edge = {
@@ -430,7 +430,12 @@ export function EpicRoadmapCanvas({
           // tight backwards arc, not a wrap-around. Forward edges leave these undefined →
           // bind to the default Right-source / Left-target handles.
           ...(isBackwards ? { sourceHandle: "src-left", targetHandle: "tgt-right" } : {}),
-          ...getEdgeStyling({ provenance: e.provenance, isBackwards, highlightState }),
+          ...getEdgeStyling({
+            provenance: e.provenance,
+            dependencyType: e.dependency_type,
+            isBackwards,
+            highlightState,
+          }),
           // A routed long edge overrides the default edge type so RoutedEdge draws
           // the threaded polyline; spread last so `type` wins over getEdgeStyling.
           ...(route ? { type: "routed" as const, data: { points: route } } : {}),
