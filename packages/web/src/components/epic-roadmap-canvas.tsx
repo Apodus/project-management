@@ -572,11 +572,11 @@ export function EpicRoadmapCanvas({
               </Panel>
             )}
             {/* Transitive-reduction toggle: structure-mode full variant only, and
-                only when there are redundant edges to reveal/hide. Top-left so it
-                doesn't collide with the mode toggle (top-right) / cycle banner
-                (top-center). */}
+                only when there are redundant edges to reveal/hide. Bottom-center:
+                top-left is the category legend + frontier key, top-right the mode
+                toggle, top-center the cycle banner, bottom corners the hide rails. */}
             {variant !== "compact" && effectiveMode === "structure" && redundantKeys.size > 0 && (
-              <Panel position="top-left">
+              <Panel position="bottom-center">
                 <Button variant="outline" size="sm" onClick={() => setShowAllDeps((v) => !v)}>
                   {showAllDeps
                     ? `Hide ${redundantKeys.size} redundant`
