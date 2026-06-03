@@ -9,7 +9,8 @@ const ADMIN_PASS = "password123";
  *
  * The load-bearing real-browser gate: it proves the ReactFlow canvas renders
  * with NON-ZERO height (a 0px canvas paints no visible nodes), draws the
- * dependency edge, and click-drills into the epic detail route — the visual
+ * dependency edge, and that clicking an epic opens the floating task panel
+ * whose "Open full epic →" link drills into epic detail — the visual
  * verification deferred from P3–P5.
  *
  * Seeds two epics + an explicit dependency (epicB depends on epicA) via the API,
@@ -66,12 +67,21 @@ test.describe("Epic Timeline (Roadmap)", () => {
       timeout: 10_000,
     });
 
-    // Click-drill: clicking the node navigates to the epic detail route.
+    // Clicking an epic node opens the floating task panel IN PLACE — it no
+    // longer navigates away (that changed when the floating task mini-DAG
+    // shipped). The panel's "Open full epic →" link is the drill-through.
     await page.locator(".react-flow__node", { hasText: "Foundation epic" }).click();
+    const openEpicLink = page.getByRole("link", { name: /open full epic/i });
+    await expect(openEpicLink).toBeVisible({ timeout: 10_000 });
+
+    // Drill through to the epic detail route via the panel link. Assert the
+    // epic-detail <h1> heading specifically (unambiguous — roadmap nodes/panel
+    // use div/span, so a heading-role locator can't match the in-transition DOM).
+    await openEpicLink.click();
     await page.waitForURL("**/epics/**", { timeout: 10_000 });
-    await expect(page.getByText("Foundation epic")).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(
+      page.getByRole("heading", { name: "Foundation epic" }),
+    ).toBeVisible({ timeout: 10_000 });
 
     // Past-rail ABSENT assertion (deterministic, not a soft skip):
     // API-seeded epics have activity_recency ≈ now → always partitioned to the
