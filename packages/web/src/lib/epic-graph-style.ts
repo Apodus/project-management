@@ -28,6 +28,14 @@ export interface EdgeVisualInput {
   provenance: "derived" | "explicit";
   dependencyType: "blocks" | "relates_to";
   isBackwards: boolean;
+  /**
+   * A forward `blocks` edge hidden by transitive reduction (a longer path
+   * already implies it). When the "Show all dependencies" toggle reveals it, it
+   * renders faint + dotted + arrowless — it carries no extra ordering, so it
+   * never competes visually with the real chain. Ignored for backwards /
+   * relates_to edges (those tiers win first).
+   */
+  isRedundant: boolean;
   highlightState: "none" | "highlighted" | "dimmed";
 }
 
@@ -45,9 +53,31 @@ export interface EdgeVisual {
 }
 
 export function getEdgeStyling(input: EdgeVisualInput): EdgeVisual {
-  const { provenance, dependencyType, isBackwards, highlightState } = input;
+  const { provenance, dependencyType, isBackwards, isRedundant, highlightState } = input;
 
   const transition = "opacity 150ms ease, stroke 150ms ease, stroke-width 150ms ease";
+
+  // Redundant `blocks` edge (transitive-reduction-hidden, revealed by the
+  // toggle) — THIRD precedence tier, AFTER backwards/relates_to short-circuits,
+  // BEFORE the normal blocks logic. Faint, dotted, arrowless: it restates an
+  // ordering the visible chain already carries, so it must never read as a real
+  // dependency arc. Dim/highlight only nudge its opacity.
+  if (!isBackwards && dependencyType === "blocks" && isRedundant) {
+    return {
+      style: {
+        stroke: STROKE_BASE,
+        strokeWidth: 1,
+        opacity:
+          highlightState === "highlighted" ? 0.5 : highlightState === "dimmed" ? 0.08 : 0.2,
+        strokeDasharray: "2 3",
+        transition,
+      },
+      // markerEnd omitted — no arrowhead on a redundant restatement.
+      type: "default",
+      zIndex: highlightState === "highlighted" ? 10 : 0,
+      animated: false,
+    };
+  }
 
   // relates_to (non-sequencing) edges — SECOND precedence tier, after backwards.
   // A backwards (data-contradiction) edge stays amber/curved regardless of type;

@@ -1,5 +1,6 @@
 import type { EpicGraphEdge, EpicGraphNode } from "./api";
 import { computeRanks } from "./epic-graph-rank";
+import { transitiveReduction } from "./epic-graph-reduce";
 import { computeOrder } from "./epic-graph-order";
 import { assignCoordinates } from "./epic-graph-coords";
 import { computeLongEdgeRoutes, type RoutePoint } from "./epic-graph-route";
@@ -120,6 +121,13 @@ export interface StructureLayoutResult extends BaseLayoutResult {
    * The canvas renders these as a custom "routed" edge that threads the gaps.
    */
   longEdgeRoutes: Map<string, RoutePoint[]>;
+  /**
+   * `blocks` edges hidden by transitive reduction — a direct `u -> v` whose
+   * ordering is already implied by a longer visible path `u -> … -> v`. Keyed
+   * `${from}->${to}`. Always present (empty when nothing is redundant). The
+   * canvas drops these by default and reveals them faint behind a toggle.
+   */
+  redundantEdges: Set<string>;
 }
 
 export type LayoutResult = TimelineLayoutResult | StructureLayoutResult;
@@ -302,14 +310,22 @@ function computeStructureLayout(
   // Compose the pure P2 rank pass + P3 order pass; both are deterministic
   // (id-sorted, no clock), so structure layout inherits that.
   const rank = computeRanks(nodes, edges);
-  const order = computeOrder(rank);
+
+  // Transitive reduction over the cycle-broken DAG (CORRECTION 2: feed
+  // rank.forwardEdges, the acyclic edge set — NOT the raw input). A direct edge
+  // implied by a longer visible path is REDUNDANT; we lay out / order / route
+  // the `reduced` set only, and expose the `redundant` set for the canvas to
+  // hide-by-default + toggle. Ranks stay FULL-based (computeRanks unchanged), so
+  // node x/layer is identical to pre-reduction — only edge rendering changes.
+  const { reduced, redundant } = transitiveReduction(rank.forwardEdges);
+  const order = computeOrder({ ...rank, forwardEdges: reduced });
 
   // Coordinate pass. x = rank * gap (strictly increasing → prerequisite always
   // left of dependent; owned here). y is owned by the neighbor-aligned solver
   // (epic-graph-coords): dependents are pulled toward their prerequisites' y via
   // a balanced median sweep that preserves within-layer order and a >= rowHeight
   // gap — so edges stay short and same-rank nodes never overlap. lane === order.
-  const yById = assignCoordinates(order.layers, rank.forwardEdges, {
+  const yById = assignCoordinates(order.layers, reduced, {
     rowHeight: STRUCTURE_ROW_HEIGHT,
   });
   const positions = new Map<string, BaseNodePosition>();
@@ -339,14 +355,16 @@ function computeStructureLayout(
 
   // Long-span (> 1 rank) forward `blocks` edges get a center-y polyline that
   // threads the inter-rank gaps so they don't slice through intermediate nodes.
-  const longEdgeRoutes = computeLongEdgeRoutes(positions, rank.forwardEdges, {
+  const longEdgeRoutes = computeLongEdgeRoutes(positions, reduced, {
     xPad: STRUCTURE_X_PAD,
     xGap: STRUCTURE_X_GAP,
     nodeHeight: STRUCTURE_NODE_HEIGHT,
     bandMargin: 28,
   });
 
-  return { mode: "structure", positions, laneCount, backwardsEdges, longEdgeRoutes };
+  const redundantEdges = new Set(redundant.map((e) => `${e.from}->${e.to}`));
+
+  return { mode: "structure", positions, laneCount, backwardsEdges, longEdgeRoutes, redundantEdges };
 }
 
 export function computeEpicGraphLayout(

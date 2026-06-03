@@ -27,6 +27,7 @@ vi.mock("@xyflow/react", () => ({
       sourceHandle?: string | null;
       targetHandle?: string | null;
       type?: string;
+      style?: { opacity?: number };
     }[];
     children?: ReactNode;
   }) => (
@@ -49,6 +50,7 @@ vi.mock("@xyflow/react", () => ({
           data-source-handle={e.sourceHandle ?? ""}
           data-target-handle={e.targetHandle ?? ""}
           data-edge-type={e.type ?? ""}
+          data-style-opacity={String(e.style?.opacity ?? "")}
         />
       ))}
       {children}
@@ -340,10 +342,42 @@ function gatedGraph(): EpicGraph {
   };
 }
 
-// Three active epics chained A→B→C (ranks 0/1/2) PLUS a long-span A→C `blocks`
-// edge (dist 2). Drives the routed-edge test: A→C must render as type "routed",
-// the short A→B as the default/"" type.
+// Four active epics: B→C, C→D chains ranks (B=0,C=1,D=2) and a long-span A→D
+// (dist 2) with NO alternate path — so A→D is NOT redundant and survives to
+// route. Drives the routed-edge test: A→D must render as type "routed", a
+// surviving short edge (B→C / C→D) as the default/"" type. (A genuine
+// non-redundant long edge — the old A→B→C + A→C had A→C redundant.)
 function longEdgeGraph(): EpicGraph {
+  const node = (id: string, name: string) => ({
+    id,
+    project_id: "proj-1",
+    name,
+    status: "active" as const,
+    priority: "high" as const,
+    target_date: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-06-01T00:00:00.000Z",
+    taskSummary: { total: 4, done: 1, byStatus: {} },
+    health: "on_track" as const,
+    activity_recency: "2026-06-01T00:00:00.000Z",
+    time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+  });
+  return {
+    nodes: [node("a", "Epic A"), node("b", "Epic B"), node("c", "Epic C"), node("d", "Epic D")],
+    edges: [
+      { from: "b", to: "c", dependency_type: "blocks", provenance: "explicit" },
+      { from: "c", to: "d", dependency_type: "blocks", provenance: "explicit" },
+      { from: "a", to: "d", dependency_type: "blocks", provenance: "explicit" },
+    ],
+    hasCycle: false,
+  };
+}
+
+// Three active epics A→B, B→C, plus a redundant direct A→C (the chain already
+// implies it). Drives the transitive-reduction hide/toggle tests: A→C is hidden
+// by default and revealed (faint, non-routed) by the "Show all dependencies"
+// toggle.
+function redundantDepsGraph(): EpicGraph {
   const node = (id: string, name: string) => ({
     id,
     project_id: "proj-1",
@@ -490,13 +524,63 @@ describe("EpicRoadmapCanvas", () => {
     mocks.useEpicGraph.mockReturnValue(q(longEdgeGraph()));
     render(<EpicRoadmapCanvas projectId="proj-1" />);
     const edges = screen.getAllByTestId("rf-edge");
-    const long = edges.find((e) => e.getAttribute("data-edge-id") === "a->c-blocks");
-    const short = edges.find((e) => e.getAttribute("data-edge-id") === "a->b-blocks");
+    const long = edges.find((e) => e.getAttribute("data-edge-id") === "a->d-blocks");
+    const short = edges.find((e) => e.getAttribute("data-edge-id") === "b->c-blocks");
     expect(long).toBeDefined();
     expect(short).toBeDefined();
     // The dist-2 edge is routed; the dist-1 edge keeps the default type.
     expect(long?.getAttribute("data-edge-type")).toBe("routed");
     expect(short?.getAttribute("data-edge-type")).not.toBe("routed");
+  });
+
+  // ── Transitive reduction (hide redundant deps) ──────────────────
+
+  it("hides a redundant direct blocks edge by default", () => {
+    mocks.useEpicGraph.mockReturnValue(q(redundantDepsGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    const edges = screen.getAllByTestId("rf-edge");
+    const ids = edges.map((e) => e.getAttribute("data-edge-id"));
+    // A→C is redundant (A→B→C implies it) → absent; the chain edges stay.
+    expect(ids).not.toContain("a->c-blocks");
+    expect(ids).toContain("a->b-blocks");
+    expect(ids).toContain("b->c-blocks");
+  });
+
+  it("reveals the redundant edge faint (non-routed) when 'Show all dependencies' is toggled", () => {
+    mocks.useEpicGraph.mockReturnValue(q(redundantDepsGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // The toggle counts the single redundant edge.
+    fireEvent.click(screen.getByRole("button", { name: /Show all dependencies \(1\)/ }));
+    const edges = screen.getAllByTestId("rf-edge");
+    const redundant = edges.find((e) => e.getAttribute("data-edge-id") === "a->c-blocks");
+    expect(redundant).toBeDefined();
+    // Revealed redundant edge draws faint + straight, never "routed".
+    expect(redundant?.getAttribute("data-edge-type")).not.toBe("routed");
+    expect(redundant?.getAttribute("data-style-opacity")).toBe("0.2");
+  });
+
+  it("offers the toggle only in structure full variant, hidden when no redundancy", () => {
+    // Present (count 1) for the redundant fixture in the full structure view.
+    mocks.useEpicGraph.mockReturnValue(q(redundantDepsGraph()));
+    const { unmount } = render(<EpicRoadmapCanvas projectId="proj-1" />);
+    expect(
+      screen.getByRole("button", { name: /Show all dependencies \(1\)/ }),
+    ).toBeInTheDocument();
+    unmount();
+
+    // Absent in the compact embed.
+    render(<EpicRoadmapCanvas projectId="proj-1" variant="compact" />);
+    expect(
+      screen.queryByRole("button", { name: /Show all dependencies/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not offer the toggle when there are no redundant edges", () => {
+    mocks.useEpicGraph.mockReturnValue(q(categorizedGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    expect(
+      screen.queryByRole("button", { name: /Show all dependencies/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps a backwards (cycle) edge on smoothstep, never routed", () => {

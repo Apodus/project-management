@@ -64,6 +64,7 @@ export function EpicTasksPanel({ projectId, epicId, epicName, onClose }: EpicTas
         provenance: e.provenance,
         dependencyType: e.dependency_type,
         isBackwards: false,
+        isRedundant: false, // task mini-DAG does no transitive reduction
         highlightState: "none",
       }),
     }));

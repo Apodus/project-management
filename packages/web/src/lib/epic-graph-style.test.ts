@@ -7,6 +7,7 @@ function input(overrides: Partial<EdgeVisualInput> = {}): EdgeVisualInput {
     provenance: "explicit",
     dependencyType: "blocks",
     isBackwards: false,
+    isRedundant: false,
     highlightState: "none",
     ...overrides,
   };
@@ -126,6 +127,42 @@ describe("getEdgeStyling — relates_to", () => {
     const v = getEdgeStyling(input({ dependencyType: "relates_to", highlightState: "dimmed" }));
     expect(v.style.opacity).toBeCloseTo(0.12);
     expect(v.style.strokeDasharray).toBe("2 4");
+  });
+});
+
+describe("getEdgeStyling — redundant", () => {
+  it("a revealed redundant blocks edge is faint, dotted, thin, arrowless, default type", () => {
+    const v = getEdgeStyling(input({ isRedundant: true, dependencyType: "blocks" }));
+    expect(v.style.opacity).toBeCloseTo(0.2);
+    expect(v.style.strokeWidth).toBe(1);
+    expect(v.style.strokeDasharray).toBe("2 3");
+    expect(v.markerEnd).toBeUndefined();
+    expect(v.type).toBe("default");
+  });
+
+  it("highlight brightens the redundant edge; dim fades it further", () => {
+    const hi = getEdgeStyling(
+      input({ isRedundant: true, dependencyType: "blocks", highlightState: "highlighted" }),
+    );
+    expect(hi.style.opacity).toBeCloseTo(0.5);
+    expect(hi.zIndex).toBe(10);
+    const dim = getEdgeStyling(
+      input({ isRedundant: true, dependencyType: "blocks", highlightState: "dimmed" }),
+    );
+    expect(dim.style.opacity).toBeCloseTo(0.08);
+  });
+
+  it("isRedundant is ignored when the edge is backwards (backwards wins)", () => {
+    const v = getEdgeStyling(input({ isRedundant: true, isBackwards: true }));
+    expect(v.style.stroke).toBe("#f59e0b");
+    expect(v.type).toBe("smoothstep");
+    expect(v.style.strokeDasharray).not.toBe("2 3");
+  });
+
+  it("isRedundant is ignored for relates_to (relates wins)", () => {
+    const v = getEdgeStyling(input({ isRedundant: true, dependencyType: "relates_to" }));
+    expect(v.style.strokeDasharray).toBe("2 4");
+    expect(v.style.stroke).toBe("#cbd5e1");
   });
 });
 

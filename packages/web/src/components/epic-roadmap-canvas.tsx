@@ -184,6 +184,11 @@ export function EpicRoadmapCanvas({
   const [hideDone, setHideDone] = useState(false); // default OFF = show done
   const [hideFuture, setHideFuture] = useState(false); // default OFF = show future
 
+  // Whether transitive-reduction-hidden (redundant) `blocks` edges are revealed.
+  // Default OFF = hide them: a direct A->C arc already implied by A->…->C is
+  // dropped, decluttering the DAG. The toggle reveals them faint.
+  const [showAllDeps, setShowAllDeps] = useState(false);
+
   // The epic whose task mini-DAG panel is open (null = none). Clicking the same
   // epic again toggles the panel closed.
   const [selectedEpicId, setSelectedEpicId] = useState<string | null>(null);
@@ -326,6 +331,16 @@ export function EpicRoadmapCanvas({
     [layout],
   );
 
+  // Redundant `blocks` edge keys (transitive-reduction-hidden), narrowed on mode
+  // (CORRECTION 4): `redundantEdges` exists only on the structure result, so
+  // fall back to the stable empty set in timeline. Drives the hide-by-default
+  // filter + the faint reveal + the toggle control's visibility/count.
+  const redundantKeys = useMemo(
+    () =>
+      layout.mode === "structure" ? layout.redundantEdges : (EMPTY_SET as ReadonlySet<string>),
+    [layout],
+  );
+
   // The dependency chain through the hovered node (null when nothing hovered).
   const chain = useMemo(
     () => (focusedId ? computeChain(focusedId, graph?.edges ?? []) : null),
@@ -398,10 +413,21 @@ export function EpicRoadmapCanvas({
     const seen = new Set<string>();
     const next = graph.edges
       .filter((e) => renderedIds.has(e.from) && renderedIds.has(e.to))
+      // Transitive reduction: a redundant `blocks` edge (a direct A->C already
+      // implied by a longer visible path) is DROPPED unless the "Show all
+      // dependencies" toggle is on (CORRECTION 5 — gated on `blocks` so a
+      // redundant key never affects relates_to/backwards edges).
+      .filter(
+        (e) =>
+          showAllDeps ||
+          !(e.dependency_type === "blocks" && redundantKeys.has(`${e.from}->${e.to}`)),
+      )
       .map((e) => {
         const key = edgeKey(e);
         seen.add(key);
         const isBackwards = backwardsKeys.has(`${e.from}->${e.to}`);
+        const isRedundant =
+          e.dependency_type === "blocks" && redundantKeys.has(`${e.from}->${e.to}`);
         const highlightState = chain
           ? chain.edgeKeys.has(key)
             ? "highlighted"
@@ -410,8 +436,12 @@ export function EpicRoadmapCanvas({
         // Long-span forward `blocks` edges get a pre-computed polyline route
         // (structure mode only) so they thread the inter-rank gaps instead of
         // slicing through intermediate nodes. Backwards/short/non-blocks → none.
+        // A redundant edge is never routed — when revealed it draws faint+straight.
         const route =
-          !isBackwards && e.dependency_type === "blocks" && layout.mode === "structure"
+          !isBackwards &&
+          !isRedundant &&
+          e.dependency_type === "blocks" &&
+          layout.mode === "structure"
             ? layout.longEdgeRoutes.get(`${e.from}->${e.to}`)
             : undefined;
         // The route points are part of the visual — encode them in the sig so a
@@ -419,7 +449,7 @@ export function EpicRoadmapCanvas({
         const routeSig = route
           ? route.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(";")
           : "";
-        const sig = `${e.provenance}|${e.dependency_type}|${isBackwards}|${highlightState}|${routeSig}`;
+        const sig = `${e.provenance}|${e.dependency_type}|${isBackwards}|${isRedundant}|${highlightState}|${routeSig}`;
         const cached = cache.get(key);
         if (cached && cached.sig === sig) return cached.edge; // unchanged → reuse
         const edge: Edge = {
@@ -434,6 +464,7 @@ export function EpicRoadmapCanvas({
             provenance: e.provenance,
             dependencyType: e.dependency_type,
             isBackwards,
+            isRedundant,
             highlightState,
           }),
           // A routed long edge overrides the default edge type so RoutedEdge draws
@@ -445,7 +476,7 @@ export function EpicRoadmapCanvas({
       });
     for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k);
     return next;
-  }, [graph, nodesForLayout, chain, backwardsKeys, layout]);
+  }, [graph, nodesForLayout, chain, backwardsKeys, layout, showAllDeps, redundantKeys]);
 
   // Legend rows: only categories actually present in the PRE-filter railComposed
   // set, in sort_order, plus an Uncategorized row iff any present node folds to
@@ -542,6 +573,21 @@ export function EpicRoadmapCanvas({
                 />
               </Panel>
             )}
+            {/* Transitive-reduction toggle: structure-mode full variant only, and
+                only when there are redundant edges to reveal/hide. Top-left so it
+                doesn't collide with the mode toggle (top-right) / cycle banner
+                (top-center). */}
+            {variant !== "compact" &&
+              effectiveMode === "structure" &&
+              redundantKeys.size > 0 && (
+                <Panel position="top-left">
+                  <Button variant="outline" size="sm" onClick={() => setShowAllDeps((v) => !v)}>
+                    {showAllDeps
+                      ? `Hide ${redundantKeys.size} redundant`
+                      : `Show all dependencies (${redundantKeys.size})`}
+                  </Button>
+                </Panel>
+              )}
             {variant !== "compact" && (hasDefinedPresent || showFrontierRow) && (
               <CategoryLegend
                 rows={legendRows}

@@ -363,6 +363,7 @@ describe("computeEpicGraphLayout — backlog zone", () => {
 
 const STRUCTURE_X_GAP = 320;
 const STRUCTURE_ROW_HEIGHT = 104;
+const STRUCTURE_X_PAD = 80;
 
 describe("computeEpicGraphLayout — structure mode", () => {
   const W = { start: "2025-01-01", end: "2025-06-01" };
@@ -562,16 +563,17 @@ describe("computeEpicGraphLayout — structure mode", () => {
     expect(r.laneCount).toBe(3);
   });
 
-  it("case S7: a dist-2 blocks edge populates longEdgeRoutes with its key", () => {
-    // A→B, B→C chains the ranks (A=0,B=1,C=2); an explicit A→C is the long
-    // (dist-2) edge that must get a route.
-    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
-    const edges = [makeEdge("A", "B"), makeEdge("B", "C"), makeEdge("A", "C")];
+  it("case S7: a GENUINE dist-2 blocks edge populates longEdgeRoutes with its key", () => {
+    // B→C, C→D chains the ranks (B=0,C=1,D=2) via D's deepest prereq; an
+    // explicit A→D spans rank 0→2 with NO alternate path (A→D is not redundant),
+    // so it survives reduction and must get a route. (A and B both sit at rank 0.)
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W), makeNode("D", W)];
+    const edges = [makeEdge("B", "C"), makeEdge("C", "D"), makeEdge("A", "D")];
     const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
-    expect(r.longEdgeRoutes.has("A->C")).toBe(true);
+    expect(r.longEdgeRoutes.has("A->D")).toBe(true);
     // The short edges never get a route key.
-    expect(r.longEdgeRoutes.has("A->B")).toBe(false);
     expect(r.longEdgeRoutes.has("B->C")).toBe(false);
+    expect(r.longEdgeRoutes.has("C->D")).toBe(false);
   });
 
   it("case S8: a pure dist-1 graph has an empty longEdgeRoutes", () => {
@@ -579,5 +581,31 @@ describe("computeEpicGraphLayout — structure mode", () => {
     const edges = [makeEdge("A", "B"), makeEdge("B", "C")];
     const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
     expect(r.longEdgeRoutes.size).toBe(0);
+  });
+
+  it("case S9: a redundant direct edge is reported in redundantEdges, never routed", () => {
+    // C1→C2, C2→C5 chain (ranks 0/1/2); the direct C1→C5 is REDUNDANT (the
+    // chain already implies it) → it goes into redundantEdges, NOT the chain
+    // edges, and is NOT routed (the reduced set drives long-edge routing).
+    const nodes = [makeNode("C1", W), makeNode("C2", W), makeNode("C5", W)];
+    const edges = [makeEdge("C1", "C2"), makeEdge("C2", "C5"), makeEdge("C1", "C5")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    expect(r.redundantEdges.has("C1->C5")).toBe(true);
+    expect(r.redundantEdges.has("C1->C2")).toBe(false);
+    expect(r.redundantEdges.has("C2->C5")).toBe(false);
+    // The redundant edge is hidden from routing.
+    expect(r.longEdgeRoutes.has("C1->C5")).toBe(false);
+    // Node x is UNCHANGED: ranks stay full-based, so C5 sits at rank 2.
+    expect(r.positions.get("C5")!.x).toBe(STRUCTURE_X_PAD + 2 * STRUCTURE_X_GAP);
+  });
+
+  it("case S10: a diamond has no redundant edges", () => {
+    // A→B, A→C, B→D, C→D: no direct edge restates another path → empty.
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W), makeNode("D", W)];
+    const edges = [makeEdge("A", "B"), makeEdge("A", "C"), makeEdge("B", "D"), makeEdge("C", "D")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    expect(r.redundantEdges.size).toBe(0);
   });
 });
