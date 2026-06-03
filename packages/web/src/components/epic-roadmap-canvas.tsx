@@ -354,6 +354,10 @@ export function EpicRoadmapCanvas({
           id: key,
           source: e.from,
           target: e.to,
+          // Cycle back-edge: route between facing sides so the contradiction reads as a
+          // tight backwards arc, not a wrap-around. Forward edges leave these undefined →
+          // bind to the default Right-source / Left-target handles.
+          ...(isBackwards ? { sourceHandle: "src-left", targetHandle: "tgt-right" } : {}),
           ...getEdgeStyling({ provenance: e.provenance, isBackwards, highlightState }),
         };
         cache.set(key, { sig, edge });
@@ -420,7 +424,7 @@ export function EpicRoadmapCanvas({
           <Network className="text-muted-foreground/40 mb-3 size-10" />
           <p className="text-muted-foreground text-sm">No epics in this roadmap yet.</p>
           <p className="text-muted-foreground/70 mt-1 text-xs">
-            Create epics to see them on the timeline.
+            Create epics to see them on the roadmap.
           </p>
         </div>
       )}

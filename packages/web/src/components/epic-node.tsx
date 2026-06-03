@@ -73,9 +73,18 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
         ...(categoryColor ? { borderLeftColor: categoryColor } : {}),
       }}
     >
-      {/* Required for edges to attach; visually unobtrusive. */}
+      {/* Forward edges (common case) use these first two UNNAMED handles: source exits
+          Right, target enters Left → clean left-to-right flow. They MUST stay declared
+          FIRST — an edge with no sourceHandle/targetHandle binds to the first-declared
+          handle of its type (ReactFlow v12 handle resolution). */}
       <Handle type="target" position={Position.Left} className="!opacity-0" />
       <Handle type="source" position={Position.Right} className="!opacity-0" />
+      {/* Facing-side handles for cycle back-edges (an edge pointing AGAINST rank: its
+          source node sits to the RIGHT of its target). Routing source out the LEFT face
+          → target into the RIGHT face makes the contradiction a short backwards arc
+          instead of a wrap-around. Only backwards edges set these ids. */}
+      <Handle id="src-left" type="source" position={Position.Left} className="!opacity-0" />
+      <Handle id="tgt-right" type="target" position={Position.Right} className="!opacity-0" />
 
       {/* Completion fill: width = progress%, colored by health. */}
       <div

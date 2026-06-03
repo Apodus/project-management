@@ -109,4 +109,12 @@ describe("EpicNode", () => {
     const fill = screen.getByTestId("epic-node-fill");
     expect(fill).toHaveStyle({ width: "0%" });
   });
+
+  it("mounts all four handles under a real ReactFlow store without crashing", () => {
+    // The node now declares four Handles (two unnamed forward + two id'd
+    // facing-side back-edge). Each Handle reads the ReactFlow store on mount; a
+    // clean render (name present) proves the 4-handle JSX mounts.
+    renderNode(baseData());
+    expect(screen.getByText("Auth epic")).toBeInTheDocument();
+  });
 });

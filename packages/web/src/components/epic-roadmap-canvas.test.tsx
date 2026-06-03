@@ -18,9 +18,16 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@xyflow/react", () => ({
   ReactFlow: ({
     nodes,
+    edges,
     children,
   }: {
     nodes: { id: string; data: { name: string } }[];
+    edges?: {
+      id: string;
+      sourceHandle?: string | null;
+      targetHandle?: string | null;
+      type?: string;
+    }[];
     children?: ReactNode;
   }) => (
     <div>
@@ -28,6 +35,16 @@ vi.mock("@xyflow/react", () => ({
         <div key={n.id} data-testid="rf-node">
           {n.data.name}
         </div>
+      ))}
+      {(edges ?? []).map((e) => (
+        <div
+          key={e.id}
+          data-testid="rf-edge"
+          data-edge-id={e.id}
+          data-source-handle={e.sourceHandle ?? ""}
+          data-target-handle={e.targetHandle ?? ""}
+          data-edge-type={e.type ?? ""}
+        />
       ))}
       {children}
     </div>
@@ -189,6 +206,34 @@ function categorizedGraph(): EpicGraph {
   };
 }
 
+// Two active epics with a mutual dependency (a→b AND b→a) — a 2-cycle. Drives
+// the cycle banner + the back-edge facing-handle routing test.
+function cycleGraph(): EpicGraph {
+  const node = (id: string, name: string) => ({
+    id,
+    project_id: "proj-1",
+    name,
+    status: "active" as const,
+    priority: "high" as const,
+    target_date: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-06-01T00:00:00.000Z",
+    taskSummary: { total: 4, done: 1, byStatus: {} },
+    health: "on_track" as const,
+    activity_recency: "2026-06-01T00:00:00.000Z",
+    time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+  });
+  return {
+    nodes: [node("a", "Epic A"), node("b", "Epic B")],
+    edges: [
+      { from: "a", to: "b", dependency_type: "blocks", provenance: "explicit" },
+      { from: "b", to: "a", dependency_type: "blocks", provenance: "explicit" },
+    ],
+    hasCycle: true,
+    cycles: [["a", "b"]],
+  };
+}
+
 function q<T>(data: T | undefined, isLoading = false) {
   return { data, isLoading } as unknown;
 }
@@ -250,6 +295,32 @@ describe("EpicRoadmapCanvas", () => {
     expect(screen.getByText("Terrain epic")).toBeInTheDocument();
     // The legend row survives the filter (still toggleable back on).
     expect(screen.getByRole("button", { name: "Graphics" })).toBeInTheDocument();
+  });
+
+  it("fires the dependency cycle banner when the graph has a cycle", () => {
+    mocks.useEpicGraph.mockReturnValue(q(cycleGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    expect(screen.getByText(/dependency cycle\(s\) detected/i)).toBeInTheDocument();
+  });
+
+  it("routes the cycle back-edge through the facing-side handles", () => {
+    mocks.useEpicGraph.mockReturnValue(q(cycleGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // computeRanks' DFS visits the sorted root "a" first, so a→b is the
+    // forward (rank-respecting) edge and b→a is the deterministically-EXCLUDED
+    // back-edge. Edge ids are `${from}->${to}-${dependency_type}` (edgeKey).
+    const edges = screen.getAllByTestId("rf-edge");
+    const back = edges.find((e) => e.getAttribute("data-edge-id") === "b->a-blocks");
+    const fwd = edges.find((e) => e.getAttribute("data-edge-id") === "a->b-blocks");
+    expect(back).toBeDefined();
+    expect(fwd).toBeDefined();
+    // The back-edge routes between facing sides via a smoothstep arc.
+    expect(back?.getAttribute("data-source-handle")).toBe("src-left");
+    expect(back?.getAttribute("data-target-handle")).toBe("tgt-right");
+    expect(back?.getAttribute("data-edge-type")).toBe("smoothstep");
+    // The forward edge leaves the handles default (binds to Right-source/Left-target).
+    expect(fwd?.getAttribute("data-source-handle")).toBe("");
+    expect(fwd?.getAttribute("data-target-handle")).toBe("");
   });
 
   it("does not render the legend in the compact variant", () => {
