@@ -26,6 +26,7 @@ import { getEdgeStyling } from "@/lib/epic-graph-style";
 import { partitionEpics, recedeOpacity } from "@/lib/epic-graph-recency";
 import { lifecycle, actionableNow } from "@/lib/epic-lifecycle";
 import { EpicNode, type EpicNodeData } from "@/components/epic-node";
+import { RoutedEdge } from "@/components/routed-edge";
 import { MilestoneGuides } from "@/components/milestone-guides";
 import { EpicTasksPanel } from "@/components/epic-tasks-panel";
 import { CategoryLegend } from "@/components/category-legend";
@@ -194,6 +195,7 @@ export function EpicRoadmapCanvas({
   const effectiveMode: LayoutMode = variant === "compact" ? "structure" : mode;
 
   const nodeTypes = useMemo(() => ({ epic: EpicNode }), []);
+  const edgeTypes = useMemo(() => ({ routed: RoutedEdge }), []);
 
   // One injected clock drives layout, partition, and recede — the component is
   // impure (real clock) while every helper it calls stays pure. The clock is
@@ -405,7 +407,19 @@ export function EpicRoadmapCanvas({
             ? "highlighted"
             : "dimmed"
           : "none";
-        const sig = `${e.provenance}|${isBackwards}|${highlightState}`;
+        // Long-span forward `blocks` edges get a pre-computed polyline route
+        // (structure mode only) so they thread the inter-rank gaps instead of
+        // slicing through intermediate nodes. Backwards/short/non-blocks → none.
+        const route =
+          !isBackwards && e.dependency_type === "blocks" && layout.mode === "structure"
+            ? layout.longEdgeRoutes.get(`${e.from}->${e.to}`)
+            : undefined;
+        // The route points are part of the visual — encode them in the sig so a
+        // reflow that moves nodes (changing the polyline) re-emits the edge.
+        const routeSig = route
+          ? route.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(";")
+          : "";
+        const sig = `${e.provenance}|${isBackwards}|${highlightState}|${routeSig}`;
         const cached = cache.get(key);
         if (cached && cached.sig === sig) return cached.edge; // unchanged → reuse
         const edge: Edge = {
@@ -417,13 +431,16 @@ export function EpicRoadmapCanvas({
           // bind to the default Right-source / Left-target handles.
           ...(isBackwards ? { sourceHandle: "src-left", targetHandle: "tgt-right" } : {}),
           ...getEdgeStyling({ provenance: e.provenance, isBackwards, highlightState }),
+          // A routed long edge overrides the default edge type so RoutedEdge draws
+          // the threaded polyline; spread last so `type` wins over getEdgeStyling.
+          ...(route ? { type: "routed" as const, data: { points: route } } : {}),
         };
         cache.set(key, { sig, edge });
         return edge;
       });
     for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k);
     return next;
-  }, [graph, nodesForLayout, chain, backwardsKeys]);
+  }, [graph, nodesForLayout, chain, backwardsKeys, layout]);
 
   // Legend rows: only categories actually present in the PRE-filter railComposed
   // set, in sort_order, plus an Uncategorized row iff any present node folds to
@@ -500,6 +517,7 @@ export function EpicRoadmapCanvas({
             nodes={rfNodes}
             edges={rfEdges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             onNodeClick={(_, node) =>
               setSelectedEpicId((cur) => (cur === node.id ? null : node.id))
             }

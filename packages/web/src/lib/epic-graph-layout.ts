@@ -2,6 +2,7 @@ import type { EpicGraphEdge, EpicGraphNode } from "./api";
 import { computeRanks } from "./epic-graph-rank";
 import { computeOrder } from "./epic-graph-order";
 import { assignCoordinates } from "./epic-graph-coords";
+import { computeLongEdgeRoutes, type RoutePoint } from "./epic-graph-route";
 
 /**
  * Pure, deterministic layout engine for the epic timeline-DAG view.
@@ -33,6 +34,10 @@ const ONE_DAY_MS = 86_400_000;
 const STRUCTURE_X_GAP = 320; // px between adjacent ranks (node is 200px wide → 120px edge channel)
 const STRUCTURE_ROW_HEIGHT = 104; // px between adjacent orders within a layer
 const STRUCTURE_X_PAD = 80; // left margin
+// Deliberate design node height (correction 2): the DOM height is content-driven
+// (~56px) and unmeasured at layout time, so long-edge routing assumes this value
+// and lets the band margin absorb the residual. Used for center-y derivation.
+const STRUCTURE_NODE_HEIGHT = 56;
 
 export interface LayoutOptions {
   /**
@@ -109,6 +114,12 @@ export interface TimelineLayoutResult extends BaseLayoutResult {
 export interface StructureLayoutResult extends BaseLayoutResult {
   mode: "structure";
   positions: Map<string, BaseNodePosition>;
+  /**
+   * Polyline routes (center-y, flow space) for `blocks` edges spanning > 1 rank,
+   * keyed `${from}->${to}`. Always present (empty when there are no long edges).
+   * The canvas renders these as a custom "routed" edge that threads the gaps.
+   */
+  longEdgeRoutes: Map<string, RoutePoint[]>;
 }
 
 export type LayoutResult = TimelineLayoutResult | StructureLayoutResult;
@@ -326,7 +337,16 @@ function computeStructureLayout(
     a.from < b.from ? -1 : a.from > b.from ? 1 : a.to < b.to ? -1 : a.to > b.to ? 1 : 0,
   );
 
-  return { mode: "structure", positions, laneCount, backwardsEdges };
+  // Long-span (> 1 rank) forward `blocks` edges get a center-y polyline that
+  // threads the inter-rank gaps so they don't slice through intermediate nodes.
+  const longEdgeRoutes = computeLongEdgeRoutes(positions, rank.forwardEdges, {
+    xPad: STRUCTURE_X_PAD,
+    xGap: STRUCTURE_X_GAP,
+    nodeHeight: STRUCTURE_NODE_HEIGHT,
+    bandMargin: 28,
+  });
+
+  return { mode: "structure", positions, laneCount, backwardsEdges, longEdgeRoutes };
 }
 
 export function computeEpicGraphLayout(

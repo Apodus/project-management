@@ -340,6 +340,35 @@ function gatedGraph(): EpicGraph {
   };
 }
 
+// Three active epics chained A→B→C (ranks 0/1/2) PLUS a long-span A→C `blocks`
+// edge (dist 2). Drives the routed-edge test: A→C must render as type "routed",
+// the short A→B as the default/"" type.
+function longEdgeGraph(): EpicGraph {
+  const node = (id: string, name: string) => ({
+    id,
+    project_id: "proj-1",
+    name,
+    status: "active" as const,
+    priority: "high" as const,
+    target_date: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-06-01T00:00:00.000Z",
+    taskSummary: { total: 4, done: 1, byStatus: {} },
+    health: "on_track" as const,
+    activity_recency: "2026-06-01T00:00:00.000Z",
+    time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+  });
+  return {
+    nodes: [node("a", "Epic A"), node("b", "Epic B"), node("c", "Epic C")],
+    edges: [
+      { from: "a", to: "b", dependency_type: "blocks", provenance: "explicit" },
+      { from: "b", to: "c", dependency_type: "blocks", provenance: "explicit" },
+      { from: "a", to: "c", dependency_type: "blocks", provenance: "explicit" },
+    ],
+    hasCycle: false,
+  };
+}
+
 function q<T>(data: T | undefined, isLoading = false) {
   return { data, isLoading } as unknown;
 }
@@ -455,6 +484,27 @@ describe("EpicRoadmapCanvas", () => {
     // The forward edge leaves the handles default (binds to Right-source/Left-target).
     expect(fwd?.getAttribute("data-source-handle")).toBe("");
     expect(fwd?.getAttribute("data-target-handle")).toBe("");
+  });
+
+  it("routes a long-span blocks edge through the custom routed edge type", () => {
+    mocks.useEpicGraph.mockReturnValue(q(longEdgeGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    const edges = screen.getAllByTestId("rf-edge");
+    const long = edges.find((e) => e.getAttribute("data-edge-id") === "a->c-blocks");
+    const short = edges.find((e) => e.getAttribute("data-edge-id") === "a->b-blocks");
+    expect(long).toBeDefined();
+    expect(short).toBeDefined();
+    // The dist-2 edge is routed; the dist-1 edge keeps the default type.
+    expect(long?.getAttribute("data-edge-type")).toBe("routed");
+    expect(short?.getAttribute("data-edge-type")).not.toBe("routed");
+  });
+
+  it("keeps a backwards (cycle) edge on smoothstep, never routed", () => {
+    mocks.useEpicGraph.mockReturnValue(q(cycleGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    const edges = screen.getAllByTestId("rf-edge");
+    const back = edges.find((e) => e.getAttribute("data-edge-id") === "b->a-blocks");
+    expect(back?.getAttribute("data-edge-type")).toBe("smoothstep");
   });
 
   it("does not render the legend in the compact variant", () => {

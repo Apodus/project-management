@@ -561,4 +561,23 @@ describe("computeEpicGraphLayout — structure mode", () => {
     expect(r.positions.get("D")!.lane).toBe(0);
     expect(r.laneCount).toBe(3);
   });
+
+  it("case S7: a dist-2 blocks edge populates longEdgeRoutes with its key", () => {
+    // A→B, B→C chains the ranks (A=0,B=1,C=2); an explicit A→C is the long
+    // (dist-2) edge that must get a route.
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+    const edges = [makeEdge("A", "B"), makeEdge("B", "C"), makeEdge("A", "C")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    expect(r.longEdgeRoutes.has("A->C")).toBe(true);
+    // The short edges never get a route key.
+    expect(r.longEdgeRoutes.has("A->B")).toBe(false);
+    expect(r.longEdgeRoutes.has("B->C")).toBe(false);
+  });
+
+  it("case S8: a pure dist-1 graph has an empty longEdgeRoutes", () => {
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+    const edges = [makeEdge("A", "B"), makeEdge("B", "C")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    expect(r.longEdgeRoutes.size).toBe(0);
+  });
 });
