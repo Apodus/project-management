@@ -21,7 +21,7 @@ vi.mock("@xyflow/react", () => ({
     edges,
     children,
   }: {
-    nodes: { id: string; data: { name: string } }[];
+    nodes: { id: string; data: { name: string; lifecycle?: string } }[];
     edges?: {
       id: string;
       sourceHandle?: string | null;
@@ -32,7 +32,7 @@ vi.mock("@xyflow/react", () => ({
   }) => (
     <div>
       {nodes.map((n) => (
-        <div key={n.id} data-testid="rf-node">
+        <div key={n.id} data-testid="rf-node" data-lifecycle={n.data.lifecycle ?? ""}>
           {n.data.name}
         </div>
       ))}
@@ -275,6 +275,30 @@ describe("EpicRoadmapCanvas", () => {
     // LIFECYCLE — done → receded — which will supersede this interim "show all".)
     expect(screen.getByText("Active epic")).toBeInTheDocument();
     expect(screen.getByText("Ancient epic")).toBeInTheDocument();
+  });
+
+  it("tags each structure-mode rf-node with its lifecycle phase", () => {
+    mocks.useEpicGraph.mockReturnValue(q(activeAndPastGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // Structure is the default; both nodes render. The canvas derives lifecycle
+    // per node and stamps it on the rf-node data (stub mirrors it to data-*).
+    const active = screen.getByText("Active epic").closest("[data-testid='rf-node']");
+    const ancient = screen.getByText("Ancient epic").closest("[data-testid='rf-node']");
+    expect(active?.getAttribute("data-lifecycle")).toBe("active");
+    // health:"done" → lifecycle "done".
+    expect(ancient?.getAttribute("data-lifecycle")).toBe("done");
+  });
+
+  it("clears lifecycle on rf-nodes in timeline mode (recency path, not phase)", () => {
+    mocks.useEpicGraph.mockReturnValue(q(activeAndPastGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // Radix ToggleGroupItem renders role="radio" (single-select segmented).
+    fireEvent.click(screen.getByRole("radio", { name: "Timeline" }));
+    // The Active epic survives timeline mode (the done-and-old Ancient epic
+    // collapses into the hidden, collapsed Past rail). In timeline the canvas
+    // passes `recede`, NOT `lifecycle` → empty data-lifecycle.
+    const active = screen.getByText("Active epic").closest("[data-testid='rf-node']");
+    expect(active?.getAttribute("data-lifecycle")).toBe("");
   });
 
   it("renders a category legend listing the present defined categories", () => {

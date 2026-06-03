@@ -23,6 +23,7 @@ import {
 import { computeChain, edgeKey } from "@/lib/epic-graph-chain";
 import { getEdgeStyling } from "@/lib/epic-graph-style";
 import { partitionEpics, recedeOpacity } from "@/lib/epic-graph-recency";
+import { lifecycle } from "@/lib/epic-lifecycle";
 import { EpicNode, type EpicNodeData } from "@/components/epic-node";
 import { MilestoneGuides } from "@/components/milestone-guides";
 import { EpicTasksPanel } from "@/components/epic-tasks-panel";
@@ -58,7 +59,8 @@ function sameEpicNodeData(a: EpicNodeData, b: EpicNodeData): boolean {
     a.dimmed === b.dimmed &&
     a.inCycle === b.inCycle &&
     a.recede === b.recede &&
-    a.categoryColor === b.categoryColor
+    a.categoryColor === b.categoryColor &&
+    a.lifecycle === b.lifecycle
   );
 }
 
@@ -291,6 +293,11 @@ export function EpicRoadmapCanvas({
     if (!graph) return [];
     const cache = nodeCacheRef.current;
     const seen = new Set<string>();
+    // Orthogonal emphasis channels: structure mode keys node opacity/treatment
+    // on lifecycle phase (done/active/future); timeline mode keys it on recency
+    // fade. Exactly one is set per mode so the node's precedence chain
+    // (dimmed > lifecycle > recede) resolves cleanly.
+    const isStructure = effectiveMode === "structure";
     const next = nodesForLayout.map((n) => {
       seen.add(n.id);
       const { total, done } = n.taskSummary;
@@ -308,8 +315,9 @@ export function EpicRoadmapCanvas({
         byStatus: n.taskSummary.byStatus,
         dimmed: chain ? !chain.nodeIds.has(n.id) : false,
         inCycle: cycleIds.has(n.id),
-        recede: recedeOpacity(n.activity_recency, { now }),
+        recede: isStructure ? undefined : recedeOpacity(n.activity_recency, { now }),
         categoryColor,
+        lifecycle: isStructure ? lifecycle(n) : undefined,
       };
       const prev = cache.get(n.id);
       if (prev && prev.position === position && sameEpicNodeData(prev.data, data)) {
@@ -322,7 +330,7 @@ export function EpicRoadmapCanvas({
     // Drop cache entries for nodes no longer rendered (e.g. collapsed Past rail).
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
     return next;
-  }, [graph, nodesForLayout, layout, chain, cycleIds, now, colorMap]);
+  }, [graph, nodesForLayout, layout, chain, cycleIds, now, colorMap, effectiveMode]);
 
   // Same stable-reference cache for edges. An edge's visual is fully determined
   // by (provenance, isBackwards, highlightState), so a one-line signature decides

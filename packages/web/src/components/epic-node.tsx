@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { getHealthColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { Lifecycle } from "@/lib/epic-lifecycle";
 import type { EpicGraphNode } from "@/lib/api";
 
 // byStatus vocabulary + colors, mirrored from dashboard-page's task bar chart
@@ -28,6 +29,7 @@ export interface EpicNodeData {
   inCycle?: boolean;
   recede?: number;
   categoryColor?: string;
+  lifecycle?: Lifecycle;
   [key: string]: unknown;
 }
 
@@ -45,11 +47,27 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
     inCycle,
     recede,
     categoryColor,
+    lifecycle,
   } = data;
   const statusSum = STATUS_ORDER.reduce((acc, s) => acc + (byStatus[s] ?? 0), 0);
 
+  // Single opacity TARGET. Precedence dimmed > lifecycle > recede: structure
+  // mode passes a `lifecycle` (phase-driven emphasis), timeline mode passes a
+  // `recede` (recency fade) and leaves lifecycle undefined → the `?? 1` fall-
+  // through keeps the timeline path byte-identical.
+  const baseOpacity = dimmed
+    ? 0.25
+    : lifecycle === "done"
+      ? 0.55
+      : lifecycle === "future"
+        ? 0.7
+        : lifecycle === "active"
+          ? 1
+          : (recede ?? 1); // timeline path (lifecycle undefined)
+
   return (
     <div
+      data-lifecycle={lifecycle}
       className={cn(
         "bg-card group relative w-[200px] overflow-hidden rounded-md border",
         // ALWAYS-ON opacity transition. This is the anti-flicker fix: the
@@ -63,13 +81,23 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
         "transition-opacity duration-150",
         inCycle && "ring-2 ring-red-500",
         categoryColor && "border-l-4",
+        // Lifecycle treatment (structure mode only; orthogonal to the category
+        // accent + cycle ring). done → desaturate ("behind us"): mutes the
+        // category hue + health fill for shipped work. future → a dashed INSET
+        // OUTLINE (box-outline channel, separate from `border`/`border-l-4`) so
+        // the category left-accent is never dashed/disturbed. Both gated on
+        // !dimmed so a chain-off node only dims.
+        !dimmed && lifecycle === "done" && "grayscale",
+        !dimmed &&
+          lifecycle === "future" &&
+          "outline-dashed outline-1 outline-offset-[-2px] outline-muted-foreground/40",
       )}
       // SINGLE opacity source = the target. dimmed (chain-off) -> 0.25; else the
       // recency fade. The browser interpolates current -> this, both directions.
       // box-border keeps the 4px category accent border inside w-[200px] (no width
       // shift); borderLeftColor only set when a category color is present.
       style={{
-        opacity: dimmed ? 0.25 : (recede ?? 1),
+        opacity: baseOpacity,
         ...(categoryColor ? { borderLeftColor: categoryColor } : {}),
       }}
     >

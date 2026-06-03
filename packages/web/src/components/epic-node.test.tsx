@@ -110,6 +110,75 @@ describe("EpicNode", () => {
     expect(fill).toHaveStyle({ width: "0%" });
   });
 
+  // ── Lifecycle-driven emphasis (structure mode) ──────────────────
+  // The canvas passes `lifecycle` only in structure mode; opacity precedence is
+  // dimmed > lifecycle > recede. The dashed FUTURE outline lives on the
+  // box-outline channel so it never touches the `border-l-4` category accent.
+
+  it("desaturates a done epic (data-lifecycle=done, grayscale, opacity 0.55)", () => {
+    const { container } = renderNode(baseData({ lifecycle: "done" }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root.getAttribute("data-lifecycle")).toBe("done");
+    expect(root).toHaveClass("grayscale");
+    expect(root).toHaveStyle({ opacity: "0.55" });
+  });
+
+  it("renders an active epic at full opacity, no grayscale, no dashed outline", () => {
+    const { container } = renderNode(baseData({ lifecycle: "active" }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root.getAttribute("data-lifecycle")).toBe("active");
+    expect(root).toHaveStyle({ opacity: "1" });
+    expect(root).not.toHaveClass("grayscale");
+    expect(root).not.toHaveClass("outline-dashed");
+  });
+
+  it("outlines a future epic with a dashed inset outline (opacity 0.7)", () => {
+    const { container } = renderNode(baseData({ lifecycle: "future" }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root.getAttribute("data-lifecycle")).toBe("future");
+    expect(root).toHaveClass("outline-dashed");
+    expect(root).toHaveClass("outline-1");
+    expect(root).toHaveStyle({ opacity: "0.7" });
+  });
+
+  it("lets lifecycle override recede (done → 0.55, not the recede value)", () => {
+    const { container } = renderNode(baseData({ lifecycle: "done", recede: 0.9 }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).toHaveStyle({ opacity: "0.55" });
+  });
+
+  it("lets dim beat lifecycle (opacity 0.25, future outline suppressed)", () => {
+    const { container } = renderNode(baseData({ lifecycle: "future", dimmed: true }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).toHaveStyle({ opacity: "0.25" });
+    // The future treatment is gated on !dimmed, so a chain-off node only dims.
+    expect(root).not.toHaveClass("outline-dashed");
+  });
+
+  it("keeps the timeline path unchanged when no lifecycle is passed (recede only)", () => {
+    const { container } = renderNode(baseData({ recede: 0.5 }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).toHaveStyle({ opacity: "0.5" });
+    // No lifecycle → undefined → no data-lifecycle attribute, no treatment.
+    expect(root.getAttribute("data-lifecycle")).toBeNull();
+    expect(root).not.toHaveClass("grayscale");
+    expect(root).not.toHaveClass("outline-dashed");
+  });
+
+  it("keeps the future outline orthogonal to the category accent and cycle ring", () => {
+    const { container } = renderNode(
+      baseData({ lifecycle: "future", categoryColor: "#3b82f6", inCycle: true }),
+    );
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    // Dashed future outline (box-outline channel)…
+    expect(root).toHaveClass("outline-dashed");
+    // …does NOT replace the category left-accent border (separate channel)…
+    expect(root).toHaveClass("border-l-4");
+    expect(root).toHaveStyle({ borderLeftColor: "#3b82f6" });
+    // …nor the cycle ring.
+    expect(root).toHaveClass("ring-red-500");
+  });
+
   it("mounts all four handles under a real ReactFlow store without crashing", () => {
     // The node now declares four Handles (two unnamed forward + two id'd
     // facing-side back-edge). Each Handle reads the ReactFlow store on mount; a
