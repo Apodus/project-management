@@ -126,3 +126,22 @@
     font-family: var(--font-sans);
   }
 }
+
+/* ReactFlow controls (bottom-left zoom / fit / lock). ReactFlow's default
+   control styling washes out against our surfaces — the icons read as a blank
+   white bar with the structure only visible via tooltips. Drive the buttons and
+   icon fill off the app's theme variables so the icons are visible and the
+   controls match light AND dark mode. Selectors are scoped under `.react-flow`
+   to out-specify ReactFlow's own rules regardless of stylesheet order. */
+.react-flow .react-flow__controls-button {
+  background-color: var(--card);
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+}
+.react-flow .react-flow__controls-button:hover {
+  background-color: var(--accent);
+}
+.react-flow .react-flow__controls-button svg,
+.react-flow .react-flow__controls-button svg path {
+  fill: var(--foreground);
+}
