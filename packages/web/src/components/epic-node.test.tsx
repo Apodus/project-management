@@ -82,6 +82,19 @@ describe("EpicNode", () => {
     expect(root).toHaveStyle({ opacity: "0.25" });
   });
 
+  it("draws a left category accent when a categoryColor is present", () => {
+    const { container } = renderNode(baseData({ categoryColor: "#3b82f6" }));
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).toHaveClass("border-l-4");
+    expect(root).toHaveStyle({ borderLeftColor: "#3b82f6" });
+  });
+
+  it("draws no category accent when categoryColor is absent", () => {
+    const { container } = renderNode(baseData());
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).not.toHaveClass("border-l-4");
+  });
+
   it("handles a zero-task epic without crashing (0/0, 0%, empty underline)", () => {
     renderNode(
       baseData({

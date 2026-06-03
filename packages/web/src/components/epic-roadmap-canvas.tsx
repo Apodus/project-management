@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Network } from "lucide-react";
 import {
   ReactFlow,
@@ -21,6 +21,9 @@ import { partitionEpics, recedeOpacity } from "@/lib/epic-graph-recency";
 import { EpicNode, type EpicNodeData } from "@/components/epic-node";
 import { MilestoneGuides } from "@/components/milestone-guides";
 import { EpicTasksPanel } from "@/components/epic-tasks-panel";
+import { CategoryLegend } from "@/components/category-legend";
+import { useProject } from "@/hooks/use-projects";
+import { epicCategoriesFromProject } from "@/lib/epic-categories";
 
 // Caps fit-zoom so sparse graphs don't balloon; manual zoom unaffected.
 const ROADMAP_FIT_OPTIONS = { padding: 0.2, maxZoom: 0.65 } as const;
@@ -29,6 +32,10 @@ const ROADMAP_FIT_OPTIONS = { padding: 0.2, maxZoom: 0.65 } as const;
 // the Backlog rail is collapsed, so the layout memo's dep stays referentially
 // stable across renders (no spurious reflow).
 const EMPTY_SET: ReadonlySet<string> = new Set();
+
+// Synthetic key folding both "no category" and "unknown category name" into one
+// bucket for color + filter + legend. Module-level so it's a stable reference.
+const UNCATEGORIZED = "__uncategorized__";
 
 // Field-by-field equality for a node's render-affecting data. `byStatus` is a
 // reference compare on purpose — it's stable per graph payload (a hover never
@@ -45,7 +52,8 @@ function sameEpicNodeData(a: EpicNodeData, b: EpicNodeData): boolean {
     a.byStatus === b.byStatus &&
     a.dimmed === b.dimmed &&
     a.inCycle === b.inCycle &&
-    a.recede === b.recede
+    a.recede === b.recede &&
+    a.categoryColor === b.categoryColor
   );
 }
 
@@ -109,6 +117,26 @@ export function EpicRoadmapCanvas({
 }) {
   const { data: graph, isLoading, error, refetch } = useEpicGraph(projectId);
   const { data: milestones } = useMilestones(projectId);
+  const { data: project } = useProject(projectId);
+
+  // Category name -> color, referentially stable per project so the closures and
+  // memos below don't churn on unrelated renders.
+  const colorMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of epicCategoriesFromProject(project)) m.set(c.name, c.color);
+    return m;
+  }, [project]);
+
+  // Folds an epic's category into a stable filter/color key: a known defined
+  // category keeps its name; absent OR unknown names collapse to UNCATEGORIZED.
+  const categoryKey = useCallback(
+    (n: { category?: string | null }) =>
+      n.category && colorMap.has(n.category) ? n.category : UNCATEGORIZED,
+    [colorMap],
+  );
+
+  // Categories the user has toggled off in the legend (hidden from the DAG).
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(() => new Set());
 
   // The hovered epic drives the dependency-chain highlight (null = no focus).
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -137,9 +165,11 @@ export function EpicRoadmapCanvas({
   // the laid-out set (reflow-on-toggle is intended).
   const partition = useMemo(() => partitionEpics(graph?.nodes ?? [], { now }), [graph, now]);
 
-  // The nodes handed to the layout: always the active set, plus the past bucket
-  // when its rail is expanded, plus the unscheduled bucket when its rail is.
-  const nodesForLayout = useMemo(
+  // The rail-composed set: active, plus the past bucket when its rail is
+  // expanded, plus the unscheduled bucket when its rail is. This is the
+  // PRE-filter set (the legend reads it so toggling a category off doesn't drop
+  // its own legend row).
+  const railComposed = useMemo(
     () => [
       ...partition.active,
       ...(showPast ? partition.past : []),
@@ -148,14 +178,29 @@ export function EpicRoadmapCanvas({
     [partition, showPast, showBacklog],
   );
 
-  // Ids the layout should pull into the future Backlog zone. Only meaningful
-  // while the rail is expanded (those nodes are in `nodesForLayout`); collapsed
-  // → the stable empty set so the layout stays byte-identical and the memo dep
-  // doesn't churn.
-  const unscheduledIds = useMemo(
-    () => (showBacklog ? new Set(partition.unscheduled.map((n) => n.id)) : EMPTY_SET),
-    [showBacklog, partition],
+  // The nodes handed to the layout: railComposed minus any category the user has
+  // hidden via the legend. No hidden categories → the same reference as
+  // railComposed (byte-identical to pre-filter behavior).
+  const nodesForLayout = useMemo(
+    () =>
+      hiddenCategories.size === 0
+        ? railComposed
+        : railComposed.filter((n) => !hiddenCategories.has(categoryKey(n))),
+    [railComposed, hiddenCategories, categoryKey],
   );
+
+  // Ids the layout should pull into the future Backlog zone. Collapsed → the
+  // stable empty set so the layout stays byte-identical and the memo dep doesn't
+  // churn. Expanded → derived from the FILTERED nodesForLayout (a subset, so the
+  // layout never gets an id it wasn't given). Predicate matches partitionEpics's
+  // unscheduled bucket exactly (not_started + no end date).
+  const unscheduledIds = useMemo(() => {
+    if (!showBacklog) return EMPTY_SET;
+    const ids = new Set<string>();
+    for (const n of nodesForLayout)
+      if (n.health === "not_started" && n.time_window.end == null) ids.add(n.id);
+    return ids;
+  }, [showBacklog, nodesForLayout]);
 
   const layout = useMemo(
     () =>
@@ -216,6 +261,8 @@ export function EpicRoadmapCanvas({
       // Position objects are reference-stable while `layout` is unchanged, so the
       // identity check below holds across hovers and only breaks on a real reflow.
       const position = layout.positions.get(n.id) ?? { x: 0, y: 0 };
+      // Only a defined (known) category gets an accent; unknown/absent → none.
+      const categoryColor = n.category ? colorMap.get(n.category) : undefined;
       const data: EpicNodeData = {
         name: n.name,
         done,
@@ -226,6 +273,7 @@ export function EpicRoadmapCanvas({
         dimmed: chain ? !chain.nodeIds.has(n.id) : false,
         inCycle: cycleIds.has(n.id),
         recede: recedeOpacity(n.activity_recency, { now }),
+        categoryColor,
       };
       const prev = cache.get(n.id);
       if (prev && prev.position === position && sameEpicNodeData(prev.data, data)) {
@@ -238,7 +286,7 @@ export function EpicRoadmapCanvas({
     // Drop cache entries for nodes no longer rendered (e.g. collapsed Past rail).
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
     return next;
-  }, [graph, nodesForLayout, layout, chain, cycleIds, now]);
+  }, [graph, nodesForLayout, layout, chain, cycleIds, now, colorMap]);
 
   // Same stable-reference cache for edges. An edge's visual is fully determined
   // by (provenance, isBackwards, highlightState), so a one-line signature decides
@@ -278,6 +326,36 @@ export function EpicRoadmapCanvas({
     for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k);
     return next;
   }, [graph, nodesForLayout, chain, backwardsKeys]);
+
+  // Legend rows: only categories actually present in the PRE-filter railComposed
+  // set, in sort_order, plus an Uncategorized row iff any present node folds to
+  // it. Reading railComposed (not nodesForLayout) keeps a toggled-off category's
+  // own row in the legend so it can be toggled back on.
+  const legendRows = useMemo(() => {
+    const present = new Set(railComposed.map((n) => categoryKey(n)));
+    const defined = epicCategoriesFromProject(project)
+      .filter((c) => present.has(c.name))
+      .map((c) => ({ key: c.name, name: c.name, color: c.color as string | undefined }));
+    const hasUncat = present.has(UNCATEGORIZED);
+    return hasUncat
+      ? [...defined, { key: UNCATEGORIZED, name: "Uncategorized", color: undefined }]
+      : defined;
+  }, [railComposed, project, categoryKey]);
+
+  // The legend is only worth showing when at least one DEFINED category is
+  // present (an all-uncategorized roadmap has nothing meaningful to filter by).
+  const hasDefinedPresent = legendRows.some((r) => r.key !== UNCATEGORIZED);
+
+  const toggleCategory = useCallback(
+    (key: string) =>
+      setHiddenCategories((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      }),
+    [],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-variant={variant}>
@@ -329,6 +407,13 @@ export function EpicRoadmapCanvas({
           >
             <Background />
             {variant !== "compact" && <Controls />}
+            {variant !== "compact" && hasDefinedPresent && (
+              <CategoryLegend
+                rows={legendRows}
+                hidden={hiddenCategories}
+                onToggle={toggleCategory}
+              />
+            )}
             <MilestoneGuides
               scale={layout.scale}
               milestones={milestones ?? []}

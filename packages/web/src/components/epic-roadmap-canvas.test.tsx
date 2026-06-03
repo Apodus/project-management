@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { ReactNode } from "react";
 import type { EpicGraph } from "@/lib/api";
@@ -16,21 +16,28 @@ vi.mock("@tanstack/react-router", () => ({
 // test we stub ReactFlow to a passthrough that renders each node's name, so
 // "node present" assertions still hold without the canvas machinery.
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ nodes }: { nodes: { id: string; data: { name: string } }[] }) => (
+  ReactFlow: ({
+    nodes,
+    children,
+  }: {
+    nodes: { id: string; data: { name: string } }[];
+    children?: ReactNode;
+  }) => (
     <div>
       {nodes.map((n) => (
         <div key={n.id} data-testid="rf-node">
           {n.data.name}
         </div>
       ))}
+      {children}
     </div>
   ),
   Background: () => null,
   Controls: () => null,
-  // The mock discards Panel children, so the rAF/useReactFlow camera effect
-  // inside PastRailPanel never mounts — the state test stays free of canvas
-  // machinery while still exercising the active/past partition via `nodes`.
-  Panel: () => null,
+  // Panel passes its children through so the legend (and rails) mount. The
+  // rAF/useReactFlow camera effect inside RailPanel is harmless under the
+  // stubbed useReactFlow (fitView is a no-op).
+  Panel: ({ children }: { children?: ReactNode }) => <>{children}</>,
   // ViewportPortal is in the explicit allowlist so the canvas (which renders
   // MilestoneGuides) doesn't throw "Element type is invalid"; the passthrough
   // surfaces its children.
@@ -55,6 +62,22 @@ vi.mock("@/hooks/use-epic-graph", () => ({
 // QueryClient set" — stub the hook to an empty list.
 vi.mock("@/hooks/use-milestones", () => ({
   useMilestones: () => ({ data: [] }),
+}));
+// The canvas reads epic categories off the project to color nodes + build the
+// legend. Without a QueryClientProvider a real useProject would throw "No
+// QueryClient set" — stub it with a two-category settings blob.
+vi.mock("@/hooks/use-projects", () => ({
+  useProject: () => ({
+    data: {
+      id: "proj-1",
+      settings: {
+        epic_categories: [
+          { name: "Graphics", color: "#3b82f6", sort_order: 0 },
+          { name: "Terrain", color: "#10b981", sort_order: 1 },
+        ],
+      },
+    },
+  }),
 }));
 
 import { EpicRoadmapCanvas } from "./epic-roadmap-canvas";
@@ -125,6 +148,47 @@ function activeAndPastGraph(): EpicGraph {
   };
 }
 
+// Two active epics, each in a distinct defined category — drives the legend +
+// per-category filter tests.
+function categorizedGraph(): EpicGraph {
+  return {
+    nodes: [
+      {
+        id: "gfx-1",
+        project_id: "proj-1",
+        name: "Graphics epic",
+        status: "active",
+        priority: "high",
+        target_date: null,
+        category: "Graphics",
+        created_at: "2026-05-01T00:00:00.000Z",
+        updated_at: "2026-06-01T00:00:00.000Z",
+        taskSummary: { total: 4, done: 1, byStatus: {} },
+        health: "on_track",
+        activity_recency: "2026-06-01T00:00:00.000Z",
+        time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+      },
+      {
+        id: "terrain-1",
+        project_id: "proj-1",
+        name: "Terrain epic",
+        status: "active",
+        priority: "high",
+        target_date: null,
+        category: "Terrain",
+        created_at: "2026-05-01T00:00:00.000Z",
+        updated_at: "2026-06-01T00:00:00.000Z",
+        taskSummary: { total: 4, done: 1, byStatus: {} },
+        health: "on_track",
+        activity_recency: "2026-06-01T00:00:00.000Z",
+        time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+      },
+    ],
+    edges: [],
+    hasCycle: false,
+  };
+}
+
 function q<T>(data: T | undefined, isLoading = false) {
   return { data, isLoading } as unknown;
 }
@@ -163,5 +227,36 @@ describe("EpicRoadmapCanvas", () => {
     // showPast defaults to false → only the active epic is laid out + rendered.
     expect(screen.getByText("Active epic")).toBeInTheDocument();
     expect(screen.queryByText("Ancient epic")).not.toBeInTheDocument();
+  });
+
+  it("renders a category legend listing the present defined categories", () => {
+    mocks.useEpicGraph.mockReturnValue(q(categorizedGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // Legend rows are buttons named after the category (the nodes carry the
+    // "… epic" suffix, so the bare names prove the legend, not the rf-nodes).
+    expect(screen.getByRole("button", { name: "Graphics" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Terrain" })).toBeInTheDocument();
+  });
+
+  it("hides a category's epics when its legend row is toggled off", () => {
+    mocks.useEpicGraph.mockReturnValue(q(categorizedGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // Both epics on canvas initially.
+    expect(screen.getByText("Graphics epic")).toBeInTheDocument();
+    expect(screen.getByText("Terrain epic")).toBeInTheDocument();
+    // Toggle off Graphics → its rf-node disappears, Terrain stays.
+    fireEvent.click(screen.getByRole("button", { name: "Graphics" }));
+    expect(screen.queryByText("Graphics epic")).not.toBeInTheDocument();
+    expect(screen.getByText("Terrain epic")).toBeInTheDocument();
+    // The legend row survives the filter (still toggleable back on).
+    expect(screen.getByRole("button", { name: "Graphics" })).toBeInTheDocument();
+  });
+
+  it("does not render the legend in the compact variant", () => {
+    mocks.useEpicGraph.mockReturnValue(q(categorizedGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" variant="compact" />);
+    // Nodes still render (accents are node-data driven), but no legend buttons.
+    expect(screen.getByText("Graphics epic")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Graphics" })).not.toBeInTheDocument();
   });
 });

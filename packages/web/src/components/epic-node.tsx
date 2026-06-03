@@ -27,13 +27,25 @@ export interface EpicNodeData {
   dimmed?: boolean;
   inCycle?: boolean;
   recede?: number;
+  categoryColor?: string;
   [key: string]: unknown;
 }
 
 export type EpicFlowNode = Node<EpicNodeData, "epic">;
 
 function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
-  const { name, done, total, progressPct, health, byStatus, dimmed, inCycle, recede } = data;
+  const {
+    name,
+    done,
+    total,
+    progressPct,
+    health,
+    byStatus,
+    dimmed,
+    inCycle,
+    recede,
+    categoryColor,
+  } = data;
   const statusSum = STATUS_ORDER.reduce((acc, s) => acc + (byStatus[s] ?? 0), 0);
 
   return (
@@ -50,10 +62,16 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
         // redirects the in-flight interpolation; current state is never reset.
         "transition-opacity duration-150",
         inCycle && "ring-2 ring-red-500",
+        categoryColor && "border-l-4",
       )}
       // SINGLE opacity source = the target. dimmed (chain-off) -> 0.25; else the
       // recency fade. The browser interpolates current -> this, both directions.
-      style={{ opacity: dimmed ? 0.25 : (recede ?? 1) }}
+      // box-border keeps the 4px category accent border inside w-[200px] (no width
+      // shift); borderLeftColor only set when a category color is present.
+      style={{
+        opacity: dimmed ? 0.25 : (recede ?? 1),
+        ...(categoryColor ? { borderLeftColor: categoryColor } : {}),
+      }}
     >
       {/* Required for edges to attach; visually unobtrusive. */}
       <Handle type="target" position={Position.Left} className="!opacity-0" />
