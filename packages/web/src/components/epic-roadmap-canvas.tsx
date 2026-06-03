@@ -256,7 +256,7 @@ export function EpicRoadmapCanvas({
             proOptions={{ hideAttribution: true }}
           >
             <Background />
-            <Controls />
+            {variant !== "compact" && <Controls />}
             <MilestoneGuides
               scale={layout.scale}
               milestones={milestones ?? []}

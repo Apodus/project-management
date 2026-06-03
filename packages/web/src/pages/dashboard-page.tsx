@@ -12,6 +12,7 @@ import {
   ListTodo,
   MessageSquare,
   Milestone,
+  Network,
   Pencil,
   Plus,
   User,
@@ -37,6 +38,7 @@ import { useProposals } from "@/hooks/use-proposals";
 import { useUsers } from "@/hooks/use-users";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
+import { EpicRoadmapCanvas } from "@/components/epic-roadmap-canvas";
 import {
   formatRelativeTime,
   formatStatus,
@@ -784,6 +786,39 @@ function AttentionSection({
   );
 }
 
+// ---- Roadmap Hero ----
+
+function RoadmapHeroSection({ projectId }: { projectId: string }) {
+  const navigate = useNavigate();
+  return (
+    <section className="flex h-[480px] flex-col rounded-xl border bg-card shadow-sm">
+      <div className="flex items-center justify-between border-b px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <Network className="size-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold tracking-tight">Roadmap</h2>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() =>
+            navigate({
+              to: "/projects/$projectId/roadmap",
+              params: { projectId },
+            })
+          }
+        >
+          Open full roadmap
+          <ArrowRight className="ml-1 size-3" />
+        </Button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col p-2">
+        <EpicRoadmapCanvas projectId={projectId} variant="compact" />
+      </div>
+    </section>
+  );
+}
+
 // ---- Dashboard Page ----
 
 export function DashboardPage() {
@@ -827,6 +862,11 @@ export function DashboardPage() {
           all-clear (see AttentionSection). Kept OUTSIDE the masonry below so
           its visual priority is never scrambled by column flow. */}
       <AttentionSection projectId={projectId} />
+
+      {/* The DAG hero — the single most important thing on the dashboard.
+          Everything below is dressing. Explicit-height flex chain so the
+          embedded ReactFlow canvas has a bounded box to fill. */}
+      <RoadmapHeroSection projectId={projectId} />
 
       {/* Stats */}
       <StatsSection projectId={projectId} />
