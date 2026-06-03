@@ -161,6 +161,37 @@ describe("computeRanks — cycles are DAG-ified deterministically", () => {
   });
 });
 
+describe("computeRanks — forwardEdges (surviving blocks edges)", () => {
+  it("case 14: a diamond keeps all 4 forward edges, sorted by (from,to)", () => {
+    const r = computeRanks(nodes("A", "B", "C", "D"), [
+      makeEdge("A", "B"),
+      makeEdge("A", "C"),
+      makeEdge("B", "D"),
+      makeEdge("C", "D"),
+    ]);
+    expect(r.forwardEdges).toEqual([
+      { from: "A", to: "B" },
+      { from: "A", to: "C" },
+      { from: "B", to: "D" },
+      { from: "C", to: "D" },
+    ]);
+  });
+
+  it("case 15: a 3-cycle's forwardEdges exclude the dropped back-edge", () => {
+    const r = computeRanks(nodes("A", "B", "C"), [
+      makeEdge("A", "B"),
+      makeEdge("B", "C"),
+      makeEdge("C", "A"),
+    ]);
+    expect(r.excludedBackEdges).toEqual([{ from: "C", to: "A" }]);
+    // C->A is dropped; the two survivors remain, sorted by (from,to).
+    expect(r.forwardEdges).toEqual([
+      { from: "A", to: "B" },
+      { from: "B", to: "C" },
+    ]);
+  });
+});
+
 describe("computeRanks — determinism", () => {
   it("case 9: identical output regardless of input array order", () => {
     const baseNodes = nodes("A", "B", "C", "D");

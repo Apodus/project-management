@@ -64,6 +64,8 @@ export interface RankResult {
   maxRank: number;
   /** `blocks` edges dropped to DAG-ify, sorted by `(from, to)`. */
   excludedBackEdges: BackEdge[];
+  /** Surviving `blocks` edges (cycle back-edges removed), sorted by `(from, to)`. */
+  forwardEdges: BackEdge[];
 }
 
 const WHITE = 0;
@@ -180,9 +182,15 @@ export function computeRanks(nodes: EpicGraphNode[], edges: EpicGraphEdge[]): Ra
     a.from < b.from ? -1 : a.from > b.from ? 1 : a.to < b.to ? -1 : a.to > b.to ? 1 : 0,
   );
 
+  // Surviving forward edges, sorted by (from, to) — same comparator style as
+  // excludedBackEdges. P3 (within-layer ordering) consumes these.
+  const sortedForwardEdges = [...forwardEdges].sort((a, b) =>
+    a.from < b.from ? -1 : a.from > b.from ? 1 : a.to < b.to ? -1 : a.to > b.to ? 1 : 0,
+  );
+
   // CORRECTION 1: -1 only for an empty node set; otherwise max over the (all
   // 0-seeded) rank values, so a node-bearing edgeless graph yields 0.
   const maxRank = nodes.length === 0 ? -1 : Math.max(...ranks.values());
 
-  return { ranks, maxRank, excludedBackEdges };
+  return { ranks, maxRank, excludedBackEdges, forwardEdges: sortedForwardEdges };
 }
