@@ -57,7 +57,7 @@ describe("computeTaskGraphLayout — layering", () => {
     expect(r.positions.get("z")!.layer).toBe(0);
     const ys = [r.positions.get("x")!.y, r.positions.get("y")!.y, r.positions.get("z")!.y];
     expect(new Set(ys).size).toBe(3);
-    expect(ys).toEqual([0, 64, 128]); // stable id order x,y,z
+    expect(ys).toEqual([0, 104, 208]); // stable id order x,y,z (rowHeight pitch)
     expect(r.layerCount).toBe(1);
   });
 });

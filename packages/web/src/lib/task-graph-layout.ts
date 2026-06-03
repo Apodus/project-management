@@ -40,7 +40,11 @@ export function computeTaskGraphLayout(
   opts?: TaskLayoutOptions,
 ): TaskLayoutResult {
   const layerWidth = opts?.layerWidth ?? 240;
-  const rowHeight = opts?.rowHeight ?? 64;
+  // rowHeight is the vertical PITCH between same-layer tasks. The rendered
+  // TaskNode is ~86px tall (a 2-line clamped title + badge row + py-2), so a
+  // pitch below that overlaps independent tasks. 104 clears the node with a
+  // comfortable gap, matching the horizontal headroom (240 pitch / 180 node).
+  const rowHeight = opts?.rowHeight ?? 104;
 
   const nodeIds = new Set(nodes.map((n) => n.id));
 
