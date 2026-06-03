@@ -28,6 +28,7 @@ import { lifecycle, actionableNow } from "@/lib/epic-lifecycle";
 import { EpicNode, type EpicNodeData } from "@/components/epic-node";
 import { RoutedEdge } from "@/components/routed-edge";
 import { MilestoneGuides } from "@/components/milestone-guides";
+import { EpicTrayLabel } from "@/components/epic-tray-label";
 import { EpicTasksPanel } from "@/components/epic-tasks-panel";
 import { CategoryLegend } from "@/components/category-legend";
 import { useProject } from "@/hooks/use-projects";
@@ -567,27 +568,22 @@ export function EpicRoadmapCanvas({
             {variant !== "compact" && <Controls />}
             {variant !== "compact" && (
               <Panel position="top-right">
-                <ModeToggle
-                  value={mode}
-                  onValueChange={(m) => m && setMode(m as LayoutMode)}
-                />
+                <ModeToggle value={mode} onValueChange={(m) => m && setMode(m as LayoutMode)} />
               </Panel>
             )}
             {/* Transitive-reduction toggle: structure-mode full variant only, and
                 only when there are redundant edges to reveal/hide. Top-left so it
                 doesn't collide with the mode toggle (top-right) / cycle banner
                 (top-center). */}
-            {variant !== "compact" &&
-              effectiveMode === "structure" &&
-              redundantKeys.size > 0 && (
-                <Panel position="top-left">
-                  <Button variant="outline" size="sm" onClick={() => setShowAllDeps((v) => !v)}>
-                    {showAllDeps
-                      ? `Hide ${redundantKeys.size} redundant`
-                      : `Show all dependencies (${redundantKeys.size})`}
-                  </Button>
-                </Panel>
-              )}
+            {variant !== "compact" && effectiveMode === "structure" && redundantKeys.size > 0 && (
+              <Panel position="top-left">
+                <Button variant="outline" size="sm" onClick={() => setShowAllDeps((v) => !v)}>
+                  {showAllDeps
+                    ? `Hide ${redundantKeys.size} redundant`
+                    : `Show all dependencies (${redundantKeys.size})`}
+                </Button>
+              </Panel>
+            )}
             {variant !== "compact" && (hasDefinedPresent || showFrontierRow) && (
               <CategoryLegend
                 rows={legendRows}
@@ -604,6 +600,11 @@ export function EpicRoadmapCanvas({
                 ySpan={ySpan}
               />
             )}
+            {/* Independent-epic tray divider + label (structure mode, when any
+                isolated epic exists). A bare ViewportPortal child like
+                MilestoneGuides — NOT wrapped in a Panel — so it lives in flow
+                space and pans/zooms with the grid below the DAG. */}
+            {layout.mode === "structure" && layout.tray && <EpicTrayLabel tray={layout.tray} />}
             {graph.hasCycle && (
               <Panel position="top-center">
                 <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-700 dark:text-amber-400">

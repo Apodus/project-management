@@ -33,9 +33,7 @@ function makeEdge(
 }
 
 function sortedEntries(result: LayoutResult): [string, unknown][] {
-  return [...result.positions.entries()].sort((a, b) =>
-    a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0,
-  );
+  return [...result.positions.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 
 describe("computeEpicGraphLayout — degenerate inputs", () => {
@@ -120,9 +118,7 @@ describe("computeEpicGraphLayout — time on x", () => {
       [],
       { now: NOW, mode: "timeline" },
     );
-    expect(r2.positions.get("FUTURE")!.x).toBeGreaterThan(
-      r2.positions.get("MID")!.x,
-    );
+    expect(r2.positions.get("FUTURE")!.x).toBeGreaterThan(r2.positions.get("MID")!.x);
   });
 });
 
@@ -349,9 +345,7 @@ describe("computeEpicGraphLayout — backlog zone", () => {
   });
 
   it("an unscheduled node's t equals its created_at ms", () => {
-    const nodes = [
-      makeNode("U1", { start: "2026-02-01", end: null, created_at: "2026-02-10" }),
-    ];
+    const nodes = [makeNode("U1", { start: "2026-02-01", end: null, created_at: "2026-02-10" })];
     const r = computeEpicGraphLayout(nodes, [], {
       now: NOW,
       unscheduledIds: new Set(["U1"]),
@@ -369,17 +363,8 @@ describe("computeEpicGraphLayout — structure mode", () => {
   const W = { start: "2025-01-01", end: "2025-06-01" };
 
   it("case S1: prerequisite strictly left of dependent for every forward blocks edge", () => {
-    const nodes = [
-      makeNode("A", W),
-      makeNode("B", W),
-      makeNode("C", W),
-      makeNode("D", W),
-    ];
-    const edges = [
-      makeEdge("A", "B"),
-      makeEdge("B", "C"),
-      makeEdge("A", "D", "relates_to"),
-    ];
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W), makeNode("D", W)];
+    const edges = [makeEdge("A", "B"), makeEdge("B", "C"), makeEdge("A", "D", "relates_to")];
     const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
     expect(r.positions.get("A")!.x).toBeLessThan(r.positions.get("B")!.x);
     expect(r.positions.get("B")!.x).toBeLessThan(r.positions.get("C")!.x);
@@ -400,32 +385,42 @@ describe("computeEpicGraphLayout — structure mode", () => {
     expect(Math.abs(b.y - a.y)).toBeLessThanOrEqual(STRUCTURE_ROW_HEIGHT + 1);
   });
 
-  it("case Sf: empty-slot — a dependent aligns deep to its prereq, sibling leaves a gap", () => {
-    // Four prereqs G0..G3 on rank 0; A,B on rank 1. G0→A pins A near the TOP,
-    // G3→B pins B near the BOTTOM (G1,G2 have no dependents → an empty slot
-    // between A and B). Mirrors the corrected coords fixture at layout level:
-    // both dependents align to their prereq, a real vertical gap between them.
+  it("case Sf: a dependent aligns deep to its prereq, a sibling pair leaves a gap", () => {
+    // Two prereqs G0,G3 on rank 0; A,B on rank 1 (G0→A, G3→B). Post-change-B the
+    // ONLY-connected nodes drive the DAG; we add two stacking spacers S1,S2 that
+    // ALSO depend on G0/G3 so rank 1 holds {A,B,S1,S2}, and a real vertical span
+    // separates the A-aligned-to-G0 dependent from the B-aligned-to-G3 dependent.
+    // (G1,G2-as-isolated-fillers no longer live in the DAG — they'd be trayed —
+    // so dependents carry the spacing instead.)
     const nodes = [
       makeNode("G0", W),
-      makeNode("G1", W),
-      makeNode("G2", W),
       makeNode("G3", W),
       makeNode("A", W),
       makeNode("B", W),
+      makeNode("S1", W),
+      makeNode("S2", W),
     ];
-    const edges = [makeEdge("G0", "A"), makeEdge("G3", "B")];
+    const edges = [
+      makeEdge("G0", "A"),
+      makeEdge("G0", "S1"),
+      makeEdge("G3", "S2"),
+      makeEdge("G3", "B"),
+    ];
     const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
     const a = r.positions.get("A")!;
     const b = r.positions.get("B")!;
     const g0 = r.positions.get("G0")!;
     const g3 = r.positions.get("G3")!;
-    // A and B share rank 1 → same x, distinct lanes.
+    // A and B share rank 1 → same x, distinct lanes; no tray (all connected).
     expect(a.x).toBe(b.x);
     expect(a.lane).not.toBe(b.lane);
-    // Each dependent aligns to its single prereq; a real gap separates A from B.
-    expect(Math.abs(a.y - g0.y)).toBeLessThanOrEqual(STRUCTURE_ROW_HEIGHT + 1);
-    expect(Math.abs(b.y - g3.y)).toBeLessThanOrEqual(STRUCTURE_ROW_HEIGHT + 1);
-    expect(Math.abs(b.y - a.y)).toBeGreaterThanOrEqual(2 * STRUCTURE_ROW_HEIGHT);
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    expect(r.tray).toBeNull();
+    // Each dependent aligns toward its single prereq; G0 sits above G3, so A is
+    // above B and a real vertical gap separates them.
+    expect(g0.y).toBeLessThan(g3.y);
+    expect(a.y).toBeLessThan(b.y);
+    expect(Math.abs(b.y - a.y)).toBeGreaterThanOrEqual(STRUCTURE_ROW_HEIGHT);
   });
 
   it("case S2: no overlap — distinct (x,y); same-rank ΔY≥rowHeight, diff-rank ΔX≥gap", () => {
@@ -462,7 +457,10 @@ describe("computeEpicGraphLayout — structure mode", () => {
       expect(r.laneCount).toBe(0);
     });
 
-    it("single node, no edges → finite, y=0, lane=0, laneCount 1", () => {
+    it("single node, no edges → trayed, finite, y=0, lane=0, laneCount 0", () => {
+      // Post-change-B: a lone edgeless node is ISOLATED → it drops into the tray
+      // (empty DAG → tray pinned at y=0), so the DAG laneCount is 0 but the node
+      // is still placed with finite geometry.
       const r = computeEpicGraphLayout([makeNode("A", W)], [], {
         now: NOW,
         mode: "structure" as const,
@@ -472,7 +470,10 @@ describe("computeEpicGraphLayout — structure mode", () => {
       expect(Number.isFinite(a.x)).toBe(true);
       expect(a.y).toBe(0);
       expect(a.lane).toBe(0);
-      expect(r.laneCount).toBe(1);
+      expect(r.laneCount).toBe(0);
+      if (r.mode !== "structure") throw new Error("expected structure mode");
+      expect(r.tray).not.toBeNull();
+      expect(r.tray!.count).toBe(1);
     });
 
     it("all relates_to → single rank-0 layer of 3, equal x, distinct y, laneCount 3", () => {
@@ -607,5 +608,132 @@ describe("computeEpicGraphLayout — structure mode", () => {
     const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
     if (r.mode !== "structure") throw new Error("expected structure mode");
     expect(r.redundantEdges.size).toBe(0);
+  });
+
+  // ── Independent-epic tray (change B) ────────────────────────────
+
+  it("case T1: adding isolated nodes never perturbs connected geometry (the real partition invariant)", () => {
+    // A→B→C is a pure dependency chain. Capture each connected node's full
+    // {x,y,lane} with NO isolated nodes present.
+    const connOnly = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+    const connEdges = [makeEdge("A", "B"), makeEdge("B", "C")];
+    const base = computeEpicGraphLayout(connOnly, connEdges, {
+      now: NOW,
+      mode: "structure" as const,
+    });
+    if (base.mode !== "structure") throw new Error("expected structure mode");
+    const baseGeom = (id: string) => {
+      const p = base.positions.get(id)!;
+      return { x: p.x, y: p.y, lane: p.lane };
+    };
+
+    // Now add 3 ISOLATED nodes (no edges) and re-layout. Connected geometry must
+    // be BYTE-IDENTICAL (they're partitioned out before the DAG pipeline runs).
+    const withIso = [...connOnly, makeNode("I1", W), makeNode("I2", W), makeNode("I3", W)];
+    const r = computeEpicGraphLayout(withIso, connEdges, { now: NOW, mode: "structure" as const });
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    for (const id of ["A", "B", "C"]) {
+      const p = r.positions.get(id)!;
+      expect({ x: p.x, y: p.y, lane: p.lane }).toEqual(baseGeom(id));
+    }
+  });
+
+  it("case T2: isolated nodes land below the DAG in a non-null tray", () => {
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W), makeNode("D", W)];
+    const edges = [makeEdge("A", "B")]; // A,B connected; C,D isolated
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    const dagMaxY = Math.max(r.positions.get("A")!.y, r.positions.get("B")!.y);
+    expect(r.positions.get("C")!.y).toBeGreaterThan(dagMaxY);
+    expect(r.positions.get("D")!.y).toBeGreaterThan(dagMaxY);
+    expect(r.tray).not.toBeNull();
+    expect(r.tray!.count).toBe(2);
+    expect(r.tray!.topY).toBeGreaterThan(dagMaxY);
+    expect(r.tray!.leftX).toBe(STRUCTURE_X_PAD);
+  });
+
+  it("case T3: all-isolated — no DAG, every node in the tray, topY=0, finite geometry", () => {
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+    const r = computeEpicGraphLayout(nodes, [], { now: NOW, mode: "structure" as const });
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    expect(r.tray).not.toBeNull();
+    expect(r.tray!.count).toBe(3);
+    expect(r.tray!.topY).toBe(0); // empty DAG pins the tray at the origin
+    expect(Number.isFinite(r.tray!.leftX)).toBe(true);
+    expect(Number.isFinite(r.tray!.rightX)).toBe(true);
+    for (const id of ["A", "B", "C"]) {
+      const p = r.positions.get(id)!;
+      expect(Number.isFinite(p.x)).toBe(true);
+      expect(Number.isFinite(p.y)).toBe(true);
+    }
+    expect(r.laneCount).toBe(0);
+    expect(r.backwardsEdges).toEqual([]);
+  });
+
+  it("case T4: an isolated node's merged position is NOT the origin", () => {
+    // A→B connected + isolated C. C's position comes from the tray grid merged
+    // into `positions` — proving it's not left at a default {x:0,y:0}.
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+    const edges = [makeEdge("A", "B")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    const c = r.positions.get("C")!;
+    expect(c.x === 0 && c.y === 0).toBe(false);
+    expect(c.y).toBeGreaterThan(0);
+  });
+
+  it("case T5: a relates_to edge keeps both nodes in the DAG (not the tray)", () => {
+    // A,B joined only by relates_to (no blocks) → still CONNECTED (in an edge),
+    // so they stay in the DAG; isolated C is the only tray member.
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+    const edges = [makeEdge("A", "B", "relates_to")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    expect(r.tray).not.toBeNull();
+    expect(r.tray!.count).toBe(1); // only C
+  });
+
+  it("case T6: an all-connected graph has a null tray", () => {
+    const nodes = [makeNode("A", W), makeNode("B", W), makeNode("C", W)];
+    const edges = [makeEdge("A", "B"), makeEdge("B", "C")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    expect(r.tray).toBeNull();
+  });
+
+  it("case T7: determinism with a tray — shuffled mixed graph yields equal positions + tray", () => {
+    const mk = () => [
+      makeNode("A", W),
+      makeNode("B", W),
+      makeNode("I1", W),
+      makeNode("I2", W),
+      makeNode("I3", W),
+    ];
+    const edges = [makeEdge("A", "B")];
+    const r1 = computeEpicGraphLayout(mk(), edges, { now: NOW, mode: "structure" as const });
+    const shuffled = [
+      makeNode("I3", W),
+      makeNode("B", W),
+      makeNode("I1", W),
+      makeNode("A", W),
+      makeNode("I2", W),
+    ];
+    const r2 = computeEpicGraphLayout(shuffled, edges, { now: NOW, mode: "structure" as const });
+    if (r1.mode !== "structure" || r2.mode !== "structure")
+      throw new Error("expected structure mode");
+    expect(sortedEntries(r1)).toEqual(sortedEntries(r2));
+    expect(r1.tray).toEqual(r2.tray);
+  });
+
+  it("case T8: a ghost edge (absent endpoint) does NOT connect its present node — it falls to the tray", () => {
+    // P→GHOST where GHOST isn't in the node set: P has no edge with both
+    // endpoints present, so P is ISOLATED, not stranded out of the layout.
+    const nodes = [makeNode("P", W)];
+    const edges = [makeEdge("P", "GHOST")];
+    const r = computeEpicGraphLayout(nodes, edges, { now: NOW, mode: "structure" as const });
+    if (r.mode !== "structure") throw new Error("expected structure mode");
+    expect(r.tray).not.toBeNull();
+    expect(r.tray!.count).toBe(1);
+    expect(r.positions.has("P")).toBe(true);
   });
 });

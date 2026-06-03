@@ -403,6 +403,35 @@ function redundantDepsGraph(): EpicGraph {
   };
 }
 
+// a→b blocks (connected) + 2 isolated epics (no edges) → drives the
+// independent-epic tray label (structure mode only).
+function isolatedGraph(): EpicGraph {
+  const node = (id: string, name: string) => ({
+    id,
+    project_id: "proj-1",
+    name,
+    status: "active" as const,
+    priority: "high" as const,
+    target_date: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-06-01T00:00:00.000Z",
+    taskSummary: { total: 4, done: 1, byStatus: {} },
+    health: "on_track" as const,
+    activity_recency: "2026-06-01T00:00:00.000Z",
+    time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+  });
+  return {
+    nodes: [
+      node("a", "Epic A"),
+      node("b", "Epic B"),
+      node("iso1", "Isolated one"),
+      node("iso2", "Isolated two"),
+    ],
+    edges: [{ from: "a", to: "b", dependency_type: "blocks", provenance: "explicit" }],
+    hasCycle: false,
+  };
+}
+
 function q<T>(data: T | undefined, isLoading = false) {
   return { data, isLoading } as unknown;
 }
@@ -563,24 +592,18 @@ describe("EpicRoadmapCanvas", () => {
     // Present (count 1) for the redundant fixture in the full structure view.
     mocks.useEpicGraph.mockReturnValue(q(redundantDepsGraph()));
     const { unmount } = render(<EpicRoadmapCanvas projectId="proj-1" />);
-    expect(
-      screen.getByRole("button", { name: /Show all dependencies \(1\)/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Show all dependencies \(1\)/ })).toBeInTheDocument();
     unmount();
 
     // Absent in the compact embed.
     render(<EpicRoadmapCanvas projectId="proj-1" variant="compact" />);
-    expect(
-      screen.queryByRole("button", { name: /Show all dependencies/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show all dependencies/ })).not.toBeInTheDocument();
   });
 
   it("does not offer the toggle when there are no redundant edges", () => {
     mocks.useEpicGraph.mockReturnValue(q(categorizedGraph()));
     render(<EpicRoadmapCanvas projectId="proj-1" />);
-    expect(
-      screen.queryByRole("button", { name: /Show all dependencies/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show all dependencies/ })).not.toBeInTheDocument();
   });
 
   it("keeps a backwards (cycle) edge on smoothstep, never routed", () => {
@@ -710,5 +733,34 @@ describe("EpicRoadmapCanvas", () => {
     render(<EpicRoadmapCanvas projectId="proj-1" />);
     expect(screen.queryByRole("button", { name: /Hide.*done/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Hide.*upcoming/ })).not.toBeInTheDocument();
+  });
+
+  // ── Independent-epic tray (change B) ────────────────────────────
+
+  it("renders the independent-epic tray label in structure mode with isolated epics", () => {
+    mocks.useEpicGraph.mockReturnValue(q(isolatedGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // 2 isolated epics → the labeled divider mounts (ViewportPortal is a
+    // passthrough in the mock, so the label text is assertable directly).
+    expect(screen.getByText(/Independent \(no dependencies\) · 2/)).toBeInTheDocument();
+    // All four epics still render as rf-nodes (connected + isolated merged).
+    expect(screen.getAllByTestId("rf-node")).toHaveLength(4);
+  });
+
+  it("renders no tray label when the structure graph is fully connected", () => {
+    // cycleGraph: a↔b, every node in an edge → no isolated epics → no label.
+    mocks.useEpicGraph.mockReturnValue(q(cycleGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    expect(screen.queryByText(/Independent \(no dependencies\)/)).not.toBeInTheDocument();
+  });
+
+  it("does not render the tray label in timeline mode", () => {
+    mocks.useEpicGraph.mockReturnValue(q(isolatedGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // Present in structure (default)...
+    expect(screen.getByText(/Independent \(no dependencies\)/)).toBeInTheDocument();
+    // ...gone after switching to timeline (the tray is structure-only).
+    fireEvent.click(screen.getByRole("radio", { name: "Timeline" }));
+    expect(screen.queryByText(/Independent \(no dependencies\)/)).not.toBeInTheDocument();
   });
 });
