@@ -154,10 +154,17 @@ const projectTaskListRoute = createRoute({
   }),
 });
 
-// /projects/$projectId/board — kanban board
+// /projects/$projectId/board — kanban board (project-wide, demoted to power-user / direct URL)
 const projectBoardRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/board",
+  component: BoardPage,
+});
+
+// /projects/$projectId/epics/$epicId/board — epic-scoped kanban board (the primary drill-down)
+const projectEpicBoardRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/epics/$epicId/board",
   component: BoardPage,
 });
 
@@ -291,6 +298,7 @@ const routeTree = rootRoute.addChildren([
       projectIndexRoute,
       projectProposalListRoute,
       projectBoardRoute,
+      projectEpicBoardRoute,
       projectTaskListRoute,
       projectEpicListRoute,
       projectRoadmapRoute,

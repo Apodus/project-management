@@ -71,6 +71,10 @@ const TASK_STATUSES = [
   "cancelled",
 ] as const;
 
+// Default /tasks view: open work only (terminal done/cancelled excluded) so the
+// list is never a default infinite enumeration. "All statuses" is the opt-in.
+const OPEN_WORK_STATUSES = "backlog,ready,in_progress,in_review";
+
 const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 
 const TASK_TYPES = [
@@ -495,8 +499,19 @@ export function TaskListPage() {
     setPage(1);
   }, [statusFilter, priorityFilter, typeFilter, assigneeFilter, epicFilter, debouncedSearch, sortBy, order]);
 
-  // Build filter object (exclude "all" sentinel value)
-  const effectiveStatus = statusFilter && statusFilter !== "all" ? statusFilter : "";
+  // Build filter object.
+  // Status sentinel: the default ("" — untouched, no URL param) opens to OPEN
+  // WORK (terminal done/cancelled excluded) so /tasks is never a default infinite
+  // enumeration. "all" is the explicit power-user opt-in → no status filter (full
+  // enumeration). A specific status → that status. The open-work default is kept
+  // in derivation only (NOT echoed into the URL by the sync effect above, which
+  // skips "" → no init/sync loop).
+  const effectiveStatus =
+    statusFilter === ""
+      ? OPEN_WORK_STATUSES
+      : statusFilter === "all"
+        ? ""
+        : statusFilter;
   const effectivePriority = priorityFilter && priorityFilter !== "all" ? priorityFilter : "";
   const effectiveType = typeFilter && typeFilter !== "all" ? typeFilter : "";
   const effectiveAssignee = assigneeFilter && assigneeFilter !== "all" ? assigneeFilter : "";
@@ -524,7 +539,9 @@ export function TaskListPage() {
   const pagination = data?.pagination;
   const totalPages = pagination?.totalPages ?? 1;
 
-  const hasActiveFilters = !!(effectiveStatus || effectivePriority || effectiveType || effectiveAssignee || effectiveEpic || searchInput);
+  // A status choice is "active" only when the user explicitly picked one (incl
+  // "all"); the untouched open-work default ("") is not a clearable filter.
+  const hasActiveFilters = !!(statusFilter || effectivePriority || effectiveType || effectiveAssignee || effectiveEpic || searchInput);
 
   const handleSort = useCallback(
     (field: SortField) => {

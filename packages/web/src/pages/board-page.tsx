@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   DndContext,
   DragOverlay,
@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  ArrowLeft,
   GripVertical,
   Kanban,
   Search,
@@ -61,6 +62,11 @@ const BOARD_STATUSES = [
   "in_review",
   "done",
 ] as const;
+
+// On the project-wide board we fetch only open work (terminal `done` excluded)
+// so the board is never a default infinite enumeration. The `done` column is
+// still rendered (drag-to-complete preserved) — it just starts empty.
+const OPEN_WORK_STATUSES = "backlog,ready,in_progress,in_review";
 
 const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 
@@ -457,7 +463,8 @@ function SwimlaneSection({
 // ---- Main Board Page ----
 
 export function BoardPage() {
-  const { projectId } = useParams({ strict: false });
+  const { projectId, epicId } = useParams({ strict: false });
+  const isEpicScoped = !!epicId;
   const navigate = useNavigate();
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
 
@@ -485,8 +492,13 @@ export function BoardPage() {
     typeFilter && typeFilter !== "all" ? typeFilter : "";
   const effectiveAssignee =
     assigneeFilter && assigneeFilter !== "all" ? assigneeFilter : "";
-  const effectiveEpic =
-    epicFilter && epicFilter !== "all" ? epicFilter : "";
+  // When epic-scoped, the epic is pinned to the route param (the dropdown is
+  // hidden); otherwise it comes from the dropdown.
+  const effectiveEpic = isEpicScoped
+    ? epicId!
+    : epicFilter && epicFilter !== "all"
+      ? epicFilter
+      : "";
 
   const filters: TaskFilters = useMemo(
     () => ({
@@ -495,9 +507,13 @@ export function BoardPage() {
       ...(effectiveAssignee ? { assignee: effectiveAssignee } : {}),
       ...(effectiveEpic ? { epic: effectiveEpic } : {}),
       ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      // Project-wide board: fetch only open work so `done` doesn't load an
+      // infinite list (the `done` column still renders, just empty by default).
+      // Epic-scoped board: bounded by construction — fetch ALL statuses incl done.
+      ...(isEpicScoped ? {} : { status: OPEN_WORK_STATUSES }),
       perPage: 100, // Max allowed by API
     }),
-    [effectivePriority, effectiveType, effectiveAssignee, effectiveEpic, debouncedSearch],
+    [effectivePriority, effectiveType, effectiveAssignee, effectiveEpic, debouncedSearch, isEpicScoped],
   );
 
   const { data, isLoading, error, refetch } = useTasks(projectId, filters);
@@ -543,11 +559,16 @@ export function BoardPage() {
 
   const transitionMutation = useTransitionTask();
 
+  // The pinned epic (epic-scoped board) is NOT a user-clearable filter, so it
+  // must not light up "Clear filters" — only the dropdown epic filter counts.
+  const epicDropdownFilter =
+    !isEpicScoped && epicFilter && epicFilter !== "all" ? epicFilter : "";
+
   const hasActiveFilters = !!(
     effectivePriority ||
     effectiveType ||
     effectiveAssignee ||
-    effectiveEpic ||
+    epicDropdownFilter ||
     searchInput
   );
 
@@ -719,15 +740,37 @@ export function BoardPage() {
   return (
     <div className="flex flex-col h-full space-y-4">
       {/* Page header */}
-      <div className="flex items-center gap-3 shrink-0">
-        <Kanban className="size-6 text-muted-foreground" />
-        <h1 className="text-2xl font-bold tracking-tight">Board</h1>
-        {project && (
-          <Badge variant="outline" className="text-xs font-normal">
-            {project.name}
-          </Badge>
-        )}
-      </div>
+      {isEpicScoped ? (
+        <div className="flex flex-col gap-1 shrink-0">
+          <Link
+            to="/epics/$epicId"
+            params={{ epicId: epicId! }}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+            Back to epic
+          </Link>
+          <div className="flex items-center gap-3">
+            <Kanban className="size-6 text-muted-foreground" />
+            <h1 className="text-2xl font-bold tracking-tight">
+              {epicMap.get(epicId!) ?? "Epic board"}
+            </h1>
+            <Badge variant="outline" className="text-xs font-normal">
+              Board
+            </Badge>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 shrink-0">
+          <Kanban className="size-6 text-muted-foreground" />
+          <h1 className="text-2xl font-bold tracking-tight">Board</h1>
+          {project && (
+            <Badge variant="outline" className="text-xs font-normal">
+              {project.name}
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* Error state */}
       {error && (
@@ -799,20 +842,22 @@ export function BoardPage() {
           </SelectContent>
         </Select>
 
-        {/* Epic filter */}
-        <Select value={epicFilter} onValueChange={setEpicFilter}>
-          <SelectTrigger size="sm" className="w-[140px]">
-            <SelectValue placeholder="Epic" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All epics</SelectItem>
-            {epics?.map((e) => (
-              <SelectItem key={e.id} value={e.id}>
-                {e.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Epic filter — hidden when the board is already scoped to one epic */}
+        {!isEpicScoped && (
+          <Select value={epicFilter} onValueChange={setEpicFilter}>
+            <SelectTrigger size="sm" className="w-[140px]">
+              <SelectValue placeholder="Epic" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All epics</SelectItem>
+              {epics?.map((e) => (
+                <SelectItem key={e.id} value={e.id}>
+                  {e.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Clear filters */}
         {hasActiveFilters && (
@@ -825,15 +870,17 @@ export function BoardPage() {
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Group by epic toggle */}
-        <Button
-          variant={groupByEpic ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => setGroupByEpic((v) => !v)}
-        >
-          <Layers className="size-4 mr-1" />
-          Group by Epic
-        </Button>
+        {/* Group by epic toggle — pointless on a single-epic board */}
+        {!isEpicScoped && (
+          <Button
+            variant={groupByEpic ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setGroupByEpic((v) => !v)}
+          >
+            <Layers className="size-4 mr-1" />
+            Group by Epic
+          </Button>
+        )}
       </div>
 
       {/* Board */}

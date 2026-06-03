@@ -7,7 +7,6 @@ import {
   FileText,
   Flag,
   FolderOpen,
-  Kanban,
   LayoutDashboard,
   ListTodo,
   Milestone,
@@ -64,18 +63,6 @@ function getNavItems(projectId: string | null): NavItem[] {
       matchPath: "/proposals",
     },
     {
-      label: "Board",
-      icon: Kanban,
-      href: projectId ? `${base}/board` : "/projects",
-      matchPath: "/board",
-    },
-    {
-      label: "Tasks",
-      icon: ListTodo,
-      href: projectId ? `${base}/tasks` : "/projects",
-      matchPath: "/tasks",
-    },
-    {
       label: "Epics",
       icon: Milestone,
       href: projectId ? `${base}/epics` : "/projects",
@@ -104,6 +91,14 @@ function getNavItems(projectId: string | null): NavItem[] {
       icon: Activity,
       href: projectId ? `${base}/activity` : "/projects",
       matchPath: "/activity",
+    },
+    // Demoted power-user entry: the project-wide task list (board is now an
+    // epic drill-down, reachable from epic detail / direct URL).
+    {
+      label: "All Tasks",
+      icon: ListTodo,
+      href: projectId ? `${base}/tasks` : "/projects",
+      matchPath: "/tasks",
     },
   ];
 }

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login, createProjectViaAPI } from "./helpers";
+import { login, createProjectViaAPI, getCurrentUserId } from "./helpers";
 
 const ADMIN_USER = "admin";
 const ADMIN_PASS = "password123";
@@ -83,5 +83,83 @@ test.describe("Epic Timeline (Roadmap)", () => {
       timeout: 10_000,
     });
     await expect(page.getByRole("button", { name: /older/i })).toHaveCount(0);
+  });
+
+  test("epic-scoped board drill shows only that epic's tasks + no epic dropdown", async ({
+    page,
+  }) => {
+    await login(page, ADMIN_USER, ADMIN_PASS);
+
+    const project = await createProjectViaAPI(page, "Epic Board Drill Project");
+    const projectId = project.id;
+    const reporterId = await getCurrentUserId(page);
+
+    // Two epics; only the first gets a task so we can assert scoping.
+    const epicResp = await page.request.post(
+      `/api/v1/projects/${projectId}/epics`,
+      { data: { name: "Scoped epic" } },
+    );
+    expect(epicResp.ok()).toBeTruthy();
+    const scopedEpic = (await epicResp.json()).data;
+
+    const otherEpicResp = await page.request.post(
+      `/api/v1/projects/${projectId}/epics`,
+      { data: { name: "Other epic" } },
+    );
+    expect(otherEpicResp.ok()).toBeTruthy();
+    const otherEpic = (await otherEpicResp.json()).data;
+
+    // One task under the scoped epic, one under the other epic.
+    const inEpicResp = await page.request.post(
+      `/api/v1/projects/${projectId}/tasks`,
+      {
+        data: {
+          title: "Task in scoped epic",
+          reporterId,
+          epicId: scopedEpic.id,
+          status: "ready",
+        },
+      },
+    );
+    expect(inEpicResp.ok()).toBeTruthy();
+
+    const otherTaskResp = await page.request.post(
+      `/api/v1/projects/${projectId}/tasks`,
+      {
+        data: {
+          title: "Task in other epic",
+          reporterId,
+          epicId: otherEpic.id,
+          status: "ready",
+        },
+      },
+    );
+    expect(otherTaskResp.ok()).toBeTruthy();
+
+    // Drill directly to the epic-scoped board.
+    await page.goto(
+      `/projects/${projectId}/epics/${scopedEpic.id}/board`,
+    );
+
+    // Epic-scoped chrome: the back-to-epic link (deep-links to /epics/{id}) is
+    // the stable marker that the board is scoped to a single epic. (The h1 shows
+    // the epic NAME once the epics list resolves, falling back to "Epic board" —
+    // we assert the route-derived chrome, not the async-loaded name.)
+    await expect(page.getByText("Back to epic")).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Only the scoped epic's task appears; the other epic's task does NOT.
+    await expect(page.getByText("Task in scoped epic")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText("Task in other epic")).toHaveCount(0);
+
+    // The epic-filter dropdown is absent (the epic is pinned by the route):
+    // its trigger placeholder "Epic" (exact) and the "Group by Epic" toggle are gone.
+    await expect(page.getByText("Epic", { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Group by Epic" }),
+    ).toHaveCount(0);
   });
 });

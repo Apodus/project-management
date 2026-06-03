@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  Kanban,
   ListTodo,
   Milestone as MilestoneIcon,
   Pencil,
@@ -446,15 +447,28 @@ export function EpicDetailPage() {
 
           {/* Task list */}
           <section className="space-y-3">
-            <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <ListTodo className="size-4" />
-              Tasks
-              {tasks.length > 0 && (
-                <Badge variant="secondary" className="text-[10px]">
-                  {tasks.length}
-                </Badge>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <ListTodo className="size-4" />
+                Tasks
+                {tasks.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    {tasks.length}
+                  </Badge>
+                )}
+              </h2>
+              {hasProject && epicId && (
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    to="/projects/$projectId/epics/$epicId/board"
+                    params={{ projectId: currentProjectId!, epicId }}
+                  >
+                    <Kanban className="size-4" />
+                    Open board
+                  </Link>
+                </Button>
               )}
-            </h2>
+            </div>
 
             {tasksLoading && (
               <div className="space-y-2">
