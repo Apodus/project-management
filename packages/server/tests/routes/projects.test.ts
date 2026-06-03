@@ -639,6 +639,10 @@ describe("Projects API", () => {
         {
           body: {
             settings: {
+              // A PARTIAL ai_autonomy block (only one of its six fields) — exactly what
+              // the web settings pages preserve when a project's stored settings were
+              // seeded partially. The block, and its inner fields, must both be optional.
+              ai_autonomy: { can_create_tasks: true },
               integrator: {
                 resolver: { enabled: true, max_concurrent: 1, time_budget_sec: 600 },
               },
@@ -649,7 +653,7 @@ describe("Projects API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.settings.integrator.resolver.enabled).toBe(true);
-      expect(body.data.settings.ai_autonomy).toBeUndefined();
+      expect(body.data.settings.ai_autonomy).toEqual({ can_create_tasks: true });
       expect(body.data.settings.workflow).toBeUndefined();
       expect(body.data.settings.git).toBeUndefined();
     });
