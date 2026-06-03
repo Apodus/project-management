@@ -21,6 +21,7 @@ import {
   type LayoutOptions,
 } from "@/lib/epic-graph-layout";
 import { computeChain, edgeKey } from "@/lib/epic-graph-chain";
+import type { EpicGraphNode } from "@/lib/api";
 import { getEdgeStyling } from "@/lib/epic-graph-style";
 import { partitionEpics, recedeOpacity } from "@/lib/epic-graph-recency";
 import { lifecycle, actionableNow } from "@/lib/epic-lifecycle";
@@ -175,6 +176,13 @@ export function EpicRoadmapCanvas({
   // Whether the collapsed future "Backlog" rail (unscheduled epics) is expanded.
   const [showBacklog, setShowBacklog] = useState(false);
 
+  // Structure-mode lifecycle collapse rails (C2.P4). "Show everything by
+  // default" — both default OFF, so the structure DAG shows done + future +
+  // active unconditionally (byte-set-identical to the prior show-all). The
+  // rails are OPT-IN hides: flipping one collapses that lifecycle bucket.
+  const [hideDone, setHideDone] = useState(false); // default OFF = show done
+  const [hideFuture, setHideFuture] = useState(false); // default OFF = show future
+
   // The epic whose task mini-DAG panel is open (null = none). Clicking the same
   // epic again toggles the panel closed.
   const [selectedEpicId, setSelectedEpicId] = useState<string | null>(null);
@@ -199,22 +207,45 @@ export function EpicRoadmapCanvas({
   // the laid-out set (reflow-on-toggle is intended).
   const partition = useMemo(() => partitionEpics(graph?.nodes ?? [], { now }), [graph, now]);
 
+  // Structure-mode lifecycle partition (C2.P4): split every node by its derived
+  // lifecycle phase. Clock-free (unlike the recency `partition` above) — keyed
+  // on `graph` alone. Drives the structure-mode collapse rails' counts + the
+  // hide-filtered railComposed branch below.
+  const lifecyclePartition = useMemo(() => {
+    const done: EpicGraphNode[] = [];
+    const active: EpicGraphNode[] = [];
+    const future: EpicGraphNode[] = [];
+    for (const n of graph?.nodes ?? []) {
+      const phase = lifecycle(n);
+      (phase === "done" ? done : phase === "future" ? future : active).push(n);
+    }
+    return { done, active, future };
+  }, [graph]);
+
   // The rail-composed set: active, plus the past bucket when its rail is
   // expanded, plus the unscheduled bucket when its rail is. This is the
   // PRE-filter set (the legend reads it so toggling a category off doesn't drop
   // its own legend row). The Past/Backlog rails are TIMELINE affordances
   // (recency-collapse / future-scheduling) — in structure mode the whole
-  // topological DAG is shown, so every bucket is folded in unconditionally.
+  // topological DAG is shown, so every bucket is folded in by default. In
+  // structure mode the bucketing is by LIFECYCLE (active always shown; done /
+  // future shown unless the user opts into hiding them via the collapse rails)
+  // — both hides default OFF, so the default set is byte-set-identical to the
+  // prior unconditional show-all. The timeline branch is unchanged.
   const railComposed = useMemo(
     () =>
       effectiveMode === "structure"
-        ? [...partition.active, ...partition.past, ...partition.unscheduled]
+        ? [
+            ...lifecyclePartition.active,
+            ...(hideDone ? [] : lifecyclePartition.done),
+            ...(hideFuture ? [] : lifecyclePartition.future),
+          ]
         : [
             ...partition.active,
             ...(showPast ? partition.past : []),
             ...(showBacklog ? partition.unscheduled : []),
           ],
-    [effectiveMode, partition, showPast, showBacklog],
+    [effectiveMode, lifecyclePartition, hideDone, hideFuture, partition, showPast, showBacklog],
   );
 
   // The nodes handed to the layout: railComposed minus any category the user has
@@ -512,9 +543,32 @@ export function EpicRoadmapCanvas({
                 </div>
               </Panel>
             )}
-            {/* Past/Backlog rails are timeline-only affordances; structure mode
-                lays out the whole DAG so the buckets are already on-canvas. */}
-            {effectiveMode === "timeline" && (
+            {/* Collapse rails. Structure mode collapses by LIFECYCLE (done /
+                upcoming) — both shown by default, the rails are opt-in hides.
+                Timeline mode collapses by calendar RECENCY (older / unscheduled)
+                — both hidden by default, the rails are opt-in shows. The two
+                bucketings are mode-exclusive; the labels never share a word
+                ("older" belongs to timeline-past only). */}
+            {effectiveMode === "structure" ? (
+              <>
+                <RailPanel
+                  position="bottom-left"
+                  count={lifecyclePartition.done.length}
+                  expanded={!hideDone}
+                  onToggle={() => setHideDone((v) => !v)}
+                  collapsedLabel={`Show ${lifecyclePartition.done.length} done`}
+                  expandedLabel={`Hide ${lifecyclePartition.done.length} done`}
+                />
+                <RailPanel
+                  position="bottom-right"
+                  count={lifecyclePartition.future.length}
+                  expanded={!hideFuture}
+                  onToggle={() => setHideFuture((v) => !v)}
+                  collapsedLabel={`Show ${lifecyclePartition.future.length} upcoming`}
+                  expandedLabel={`Hide ${lifecyclePartition.future.length} upcoming`}
+                />
+              </>
+            ) : (
               <>
                 <RailPanel
                   position="bottom-left"

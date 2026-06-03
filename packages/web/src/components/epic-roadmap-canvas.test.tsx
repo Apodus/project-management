@@ -170,6 +170,45 @@ function activeAndPastGraph(): EpicGraph {
   };
 }
 
+// One active epic + one not_started epic (→ lifecycle "future"). Drives the
+// structure-mode "hide upcoming" collapse rail.
+function futureGraph(): EpicGraph {
+  return {
+    nodes: [
+      {
+        id: "active-1",
+        project_id: "proj-1",
+        name: "Active epic",
+        status: "active",
+        priority: "high",
+        target_date: null,
+        created_at: "2026-05-01T00:00:00.000Z",
+        updated_at: "2026-06-01T00:00:00.000Z",
+        taskSummary: { total: 4, done: 1, byStatus: {} },
+        health: "on_track",
+        activity_recency: "2026-06-01T00:00:00.000Z",
+        time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+      },
+      {
+        id: "future-1",
+        project_id: "proj-1",
+        name: "Future epic",
+        status: "active",
+        priority: "low",
+        target_date: null,
+        created_at: "2026-05-01T00:00:00.000Z",
+        updated_at: "2026-06-01T00:00:00.000Z",
+        taskSummary: { total: 3, done: 0, byStatus: {} },
+        health: "not_started",
+        activity_recency: "2026-06-01T00:00:00.000Z",
+        time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
+      },
+    ],
+    edges: [],
+    hasCycle: false,
+  };
+}
+
 // Two active epics, each in a distinct defined category — drives the legend +
 // per-category filter tests.
 function categorizedGraph(): EpicGraph {
@@ -337,9 +376,10 @@ describe("EpicRoadmapCanvas", () => {
     mocks.useEpicGraph.mockReturnValue(q(activeAndPastGraph()));
     render(<EpicRoadmapCanvas projectId="proj-1" />);
     // Structure is the default mode (C1.P5): the full dependency topology is
-    // shown, so the ancient done epic is NOT collapsed — the calendar-based Past
-    // rail is a timeline-mode-only affordance now. (C2 re-gates rails on
-    // LIFECYCLE — done → receded — which will supersede this interim "show all".)
+    // shown, so the ancient done epic is NOT collapsed. C2.P4 keeps show-all as
+    // the DEFAULT (both lifecycle collapse rails default OFF) and merely ADDS
+    // opt-in Hide done / Hide upcoming toggles — the calendar-based Past rail
+    // remains a timeline-mode-only affordance.
     expect(screen.getByText("Active epic")).toBeInTheDocument();
     expect(screen.getByText("Ancient epic")).toBeInTheDocument();
   });
@@ -476,5 +516,65 @@ describe("EpicRoadmapCanvas", () => {
     expect(screen.queryByRole("button", { name: "Graphics" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Terrain" })).not.toBeInTheDocument();
     expect(screen.getByText("Ready to start")).toBeInTheDocument();
+  });
+
+  // ── Lifecycle collapse rails (C2.P4) ────────────────────────────
+
+  it("default structure mode shows done + future and offers an opt-in hide", () => {
+    mocks.useEpicGraph.mockReturnValue(q(activeAndPastGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    // Both default OFF → the done epic is on-canvas alongside the active one.
+    expect(screen.getByText("Active epic")).toBeInTheDocument();
+    expect(screen.getByText("Ancient epic")).toBeInTheDocument();
+    // The collapse rail offers to hide the (1) done bucket; expanded = shown.
+    expect(screen.getByRole("button", { name: /Hide 1 done/ })).toBeInTheDocument();
+  });
+
+  it("hides the done bucket when the structure done-rail is toggled", () => {
+    mocks.useEpicGraph.mockReturnValue(q(activeAndPastGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /Hide 1 done/ }));
+    // The done epic leaves the canvas; the active one stays.
+    expect(screen.queryByText("Ancient epic")).not.toBeInTheDocument();
+    expect(screen.getByText("Active epic")).toBeInTheDocument();
+    // The rail now offers to re-show.
+    expect(screen.getByRole("button", { name: /Show 1 done/ })).toBeInTheDocument();
+  });
+
+  it("hides the future bucket when the structure upcoming-rail is toggled", () => {
+    mocks.useEpicGraph.mockReturnValue(q(futureGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    expect(screen.getByText("Future epic")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Hide 1 upcoming/ }));
+    expect(screen.queryByText("Future epic")).not.toBeInTheDocument();
+    expect(screen.getByText("Active epic")).toBeInTheDocument();
+  });
+
+  it("the done collapse is reversible (hide then show)", () => {
+    mocks.useEpicGraph.mockReturnValue(q(activeAndPastGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /Hide 1 done/ }));
+    expect(screen.queryByText("Ancient epic")).not.toBeInTheDocument();
+    // Toggle back on → the done epic returns.
+    fireEvent.click(screen.getByRole("button", { name: /Show 1 done/ }));
+    expect(screen.getByText("Ancient epic")).toBeInTheDocument();
+  });
+
+  it("lifecycle collapse rails are structure-only — timeline uses the calendar rails", () => {
+    mocks.useEpicGraph.mockReturnValue(q(activeAndPastGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    fireEvent.click(screen.getByRole("radio", { name: "Timeline" }));
+    // No lifecycle hide rail in timeline mode...
+    expect(screen.queryByRole("button", { name: /Hide.*done/ })).not.toBeInTheDocument();
+    // ...the calendar Past rail governs instead (past-1 is done + old → "1 older").
+    expect(screen.getByRole("button", { name: /older/i })).toBeInTheDocument();
+  });
+
+  it("renders no collapse rail when a lifecycle bucket is empty (RailPanel null)", () => {
+    // categorizedGraph is all-active: no done, no future → both rails return null.
+    mocks.useEpicGraph.mockReturnValue(q(categorizedGraph()));
+    render(<EpicRoadmapCanvas projectId="proj-1" />);
+    expect(screen.queryByRole("button", { name: /Hide.*done/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Hide.*upcoming/ })).not.toBeInTheDocument();
   });
 });
