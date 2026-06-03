@@ -54,15 +54,20 @@ describe("EpicNode", () => {
     expect(container.querySelector(".ring-red-500")).not.toBeNull();
   });
 
-  it("dims a node that is off the focused dependency chain", () => {
+  it("dims a node that is off the focused dependency chain (target opacity 0.25)", () => {
     const { container } = renderNode(baseData({ dimmed: true }));
-    expect(container.querySelector(".opacity-25")).not.toBeNull();
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    // Dim is now a single inline opacity TARGET (with an always-on transition),
+    // not a conditional `.opacity-25` class — that conditional class was the
+    // hover-flicker cause (it snapped current opacity each time it was removed).
+    expect(root).toHaveStyle({ opacity: "0.25" });
   });
 
-  it("applies neither ring nor dim when both flags are absent", () => {
+  it("applies neither ring nor dim when both flags are absent (opacity 1)", () => {
     const { container } = renderNode(baseData());
+    const root = container.querySelector(".bg-card") as HTMLElement;
     expect(container.querySelector(".ring-red-500")).toBeNull();
-    expect(container.querySelector(".opacity-25")).toBeNull();
+    expect(root).toHaveStyle({ opacity: "1" });
   });
 
   it("applies the recede value as inline opacity when not dimmed", () => {
@@ -71,9 +76,10 @@ describe("EpicNode", () => {
     expect(root).toHaveStyle({ opacity: "0.5" });
   });
 
-  it("lets dim win over recede (class applies, no inline override)", () => {
+  it("lets dim win over recede (target opacity = 0.25, not the recede value)", () => {
     const { container } = renderNode(baseData({ dimmed: true, recede: 0.5 }));
-    expect(container.querySelector(".opacity-25")).not.toBeNull();
+    const root = container.querySelector(".bg-card") as HTMLElement;
+    expect(root).toHaveStyle({ opacity: "0.25" });
   });
 
   it("handles a zero-task epic without crashing (0/0, 0%, empty underline)", () => {

@@ -40,12 +40,20 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
     <div
       className={cn(
         "bg-card group relative w-[200px] overflow-hidden rounded-md border",
+        // ALWAYS-ON opacity transition. This is the anti-flicker fix: the
+        // transition must be unconditional so the browser only ever drives the
+        // CURRENT opacity toward the TARGET (set in `style` below). A conditional
+        // transition class (only-while-dimmed) was being added/removed as the
+        // hover target flapped — and every time it dropped, the current opacity
+        // SNAPPED (reset), which read as a flicker while the mouse swept across
+        // nodes. With the transition always present, a flapping target merely
+        // redirects the in-flight interpolation; current state is never reset.
+        "transition-opacity duration-150",
         inCycle && "ring-2 ring-red-500",
-        dimmed && "opacity-25 transition-opacity",
       )}
-      // Recency fade. Dim (chain-off) wins: when dimmed, leave inline opacity
-      // undefined so the `.opacity-25` class applies; otherwise apply recede.
-      style={{ opacity: dimmed ? undefined : (recede ?? 1) }}
+      // SINGLE opacity source = the target. dimmed (chain-off) -> 0.25; else the
+      // recency fade. The browser interpolates current -> this, both directions.
+      style={{ opacity: dimmed ? 0.25 : (recede ?? 1) }}
     >
       {/* Required for edges to attach; visually unobtrusive. */}
       <Handle type="target" position={Position.Left} className="!opacity-0" />

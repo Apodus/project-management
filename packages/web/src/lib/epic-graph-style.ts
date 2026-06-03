@@ -71,6 +71,11 @@ export function getEdgeStyling(input: EdgeVisualInput): EdgeVisual {
     stroke,
     strokeWidth,
     opacity,
+    // Always-on transition so hover highlight/dim drives current -> target
+    // smoothly (same anti-flicker rule as the nodes: never reset current state,
+    // only move the target). Unconditional so a flapping hover target redirects
+    // the in-flight interpolation instead of snapping.
+    transition: "opacity 150ms ease, stroke 150ms ease, stroke-width 150ms ease",
   };
   // Provenance: derived dashes, explicit is solid (no dash property at all).
   if (provenance === "derived") {
