@@ -1,0 +1,20 @@
+{
+  "campaign": "C3' — Dashboard-as-DAG-hero + board re-scope",
+  "status": "COMPLETE",
+  "vision": "roadmaps/vision-20260602-epic-timeline-visualization.md (C3+C4 consolidated)",
+  "note": "Dashboard STAYS default landing; became the DAG-hero surface. Route-flip dropped.",
+  "completed_steps": ["C3'.P1", "C3'.P2", "C3'.P3"],
+  "commits": {
+    "C3'.P1": "2f5c05e",
+    "C3'.P2": "ee35328",
+    "C3'.P3": "fd84e70",
+    "e2e_stale_click_drill_fix": "8e951c5"
+  },
+  "outcome": "Dashboard (default route) now shows the epic DAG as the bounded hero (variant=compact) with attention strip above + stats/masonry pulse widgets below. /roadmap full view reuses the same <EpicRoadmapCanvas>. Board re-scoped to epic drill-down (/projects/{id}/epics/{epicId}/board); project-wide board keeps all 5 columns (drag-to-complete) but excludes done from the fetch (kills infinite done list); sidebar Board removed, Tasks->'All Tasks' demoted; /tasks defaults to open work. Non-destructive (no routes deleted).",
+  "tests": "156 web unit tests green; 16/17 e2e green (1 failure = pre-existing 01-setup-and-login wizard timing flake, unrelated).",
+  "open_issues": [
+    {"id": "e2e-01-setup-flake", "severity": "low", "preexisting": true, "detail": "01-setup-and-login intermittently fails (first-run wizard redirect race + Windows test-DB lock). Pre-dates this arc; not introduced here. Candidate for a separate deflake."},
+    {"id": "deferred-visual-smoke", "severity": "low", "detail": "DAG-hero on dashboard + nested panel non-zero-height confirmed via explicit height chains + the 05 e2e (which renders nodes in real Chromium); a manual dashboard glance still worth doing."}
+  ],
+  "dag_drift": []
+}
