@@ -35,6 +35,22 @@ describe("EpicNode", () => {
     expect(screen.getByText("Auth epic")).toBeInTheDocument();
   });
 
+  it("splits a structural metadata tag from the topic (muted tag + prominent topic)", () => {
+    renderNode(baseData({ name: "[P6] C2 — Foliage pass" }));
+    const tag = screen.getByText("[P6] C2");
+    expect(tag).toHaveClass("text-muted-foreground");
+    const topic = screen.getByText("Foliage pass");
+    expect(topic).toHaveClass("line-clamp-2");
+    expect(topic).toHaveClass("text-sm");
+    expect(topic).toHaveClass("font-medium");
+  });
+
+  it("renders a plain name as the topic with no muted-tag element", () => {
+    const { container } = renderNode(baseData({ name: "Plain epic name" }));
+    expect(screen.getByText("Plain epic name")).toBeInTheDocument();
+    expect(container.querySelector(".text-muted-foreground.truncate")).toBeNull();
+  });
+
   it("renders the task ratio and percentage", () => {
     renderNode(baseData());
     expect(screen.getByText("3/5")).toBeInTheDocument();
@@ -115,12 +131,16 @@ describe("EpicNode", () => {
   // dimmed > lifecycle > recede. The dashed FUTURE outline lives on the
   // box-outline channel so it never touches the `border-l-4` category accent.
 
-  it("desaturates a done epic (data-lifecycle=done, grayscale, opacity 0.55)", () => {
-    const { container } = renderNode(baseData({ lifecycle: "done" }));
+  it("renders a done epic as completed dark-green (data-lifecycle=done, no grayscale, opacity 0.85)", () => {
+    const { container } = renderNode(baseData({ lifecycle: "done", health: "done" }));
     const root = container.querySelector(".bg-card") as HTMLElement;
     expect(root.getAttribute("data-lifecycle")).toBe("done");
-    expect(root).toHaveClass("grayscale");
-    expect(root).toHaveStyle({ opacity: "0.55" });
+    // Done now keeps full color (no grayscale → no longer reads as cancelled).
+    expect(root).not.toHaveClass("grayscale");
+    expect(root).toHaveStyle({ opacity: "0.85" });
+    // The completion fill uses the darker "completed" green.
+    const fill = screen.getByTestId("epic-node-fill");
+    expect(fill).toHaveClass("bg-green-600");
   });
 
   it("renders an active epic at full opacity, no grayscale, no dashed outline", () => {
@@ -141,10 +161,10 @@ describe("EpicNode", () => {
     expect(root).toHaveStyle({ opacity: "0.7" });
   });
 
-  it("lets lifecycle override recede (done → 0.55, not the recede value)", () => {
+  it("lets lifecycle override recede (done → 0.85, not the recede value)", () => {
     const { container } = renderNode(baseData({ lifecycle: "done", recede: 0.9 }));
     const root = container.querySelector(".bg-card") as HTMLElement;
-    expect(root).toHaveStyle({ opacity: "0.55" });
+    expect(root).toHaveStyle({ opacity: "0.85" });
   });
 
   it("lets dim beat lifecycle (opacity 0.25, future outline suppressed)", () => {

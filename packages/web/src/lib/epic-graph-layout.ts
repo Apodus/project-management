@@ -4,6 +4,7 @@ import { transitiveReduction } from "./epic-graph-reduce";
 import { computeOrder } from "./epic-graph-order";
 import { assignCoordinates } from "./epic-graph-coords";
 import { computeLongEdgeRoutes, type RoutePoint } from "./epic-graph-route";
+import { layoutIsolatedGrid } from "./epic-graph-tray";
 
 /**
  * Pure, deterministic layout engine for the epic timeline-DAG view.
@@ -33,12 +34,20 @@ import { computeLongEdgeRoutes, type RoutePoint } from "./epic-graph-route";
 const ONE_DAY_MS = 86_400_000;
 
 const STRUCTURE_X_GAP = 320; // px between adjacent ranks (node is 200px wide → 120px edge channel)
-const STRUCTURE_ROW_HEIGHT = 104; // px between adjacent orders within a layer
+const STRUCTURE_ROW_HEIGHT = 130; // px between adjacent orders within a layer
 const STRUCTURE_X_PAD = 80; // left margin
 // Deliberate design node height (correction 2): the DOM height is content-driven
-// (~56px) and unmeasured at layout time, so long-edge routing assumes this value
-// and lets the band margin absorb the residual. Used for center-y derivation.
-const STRUCTURE_NODE_HEIGHT = 56;
+// (~84px with the two-line topic + metadata tag) and unmeasured at layout time,
+// so long-edge routing assumes this value and lets the band margin absorb the
+// residual. Used for center-y derivation.
+const STRUCTURE_NODE_HEIGHT = 84;
+
+// Independent-epic tray geometry (this file is the caller; epic-graph-tray.ts
+// takes these as opts and declares NO local mirror). `TRAY_GAP` is the vertical
+// DAG↔tray separation (NOT a per-row pitch — rows use STRUCTURE_ROW_HEIGHT).
+const TRAY_COL_GAP = 40; // horizontal gap between tray columns
+const TRAY_GAP = 130; // vertical gap below the DAG before the tray starts
+const TRAY_MAX_COLUMNS = 6; // cap on tray columns (≈ square grid, then clamped)
 
 export interface LayoutOptions {
   /**
@@ -111,6 +120,18 @@ export interface TimelineLayoutResult extends BaseLayoutResult {
   scale: TimeScale;
 }
 
+/**
+ * Bounding box of the "Independent (no dependencies)" tray below the DAG, in
+ * flow space. `null` on the structure result when there are no isolated epics.
+ * Drives the in-flow divider + label the canvas renders.
+ */
+export interface TrayRegion {
+  topY: number;
+  leftX: number;
+  rightX: number;
+  count: number;
+}
+
 /** Structure mode: NO calendar scale, NO per-node `t`. Unpopulated until P4. */
 export interface StructureLayoutResult extends BaseLayoutResult {
   mode: "structure";
@@ -128,6 +149,13 @@ export interface StructureLayoutResult extends BaseLayoutResult {
    * canvas drops these by default and reveals them faint behind a toggle.
    */
   redundantEdges: Set<string>;
+  /**
+   * The independent-epic tray bbox (flow space) or `null` when every node
+   * participates in ≥1 edge. Isolated nodes' positions ARE in `positions`
+   * (merged), so they render via the normal rfNodes path; this only carries the
+   * divider/label geometry.
+   */
+  tray: TrayRegion | null;
 }
 
 export type LayoutResult = TimelineLayoutResult | StructureLayoutResult;
@@ -261,7 +289,9 @@ function computeTimelineLayout(
     }
   }
 
-  placed.sort((a, b) => (a.left !== b.left ? a.left - b.left : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  placed.sort((a, b) =>
+    a.left !== b.left ? a.left - b.left : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+  );
 
   const positions = new Map<string, NodePosition>();
   const lanes: number[] = []; // last-occupied right-edge per lane
@@ -307,9 +337,24 @@ function computeStructureLayout(
   nodes: EpicGraphNode[],
   edges: EpicGraphEdge[],
 ): StructureLayoutResult {
+  // Partition nodes into CONNECTED (id appears in ≥1 edge whose BOTH endpoints
+  // are present) vs ISOLATED (in no such edge). A ghost edge (endpoint absent
+  // from the node set) does NOT connect its present endpoint. The DAG pipeline
+  // runs on connected nodes only; isolated ones drop into the tray below — so
+  // adding an isolated epic can never perturb the connected geometry.
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const connectedIds = new Set<string>();
+  for (const e of edges) {
+    if (!nodeIds.has(e.from) || !nodeIds.has(e.to)) continue; // ghost edge → not connecting
+    connectedIds.add(e.from);
+    connectedIds.add(e.to);
+  }
+  const connectedNodes = nodes.filter((n) => connectedIds.has(n.id));
+  const isolatedNodes = nodes.filter((n) => !connectedIds.has(n.id));
+
   // Compose the pure P2 rank pass + P3 order pass; both are deterministic
   // (id-sorted, no clock), so structure layout inherits that.
-  const rank = computeRanks(nodes, edges);
+  const rank = computeRanks(connectedNodes, edges);
 
   // Transitive reduction over the cycle-broken DAG (CORRECTION 2: feed
   // rank.forwardEdges, the acyclic edge set — NOT the raw input). A direct edge
@@ -364,7 +409,50 @@ function computeStructureLayout(
 
   const redundantEdges = new Set(redundant.map((e) => `${e.from}->${e.to}`));
 
-  return { mode: "structure", positions, laneCount, backwardsEdges, longEdgeRoutes, redundantEdges };
+  // Independent-epic tray: lay the isolated nodes into a compact grid BELOW the
+  // DAG and merge their positions into the SAME `positions` map the result
+  // exposes (so they render via the normal rfNodes path). `trayTopY` clears the
+  // deepest DAG node plus a node-height + gap; an all-isolated graph (empty DAG)
+  // pins the tray at y=0.
+  let dagMaxY = -Infinity;
+  for (const p of positions.values()) if (p.y > dagMaxY) dagMaxY = p.y;
+  const trayTopY = positions.size === 0 ? 0 : dagMaxY + STRUCTURE_NODE_HEIGHT + TRAY_GAP;
+
+  let tray: TrayRegion | null = null;
+  if (isolatedNodes.length > 0) {
+    const columns = Math.max(
+      1,
+      Math.min(TRAY_MAX_COLUMNS, Math.ceil(Math.sqrt(isolatedNodes.length))),
+    );
+    const grid = layoutIsolatedGrid(
+      isolatedNodes.map((n) => n.id),
+      {
+        leftX: STRUCTURE_X_PAD,
+        topY: trayTopY,
+        nodeWidth: 200,
+        colGap: TRAY_COL_GAP,
+        rowHeight: STRUCTURE_ROW_HEIGHT, // pass the constant; no local mirror in the helper
+        columns,
+      },
+    );
+    for (const [id, p] of grid.positions) positions.set(id, { x: p.x, y: p.y, lane: 0 });
+    tray = {
+      topY: trayTopY,
+      leftX: STRUCTURE_X_PAD,
+      rightX: grid.rightX,
+      count: isolatedNodes.length,
+    };
+  }
+
+  return {
+    mode: "structure",
+    positions,
+    laneCount,
+    backwardsEdges,
+    longEdgeRoutes,
+    redundantEdges,
+    tray,
+  };
 }
 
 export function computeEpicGraphLayout(

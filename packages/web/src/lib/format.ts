@@ -146,7 +146,7 @@ export function getHealthColor(
       case "blocked":
         return "bg-red-500";
       case "done":
-        return "bg-green-500";
+        return "bg-green-600";
       default:
         return "bg-gray-400 dark:bg-gray-600";
     }
