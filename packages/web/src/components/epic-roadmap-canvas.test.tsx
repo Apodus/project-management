@@ -266,12 +266,15 @@ describe("EpicRoadmapCanvas", () => {
     expect(screen.getByText("No epics in this roadmap yet.")).toBeInTheDocument();
   });
 
-  it("collapses done-and-old epics out of the default (focus-active) view", () => {
+  it("shows all epics (incl. done-and-old) in the default structure view — the calendar Past-rail collapse is timeline-only", () => {
     mocks.useEpicGraph.mockReturnValue(q(activeAndPastGraph()));
     render(<EpicRoadmapCanvas projectId="proj-1" />);
-    // showPast defaults to false → only the active epic is laid out + rendered.
+    // Structure is the default mode (C1.P5): the full dependency topology is
+    // shown, so the ancient done epic is NOT collapsed — the calendar-based Past
+    // rail is a timeline-mode-only affordance now. (C2 re-gates rails on
+    // LIFECYCLE — done → receded — which will supersede this interim "show all".)
     expect(screen.getByText("Active epic")).toBeInTheDocument();
-    expect(screen.queryByText("Ancient epic")).not.toBeInTheDocument();
+    expect(screen.getByText("Ancient epic")).toBeInTheDocument();
   });
 
   it("renders a category legend listing the present defined categories", () => {
