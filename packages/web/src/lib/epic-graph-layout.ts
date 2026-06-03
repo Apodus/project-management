@@ -33,12 +33,13 @@ import { computeLongEdgeRoutes, type RoutePoint } from "./epic-graph-route";
 const ONE_DAY_MS = 86_400_000;
 
 const STRUCTURE_X_GAP = 320; // px between adjacent ranks (node is 200px wide → 120px edge channel)
-const STRUCTURE_ROW_HEIGHT = 104; // px between adjacent orders within a layer
+const STRUCTURE_ROW_HEIGHT = 130; // px between adjacent orders within a layer
 const STRUCTURE_X_PAD = 80; // left margin
 // Deliberate design node height (correction 2): the DOM height is content-driven
-// (~56px) and unmeasured at layout time, so long-edge routing assumes this value
-// and lets the band margin absorb the residual. Used for center-y derivation.
-const STRUCTURE_NODE_HEIGHT = 56;
+// (~84px with the two-line topic + metadata tag) and unmeasured at layout time,
+// so long-edge routing assumes this value and lets the band margin absorb the
+// residual. Used for center-y derivation.
+const STRUCTURE_NODE_HEIGHT = 84;
 
 export interface LayoutOptions {
   /**

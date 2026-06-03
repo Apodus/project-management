@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { getHealthColor } from "@/lib/format";
+import { parseEpicLabel } from "@/lib/epic-label";
 import { cn } from "@/lib/utils";
 import type { Lifecycle } from "@/lib/epic-lifecycle";
 import type { EpicGraphNode } from "@/lib/api";
@@ -51,6 +52,7 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
     categoryColor,
     lifecycle,
   } = data;
+  const { tag, topic } = parseEpicLabel(name);
   const statusSum = STATUS_ORDER.reduce((acc, s) => acc + (byStatus[s] ?? 0), 0);
 
   // Single opacity TARGET. Precedence dimmed > lifecycle > recede: structure
@@ -60,7 +62,7 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
   const baseOpacity = dimmed
     ? 0.25
     : lifecycle === "done"
-      ? 0.55
+      ? 0.85
       : lifecycle === "future"
         ? 0.7
         : lifecycle === "active"
@@ -92,12 +94,11 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
         !dimmed && ready && !inCycle && "ring-1 ring-emerald-500/60",
         categoryColor && "border-l-4",
         // Lifecycle treatment (structure mode only; orthogonal to the category
-        // accent + cycle ring). done → desaturate ("behind us"): mutes the
-        // category hue + health fill for shipped work. future → a dashed INSET
+        // accent + cycle ring). done now keeps full color, only opacity recedes
+        // ("behind us" without reading as cancelled). future → a dashed INSET
         // OUTLINE (box-outline channel, separate from `border`/`border-l-4`) so
-        // the category left-accent is never dashed/disturbed. Both gated on
+        // the category left-accent is never dashed/disturbed. Gated on
         // !dimmed so a chain-off node only dims.
-        !dimmed && lifecycle === "done" && "grayscale",
         !dimmed &&
           lifecycle === "future" &&
           "outline-dashed outline-1 outline-offset-[-2px] outline-muted-foreground/40",
@@ -127,13 +128,20 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
       {/* Completion fill: width = progress%, colored by health. */}
       <div
         data-testid="epic-node-fill"
-        className={cn("absolute inset-y-0 left-0 opacity-70", getHealthColor(health, "fill"))}
+        className={cn(
+          "absolute inset-y-0 left-0",
+          lifecycle === "done" ? "opacity-90" : "opacity-70",
+          getHealthColor(health, "fill"),
+        )}
         style={{ width: `${progressPct}%` }}
       />
 
       {/* Content sits above the fill. */}
       <div className="relative z-10 px-3 py-2">
-        <div className="line-clamp-1 text-sm font-medium">{name}</div>
+        {tag && (
+          <div className="text-muted-foreground truncate text-[11px] leading-tight">{tag}</div>
+        )}
+        <div className="line-clamp-2 text-sm font-medium leading-tight">{topic}</div>
         <div className="text-muted-foreground flex items-center justify-between text-xs">
           <span>
             {done}/{total}

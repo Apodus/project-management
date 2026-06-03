@@ -362,7 +362,7 @@ describe("computeEpicGraphLayout — backlog zone", () => {
 });
 
 const STRUCTURE_X_GAP = 320;
-const STRUCTURE_ROW_HEIGHT = 104;
+const STRUCTURE_ROW_HEIGHT = 130;
 const STRUCTURE_X_PAD = 80;
 
 describe("computeEpicGraphLayout — structure mode", () => {
