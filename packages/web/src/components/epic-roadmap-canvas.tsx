@@ -25,6 +25,25 @@ import { EpicTasksPanel } from "@/components/epic-tasks-panel";
 // Caps fit-zoom so sparse graphs don't balloon; manual zoom unaffected.
 const ROADMAP_FIT_OPTIONS = { padding: 0.2, maxZoom: 0.65 } as const;
 
+// Field-by-field equality for a node's render-affecting data. `byStatus` is a
+// reference compare on purpose — it's stable per graph payload (a hover never
+// re-fetches), so only an actual data change (e.g. `dimmed` flipping) trips it.
+// This is what lets the per-id cache below hand ReactFlow a STABLE node object
+// when nothing visible changed, so unchanged nodes don't re-render on hover.
+function sameEpicNodeData(a: EpicNodeData, b: EpicNodeData): boolean {
+  return (
+    a.name === b.name &&
+    a.done === b.done &&
+    a.total === b.total &&
+    a.progressPct === b.progressPct &&
+    a.health === b.health &&
+    a.byStatus === b.byStatus &&
+    a.dimmed === b.dimmed &&
+    a.inCycle === b.inCycle &&
+    a.recede === b.recede
+  );
+}
+
 // ---- Past rail ----
 
 // A bottom-left toggle that collapses "done-and-old" epics behind an "N older"
@@ -156,55 +175,85 @@ export function EpicRoadmapCanvas({
     [graph, focusedId],
   );
 
+  // Per-id object cache: a hover only flips `dimmed` on the nodes entering/leaving
+  // the chain, but the array rebuilds every time. Reusing the prior node object
+  // when nothing visible changed keeps its reference STABLE, so ReactFlow (and
+  // memo(EpicNode)) skip re-rendering unchanged nodes — the cost of a hover then
+  // scales with how many nodes actually changed, not the whole graph. Matters at
+  // game_one's 49-and-growing epics.
+  const nodeCacheRef = useRef(new Map<string, Node<EpicNodeData>>());
+
   const rfNodes = useMemo<Node<EpicNodeData>[]>(() => {
     if (!graph) return [];
-    return nodesForLayout.map((n) => {
+    const cache = nodeCacheRef.current;
+    const seen = new Set<string>();
+    const next = nodesForLayout.map((n) => {
+      seen.add(n.id);
       const { total, done } = n.taskSummary;
-      return {
-        id: n.id,
-        type: "epic",
-        position: layout.positions.get(n.id) ?? { x: 0, y: 0 },
-        data: {
-          name: n.name,
-          done,
-          total,
-          progressPct: total > 0 ? Math.round((done / total) * 100) : 0,
-          health: n.health,
-          byStatus: n.taskSummary.byStatus,
-          dimmed: chain ? !chain.nodeIds.has(n.id) : false,
-          inCycle: cycleIds.has(n.id),
-          recede: recedeOpacity(n.activity_recency, { now }),
-        },
+      // Position objects are reference-stable while `layout` is unchanged, so the
+      // identity check below holds across hovers and only breaks on a real reflow.
+      const position = layout.positions.get(n.id) ?? { x: 0, y: 0 };
+      const data: EpicNodeData = {
+        name: n.name,
+        done,
+        total,
+        progressPct: total > 0 ? Math.round((done / total) * 100) : 0,
+        health: n.health,
+        byStatus: n.taskSummary.byStatus,
+        dimmed: chain ? !chain.nodeIds.has(n.id) : false,
+        inCycle: cycleIds.has(n.id),
+        recede: recedeOpacity(n.activity_recency, { now }),
       };
+      const prev = cache.get(n.id);
+      if (prev && prev.position === position && sameEpicNodeData(prev.data, data)) {
+        return prev; // unchanged → reuse reference so ReactFlow skips it
+      }
+      const node: Node<EpicNodeData> = { id: n.id, type: "epic", position, data };
+      cache.set(n.id, node);
+      return node;
     });
+    // Drop cache entries for nodes no longer rendered (e.g. collapsed Past rail).
+    for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
+    return next;
   }, [graph, nodesForLayout, layout, chain, cycleIds, now]);
+
+  // Same stable-reference cache for edges. An edge's visual is fully determined
+  // by (provenance, isBackwards, highlightState), so a one-line signature decides
+  // reuse — unchanged edges keep their reference and ReactFlow skips them.
+  const edgeCacheRef = useRef(new Map<string, { sig: string; edge: Edge }>());
 
   const rfEdges = useMemo<Edge[]>(() => {
     if (!graph) return [];
+    const cache = edgeCacheRef.current;
     // Only edges whose BOTH endpoints are currently rendered survive (a
     // collapsed Past rail removes nodes; dangling edges must not be drawn).
     const renderedIds = new Set(nodesForLayout.map((n) => n.id));
-    return graph.edges
+    const seen = new Set<string>();
+    const next = graph.edges
       .filter((e) => renderedIds.has(e.from) && renderedIds.has(e.to))
       .map((e) => {
         const key = edgeKey(e);
+        seen.add(key);
         const isBackwards = backwardsKeys.has(`${e.from}->${e.to}`);
         const highlightState = chain
           ? chain.edgeKeys.has(key)
             ? "highlighted"
             : "dimmed"
           : "none";
-        return {
+        const sig = `${e.provenance}|${isBackwards}|${highlightState}`;
+        const cached = cache.get(key);
+        if (cached && cached.sig === sig) return cached.edge; // unchanged → reuse
+        const edge: Edge = {
           id: key,
           source: e.from,
           target: e.to,
-          ...getEdgeStyling({
-            provenance: e.provenance,
-            isBackwards,
-            highlightState,
-          }),
+          ...getEdgeStyling({ provenance: e.provenance, isBackwards, highlightState }),
         };
+        cache.set(key, { sig, edge });
+        return edge;
       });
+    for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k);
+    return next;
   }, [graph, nodesForLayout, chain, backwardsKeys]);
 
   return (
