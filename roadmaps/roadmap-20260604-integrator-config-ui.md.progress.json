@@ -1,0 +1,21 @@
+{
+  "roadmap": "roadmaps/roadmap-20260604-integrator-config-ui.md",
+  "branch": "campaign-integrator-config-ui",
+  "status": "COMPLETE",
+  "completed_steps": [1, 2, 3, 4],
+  "current_step": null,
+  "commits": ["37f74b5", "80b4793", "f604b0f", "fcc1765", "ab2a8cc"],
+  "final_suite": "pnpm test 2332 passed / 1 skipped (shared 406, server 1208, web 364, mcp 116, integrator 238+1skip); typecheck 6/6; lint 6/6 (0 errors); build 5/5",
+  "steps": {
+    "1": { "title": "P1 — clean_keep end-to-end", "status": "complete", "commit": "37f74b5" },
+    "2": { "title": "P2 — Web data layer", "status": "complete", "commit": "80b4793" },
+    "3": { "title": "P3 — Integrator settings page (admin)", "status": "complete", "commit": "f604b0f" },
+    "4": { "title": "P4 — Docs + OpenAPI regen + full-suite seal", "status": "complete", "commit": "fcc1765,ab2a8cc" }
+  },
+  "open_issues": [],
+  "dag_drift": [],
+  "follow_ups": [
+    "branch campaign-integrator-config-ui not yet merged to main (awaiting user)",
+    "pre-existing unrelated working-tree changes (mcp-server x2, automation-listener, automation.test) left untouched — not part of this campaign"
+  ]
+}

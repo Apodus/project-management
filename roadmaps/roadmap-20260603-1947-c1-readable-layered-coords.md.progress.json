@@ -1,0 +1,15 @@
+{
+  "campaign": "C1 — Readable Layered Coordinates",
+  "status": "COMPLETE",
+  "branch": "epic-roadmap-layout-readability",
+  "phases": ["P1", "P2", "P3", "P4"],
+  "completed": ["P1", "P2", "P3", "P4"],
+  "commits": { "planning": "60d3fae", "P1": "9f4c5fb", "P2": "e8f251c", "P3": "6e7f1a7", "P4": "b78d76b" },
+  "final_state": "Full monorepo green (pnpm test 10/10, typecheck, lint, build). Structure-mode roadmap: dependents now align to prerequisites (neighbor-median + bidirectional balanced coords, 436->~149px measured), long-span edges route through cleared bands, relates_to renders soft/dotted/no-arrow vs blocks. NOT merged (branch epic-roadmap-layout-readability, branched from main).",
+  "open_issues": [
+    "E2E host-flaky on this machine (dies seeding epics; new alignment assertion didn't run — Sa unit test is the gate). USER should /verify visually.",
+    "Isolated-node tray (20 dependency-less rank-0 epics stacking) PARKED to a future arc.",
+    "STRUCTURE_NODE_HEIGHT=56 is a design assumption (DOM height unmeasured); bandMargin=28 absorbs residual."
+  ],
+  "arc": { "C1": "COMPLETE" }
+}

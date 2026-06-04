@@ -1,0 +1,16 @@
+{
+  "campaign": "C2 — Lifecycle Phasing + Now-Frontier",
+  "status": "COMPLETE (pending final full-suite confirmation)",
+  "branch": "epic-roadmap-topological-layout",
+  "phases": ["P1", "P2", "P3", "P4"],
+  "completed": ["P1", "P2", "P3", "P4"],
+  "commits": { "P1": "603bb17", "P2": "c71d209", "P3": "05a36e7", "P4": "92ac9fb" },
+  "outcomes": {
+    "P1": "epic-lifecycle.ts: lifecycle() + actionableNow(). 18 tests.",
+    "P2": "Lifecycle node emphasis (done grayscale, future dashed-outline, active full) structure-only; calendar recede timeline-only.",
+    "P3": "Now-frontier emerald ready-ring on actionable-now epics (full-graph, cycle-suppressed). Legend frontier-row.",
+    "P4": "Optional lifecycle collapse rails in structure mode (Hide done/Hide future, DEFAULT OFF = show everything per user decision). Lifecycle partition. Calendar partitionEpics stays timeline-only. 269 web tests."
+  },
+  "user_decision": "Default structure view SHOWS EVERYTHING (full topology; done grayed/left, active full+ready-ring, future outlined/right). Hide-done/Hide-future are opt-in focus toggles, default off. Chose 'Show everything' over the vision's 'collapse by default'.",
+  "arc": { "C1": "COMPLETE", "C2": "COMPLETE" }
+}

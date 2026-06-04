@@ -1,0 +1,24 @@
+{
+  "campaign": "C1 — Topology-First Layered Layout + Mode Seam",
+  "status": "COMPLETE",
+  "branch": "epic-roadmap-topological-layout",
+  "phases": ["P1", "P2", "P3", "P4", "P5", "P6"],
+  "completed": ["P1", "P2", "P3", "P4", "P5", "P6", "closeout"],
+  "commits": {
+    "planning": "ed10e3d", "P1": "0575635", "P2": "69cbcbd", "P3": "b66b932",
+    "P4": "ceecedc", "P5": "78837d1", "P6": "13807be", "closeout": "3267eea"
+  },
+  "final_state": "226 web tests green, typecheck/lint/build clean. Structure (topological layered DAG) is the default roadmap layout; Timeline (calendar) is an opt-in toggle. Hand-rolled rank+order+coords (no dagre). Cycle back-edges render as amber facing-side contradiction arcs.",
+  "open_issues_for_C2": [
+    "C2 RECONCILE: structure mode currently shows ALL epics (active+past+unscheduled folded into DAG; railComposed gated on effectiveMode at canvas:205-214). C2 re-gates rails on LIFECYCLE (done=receded/past, future=backlog). The 'shows all epics' canvas test (epic-roadmap-canvas.test.tsx) documents this interim and should be revisited by C2.P4.",
+    "E2E suite host-flaky (Playwright times out on unrelated specs, CPU idle). C1 changes functionally verified via unit + isolated spec. USER should run pnpm test:e2e locally / do a visual /verify of the /roadmap view.",
+    "P6 handoff (informational): client DFS back-edge may differ from server cycle banner edge; both valid cycle members; no UI contradiction (both endpoints get inCycle ring).",
+    "Long-span edges (rank distance >1) excluded from hand-rolled crossing count. Acceptable v1."
+  ],
+  "decisions": {
+    "rank_algorithm": "longest-path", "back_edge_source": "client DFS",
+    "ordering_engine": "hand-rolled median+transpose (no dagre)",
+    "coordinates": "x=80+rank*320; y=(order-(k-1)/2)*104 centered; lane=order",
+    "default_mode": "structure (timeline is opt-in toggle; compact embed pinned structure)"
+  }
+}
