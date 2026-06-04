@@ -158,7 +158,11 @@ export async function assembleGroup(
     const Ro = await outerGitOps.updateSubmoduleGitlink(deps.gitlinkPath, Ri);
 
     // ── step 9: materialize Ri's tree into the outer working tree on disk ──
-    await outerGitOps.materializeSubmoduleWorktree(deps.gitlinkPath, Ri);
+    // Pass innerWt.path (the inner pool worktree, rebased to Ri) so materialize
+    // is LFS-aware: inner LFS files land as real binaries (smudge skipped + real
+    // binaries overlaid from the inner worktree) instead of the outer LFS smudge
+    // 404'ing on the inner's LFS objects.
+    await outerGitOps.materializeSubmoduleWorktree(deps.gitlinkPath, Ri, innerWt.path);
 
     // ── §11 post-assembly assertion ──
     // (a) the COMMITTED gitlink references Ri.

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
 import { killTree } from "./kill-tree.js";
@@ -173,8 +173,24 @@ export interface GitOps {
    * `gitlinkPath`, so read-tree-ing the expanded tree into it would collide;
    * the temp index isolates the expansion and leaves the committed gitlink
    * intact. checkout-index then writes the blobs to disk under the prefix.
+   *
+   * LFS OVERLAY (`innerWorktreePath` opt-in). When the inner repo tracks files
+   * via git-lfs, a bare checkout-index would run the LFS smudge filter against
+   * the OUTER repo's LFS endpoint — but the inner's LFS objects are NOT there,
+   * so the smudge 404s and checkout-index throws ("smudge filter lfs failed",
+   * exit 128). To avoid this, when `innerWorktreePath` is supplied (the inner
+   * pool worktree, already rebased to `sha` and holding the correctly-smudged
+   * real binaries), checkout-index runs with GIT_LFS_SKIP_SMUDGE=1 so it writes
+   * LFS POINTERS (no outer-LFS lookup, no 404); the real binaries are then
+   * OVERLAID by copying each `git lfs ls-files` entry from the inner worktree
+   * over its pointer in the outer working tree. When `innerWorktreePath` is
+   * omitted (recovery caller), the env is unchanged → byte-identical to before.
    */
-  materializeSubmoduleWorktree(gitlinkPath: string, sha: string): Promise<void>;
+  materializeSubmoduleWorktree(
+    gitlinkPath: string,
+    sha: string,
+    innerWorktreePath?: string,
+  ): Promise<void>;
   runVerify(
     command: string,
     timeoutMs: number,
@@ -270,6 +286,40 @@ function runGit(
     child.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`git ${args.join(" ")} exited ${code}: ${stderr.trim()}`));
+    });
+  });
+}
+
+/**
+ * Run a git subcommand with a SPECIFIC environment and CAPTURE stdout/stderr,
+ * RESOLVING with the numeric exit code (does NOT reject on non-zero) — mirroring
+ * the direct-spawn precedent (runIsAncestor). Used by materializeSubmoduleWorktree's
+ * LFS overlay to enumerate inner LFS files via `git lfs ls-files`: git-lfs being
+ * absent (or any other failure) surfaces as a non-zero `code` the caller treats
+ * as an EMPTY list (overlay no-op) rather than a throw.
+ */
+function runGitCapture(
+  args: string[],
+  cwd: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<{ stdout: string; code: number; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      env: env ?? process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (d: Buffer) => {
+      stdout += d.toString();
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      resolve({ stdout, code: code ?? -1, stderr });
     });
   });
 }
@@ -534,6 +584,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
   async function materializeSubmoduleWorktree(
     gitlinkPath: string,
     sha: string,
+    innerWorktreePath?: string,
   ): Promise<void> {
     // Expand `sha`'s tree into the working tree at `gitlinkPath` on disk.
     // Mechanism confirmed on win32: read-tree --prefix into a SEPARATE temp
@@ -553,11 +604,52 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     // would leak the throwaway temp index onto the long-lived worktree `git`
     // and corrupt every later op. A direct spawn scopes the env to exactly
     // these two commands. (cwd = the worktree top-level.)
-    const env = { ...process.env, GIT_INDEX_FILE: tmpIndex };
+    // When the inner pool worktree is supplied (assembly opt-in), set
+    // GIT_LFS_SKIP_SMUDGE=1 so checkout-index writes LFS POINTERS rather than
+    // invoking the smudge filter against the OUTER LFS endpoint (which lacks the
+    // inner's LFS objects → 404 / "smudge filter lfs failed", exit 128). The real
+    // binaries are overlaid below from the inner worktree. When omitted (recovery
+    // caller), the env is unchanged → byte-identical to before.
+    const env = {
+      ...process.env,
+      GIT_INDEX_FILE: tmpIndex,
+      ...(innerWorktreePath ? { GIT_LFS_SKIP_SMUDGE: "1" } : {}),
+    };
     try {
       // Forward slash + trailing slash on the prefix (git convention).
       await runGit(["read-tree", `--prefix=${gitlinkPath}/`, sha], topLevel, env);
       await runGit(["checkout-index", "-a", "-f"], topLevel, env);
+
+      // ── LFS overlay (opt-in) ──
+      // checkout-index wrote POINTERS for the inner's LFS-tracked files (smudge
+      // was skipped). Overlay the REAL binaries by copying each inner LFS file
+      // from the inner pool worktree (which holds the correctly-smudged content
+      // at `sha`) over its pointer in the outer working tree.
+      if (innerWorktreePath) {
+        // Enumerate inner LFS files. git-lfs absent (or any failure) → non-zero
+        // exit → treat as EMPTY (overlay no-op), so a non-LFS inner on a host
+        // without git-lfs is byte-identical. Do NOT throw on non-zero.
+        const ls = await runGitCapture(
+          ["-C", innerWorktreePath, "lfs", "ls-files", "--name-only"],
+          innerWorktreePath,
+        );
+        const relpaths =
+          ls.code === 0
+            ? ls.stdout
+                .split("\n")
+                .map((s) => s.trim())
+                .filter((s) => s.length > 0)
+            : [];
+        for (const relpath of relpaths) {
+          const src = path.join(innerWorktreePath, relpath);
+          const dst = path.join(topLevel, gitlinkPath, relpath);
+          await mkdir(path.dirname(dst), { recursive: true });
+          // copyFile overwrites the pointer with the real binary; overwriting an
+          // existing file's content preserves its mode. A genuinely missing src
+          // (a real defect) rejects — a missing inner binary must fail loud.
+          await copyFile(src, dst);
+        }
+      }
     } finally {
       // The temp index is throwaway; remove it (best-effort).
       await rm(tmpIndex, { force: true }).catch(() => {

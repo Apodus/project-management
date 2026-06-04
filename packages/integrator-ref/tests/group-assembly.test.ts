@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
@@ -17,6 +17,16 @@ function hasGit(): boolean {
 }
 
 const GIT_AVAILABLE = hasGit();
+
+function hasGitLfs(): boolean {
+  try {
+    return spawnSync("git", ["lfs", "version"], { encoding: "utf8" }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+const LFS_AVAILABLE = GIT_AVAILABLE && hasGitLfs();
 
 async function configIdentity(g: SimpleGit): Promise<void> {
   await g.addConfig("user.email", "int@test.local");
@@ -91,12 +101,26 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops submodule ops (real git)", () => {
     const author = (await outerGit.raw(["log", "-1", "--format=%an"])).trim();
     expect(author.length).toBeGreaterThan(0);
 
-    // materialize: the working tree at the gitlink path is now populated.
-    await ops.materializeSubmoduleWorktree(GITLINK_PATH, innerSha);
+    // materialize: the working tree at the gitlink path is now populated. Pass
+    // innerWt as the 3rd arg to exercise the LFS-aware opt-in path. This is the
+    // NO-LFS byte-identical guard: a non-LFS inner → `git lfs ls-files` returns
+    // EMPTY → overlay no-op → result byte-identical to the non-opt-in path.
+    await ops.materializeSubmoduleWorktree(GITLINK_PATH, innerSha, innerWt);
     const libOnDisk = path.join(outerWt, "vendor", "rynx", "lib.txt");
     const readmeOnDisk = path.join(outerWt, "vendor", "rynx", "README.md");
     expect(existsSync(libOnDisk)).toBe(true);
     expect(existsSync(readmeOnDisk)).toBe(true);
+    // Same content as the inner sources (the overlay is a no-op for a non-LFS
+    // inner; checkout-index wrote the regular blobs). EOL-normalized: on a
+    // Windows host with autocrlf=true, checkout-index writes CRLF — which
+    // correctly matches a normal git checkout of the inner repo. The byte
+    // content (not the line ending) is what this no-LFS guard asserts.
+    expect(readFileSync(libOnDisk, "utf8").replace(/\r\n/g, "\n")).toBe(
+      "lib content\n",
+    );
+    expect(readFileSync(readmeOnDisk, "utf8").replace(/\r\n/g, "\n")).toBe(
+      "inner\n",
+    );
 
     // The COMMITTED tree still carries ONLY the 160000 gitlink (materialize must
     // not have leaked expanded blobs into HEAD).
@@ -325,5 +349,95 @@ describe.skipIf(!GIT_AVAILABLE)("assembleGroup (real two-repo)", () => {
     } finally {
       if (heldOuter) outerPool.release(heldOuter);
     }
+  });
+});
+
+// ─── materialize is LFS-aware (real git + git-lfs, NO network) ─────────
+//
+// Proves the fix: an inner repo with an LFS-tracked binary, materialized into an
+// outer worktree whose smudge filter IS enabled, lands the REAL binary bytes (not
+// a pointer) and does NOT 404 on the outer LFS endpoint. Per clarification A, the
+// assertion is "new file == real bytes" — the bug shape is a throw, so a clean
+// run that yields the real bytes is the proof. NO push, NO network.
+describe.skipIf(!LFS_AVAILABLE)("materialize is LFS-aware (real git+lfs, no network)", () => {
+  let tmpRoot: string;
+  // A fixed, deterministic "binary" (NOT randomBytes — reproducible).
+  const originalBytes = Buffer.from([
+    0x00, 0x01, 0x02, 0x03, 0xff, 0xfe, 0xfd, 0xfc, 0x10, 0x20, 0x30, 0x40, 0x50,
+    0x60, 0x70, 0x80,
+  ]);
+
+  beforeAll(() => {
+    tmpRoot = mkdtempSync(path.join(tmpdir(), "pm-int-lfs-"));
+  });
+
+  afterAll(() => {
+    try {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it("materializes inner LFS files as REAL binaries in the outer worktree", async () => {
+    // ── 1. Inner repo with an LFS-tracked binary; capture innerSha. NO push. ──
+    const innerBare = path.join(tmpRoot, "inner.git");
+    const innerWt = path.join(tmpRoot, "inner-wt");
+    await simpleGit().init(["--bare", "--initial-branch=main", innerBare]);
+    await simpleGit().clone(innerBare, innerWt);
+    const innerGit = simpleGit(innerWt);
+    await configIdentity(innerGit);
+    await innerGit.raw(["lfs", "install", "--local"]);
+    await innerGit.raw(["lfs", "track", "*.bin"]);
+    writeFileSync(path.join(innerWt, "blob.bin"), originalBytes);
+    await innerGit.add([".gitattributes", "blob.bin"]);
+    await innerGit.commit("inner lfs binary");
+    await innerGit.branch(["-M", "main"]);
+    const innerSha = (await innerGit.revparse(["HEAD"])).trim();
+
+    // Fixture sanity: the working-tree file is the REAL bytes (smudged locally)…
+    expect(Buffer.compare(readFileSync(path.join(innerWt, "blob.bin")), originalBytes)).toBe(0);
+    // …but the COMMITTED blob is an LFS POINTER.
+    const committedBlob = await innerGit.raw(["show", "HEAD:blob.bin"]);
+    expect(committedBlob.startsWith("version https://git-lfs")).toBe(true);
+
+    // ── 2. Outer repo with a top file; ENABLE the local LFS smudge filter ──
+    //    (clarification B — deterministic regardless of host global LFS state, so
+    //    the test genuinely exercises the smudge path the fix defuses).
+    const outerBare = path.join(tmpRoot, "outer.git");
+    const outerWt = path.join(tmpRoot, "outer-wt");
+    await simpleGit().init(["--bare", "--initial-branch=main", outerBare]);
+    await simpleGit().clone(outerBare, outerWt);
+    const outerGit = simpleGit(outerWt);
+    await configIdentity(outerGit);
+    await outerGit.raw(["lfs", "install", "--local"]);
+    writeFileSync(path.join(outerWt, "top.txt"), "top\n");
+    await outerGit.add(["top.txt"]);
+    await outerGit.commit("outer init");
+    await outerGit.branch(["-M", "main"]);
+
+    const ops = createGitOps(simpleGit(outerWt));
+
+    // ── 3. Mirror the real assembly sequence (steps 7-9) ──
+    // step 7: copy Ri's objects (the POINTER blob — NOT the LFS object) into outer.
+    await ops.fetchFromPath(innerWt, innerSha);
+    // step 8: commit the gitlink at GITLINK_PATH -> innerSha.
+    await ops.updateSubmoduleGitlink(GITLINK_PATH, innerSha);
+    // step 9: materialize — LFS-aware (opt-in via innerWt). WITHOUT the fix this
+    // throws ("smudge filter lfs failed", exit 128) as the outer smudge 404s.
+    await ops.materializeSubmoduleWorktree(GITLINK_PATH, innerSha, innerWt);
+
+    // ── 4. Assertions: the materialized file is the REAL binary, not a pointer ──
+    const dst = path.join(outerWt, "vendor", "rynx", "blob.bin");
+    expect(existsSync(dst)).toBe(true);
+    // PRIMARY: real bytes, byte-for-byte.
+    expect(Buffer.compare(readFileSync(dst), originalBytes)).toBe(0);
+    // It is NOT an LFS pointer.
+    expect(readFileSync(dst, "utf8").startsWith("version https://git-lfs")).toBe(false);
+    // .gitattributes was also materialized.
+    expect(existsSync(path.join(outerWt, "vendor", "rynx", ".gitattributes"))).toBe(true);
+    // The committed outer tree still carries ONLY the 160000 gitlink at the path.
+    const lsTree = await outerGit.raw(["ls-tree", "HEAD", GITLINK_PATH]);
+    expect(lsTree.trim()).toMatch(/^160000 commit [0-9a-f]{40}\tvendor\/rynx$/);
   });
 });

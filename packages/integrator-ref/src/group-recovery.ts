@@ -217,6 +217,12 @@ async function rollforwardOne(
     // + (the post-assembly read) can resolve it.
     await outerGit.fetchFromPath(deps.innerRemotePath ?? gitRemote, O);
     await outerGit.updateSubmoduleGitlink(gitlinkPath, O);
+    // TODO(xrepo-lfs): no innerWorktreePath here — the orphan roll-forward has no
+    // inner pool worktree checked out at O, so the LFS overlay can't run. This
+    // call therefore stays byte-identical to today: an LFS-bearing orphan would
+    // still throw on the outer smudge 404 (same as before — NO regression). The
+    // recovery LFS roll-forward is DEFERRED to a follow-up (would need to clone /
+    // check out O's inner sources to overlay the real binaries).
     await outerGit.materializeSubmoduleWorktree(gitlinkPath, O);
 
     // Post-assembly assertion (§11): the committed gitlink must reference O.
