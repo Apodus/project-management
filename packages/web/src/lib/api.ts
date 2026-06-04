@@ -47,6 +47,32 @@ export interface ResolverConfig {
   prompt?: string;
 }
 
+export interface LinkedRepo {
+  name: string;
+  path: string;
+  role: "inner" | "outer";
+  gitlink_parent?: string;
+  gitlink_path?: string;
+}
+
+// The integrator config fields the admin UI edits. Every OTHER settings.integrator
+// field (verify_steps, cache_*, heartbeat_interval_sec, slo, worktree_name, resolver)
+// is preserved opaquely by useUpdateIntegratorConfig's merge and is intentionally NOT
+// here — so a save can never reset a field the form doesn't show. Defaulted fields
+// carry the schema defaults; verify_command/worktree_root stay absent when the server
+// omitted them.
+export interface IntegratorConfig {
+  enabled: boolean;
+  verify_timeout_sec: number;
+  git_remote: string;
+  git_main_branch: string;
+  parallelism: number;
+  linked_repos: LinkedRepo[];
+  clean_keep: string[];
+  verify_command?: string;
+  worktree_root?: string;
+}
+
 // ---- API client ----
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
