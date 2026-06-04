@@ -30,6 +30,7 @@ import { TemplatesPage } from "@/pages/settings/templates-page";
 import { AutomationPage } from "@/pages/settings/automation-page";
 import { NotificationsPage } from "@/pages/settings/notifications-page";
 import { ConflictResolutionPage } from "@/pages/settings/conflict-resolution-page";
+import { IntegratorPage } from "@/pages/settings/integrator-page";
 import { CategoriesPage } from "@/pages/settings/categories-page";
 import { HelpPage } from "@/pages/help-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
@@ -281,6 +282,13 @@ const projectConflictResolutionRoute = createRoute({
   component: ConflictResolutionPage,
 });
 
+// /projects/$projectId/settings/integrator — integrator daemon config (admin)
+const projectIntegratorRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/settings/integrator",
+  component: IntegratorPage,
+});
+
 // /projects/$projectId/settings/categories — epic category palette
 const projectCategoriesRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -317,6 +325,7 @@ const routeTree = rootRoute.addChildren([
       projectAutomationRoute,
       projectNotificationsRoute,
       projectConflictResolutionRoute,
+      projectIntegratorRoute,
       projectCategoriesRoute,
     ]),
     proposalDetailRoute,

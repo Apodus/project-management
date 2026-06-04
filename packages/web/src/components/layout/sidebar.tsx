@@ -1,6 +1,7 @@
 import { Link, useMatches, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
+  Boxes,
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
@@ -35,6 +36,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/hooks/use-projects";
+import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
 
@@ -154,6 +156,8 @@ export function Sidebar() {
   const { currentProjectName, currentProjectId, setCurrentProject } = useProjectStore();
   const navItems = getNavItems(currentProjectId);
   const { data: projects } = useProjects();
+  const { data: user } = useCurrentUser();
+  const isAdmin = user?.role === "admin";
   const navigate = useNavigate();
 
   function handleProjectSelect(projectId: string, projectName: string) {
@@ -309,6 +313,18 @@ export function Sidebar() {
               icon: Wrench,
               href: `/projects/${currentProjectId}/settings/conflict-resolution`,
               matchPath: "/settings/conflict-resolution",
+            }}
+            collapsed={collapsed}
+          />
+        )}
+
+        {currentProjectId && isAdmin && (
+          <NavLink
+            item={{
+              label: "Integrator",
+              icon: Boxes,
+              href: `/projects/${currentProjectId}/settings/integrator`,
+              matchPath: "/settings/integrator",
             }}
             collapsed={collapsed}
           />
