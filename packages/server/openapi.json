@@ -243,15 +243,7 @@
                     "type": "integer",
                     "minimum": 1
                   }
-                },
-                "required": [
-                  "can_self_assign",
-                  "can_create_subtasks",
-                  "can_create_tasks",
-                  "can_change_priority",
-                  "can_close_epics",
-                  "max_concurrent_tasks"
-                ]
+                }
               },
               "workflow": {
                 "type": "object",
@@ -270,10 +262,7 @@
                       ]
                     }
                   }
-                },
-                "required": [
-                  "statuses"
-                ]
+                }
               },
               "git": {
                 "type": "object",
@@ -284,11 +273,7 @@
                   "auto_link_branches": {
                     "type": "boolean"
                   }
-                },
-                "required": [
-                  "branch_prefix",
-                  "auto_link_branches"
-                ]
+                }
               },
               "integrator": {
                 "type": "object",
@@ -425,6 +410,14 @@
                     },
                     "default": []
                   },
+                  "clean_keep": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "default": []
+                  },
                   "slo": {
                     "type": "object",
                     "properties": {
@@ -516,12 +509,7 @@
                   ]
                 }
               }
-            },
-            "required": [
-              "ai_autonomy",
-              "workflow",
-              "git"
-            ]
+            }
           },
           "sortOrder": {
             "type": "integer"
@@ -581,15 +569,7 @@
                     "type": "integer",
                     "minimum": 1
                   }
-                },
-                "required": [
-                  "can_self_assign",
-                  "can_create_subtasks",
-                  "can_create_tasks",
-                  "can_change_priority",
-                  "can_close_epics",
-                  "max_concurrent_tasks"
-                ]
+                }
               },
               "workflow": {
                 "type": "object",
@@ -608,10 +588,7 @@
                       ]
                     }
                   }
-                },
-                "required": [
-                  "statuses"
-                ]
+                }
               },
               "git": {
                 "type": "object",
@@ -622,11 +599,7 @@
                   "auto_link_branches": {
                     "type": "boolean"
                   }
-                },
-                "required": [
-                  "branch_prefix",
-                  "auto_link_branches"
-                ]
+                }
               },
               "integrator": {
                 "type": "object",
@@ -763,6 +736,14 @@
                     },
                     "default": []
                   },
+                  "clean_keep": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "default": []
+                  },
                   "slo": {
                     "type": "object",
                     "properties": {
@@ -854,12 +835,7 @@
                   ]
                 }
               }
-            },
-            "required": [
-              "ai_autonomy",
-              "workflow",
-              "git"
-            ]
+            }
           },
           "sortOrder": {
             "type": "integer"

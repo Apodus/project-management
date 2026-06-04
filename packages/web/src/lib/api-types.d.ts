@@ -11910,20 +11910,20 @@ export interface components {
             /** @enum {string} */
             status?: "active" | "paused" | "archived" | "completed";
             settings?: {
-                ai_autonomy: {
-                    can_self_assign: boolean;
-                    can_create_subtasks: boolean;
-                    can_create_tasks: boolean;
-                    can_change_priority: boolean;
-                    can_close_epics: boolean;
-                    max_concurrent_tasks: number;
+                ai_autonomy?: {
+                    can_self_assign?: boolean;
+                    can_create_subtasks?: boolean;
+                    can_create_tasks?: boolean;
+                    can_change_priority?: boolean;
+                    can_close_epics?: boolean;
+                    max_concurrent_tasks?: number;
                 };
-                workflow: {
-                    statuses: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
+                workflow?: {
+                    statuses?: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
                 };
-                git: {
-                    branch_prefix: string;
-                    auto_link_branches: boolean;
+                git?: {
+                    branch_prefix?: string;
+                    auto_link_branches?: boolean;
                 };
                 integrator?: {
                     /** @default false */
@@ -11967,6 +11967,8 @@ export interface components {
                         cache_key_inputs: string[];
                         timeout_sec?: number;
                     }[];
+                    /** @default [] */
+                    clean_keep: string[];
                     slo?: {
                         target_p95_time_to_land_sec?: number;
                         target_verify_success_rate?: number;
@@ -12005,20 +12007,20 @@ export interface components {
             /** @enum {string} */
             status?: "active" | "paused" | "archived" | "completed";
             settings?: {
-                ai_autonomy: {
-                    can_self_assign: boolean;
-                    can_create_subtasks: boolean;
-                    can_create_tasks: boolean;
-                    can_change_priority: boolean;
-                    can_close_epics: boolean;
-                    max_concurrent_tasks: number;
+                ai_autonomy?: {
+                    can_self_assign?: boolean;
+                    can_create_subtasks?: boolean;
+                    can_create_tasks?: boolean;
+                    can_change_priority?: boolean;
+                    can_close_epics?: boolean;
+                    max_concurrent_tasks?: number;
                 };
-                workflow: {
-                    statuses: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
+                workflow?: {
+                    statuses?: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
                 };
-                git: {
-                    branch_prefix: string;
-                    auto_link_branches: boolean;
+                git?: {
+                    branch_prefix?: string;
+                    auto_link_branches?: boolean;
                 };
                 integrator?: {
                     /** @default false */
@@ -12062,6 +12064,8 @@ export interface components {
                         cache_key_inputs: string[];
                         timeout_sec?: number;
                     }[];
+                    /** @default [] */
+                    clean_keep: string[];
                     slo?: {
                         target_p95_time_to_land_sec?: number;
                         target_verify_success_rate?: number;
