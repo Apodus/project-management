@@ -488,6 +488,45 @@ describe("projectSettingsSchema", () => {
     ).toThrow();
   });
 
+  // ── P1 clean_keep (untracked paths preserved across the per-attempt clean) ──
+  it("defaults clean_keep to [] when omitted", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: { enabled: false },
+    });
+    expect(parsed!.integrator!.clean_keep).toEqual([]);
+  });
+
+  it("round-trips a non-empty clean_keep array", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: {
+        enabled: true,
+        verify_command: "pnpm verify",
+        worktree_root: "/tmp/wt",
+        clean_keep: ["node_modules", ".cache/build"],
+      },
+    });
+    expect(parsed!.integrator!.clean_keep).toEqual([
+      "node_modules",
+      ".cache/build",
+    ]);
+  });
+
+  it("rejects an empty-string clean_keep pattern", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        integrator: {
+          enabled: true,
+          verify_command: "pnpm verify",
+          worktree_root: "/tmp/wt",
+          clean_keep: [""],
+        },
+      }),
+    ).toThrow();
+  });
+
   // ── Phase 7.6 resolver config (design §3) ──
   it("accepts a valid resolver block (all 6 fields incl. prompt) and round-trips it", () => {
     const parsed = projectSettingsSchema.parse({

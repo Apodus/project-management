@@ -120,6 +120,7 @@ const integratorSettingsSchema = z
     cache_enabled: z.boolean().default(false),
     cache_mode: z.enum(CACHE_MODES).default("off"),
     verify_steps: z.array(verifyStepSchema).default([]),
+    clean_keep: z.array(z.string().min(1)).default([]),
     slo: z
       .object({
         target_p95_time_to_land_sec: z.number().int().min(1).optional(),

@@ -67,6 +67,7 @@ describe.skipIf(!GIT_AVAILABLE)("worktree pool (real git)", () => {
       gitRemote: "origin",
       gitMainBranch: "main",
       parallelism,
+      cleanKeep: [],
     });
   }
 

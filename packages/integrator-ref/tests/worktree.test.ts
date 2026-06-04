@@ -5,7 +5,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
-import { createWorktree } from "../src/worktree.js";
+import { buildCleanArgs, createWorktree } from "../src/worktree.js";
 
 function hasGit(): boolean {
   try {
@@ -53,13 +53,14 @@ describe.skipIf(!GIT_AVAILABLE)("worktree (real git)", () => {
     }
   });
 
-  function makeWorktree(name: string) {
+  function makeWorktree(name: string, cleanKeep: string[] = []) {
     return createWorktree({
       worktreeRoot,
       worktreeName: name,
       gitRemote: "origin",
       gitMainBranch: "main",
       gitRepoUrl: bareRepo,
+      cleanKeep,
     });
   }
 
@@ -91,6 +92,18 @@ describe.skipIf(!GIT_AVAILABLE)("worktree (real git)", () => {
     expect(status.isClean()).toBe(true);
   });
 
+  it("resetForAttempt preserves untracked paths declared in cleanKeep", async () => {
+    const wt = makeWorktree("keep-me", ["keep-dir"]);
+    await wt.ensureExists();
+    // An untracked path matching cleanKeep + an untracked path that does not.
+    writeFileSync(path.join(wt.path, "keep-dir"), "preserved\n");
+    writeFileSync(path.join(wt.path, "scratch.txt"), "junk\n");
+    await wt.resetForAttempt();
+    // The kept path survives; the non-kept untracked file is swept.
+    expect(existsSync(path.join(wt.path, "keep-dir"))).toBe(true);
+    expect(existsSync(path.join(wt.path, "scratch.txt"))).toBe(false);
+  });
+
   it("detectCorruption returns false for a healthy worktree", async () => {
     const wt = makeWorktree("healthy");
     await wt.ensureExists();
@@ -112,5 +125,23 @@ describe.skipIf(!GIT_AVAILABLE)("worktree (real git)", () => {
     await wt.repair();
     expect(await wt.detectCorruption()).toBe(false);
     expect(existsSync(path.join(wt.path, ".git"))).toBe(true);
+  });
+});
+
+// Pure helper — no git required, so it runs unconditionally (outside skipIf).
+describe("buildCleanArgs", () => {
+  it("empty cleanKeep yields the plain -d -x clean (pre-P1 byte-identity)", () => {
+    expect(buildCleanArgs([])).toEqual(["-d", "-x"]);
+  });
+
+  it("each kept pattern adds an -e <pattern> exclusion", () => {
+    expect(buildCleanArgs(["node_modules", ".cache/build"])).toEqual([
+      "-d",
+      "-x",
+      "-e",
+      "node_modules",
+      "-e",
+      ".cache/build",
+    ]);
   });
 });

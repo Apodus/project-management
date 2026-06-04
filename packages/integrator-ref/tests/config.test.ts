@@ -39,6 +39,8 @@ describe("loadConfig", () => {
     expect(config.gitRepoUrl).toBe("https://github.com/test/repo.git");
     expect(config.parallelism).toBe(1);
     expect(config.linkedRepos).toEqual([]);
+    // P1: clean_keep defaults to [] (plain git clean -fdx, pre-P1 behavior).
+    expect(config.cleanKeep).toEqual([]);
     // Phase 7.4 §3.6: heartbeat cadence defaults to 30s when absent.
     expect(config.heartbeatIntervalSec).toBe(30);
   });
@@ -74,6 +76,24 @@ describe("loadConfig", () => {
       stubClient(withParallelism),
     );
     expect(config.parallelism).toBe(4);
+  });
+
+  it("reads clean_keep override from integrator settings", async () => {
+    const withCleanKeep: ProjectDetail = {
+      ...enabledProject,
+      settings: {
+        integrator: {
+          ...enabledProject.settings!.integrator!,
+          clean_keep: ["dist"],
+        },
+      },
+    };
+    const config = await loadConfig(
+      { project: "p1" },
+      { PM_API_TOKEN: "t" } as never,
+      stubClient(withCleanKeep),
+    );
+    expect(config.cleanKeep).toEqual(["dist"]);
   });
 
   it("surfaces linked_repos with snake→camel mapping", async () => {

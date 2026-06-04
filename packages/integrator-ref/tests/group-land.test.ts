@@ -410,6 +410,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
       gitRemote: GIT_REMOTE,
       gitMainBranch: GIT_MAIN,
       parallelism: 1,
+      cleanKeep: [],
     });
     outerPool = createWorktreePool({
       worktreeRoot,
@@ -418,6 +419,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
       gitRemote: GIT_REMOTE,
       gitMainBranch: GIT_MAIN,
       parallelism: 1,
+      cleanKeep: [],
     });
     await innerPool.ensureAll();
     await outerPool.ensureAll();

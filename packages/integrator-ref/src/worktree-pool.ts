@@ -9,6 +9,7 @@ export interface WorktreePoolOptions {
   gitRemote: string;
   gitMainBranch: string;
   parallelism: number;
+  cleanKeep: string[];
 }
 
 export interface WorktreePool {
@@ -39,6 +40,7 @@ export function createWorktreePool(opts: WorktreePoolOptions): WorktreePool {
       gitRepoUrl: opts.gitRepoUrl,
       gitRemote: opts.gitRemote,
       gitMainBranch: opts.gitMainBranch,
+      cleanKeep: opts.cleanKeep,
     }),
   }));
 

@@ -583,6 +583,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       gitRemote: "origin",
       gitMainBranch: "main",
       parallelism: opts.parallelism ?? 1,
+      cleanKeep: [],
     });
     await pool.ensureAll();
     // Configure identity + local feature branches in each freshly-cloned slot.

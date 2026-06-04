@@ -70,6 +70,8 @@ export interface IntegratorSettings {
   cache_enabled?: boolean;
   /** Phase 7.5 §4.3: the cache mode (default "off"). */
   cache_mode?: CacheMode;
+  /** P1: untracked paths preserved across the per-attempt git clean (default []). */
+  clean_keep?: string[];
   linked_repos?: {
     name: string;
     path: string;

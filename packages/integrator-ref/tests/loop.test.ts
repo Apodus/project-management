@@ -250,6 +250,7 @@ describe.skipIf(!GIT_AVAILABLE)("runOnce (real git + fake PM)", () => {
       gitRemote: "origin",
       gitMainBranch: "main",
       gitRepoUrl: bareRepo,
+      cleanKeep: [],
     });
     await wt.ensureExists();
     await configIdentity(wt.git);

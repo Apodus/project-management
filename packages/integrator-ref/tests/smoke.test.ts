@@ -13,6 +13,7 @@ describe("worktree path construction", () => {
       gitRemote: "origin",
       gitMainBranch: "main",
       gitRepoUrl: "https://example.com/repo.git",
+      cleanKeep: [],
     });
     expect(wt.path).toBe("/tmp/wt/demo-integrator");
   });
@@ -24,6 +25,7 @@ describe("worktree path construction", () => {
       gitRemote: "origin",
       gitMainBranch: "main",
       gitRepoUrl: "https://example.com/repo.git",
+      cleanKeep: [],
     });
     expect(wt.path).toBe("/tmp/wt/demo");
   });

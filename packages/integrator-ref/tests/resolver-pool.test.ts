@@ -66,6 +66,7 @@ describe.skipIf(!GIT_AVAILABLE)("createResolverPool (real git)", () => {
       gitRepoUrl: bareRepo,
       gitRemote: "origin",
       gitMainBranch: "main",
+      cleanKeep: [],
       maxConcurrent: 2,
     });
     expect(pool.size).toBe(2);
@@ -94,6 +95,7 @@ describe.skipIf(!GIT_AVAILABLE)("createResolverPool (real git)", () => {
       gitRepoUrl: bareRepo,
       gitRemote: "origin",
       gitMainBranch: "main",
+      cleanKeep: [],
       maxConcurrent: 1,
     });
     expect(pool.queuedCount).toBe(0);
@@ -120,6 +122,7 @@ describe.skipIf(!GIT_AVAILABLE)("createResolverPool (real git)", () => {
       gitRemote: "origin",
       gitMainBranch: "main",
       parallelism: 2,
+      cleanKeep: [],
     });
     const resolverPool = createResolverPool({
       worktreeRoot: root,
@@ -127,6 +130,7 @@ describe.skipIf(!GIT_AVAILABLE)("createResolverPool (real git)", () => {
       gitRepoUrl: bareRepo,
       gitRemote: "origin",
       gitMainBranch: "main",
+      cleanKeep: [],
       maxConcurrent: 2,
     });
     await verifyPool.ensureAll();

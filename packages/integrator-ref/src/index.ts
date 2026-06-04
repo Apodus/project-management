@@ -111,6 +111,7 @@ async function main(): Promise<void> {
     gitRepoUrl: cfg.gitRepoUrl,
     gitRemote: cfg.gitRemote,
     gitMainBranch: cfg.gitMainBranch,
+    cleanKeep: cfg.cleanKeep,
   });
   const makeGitOps = (p: string) => createGitOps(simpleGit(p));
 
@@ -149,6 +150,7 @@ async function main(): Promise<void> {
       gitRepoUrl: cfg.gitRepoUrl,
       gitRemote: cfg.gitRemote,
       gitMainBranch: cfg.gitMainBranch,
+      cleanKeep: cfg.cleanKeep,
       maxConcurrent: cfg.resolver.maxConcurrent,
       // ── Phase 7.6 Step 6 worker deps. ──
       pmClient,
@@ -219,6 +221,7 @@ async function main(): Promise<void> {
         gitRepoUrl: repo.path,
         gitRemote: cfg.gitRemote,
         gitMainBranch: cfg.gitMainBranch,
+        cleanKeep: cfg.cleanKeep,
       });
       // Binding clone: a simple-git over the repo's local clone path, used ONLY
       // to resolve a member's ref (commitSha/branch). resolveRefInClone MUST

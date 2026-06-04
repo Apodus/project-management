@@ -179,6 +179,7 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
       gitRepoUrl: bareRepo,
       gitRemote: "origin",
       gitMainBranch: "main",
+      cleanKeep: [],
       maxConcurrent: args.maxConcurrent,
       pmClient: args.pmClient,
       logger: silentLogger,

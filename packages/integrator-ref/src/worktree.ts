@@ -18,6 +18,16 @@ export interface WorktreeOptions {
   gitRemote: string;
   gitMainBranch: string;
   gitRepoUrl: string;
+  cleanKeep: string[];
+}
+
+/**
+ * Build the simple-git `clean` options list. Empty cleanKeep ⇒ ["-d","-x"]
+ * (with the "f" force mode ⇒ `git clean -fdx`, byte-identical to pre-P1).
+ * Each kept pattern adds `-e <pattern>`, preserving matching untracked paths.
+ */
+export function buildCleanArgs(cleanKeep: readonly string[]): string[] {
+  return ["-d", "-x", ...cleanKeep.flatMap((p) => ["-e", p])];
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -95,7 +105,7 @@ export function createWorktree(opts: WorktreeOptions): Worktree {
   async function resetForAttempt(): Promise<void> {
     const g = requireGit();
     await g.reset(["--hard"]);
-    await g.clean("f", ["-d", "-x"]);
+    await g.clean("f", buildCleanArgs(opts.cleanKeep));
     await g.fetch(opts.gitRemote);
     await g.checkout(opts.gitMainBranch);
     await g.reset(["--hard", `${opts.gitRemote}/${opts.gitMainBranch}`]);

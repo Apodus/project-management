@@ -904,6 +904,60 @@ describe("Projects API", () => {
       });
     });
 
+    it("defaults clean_keep to [] when integrator config omits it", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      expect(body.data.settings.integrator.clean_keep).toEqual([]);
+    });
+
+    it("round-trips a non-empty clean_keep config", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/projects/${project.id}`,
+        {
+          body: {
+            settings: {
+              ...validBaseSettings,
+              integrator: {
+                enabled: true,
+                verify_command: "pnpm test",
+                worktree_root: "/tmp/wt",
+                clean_keep: ["node_modules", ".cache"],
+              },
+            },
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const body = await get.json();
+      expect(body.data.settings.integrator.clean_keep).toEqual([
+        "node_modules",
+        ".cache",
+      ]);
+    });
+
     it("rejects linked_repos with an invalid role", async () => {
       const project = createTestProject(testApp.db);
       const res = await authRequest(

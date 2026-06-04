@@ -141,6 +141,7 @@ export interface ResolverPoolOptions extends Partial<ResolverWorkerDeps> {
   gitRepoUrl: string;
   gitRemote: string;
   gitMainBranch: string;
+  cleanKeep: string[];
   /** `resolver.max_concurrent` (design §3). Pool size; clamped to ≥ 1. */
   maxConcurrent: number;
 }
@@ -179,6 +180,7 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
       gitRepoUrl: opts.gitRepoUrl,
       gitRemote: opts.gitRemote,
       gitMainBranch: opts.gitMainBranch,
+      cleanKeep: opts.cleanKeep,
     }),
   }));
 

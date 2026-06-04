@@ -283,6 +283,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       gitRemote: "origin",
       gitMainBranch: "main",
       parallelism: 1,
+      cleanKeep: [],
     });
     outerPool = createWorktreePool({
       worktreeRoot,
@@ -291,6 +292,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       gitRemote: "origin",
       gitMainBranch: "main",
       parallelism: 1,
+      cleanKeep: [],
     });
     await innerPool.ensureAll();
     await outerPool.ensureAll();
