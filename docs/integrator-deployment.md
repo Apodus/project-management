@@ -525,7 +525,7 @@ Set `settings.integrator.linked_repos` on the project (snake_case, sibling of `p
 ```
 
 - `name` — logical repo name (matches the group member's target repo).
-- `path` — the repo's remote: a clone URL or a bare-repo path the integrator can clone from.
+- `path` — the repo's remote: a bare-repo path, a local path, **or** a remote/`file://`/SSH/HTTPS URL. For a URL `path`, the integrator maintains a local **`--mirror` bind clone** under `worktree_root` (`bind-<name>.git`, refs + objects only), fetched before each ref resolution — this is what makes URL `path` entries work end-to-end (simple-git cannot resolve a ref against a URL directly, so the bind clone gives it a local repo to query).
 - `role` — `"inner"` or `"outer"`. The role is **config-declared and authoritative** (never inferred from git).
 - `gitlink_parent` (inner only) — the `name` of the outer repo that embeds this inner.
 - `gitlink_path` (inner only) — the path inside the outer working tree where the gitlink/submodule lives (e.g. `vendor/rynx`). The integrator only ever mutates the gitlink **SHA** at this path; it never touches `.gitmodules` (the operator seeds that once).
@@ -541,7 +541,7 @@ When `linked_repos` is non-empty the integrator builds **one worktree pool per l
 A group is picked up and integrated **under the same `(project, resource)` lane lock** the integrator already uses — there is no second lock. The cycle:
 
 1. **Bind members → roles.** Each member's identity ref (commitSha-preferred, else branch) is resolved in each linked repo's clone; the member binds to the repo whose clone resolves it, and its role comes from config. An ambiguous binding (resolves in both repos, or neither) rejects the group cleanly from `forming`.
-2. **Assemble** (no push, no PM mutation yet): rebase the inner member onto live inner `main` → `Ri`; rebase the outer member onto live outer `main`; commit the outer gitlink at `gitlink_path` to `Ri` → `Ro`; **materialize** the inner@`Ri` sources into the outer working tree at `gitlink_path` so the outer verify actually sees them.
+2. **Assemble** (no push, no PM mutation yet): rebase the inner member onto live inner `main` → `Ri`; rebase the outer member onto live outer `main`; commit the outer gitlink at `gitlink_path` to `Ri` → `Ro`; **materialize** the inner@`Ri` sources into the outer working tree at `gitlink_path` so the outer verify actually sees them. **Git LFS:** when the inner repo tracks files via git-lfs, materialize is **LFS-aware** — it writes the inner tree with `GIT_LFS_SKIP_SMUDGE=1` (so checkout-index never queries the OUTER LFS endpoint, which lacks the inner's objects → no 404), then **overlay-copies the real binaries** from the smudged inner pool worktree over the written pointers. The outer **working tree** thus holds the inner's real LFS binaries for verify, while the **committed** outer tree carries only the `160000` gitlink. (This applies to the LAND assemble path; the recovery roll-forward is **not** yet LFS-overlay-aware — see §14.5.)
 3. **Pick up** (`forming → integrating`, flips members) and start a per-member attempt.
 4. **Verify the assembled state**: run the inner and outer verify commands **concurrently**, both against the assembled checkout, and AND the results. Any repo failing → reject the **whole** group (nothing pushed, no incident).
 5. **Land**, under the lock, with a single pre-push drift re-check on both live mains:
@@ -563,6 +563,8 @@ An open `orphaned_inner` incident means: inner `main` is at the orphaned SHA `O`
 Recovery runs opportunistically on a later integration pass, under the lane lock:
 
 - **Auto-rollforward** (the common path): the incident is **reconcilable** when the current outer gitlink is an _ancestor_ of `O` (checked in the inner repo). The integrator assembles the roll-forward outer tree (gitlink → `O`, inner sources materialized), **verifies it** (the safety gate), then does a verify-gated fast-forward push of outer `main`, and resolves the incident `auto_resolved`. Outer `main` advances **only** by a verified, fast-forward push.
+
+  > **LFS limitation (known, tracked in source):** the roll-forward assemble reuses `materialize` but is **not yet LFS-overlay-aware** for the inner sources — recovery materializes _without_ the inner-worktree opt-in (it has no inner pool worktree checked out at `O`). An orphan whose inner change adds **new LFS objects** can therefore fail the roll-forward materialize (outer smudge 404) and stay `open` for a human roll-forward. This is a deferred follow-up tracked by a `TODO(xrepo-lfs)` in `group-recovery.ts`; a non-LFS or already-present-objects orphan is unaffected.
 - **Human escalation**: if the current gitlink is **not** an ancestor of `O` (divergent intervening outer history), or the ancestry check errors, or the assembled roll-forward tree fails verify — the integrator **escalates**: it logs an escalation warning and **leaves the incident `open`** (it never auto-mutates). A human lands a reconciling change and closes it `human_resolved` (admin-only resolve). Transient conditions (pool exhaustion, outer drift, a push race) are _deferred_ instead of escalated — the incident stays open and the next pass retries.
 
 Operators detect incidents from PM alone:
@@ -592,7 +594,12 @@ Every row preserves the prime invariant: **outer `main` is never advanced to a g
 
 ### 14.7 Worker flow (MCP)
 
-A worker submits each repo's change as a normal merge request (`pm_request_merge`, giving each member a `branch`/`commit_sha` and `verify_cmd`), then binds them with `pm_request_merge_group` (`member_request_ids`, ≥2, all already-queued and ungrouped). The group lands or fails atomically; the worker subscribes to `merge.group.landed` / `merge.group.rejected` with the returned group id. `pm_get_merge_group` reports the group + member statuses.
+`pm_request_merge_group` accepts **exactly one of two forms** (the server enforces the exclusivity):
+
+- **`members` — the preferred atomic form (race-free).** Pass ≥2 member specs (each `{ branch and/or commit_sha, verify_cmd?, task_id? }`); PM **submits and groups them in a single transaction**, so every member is **born group-bound**. This closes the submit→group window entirely: a freshly-submitted member can never be grabbed by a single-repo pickup mid-grouping.
+- **`member_request_ids` — the legacy two-step form.** Submit each repo's change as a normal merge request first (`pm_request_merge`, giving each member a `branch`/`commit_sha` and `verify_cmd`), then bind ≥2 already-queued, ungrouped request ids into the group.
+
+Either way, a **grouped member is structurally guarded from single-repo pickup**: when a member's `group_id` is set, `transitionToIntegrating` returns **`409 GROUPED_MEMBER`** — independent of the client's list query and of serial vs. parallel mode (the query filter is a fast-path optimization, the 409 is the hard guard; honest dual-mechanism). The group lands or fails atomically; the worker subscribes to `merge.group.landed` / `merge.group.rejected` with the returned group id. `pm_get_merge_group` reports the group + member statuses.
 
 ---
 

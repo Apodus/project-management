@@ -37,7 +37,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,9 +74,28 @@ function hasGit(): boolean {
   }
 }
 
+// git-lfs availability gate (copied from group-assembly.test.ts) — flow (e)
+// requires a real git-lfs to seed + smudge the inner LFS binary.
+function hasGitLfs(): boolean {
+  try {
+    return spawnSync("git", ["lfs", "version"], { stdio: "ignore" }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
 const distPath = fileURLToPath(new URL("../dist/index.js", import.meta.url));
 const distExists = existsSync(distPath);
 const RUN = hasGit() && distExists;
+const LFS_AVAILABLE = hasGitLfs();
+
+// A fixed, deterministic "binary" (NOT randomBytes — reproducible). Copied from
+// group-assembly.test.ts so flow (e)'s real-bytes precondition asserts against
+// the SAME ground-truth content the inner LFS seed writes.
+const originalBytes = Buffer.from([
+  0x00, 0x01, 0x02, 0x03, 0xff, 0xfe, 0xfd, 0xfc, 0x10, 0x20, 0x30, 0x40, 0x50,
+  0x60, 0x70, 0x80,
+]);
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
@@ -176,7 +201,9 @@ interface FixtureRefs {
   outerFeatureSha: string;
 }
 
-async function makeGroupHarness(): Promise<{ h: Harness; refs: FixtureRefs }> {
+async function makeGroupHarness(
+  opts: { innerLfs?: boolean; innerPathAsFileUrl?: boolean } = {},
+): Promise<{ h: Harness; refs: FixtureRefs }> {
   const tmpRoot = mkdtempSync(path.join(tmpdir(), "pm-group-e2e-"));
   const innerBare = path.join(tmpRoot, "inner.git");
   const outerBare = path.join(tmpRoot, "outer.git");
@@ -197,6 +224,17 @@ async function makeGroupHarness(): Promise<{ h: Harness; refs: FixtureRefs }> {
   const innerMainSha = (await ig.revparse(["HEAD"])).trim();
 
   await ig.checkoutLocalBranch("feature/inner");
+  if (opts.innerLfs) {
+    // Seed an LFS-tracked binary on feature/inner (copied pattern from
+    // group-assembly.test.ts). The bare then holds the LFS POINTER in-tree +
+    // the LFS object in its lfs store, so a smudge-enabled clone yields the real
+    // bytes — exactly what the daemon's inner pool worktree must smudge before
+    // the P2 overlay copies the real binary into the outer working tree.
+    await ig.raw(["lfs", "install", "--local"]);
+    await ig.raw(["lfs", "track", "*.bin"]);
+    writeFileSync(path.join(innerSeed, "blob.bin"), originalBytes);
+    await ig.add([".gitattributes", "blob.bin"]);
+  }
   writeFileSync(path.join(innerSeed, "feature.txt"), "inner feature\n");
   await ig.add(["feature.txt"]);
   await ig.commit("inner feature commit");
@@ -264,7 +302,14 @@ async function makeGroupHarness(): Promise<{ h: Harness; refs: FixtureRefs }> {
         linked_repos: [
           {
             name: "rynx-inner",
-            path: innerBare,
+            // Optionally drive P1's mirror-clone branch end-to-end: a remote
+            // `file://` URL the integrator must `--mirror`-bind to resolve refs
+            // (simple-git can't bind a URL directly). Derivation copied from
+            // binding-clone.test.ts. Default = the bare path (byte-identical to
+            // every existing flow a-d/chaos call site).
+            path: opts.innerPathAsFileUrl
+              ? "file:///" + innerBare.split(path.sep).join("/")
+              : innerBare,
             role: "inner",
             gitlink_path: GITLINK_PATH,
           },
@@ -944,3 +989,102 @@ describe.skipIf(!RUN)("group E2E chaos", () => {
     expect(await h.listOpenIncidents()).toHaveLength(0);
   }, 120_000);
 });
+
+// ─── Flow (e): remote-URL binding + inner-LFS materialize compose → land ──
+//
+// Proves the P1 (remote/`file://` binding `--mirror` clone) + P2 (LFS-aware
+// materialize: real binaries overlaid into the outer working tree for verify)
+// fixes COMPOSE through the REAL spawned daemon and produce a clean atomic land.
+// The bug shape both fixes target is a THROW during assemble/materialize (a
+// URL `path` simple-git can't bind; an outer-LFS smudge 404 on the inner's
+// objects) — so "landed" here is the composition signal.
+//
+// Byte-level overlay CORRECTNESS (real bytes, not a pointer) is unit-proven in
+// group-assembly.test.ts (P2) and now structurally GUARDED fail-loud in git-ops
+// (P4 step 1: an unsmudged inner pointer throws rather than silently shipping a
+// pointer). This flow proves composition-through-the-daemon + land — with a
+// REAL-BYTES PRECONDITION (below) so "landed" is a meaningful signal and not a
+// pointer false-green.
+describe.skipIf(!RUN || !LFS_AVAILABLE)(
+  "group E2E (e) — remote-URL binding + inner-LFS materialize compose → clean atomic land",
+  () => {
+    let h: Harness;
+    let refs: FixtureRefs;
+    beforeAll(async () => {
+      ({ h, refs } = await makeGroupHarness({
+        innerLfs: true,
+        innerPathAsFileUrl: true,
+      }));
+      await h.spawnIntegrator();
+    }, 90_000);
+    afterAll(async () => {
+      if (h) await h.teardown();
+    });
+
+    it("file:// inner binding + LFS-inner group composes P1+P2 and lands atomically", async () => {
+      // ── REQUIRED PRECONDITION (the anti-false-green fix) ──
+      // Clone the EXACT inner source the daemon will bind (the `file://` URL —
+      // same string the linked_repos[].path carries) into a temp dir with LFS
+      // smudge ACTIVE, then ASSERT the cloned `blob.bin` on feature/inner equals
+      // originalBytes (REAL bytes, not a pointer). This proves the daemon's clone
+      // source genuinely yields the real binary — so a later "landed" means the
+      // overlay shipped real bytes, not that a pointer slipped through. If this
+      // precondition cannot smudge (a misconfigured host), it FAILS LOUD here
+      // rather than letting the test pass on garbage.
+      const innerFileUrl =
+        "file:///" + h.innerBare.split(path.sep).join("/");
+      const preClone = path.join(h.tmpRoot, "precond-inner-clone");
+      const pc = spawnSync(
+        "git",
+        ["clone", "-b", "feature/inner", innerFileUrl, preClone],
+        { stdio: "pipe", encoding: "utf8" },
+      );
+      expect(pc.status, `precondition clone failed: ${pc.stderr}`).toBe(0);
+      // Force-smudge in case the host has GIT_LFS_SKIP_SMUDGE / a partial clone.
+      const pull = spawnSync("git", ["-C", preClone, "lfs", "pull"], {
+        stdio: "pipe",
+        encoding: "utf8",
+      });
+      expect(pull.status, `precondition lfs pull failed: ${pull.stderr}`).toBe(0);
+      const preBlob = path.join(preClone, "blob.bin");
+      expect(existsSync(preBlob)).toBe(true);
+      // REAL bytes — byte-for-byte. (If this were a pointer the daemon's clone
+      // source could only ever yield a pointer too, and "landed" would be a
+      // false-green; this assertion forbids that.)
+      expect(
+        Buffer.compare(readFileSync(preBlob), originalBytes),
+        "precondition: inner clone source did not yield the REAL binary (smudge misconfigured) — a 'landed' would be a pointer false-green",
+      ).toBe(0);
+      // It is NOT a pointer.
+      expect(
+        readFileSync(preBlob, "utf8").startsWith("version https://git-lfs"),
+      ).toBe(false);
+
+      // ── Submit the LFS-inner group (members born group-bound), poll to land ──
+      const innerTask = createTestTask(h.db, { projectId: h.project.id });
+      const { group } = await h.submitGroup(
+        refs.innerFeatureSha,
+        refs.outerFeatureSha,
+        {
+          innerVerify: "exit 0",
+          outerVerify: "exit 0",
+          innerTask: innerTask.id,
+        },
+      );
+
+      const final = await h.pollGroup(group.id, 90_000);
+      // The LFS-inner group bound via `file://` composed P1 (mirror-bind ref
+      // resolution) + P2 (LFS-aware materialize) through the real daemon and
+      // landed — the bug shape was a THROW during assemble/materialize.
+      expect(final.state).toBe("landed");
+
+      // Atomic land assertions (mirror flow a): gitlink on outer bare main === Ri,
+      // inner bare main advanced to Ri, no open incidents.
+      const Ri = await h.innerBareMainSha();
+      expect(Ri).not.toBe(refs.innerMainSha);
+      expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
+      expect(h.outerFileOnMain("app.txt")).toBe(true);
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+    }, 90_000);
+  },
+);

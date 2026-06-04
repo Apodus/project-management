@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { copyFile, mkdir, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
 import { killTree } from "./kill-tree.js";
@@ -643,6 +643,28 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
         for (const relpath of relpaths) {
           const src = path.join(innerWorktreePath, relpath);
           const dst = path.join(topLevel, gitlinkPath, relpath);
+          // FAIL-LOUD guard (P4): if `src` in the inner worktree is itself an
+          // UNSMUDGED LFS POINTER (the inner clone's smudge filter never ran —
+          // e.g. it was cloned with GIT_LFS_SKIP_SMUDGE=1 or git-lfs is not
+          // configured there), copying it would silently overlay a POINTER over
+          // the pointer checkout-index already wrote — the outer verify would then
+          // build against a text pointer, not the real binary (a false-green: the
+          // build "succeeds" on garbage). An LFS pointer file is small and starts
+          // with the ASCII spec line `version https://git-lfs.github.com/spec/v1`.
+          // Read the head of `src` and refuse to overlay a pointer. (A correctly
+          // smudged inner worktree — the normal case + the P2 test — has the real
+          // binary here, so this guard is inert.)
+          const head = await readFile(src);
+          if (
+            head
+              .subarray(0, 64)
+              .toString("utf8")
+              .startsWith("version https://git-lfs.github.com/spec/v1")
+          ) {
+            throw new Error(
+              `materialize: inner LFS file '${relpath}' in the inner worktree is an unsmudged pointer — cannot overlay the real binary (is git-lfs configured to smudge in the inner clone?).`,
+            );
+          }
           await mkdir(path.dirname(dst), { recursive: true });
           // copyFile overwrites the pointer with the real binary; overwriting an
           // existing file's content preserves its mode. A genuinely missing src

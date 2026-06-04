@@ -168,9 +168,14 @@ not in recovery. State is PM-owned in two new tables — `merge_request_groups`
 (forming → integrating → landed | rejected | partially_landed) and `merge_incidents`
 (open → auto_resolved | human_resolved) — plus a nullable `merge_requests.group_id`. Linked repos are
 declared per project in `settings.integrator.linked_repos` (`[{ name, path, role: "inner"|"outer",
-gitlink_parent?, gitlink_path? }]`; default `[]` = single-repo, byte-identical to 7.2). Worker MCP
-tools: `pm_request_merge_group`, `pm_get_merge_group`, `pm_list_merge_incidents`,
-`pm_get_merge_incident`. Full spec: `docs/design/phase-7.3-design.md`.
+gitlink_parent?, gitlink_path? }]`; default `[]` = single-repo, byte-identical to 7.2) — where a
+linked-repo `path` accepts a bare/local path **or** a remote/`file://`/SSH/HTTPS URL (the integrator
+binds it via a local `--mirror` clone to resolve refs), and an inner repo's Git LFS files materialize
+as **real binaries** in the outer working tree for verify (land path; recovery roll-forward is not yet
+LFS-overlay-aware). Worker MCP tools: `pm_request_merge_group` (accepts an atomic `members` form —
+members born group-bound, never single-repo-pickable — or the legacy `member_request_ids`),
+`pm_get_merge_group`, `pm_list_merge_incidents`, `pm_get_merge_incident`. Full spec:
+`docs/design/phase-7.3-design.md`.
 
 **Observability + break-glass (Phase 7.4).** The train is legible, accountable, recoverable, and
 self-alerting. A human-facing **dashboard** (`/projects/{id}/train`), a **per-request timeline**
