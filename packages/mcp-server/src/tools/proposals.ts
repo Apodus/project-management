@@ -8,6 +8,7 @@ import {
   getProposal,
   listProposals,
   releaseProposal,
+  transitionProposal,
 } from "../api-client.js";
 import {
   claimDeniedText,
@@ -235,6 +236,42 @@ export function registerProposalTools(server: McpServer): void {
                 "---",
                 "",
                 result.comment.body,
+              ].join("\n"),
+            },
+          ],
+        };
+      } catch (err) {
+        if (err instanceof ApiError && err.code === "CLAIM_DENIED") {
+          return {
+            content: [{ type: "text" as const, text: claimDeniedText("proposal", "pm_claim_proposal") }],
+          };
+        }
+        throw err;
+      }
+    },
+  );
+
+  server.tool(
+    "pm_transition_proposal",
+    "Change a proposal's status. You must hold the claim first (call pm_claim_proposal). The server enforces the valid lifecycle (open → discussing → accepted → in_progress → completed) and your role. The main use is completing a proposal once its work is done: transition 'in_progress' → 'completed'. Note that a proposal also auto-completes on its own once all of its linked epics complete — call this only when you need to flip it manually (e.g. work was tracked outside epics, or you want to close it early).",
+    {
+      proposal_id: z.string().describe("The proposal ID to transition"),
+      to_status: z
+        .enum(["open", "discussing", "accepted", "in_progress", "completed", "rejected"])
+        .describe("The target status. Must be a legal transition from the current status."),
+    },
+    async ({ proposal_id, to_status }) => {
+      try {
+        const proposal = await transitionProposal(proposal_id, to_status);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: [
+                "Proposal transitioned successfully.",
+                "",
+                `**Proposal ID:** ${proposal.id}`,
+                `**Status:** ${proposal.status}`,
               ].join("\n"),
             },
           ],

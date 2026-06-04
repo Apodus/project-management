@@ -480,6 +480,17 @@ export async function implementProposal(
   );
 }
 
+export async function transitionProposal(
+  proposalId: string,
+  toStatus: string,
+): Promise<ProposalSummary> {
+  return apiRequest<ProposalSummary>(
+    "POST",
+    `/proposals/${encodeURIComponent(proposalId)}/transitions`,
+    { toStatus },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Typed API functions — Task Workflow
 // ---------------------------------------------------------------------------

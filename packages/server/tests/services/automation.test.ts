@@ -1156,6 +1156,147 @@ describe("Proposal Auto-Transition", () => {
   });
 });
 
+// ─── Proposal auto-completion from epics ──────────────────────────
+
+describe("Proposal Auto-Completion from Epics", () => {
+  let testApp: TestApp;
+  let cleanupListener: () => void;
+
+  beforeEach(() => {
+    testApp = createTestApp();
+    cleanupListener = registerProposalAutoTransitionListener();
+  });
+
+  afterEach(() => {
+    cleanupListener();
+    testApp.cleanup();
+  });
+
+  /** Emit EPIC_UPDATED the way the epic service / automation does after a status change. */
+  function emitEpicUpdated(epicId: string, projectId: string) {
+    const db = getDb();
+    const epic = db.select().from(epics).where(eq(epics.id, epicId)).get()!;
+    getEventBus().emit(EVENT_NAMES.EPIC_UPDATED, {
+      entity: epic,
+      entityType: "epic",
+      entityId: epicId,
+      projectId,
+      actorId: null,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  it("completes an accepted proposal when its only epic completes", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "accepted",
+    });
+    const epic = createTestEpic(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      proposalId: proposal.id,
+      status: "completed",
+    });
+
+    emitEpicUpdated(epic.id, project.id);
+
+    const updated = getDb().select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updated!.status).toBe("completed");
+  });
+
+  it("does NOT complete the proposal while a sibling epic is still active", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "in_progress",
+    });
+    const doneEpic = createTestEpic(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      proposalId: proposal.id,
+      status: "completed",
+    });
+    createTestEpic(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      proposalId: proposal.id,
+      status: "active",
+    });
+
+    emitEpicUpdated(doneEpic.id, project.id);
+
+    const updated = getDb().select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updated!.status).toBe("in_progress");
+  });
+
+  it("completes when all non-cancelled epics are completed (a cancelled sibling does not block)", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "accepted",
+    });
+    const doneEpic = createTestEpic(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      proposalId: proposal.id,
+      status: "completed",
+    });
+    createTestEpic(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      proposalId: proposal.id,
+      status: "cancelled",
+    });
+
+    emitEpicUpdated(doneEpic.id, project.id);
+
+    const updated = getDb().select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updated!.status).toBe("completed");
+  });
+
+  it("does NOT re-complete (or touch) an already-terminal proposal", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const proposal = createTestProposal(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      status: "rejected",
+    });
+    const epic = createTestEpic(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      proposalId: proposal.id,
+      status: "completed",
+    });
+
+    emitEpicUpdated(epic.id, project.id);
+
+    const updated = getDb().select().from(proposals).where(eq(proposals.id, proposal.id)).get();
+    expect(updated!.status).toBe("rejected");
+  });
+
+  it("ignores epics not linked to any proposal", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const epic = createTestEpic(testApp.db, {
+      projectId: project.id,
+      createdBy: user.id,
+      proposalId: null,
+      status: "completed",
+    });
+
+    // Should not throw and there is no proposal to complete.
+    expect(() => emitEpicUpdated(epic.id, project.id)).not.toThrow();
+  });
+});
+
 // ─── Built-in rules on project creation (via project service) ───
 
 describe("Built-in rules on project creation", () => {

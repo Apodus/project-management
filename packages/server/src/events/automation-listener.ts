@@ -7,18 +7,96 @@ import {
   type Condition,
   type ActionContext,
 } from "../services/automation.service.js";
-import { getDb, tasks, proposals } from "../db/index.js";
+import { getDb, tasks, epics, proposals } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import type { ProposalStatus } from "@pm/shared";
 
 /**
- * Register the proposal auto-transition listener.
- * When a task's status changes, checks if linked proposal should advance:
- * - in_progress → completed: when all non-cancelled linked tasks are done
+ * Auto-complete a proposal whose work is fully done, idempotently.
+ * Shared by both the task-driven path (proposals with directly-linked tasks,
+ * e.g. `implementProposal`) and the epic-driven path (proposals whose work is
+ * organised under epics — the common case, where tasks carry `epicId` only).
+ * Writes status directly (a system action) and emits PROPOSAL_TRANSITIONED.
+ * No-ops if the proposal is already terminal. The caller is responsible for
+ * having verified that the proposal's work is complete.
+ */
+function completeProposal(proposalId: string, from: ProposalStatus): void {
+  const db = getDb();
+  const bus = getEventBus();
+  const now = new Date().toISOString();
+  db.update(proposals)
+    .set({ status: "completed", updatedAt: now })
+    .where(eq(proposals.id, proposalId))
+    .run();
+
+  const updated = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
+  if (!updated) return;
+  bus.emit(EVENT_NAMES.PROPOSAL_TRANSITIONED, {
+    entity: updated,
+    entityType: "proposal",
+    entityId: proposalId,
+    projectId: updated.projectId,
+    actorId: null,
+    timestamp: now,
+    changes: { status: { from, to: "completed" } },
+    previousStatus: from,
+  });
+}
+
+/**
+ * Register the proposal auto-transition listeners.
+ *
+ * Two complementary paths drive a proposal to `completed`:
+ * - TASK_STATUS_CHANGED: a proposal with tasks linked DIRECTLY (`task.proposalId`,
+ *   as `implementProposal` stamps them) completes when all non-cancelled such
+ *   tasks are done — but only once it is already `in_progress`.
+ * - EPIC_UPDATED: a proposal whose work is organised under EPICS completes when
+ *   all of its non-cancelled linked epics are completed. This is the common
+ *   case (tasks created under an epic carry `epicId`, not `proposalId`), and it
+ *   fires from any active state (incl. `accepted`), mirroring the way epics
+ *   auto-complete from their tasks.
  */
 export function registerProposalAutoTransitionListener(): () => void {
   const bus = getEventBus();
 
+  // ── Epic-driven completion ──────────────────────────────────────
+  // When a linked epic reaches `completed`, complete the proposal once ALL of
+  // its non-cancelled epics are completed. Re-reads the epic from the db so it
+  // is robust to both auto-completion (automation, which carries `changes`) and
+  // manual epic updates (the epic service, which emits no `changes`).
+  bus.on(EVENT_NAMES.EPIC_UPDATED, (payload: EventPayload) => {
+    if (payload.entityType !== "epic") return;
+
+    const db = getDb();
+    const epic = db.select().from(epics).where(eq(epics.id, payload.entityId)).get();
+    if (!epic || epic.status !== "completed" || !epic.proposalId) return;
+
+    const proposal = db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.id, epic.proposalId))
+      .get();
+    if (!proposal) return;
+
+    const currentStatus = proposal.status as ProposalStatus;
+    // Only auto-complete from an active, non-terminal state.
+    if (currentStatus === "completed" || currentStatus === "rejected") return;
+
+    // Every non-cancelled epic of this proposal must be completed (and ≥1 must
+    // exist) before the proposal itself is done.
+    const proposalEpics = db
+      .select()
+      .from(epics)
+      .where(eq(epics.proposalId, epic.proposalId))
+      .all();
+    const relevant = proposalEpics.filter((e) => e.status !== "cancelled");
+    if (relevant.length === 0) return;
+    if (!relevant.every((e) => e.status === "completed")) return;
+
+    completeProposal(epic.proposalId, currentStatus);
+  });
+
+  // ── Task-driven completion ──────────────────────────────────────
   bus.on(EVENT_NAMES.TASK_STATUS_CHANGED, (payload: EventPayload) => {
     if (payload.entityType !== "task") return;
 
@@ -51,23 +129,7 @@ export function registerProposalAutoTransitionListener(): () => void {
       const allDone = nonCancelledTasks.every((t) => t.status === "done");
       if (!allDone) return;
 
-      const now = new Date().toISOString();
-      db.update(proposals)
-        .set({ status: "completed", updatedAt: now })
-        .where(eq(proposals.id, proposalId))
-        .run();
-
-      const updated = db.select().from(proposals).where(eq(proposals.id, proposalId)).get()!;
-      bus.emit(EVENT_NAMES.PROPOSAL_TRANSITIONED, {
-        entity: updated,
-        entityType: "proposal",
-        entityId: proposalId,
-        projectId: proposal.projectId,
-        actorId: null,
-        timestamp: now,
-        changes: { status: { from: "in_progress", to: "completed" } },
-        previousStatus: "in_progress",
-      });
+      completeProposal(proposalId, "in_progress");
     }
   });
 
