@@ -1,5 +1,7 @@
 import { Command } from "commander";
+import path from "node:path";
 import { simpleGit } from "simple-git";
+import { createBindingResolver } from "./binding-clone.js";
 import { ConfigError, loadConfig, type CliArgs } from "./config.js";
 import { PmClient } from "./pm-client.js";
 import { createLogger } from "./logger.js";
@@ -223,11 +225,21 @@ async function main(): Promise<void> {
         gitMainBranch: cfg.gitMainBranch,
         cleanKeep: cfg.cleanKeep,
       });
-      // Binding clone: a simple-git over the repo's local clone path, used ONLY
-      // to resolve a member's ref (commitSha/branch). resolveRefInClone MUST
-      // return null (not throw) for an absent ref so FIX 1 can fail loud only
-      // on a true ambiguity.
-      const bindGit = simpleGit(repo.path);
+      // Binding clone: a LOCAL `--mirror` clone of the linked repo, used ONLY to
+      // resolve a member's ref (commitSha/branch). `repo.path` may be a remote
+      // URL (the documented "clone URL" form) — and simple-git refuses to bind
+      // to anything that isn't an existing local directory — so we cannot
+      // `simpleGit(repo.path)` it directly. Instead we maintain a local mirror
+      // under worktreeRoot (refs + objects only; no working tree, no LFS smudge
+      // — all that ref resolution needs) and FETCH it before each resolution to
+      // pick up the worker's just-pushed branch/commit. resolveRefInClone returns
+      // null (not throw) for an absent ref — `--verify <ref>^{commit}` FAILS when
+      // the object/ref is not present in THIS clone (unlike a bare rev-parse of a
+      // full sha, which echoes any 40-hex string back), so the commitSha-first
+      // binding resolves in exactly one repo. Extracted + unit-tested in
+      // ./binding-clone.ts (the file:// URL case guards the remote-URL regression).
+      const bindDir = path.join(cfg.worktreeRoot, `bind-${repo.name}.git`);
+      const binding = createBindingResolver(repo.path, bindDir);
       const lane: RepoLane = {
         role: repo.role,
         name: repo.name,
@@ -235,17 +247,7 @@ async function main(): Promise<void> {
         release: (wt) => lanePool.release(wt),
         gitOps: (p) => createGitOps(simpleGit(p)),
         gitlinkPath: repo.gitlinkPath,
-        resolveRefInClone: async (ref: string): Promise<string | null> => {
-          // `--verify <ref>^{commit}` FAILS (throws) when the object/ref is not
-          // present in THIS clone — unlike a bare `rev-parse <full-sha>`, which
-          // echoes any 40-hex string back without checking existence. This is
-          // what makes the commitSha-first binding resolve in exactly one repo.
-          try {
-            return (await bindGit.revparse(["--verify", `${ref}^{commit}`])).trim();
-          } catch {
-            return null;
-          }
-        },
+        resolveRefInClone: (ref) => binding.resolveRefInClone(ref),
       };
       return { lane, pool: lanePool };
     };
