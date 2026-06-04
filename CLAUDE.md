@@ -128,6 +128,9 @@ cross-repo re-submissions are no-op'd naturally by the fast-forward push; see
   `phase-7.5` (smart verification).
 - **Operator deployment guide**: `docs/integrator-deployment.md` (install, config, monitoring,
   failure modes, single-machine layout; §15 = observability + break-glass).
+  The integrator config (`settings.integrator` editable fields + `gitRepoUrl`, including `clean_keep`)
+  is now editable in the admin **Integrator** settings page (`/projects/{id}/settings/integrator`);
+  deferred fields (`verify_steps`/cache/`slo`/`resolver`) stay REST-only.
 - **MCP tools** (worker-facing): `pm_request_merge`, `pm_list_merge_requests`,
   `pm_get_merge_request`, `pm_cancel_merge_request`. The integrator-facing operations
   (pickup, start/complete attempt, land, reject, reset-to-queued) are HTTP-only.

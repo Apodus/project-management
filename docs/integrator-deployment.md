@@ -127,6 +127,10 @@ Stored in PM under `projects.settings.integrator`. The `settings` column is alre
 
 > **`parallelism` has no environment-variable or CLI override.** Operators looking for a `PM_PARALLELISM` env var or a `--parallelism` flag will not find one — it is configured **per project** in `settings.integrator.parallelism` and read at integrator startup. To change it, `PATCH` the project and restart the integrator process.
 
+> **Editing this config: the admin Integrator settings page (recommended).** Most of these fields are editable in the web UI at **`/projects/{projectId}/settings/integrator`** (sidebar → _Integrator_; admin-gated). The page edits `enabled`, `verify_command`, `verify_timeout_sec`, `worktree_root`, `git_remote`, `git_main_branch`, `parallelism`, `linked_repos`, and `clean_keep` (§4.4), plus the top-level `gitRepoUrl`. Saving preserves every field it does not edit.
+>
+> **REST-only (not in the UI).** The deferred/advanced fields — `verify_steps` (the verify DAG), `cache_enabled` / `cache_mode`, `slo`, `resolver` (§18), and `worktree_name` — are **not** editable in the UI and must be set via `PATCH /api/v1/projects/{id}` (below). The settings page round-trips them untouched, so a UI save never drops them.
+
 **Sample `PATCH` body to enable the integrator** (`PATCH /api/v1/projects/{id}`):
 
 ```json
@@ -150,6 +154,16 @@ Stored in PM under `projects.settings.integrator`. The `settings` column is alre
 (Omit `parallelism` — or set it to `1` — to keep the serial 7.1 behavior. `game_one` runs `parallelism: 3`.)
 
 The `PATCH /projects/{id}` route validates this with the Zod schema; an invalid config returns 400 with field-level errors. The integrator also re-validates on startup and exits with code 2 if the config is wrong (see §7).
+
+### 4.4 Preserving artifacts across the per-attempt clean (`clean_keep`)
+
+Between every attempt the integrator wipes the worktree to a pristine state, including `git clean -fdx`, which deletes **all untracked files** — build caches and any artifact you dropped into the tree. `settings.integrator.clean_keep` is a list of path patterns to **exclude from that clean** so they survive between attempts.
+
+- Each pattern is appended to the clean as `-e <pattern>`, so `git clean -fdx` becomes `git clean -fdx -e <p1> -e <p2> …`. Empty/absent (`[]`, the default) ⇒ a plain `git clean -fdx`, byte-identical to before.
+- Patterns are git pathspec/exclude patterns relative to the worktree root (e.g. `target/`, `.cache/`, `vendor/libclang.dll`).
+- Editable in the UI (§4.3) or via PATCH.
+
+**Host-side alternative (often better).** For a fixed input the verify build needs but that is not part of the repo — e.g. a `libclang.dll` a Rust build links against — the cleaner option is to place that artifact **outside every worktree** and reference it by absolute path or via `PATH`. Because it never lives inside a worktree, `git clean -fdx` can never touch it and you don't need a `clean_keep` entry at all. Use `clean_keep` when the artifact *must* sit inside the tree; use the host-side/PATH approach when it can live anywhere.
 
 ---
 
@@ -184,6 +198,8 @@ git fetch <git_remote>
 git checkout <git_main_branch>
 git reset --hard <git_remote>/<git_main_branch>
 ```
+
+(The `-fdx` clean honors `settings.integrator.clean_keep` — see §4.4 — which excludes listed paths so they survive between attempts.)
 
 This guarantees a clean tree no matter how the previous attempt left things (rebase aborted, verify killed mid-build, etc.).
 
