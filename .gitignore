@@ -12,6 +12,9 @@ data/
 .mcp.json
 *.tsbuildinfo
 .claude/worktrees/
+.claude/scheduled_tasks.lock
+.claude/settings.json
+.claude/settings.local.json
 playwright-report/
 test-results/
 distribute.bat
