@@ -290,6 +290,249 @@ describe("merge-group service", () => {
     });
   });
 
+  // ─── createGroup (atomic submit-and-group arm) ────────────────────
+  describe("createGroup (atomic members arm)", () => {
+    it("atomic create → group forming, 2 members born group-bound + queued + branch persisted", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+
+      const g = svc.createGroup(
+        {
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/inner" }, { commitSha: "abc1234" }],
+        },
+        HUMAN(submitter.id),
+      );
+
+      expect(g.state).toBe("forming");
+      expect(g.members).toHaveLength(2);
+      for (const m of g.members) {
+        expect(m.groupId === undefined).toBe(true); // view has no groupId field
+        expect(m.status).toBe("queued");
+      }
+      // Verify the DB rows: each born with groupId === g.id, queued, branch set.
+      const rows = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.groupId, g.id))
+        .all();
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.groupId === g.id)).toBe(true);
+      expect(rows.every((r) => r.status === "queued")).toBe(true);
+      expect(rows.some((r) => r.branch === "feat/inner")).toBe(true);
+      expect(rows.some((r) => r.commitSha === "abc1234")).toBe(true);
+    });
+
+    it("a born-grouped member is NEVER single-repo-pickable (Part B guard → 409 GROUPED_MEMBER)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+
+      const g = svc.createGroup(
+        {
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/inner" }, { branch: "feat/outer" }],
+        },
+        HUMAN(submitter.id),
+      );
+
+      const memberId = g.members[0].id;
+      expect(() =>
+        mrSvc.transitionToIntegrating(memberId, AGENT(integrator.user.id)),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
+      );
+    });
+
+    it("emits NO MERGE_REQUEST_QUEUED per member during atomic create", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const queuedListener = vi.fn();
+      const startedListener = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_QUEUED, queuedListener);
+      getEventBus().on(EVENT_NAMES.MERGE_GROUP_STARTED, startedListener);
+
+      svc.createGroup(
+        {
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/inner" }, { branch: "feat/outer" }],
+        },
+        HUMAN(submitter.id),
+      );
+
+      expect(queuedListener).not.toHaveBeenCalled();
+      expect(startedListener).not.toHaveBeenCalled();
+    });
+
+    it("persists taskId + verifyCmd from a spec", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const task = createTestTask(testApp.db, { projectId: project.id });
+
+      const g = svc.createGroup(
+        {
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [
+            { branch: "feat/inner", taskId: task.id, verifyCmd: "pnpm test" },
+            { commitSha: "abc1234" },
+          ],
+        },
+        HUMAN(submitter.id),
+      );
+
+      const taskMember = g.members.find((m) => m.taskId === task.id);
+      expect(taskMember).toBeDefined();
+      expect(taskMember!.verifyCmd).toBe("pnpm test");
+    });
+
+    it("a spec with a cross-project taskId → 400 VALIDATION_ERROR (no rows written)", () => {
+      const projectA = createTestProject(testApp.db);
+      const projectB = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const foreignTask = createTestTask(testApp.db, { projectId: projectB.id });
+
+      expect(() =>
+        svc.createGroup(
+          {
+            projectId: projectA.id,
+            submittedBy: submitter.id,
+            members: [
+              { branch: "feat/inner", taskId: foreignTask.id },
+              { branch: "feat/outer" },
+            ],
+          },
+          HUMAN(submitter.id),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
+      );
+      // No group/members written (validation throws before the txn).
+      const groups = svc.list(projectA.id);
+      expect(groups).toHaveLength(0);
+    });
+
+    it("a spec with a missing taskId → 404 NOT_FOUND", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup(
+          {
+            projectId: project.id,
+            submittedBy: submitter.id,
+            members: [
+              { branch: "feat/inner", taskId: "01MISSINGTASK0000000000000" },
+              { branch: "feat/outer" },
+            ],
+          },
+          HUMAN(submitter.id),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),
+      );
+    });
+
+    it("a spec with neither branch nor commitSha → 400 VALIDATION_ERROR", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup(
+          {
+            projectId: project.id,
+            submittedBy: submitter.id,
+            members: [{ branch: "feat/inner" }, { verifyCmd: "pnpm test" }],
+          },
+          HUMAN(submitter.id),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
+      );
+    });
+
+    it("<2 members → 400 VALIDATION_ERROR", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup(
+          {
+            projectId: project.id,
+            submittedBy: submitter.id,
+            members: [{ branch: "feat/inner" }],
+          },
+          HUMAN(submitter.id),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
+      );
+    });
+
+    it("providing BOTH members and memberRequestIds → 400 VALIDATION_ERROR", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const [m1, m2] = makeMembers(project, submitter, 2);
+      expect(() =>
+        svc.createGroup(
+          {
+            projectId: project.id,
+            submittedBy: submitter.id,
+            memberRequestIds: [m1.id, m2.id],
+            members: [{ branch: "feat/inner" }, { branch: "feat/outer" }],
+          },
+          HUMAN(submitter.id),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
+      );
+    });
+
+    it("providing NEITHER members nor memberRequestIds → 400 VALIDATION_ERROR", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup(
+          { projectId: project.id, submittedBy: submitter.id },
+          HUMAN(submitter.id),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
+      );
+    });
+
+    it("a born-grouped member still lands via its group (back-compat with group land path)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+
+      const g = svc.createGroup(
+        {
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/inner" }, { branch: "feat/outer" }],
+        },
+        HUMAN(submitter.id),
+      );
+
+      // Group pickup flips members to integrating WITHOUT routing through the
+      // guarded transitionToIntegrating (markIntegrating owns its own tx).
+      svc.markIntegrating(g.id, AGENT(integrator.user.id));
+      const landed = svc.landGroup(
+        g.id,
+        {
+          members: g.members.map((m) => ({
+            requestId: m.id,
+            landedSha: `sha-${m.id}`,
+          })),
+        },
+        AGENT(integrator.user.id),
+      );
+      expect(landed.state).toBe("landed");
+      expect(landed.members.every((m) => m.status === "landed")).toBe(true);
+    });
+  });
+
   // ─── getById / list ───────────────────────────────────────────────
   describe("getById / list", () => {
     it("getById returns members ordered by enqueuedAt asc; 404 for missing", () => {

@@ -99,6 +99,7 @@ interface MergeRequestRow {
   verifyCmd: string | null;
   worktreePath: string | null;
   status: string;
+  groupId: string | null;
   enqueuedAt: string;
   pickedUpAt: string | null;
   resolvedAt: string | null;
@@ -114,7 +115,7 @@ interface MergeRequestRow {
 
 // ─── Internal helpers ─────────────────────────────────────────────
 
-function ensureProjectExists(projectId: string): void {
+export function ensureProjectExists(projectId: string): void {
   const db = getDb();
   const project = db
     .select({ id: projects.id })
@@ -126,7 +127,7 @@ function ensureProjectExists(projectId: string): void {
   }
 }
 
-function ensureUserExists(userId: string): void {
+export function ensureUserExists(userId: string): void {
   const db = getDb();
   const u = db.select({ id: users.id }).from(users).where(eq(users.id, userId)).get();
   if (!u) {
@@ -140,7 +141,7 @@ function ensureUserExists(userId: string): void {
  * - taskId points to a row in a different project: 400 VALIDATION_ERROR.
  * - taskId points to no row at all: 404 NOT_FOUND.
  */
-function validateTaskBelongsToProject(
+export function validateTaskBelongsToProject(
   projectId: string,
   taskId: string | null | undefined,
 ): void {
@@ -383,6 +384,79 @@ function toView(row: MergeRequestRow): MergeRequestView {
 // ─── Public API ───────────────────────────────────────────────────
 
 /**
+ * A db handle OR a transaction handle. `insertRequestRow` accepts either so the
+ * caller controls the transaction boundary: `submit` passes `getDb()` (one
+ * standalone insert), while the atomic group-create path (merge-group.service.ts)
+ * passes the `tx` handle from inside its own `db.transaction(...)` — better-sqlite3
+ * throws "transaction within transaction" if the helper hardcoded getDb().
+ */
+type DbOrTx =
+  | ReturnType<typeof getDb>
+  | Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+
+export interface InsertRequestRowParams {
+  projectId: string;
+  resource: string;
+  submittedBy: string;
+  taskId?: string | null;
+  branch?: string | null;
+  commitSha?: string | null;
+  verifyCmd?: string | null;
+  worktreePath?: string | null;
+  resolvedFrom?: string | null;
+  /** Defaults to "queued". The atomic group-create path passes "queued" explicitly. */
+  status?: string;
+  /** Defaults to null. The atomic group-create path passes the forming group id. */
+  groupId?: string | null;
+}
+
+/**
+ * Insert ONE merge_requests row, returning its id. Pure write — performs NO
+ * validation (the caller owns that) and emits NO event (the caller decides
+ * whether to signal pickability: `submit` emits MERGE_REQUEST_QUEUED; the atomic
+ * group-create path deliberately emits NOTHING so a born-grouped member is never
+ * advertised as individually pickable).
+ *
+ * Accepts a db-or-tx handle so it composes inside an outer transaction.
+ */
+export function insertRequestRow(
+  dbOrTx: DbOrTx,
+  params: InsertRequestRowParams,
+): string {
+  const now = new Date().toISOString();
+  const id = createId();
+  dbOrTx
+    .insert(mergeRequests)
+    .values({
+      id,
+      projectId: params.projectId,
+      resource: params.resource,
+      submittedBy: params.submittedBy,
+      taskId: params.taskId ?? null,
+      branch: params.branch ?? null,
+      commitSha: params.commitSha ?? null,
+      verifyCmd: params.verifyCmd ?? null,
+      worktreePath: params.worktreePath ?? null,
+      resolvedFrom: params.resolvedFrom ?? null,
+      status: params.status ?? "queued",
+      groupId: params.groupId ?? null,
+      enqueuedAt: now,
+      pickedUpAt: null,
+      resolvedAt: null,
+      landedSha: null,
+      rejectCategory: null,
+      rejectReason: null,
+      failedFiles: null,
+      logExcerpt: null,
+      logUrl: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+  return id;
+}
+
+/**
  * Create a new merge request at status=queued.
  *
  * Validates:
@@ -397,37 +471,17 @@ export function submit(params: SubmitParams): MergeRequestView {
   ensureUserExists(params.submittedBy);
   validateTaskBelongsToProject(params.projectId, params.taskId ?? null);
 
-  const db = getDb();
-  const now = new Date().toISOString();
-  const id = createId();
-  const resource = params.resource ?? "main";
-
-  db.insert(mergeRequests)
-    .values({
-      id,
-      projectId: params.projectId,
-      resource,
-      submittedBy: params.submittedBy,
-      taskId: params.taskId ?? null,
-      branch: params.branch ?? null,
-      commitSha: params.commitSha ?? null,
-      verifyCmd: params.verifyCmd ?? null,
-      worktreePath: params.worktreePath ?? null,
-      resolvedFrom: params.resolvedFrom ?? null,
-      status: "queued",
-      enqueuedAt: now,
-      pickedUpAt: null,
-      resolvedAt: null,
-      landedSha: null,
-      rejectCategory: null,
-      rejectReason: null,
-      failedFiles: null,
-      logExcerpt: null,
-      logUrl: null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+  const id = insertRequestRow(getDb(), {
+    projectId: params.projectId,
+    resource: params.resource ?? "main",
+    submittedBy: params.submittedBy,
+    taskId: params.taskId ?? null,
+    branch: params.branch ?? null,
+    commitSha: params.commitSha ?? null,
+    verifyCmd: params.verifyCmd ?? null,
+    worktreePath: params.worktreePath ?? null,
+    resolvedFrom: params.resolvedFrom ?? null,
+  });
 
   const row = readRequestOrThrow(id);
   emit(EVENT_NAMES.MERGE_REQUEST_QUEUED, row, params.submittedBy);
@@ -899,6 +953,20 @@ export function transitionToIntegrating(
       403,
       "FORBIDDEN",
       "Only integrator (ai_agent) users may pick up a merge request.",
+    );
+  }
+
+  // Structural guard (Phase 7.3 hardening): a grouped member is NEVER
+  // single-repo-pickable, regardless of the client's list query or mode.
+  // Mirrors the symmetric land-side guard `assertMemberLandableViaGroup`
+  // (merge-group.service.ts). The group integration path flips members to
+  // integrating via `markIntegrating` (its own tx) and does NOT route through
+  // this function, so this guard cannot block the legitimate group pickup.
+  if (row.groupId !== null) {
+    throw new AppError(
+      409,
+      "GROUPED_MEMBER",
+      `Merge request ${id} is a group member and must be integrated via its group, not picked up individually.`,
     );
   }
 

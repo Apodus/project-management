@@ -1265,9 +1265,26 @@ export interface MergeRequestGroupDetailView extends MergeRequestGroupView {
   members: MergeRequestView[];
 }
 
+/**
+ * One member of the atomic submit-and-group form. camelCase on the wire (matches
+ * the merge-request submit body); at least one of branch / commitSha.
+ */
+export interface MergeGroupMemberSpecBody {
+  branch?: string;
+  commitSha?: string;
+  verifyCmd?: string;
+  taskId?: string;
+}
+
+/**
+ * Exactly one of `memberRequestIds` (bind existing) | `members` (atomic
+ * submit-and-group). The server enforces the exactly-one-of; this client just
+ * carries whichever the caller set.
+ */
 export interface MergeGroupRequestBody {
   resource?: string;
-  memberRequestIds: string[];
+  memberRequestIds?: string[];
+  members?: MergeGroupMemberSpecBody[];
 }
 
 export interface MergeIncidentListFilters {

@@ -2867,6 +2867,69 @@ describe("MCP Tools", () => {
       expect(text).toContain("merge.group.landed");
     });
 
+    it("pm_request_merge_group atomic members form maps snake_case → camelCase {members}", async () => {
+      mockRequestMergeGroup.mockResolvedValue(sampleGroupDetail);
+
+      await client.callTool({
+        name: "pm_request_merge_group",
+        arguments: {
+          project_id: "P1",
+          members: [
+            {
+              branch: "feat/inner",
+              commit_sha: "abc1234",
+              verify_cmd: "pnpm test",
+              task_id: "T1",
+            },
+            { branch: "feat/outer" },
+          ],
+        },
+      });
+
+      expect(mockRequestMergeGroup).toHaveBeenCalledWith("P1", {
+        resource: "main",
+        members: [
+          {
+            branch: "feat/inner",
+            commitSha: "abc1234",
+            verifyCmd: "pnpm test",
+            taskId: "T1",
+          },
+          {
+            branch: "feat/outer",
+            commitSha: undefined,
+            verifyCmd: undefined,
+            taskId: undefined,
+          },
+        ],
+      });
+      // The atomic form must NOT send memberRequestIds.
+      const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(callArg.memberRequestIds).toBeUndefined();
+    });
+
+    it("pm_request_merge_group ids form sends {memberRequestIds}, not {members}", async () => {
+      mockRequestMergeGroup.mockResolvedValue(sampleGroupDetail);
+
+      await client.callTool({
+        name: "pm_request_merge_group",
+        arguments: {
+          project_id: "P1",
+          member_request_ids: ["mreq_A", "mreq_B"],
+        },
+      });
+
+      const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(callArg.memberRequestIds).toEqual(["mreq_A", "mreq_B"]);
+      expect(callArg.members).toBeUndefined();
+    });
+
     it("pm_get_merge_group surfaces state + members", async () => {
       mockGetMergeGroup.mockResolvedValue({
         ...sampleGroupDetail,

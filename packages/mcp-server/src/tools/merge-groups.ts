@@ -23,13 +23,41 @@ export function registerMergeGroupTools(server: McpServer): void {
 
   server.tool(
     "pm_request_merge_group",
-    "Submit N already-queued, ungrouped merge requests as ONE atomic cross-repo unit (state 'forming'). Requires >=2 members. The integrator lands-or-fails the whole group atomically — either every member lands together or none does. Subscribe to 'merge.group.landed' / 'merge.group.rejected' SSE events with the returned group id to learn the outcome. Use this for cross-repo changes (e.g. inner + outer gitlink) that must land together.",
+    "Submit >=2 merge requests as ONE atomic cross-repo unit (state 'forming'). The integrator lands-or-fails the whole group atomically — either every member lands together or none does. Two forms (provide EXACTLY ONE): (1) members — the RACE-FREE atomic form: pass the member specs ({branch and/or commit_sha, optional verify_cmd, task_id}) and PM submits + groups them in a single call, so members are born group-bound and a single-repo pickup can never grab one mid-grouping (PREFER THIS); (2) member_request_ids — the legacy two-step form: bind >=2 already-queued, ungrouped requests you submitted earlier via pm_request_merge. Subscribe to 'merge.group.landed' / 'merge.group.rejected' SSE events with the returned group id to learn the outcome. Use this for cross-repo changes (e.g. inner + outer gitlink) that must land together.",
     {
       project_id: z.string().describe("The project ID."),
+      members: z
+        .array(
+          z.object({
+            branch: z
+              .string()
+              .optional()
+              .describe("Branch to land. At least one of branch / commit_sha."),
+            commit_sha: z
+              .string()
+              .optional()
+              .describe("Specific commit SHA to land."),
+            verify_cmd: z
+              .string()
+              .optional()
+              .describe("Per-member override of the project verify command."),
+            task_id: z
+              .string()
+              .optional()
+              .describe("Task this member's landing is for (recommended)."),
+          }),
+        )
+        .min(2)
+        .optional()
+        .describe(
+          "ATOMIC form (preferred, race-free): >=2 member specs submitted AND grouped in one call. Provide EITHER this OR member_request_ids, not both.",
+        ),
       member_request_ids: z
         .array(z.string())
+        .min(2)
+        .optional()
         .describe(
-          "IDs of >=2 already-queued, ungrouped merge requests to bind into this group. Submit each member via pm_request_merge first, then group them here.",
+          "LEGACY form: IDs of >=2 already-queued, ungrouped merge requests to bind into this group (submit each via pm_request_merge first). Provide EITHER this OR members, not both.",
         ),
       resource: z
         .string()
@@ -37,11 +65,22 @@ export function registerMergeGroupTools(server: McpServer): void {
         .default("main")
         .describe(resourceDesc),
     },
-    async ({ project_id, member_request_ids, resource }) => {
+    async ({ project_id, members, member_request_ids, resource }) => {
       const resolvedResource = resource ?? "main";
       const group = await requestMergeGroup(project_id, {
         resource: resolvedResource,
-        memberRequestIds: member_request_ids,
+        // Dispatch: atomic members form maps snake_case → camelCase wire; else
+        // the legacy ids form. The server enforces exactly-one-of.
+        ...(members !== undefined
+          ? {
+              members: members.map((m) => ({
+                branch: m.branch,
+                commitSha: m.commit_sha,
+                verifyCmd: m.verify_cmd,
+                taskId: m.task_id,
+              })),
+            }
+          : { memberRequestIds: member_request_ids }),
       });
 
       const lines: string[] = [];

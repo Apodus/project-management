@@ -89,10 +89,38 @@ const listQuery = z.object({
 // shared package targets zod 3 and the two type universes don't unify.
 // The runtime semantics are identical; the shared types remain the source
 // of truth for non-server consumers (web UI, MCP server).
+// One member of the atomic submit-and-group form. Mirrors the shared
+// mergeGroupMemberSpecSchema (camelCase). At least one of branch / commitSha.
+const mergeGroupMemberSpecBody = z
+  .object({
+    branch: z.string().min(1).optional(),
+    commitSha: z.string().min(1).optional(),
+    verifyCmd: z.string().min(1).optional(),
+    taskId: z.string().min(1).optional(),
+  })
+  .refine((s) => !!(s.branch || s.commitSha), {
+    message: "Each member spec needs at least one of branch / commitSha.",
+  });
+
+// FLAT object + superRefine exactly-one-of (NOT .and(z.union) — a union strips
+// the unselected key and defeats the both/neither guard). Mirrors the shared
+// createMergeGroupSchema: memberRequestIds = back-compat bind-existing arm;
+// members = atomic submit-and-group arm (members born group-bound).
 const createGroupBody = z
   .object({
     resource: z.string().min(1).default("main"),
-    memberRequestIds: z.array(z.string().min(1)).min(2),
+    memberRequestIds: z.array(z.string().min(1)).min(2).optional(),
+    members: z.array(mergeGroupMemberSpecBody).min(2).optional(),
+  })
+  .superRefine((v, ctx) => {
+    const hasIds = v.memberRequestIds !== undefined;
+    const hasSpecs = v.members !== undefined;
+    if (hasIds === hasSpecs) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide exactly one of memberRequestIds or members.",
+      });
+    }
   })
   .openapi("MergeGroupCreate");
 
@@ -142,9 +170,9 @@ const createGroupRoute = createRoute({
   method: "post",
   path: "/api/v1/projects/{projectId}/merge-groups",
   tags: ["Merge Groups"],
-  summary: "Create a merge group from queued requests",
+  summary: "Create a merge group (bind existing, or atomic submit-and-group)",
   description:
-    "Worker submits >=2 already-queued, ungrouped merge requests as one atomic unit (state 'forming'). The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.",
+    "Create a 'forming' merge group of >=2 members two ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping). The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     body: { content: { "application/json": { schema: createGroupBody } }, required: true },
@@ -334,11 +362,15 @@ export function createMergeGroupRoutes(): OpenAPIHono<{
     const { projectId } = c.req.valid("param");
     const user = requireUser(c.get("currentUser") as AuthUser | null);
     const body = c.req.valid("json");
+    // Dispatch on which arm the exactly-one-of guard admitted: `members`
+    // present → atomic submit-and-group; else the back-compat ids arm.
     const detail = groupSvc.createGroup({
       projectId,
-      memberRequestIds: body.memberRequestIds,
       resource: body.resource,
       submittedBy: user.id,
+      ...(body.members !== undefined
+        ? { members: body.members }
+        : { memberRequestIds: body.memberRequestIds }),
     });
     return c.json({ data: detail }, 201);
   });

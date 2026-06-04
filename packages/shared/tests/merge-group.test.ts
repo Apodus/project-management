@@ -3,6 +3,7 @@ import {
   MERGE_GROUP_STATES,
   mergeRequestGroupSchema,
   createMergeGroupSchema,
+  mergeGroupMemberSpecSchema,
 } from "../src/index.js";
 
 const VALID_ULID = "01H5K3RCH3EABY3V5SXGM7N1WQ";
@@ -141,5 +142,91 @@ describe("createMergeGroupSchema", () => {
         memberRequestIds: [VALID_ULID, VALID_ULID],
       }),
     ).toThrow();
+  });
+
+  // ── Exactly-one-of: ids arm vs members arm ──────────────────────────
+  const validSpec = { branch: "feat/inner" };
+  const validSpec2 = { commitSha: "abc1234" };
+
+  it("accepts a members-only body (atomic submit-and-group arm)", () => {
+    const parsed = createMergeGroupSchema.parse({
+      members: [validSpec, validSpec2],
+    });
+    expect(parsed.members).toHaveLength(2);
+    expect(parsed.resource).toBe("main");
+    expect(parsed.memberRequestIds).toBeUndefined();
+  });
+
+  it("accepts an ids-only body (back-compat arm)", () => {
+    const parsed = createMergeGroupSchema.parse({
+      memberRequestIds: [VALID_ULID, VALID_ULID],
+    });
+    expect(parsed.memberRequestIds).toHaveLength(2);
+    expect(parsed.members).toBeUndefined();
+  });
+
+  it("REJECTS a body with BOTH memberRequestIds and members", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({
+        memberRequestIds: [VALID_ULID, VALID_ULID],
+        members: [validSpec, validSpec2],
+      }),
+    ).toThrow(/exactly one/i);
+  });
+
+  it("REJECTS a body with NEITHER memberRequestIds nor members", () => {
+    expect(() => createMergeGroupSchema.parse({ resource: "main" })).toThrow(
+      /exactly one/i,
+    );
+  });
+
+  it("rejects a member spec with no branch and no commitSha", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({
+        members: [validSpec, { verifyCmd: "pnpm test" }],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects fewer than 2 members", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({ members: [validSpec] }),
+    ).toThrow();
+  });
+});
+
+// ─── mergeGroupMemberSpecSchema ───────────────────────────────────
+
+describe("mergeGroupMemberSpecSchema", () => {
+  it("accepts a branch-only spec", () => {
+    expect(mergeGroupMemberSpecSchema.parse({ branch: "feat/x" })).toEqual({
+      branch: "feat/x",
+    });
+  });
+
+  it("accepts a commitSha-only spec", () => {
+    expect(mergeGroupMemberSpecSchema.parse({ commitSha: "deadbee" })).toEqual({
+      commitSha: "deadbee",
+    });
+  });
+
+  it("accepts a fully-populated spec (camelCase fields)", () => {
+    const spec = {
+      branch: "feat/x",
+      commitSha: "deadbee",
+      verifyCmd: "pnpm test",
+      taskId: VALID_ULID,
+    };
+    expect(mergeGroupMemberSpecSchema.parse(spec)).toEqual(spec);
+  });
+
+  it("rejects a spec with neither branch nor commitSha", () => {
+    expect(() =>
+      mergeGroupMemberSpecSchema.parse({ verifyCmd: "pnpm test" }),
+    ).toThrow(/branch \/ commitSha/);
+  });
+
+  it("rejects an empty spec", () => {
+    expect(() => mergeGroupMemberSpecSchema.parse({})).toThrow();
   });
 });

@@ -1,6 +1,10 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import type { MergeRequestGroupView, MergeRequestView } from "@pm/shared";
+import type {
+  MergeGroupMemberSpec,
+  MergeRequestGroupView,
+  MergeRequestView,
+} from "@pm/shared";
 import {
   getDb,
   mergeIncidents,
@@ -10,7 +14,13 @@ import {
 } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
-import { attachLandedRef, type Actor } from "./merge-request.service.js";
+import {
+  attachLandedRef,
+  ensureUserExists,
+  insertRequestRow,
+  validateTaskBelongsToProject,
+  type Actor,
+} from "./merge-request.service.js";
 import {
   emitAuditRecorded,
   record as recordAudit,
@@ -23,9 +33,19 @@ export type { Actor };
 
 export interface CreateGroupParams {
   projectId: string;
-  memberRequestIds: string[];
   resource?: string;
   submittedBy: string;
+  /**
+   * Back-compat arm: bind >=2 ALREADY-queued, ungrouped requests into the group.
+   * Exactly one of `memberRequestIds` | `members` (the route + shared schema
+   * enforce the exactly-one-of; the service double-checks defensively).
+   */
+  memberRequestIds?: string[];
+  /**
+   * Atomic arm: submit >=2 NEW member requests AND form the group in one txn, so
+   * members are born group-bound (closes the submit/group pickup race).
+   */
+  members?: MergeGroupMemberSpec[];
 }
 
 export interface GroupWithMembers extends MergeRequestGroupView {
@@ -289,17 +309,117 @@ function withMembers(row: MergeGroupRow): GroupWithMembers {
 // ─── Public API ───────────────────────────────────────────────────
 
 /**
- * Create a merge group from >=2 existing queued, ungrouped member requests
- * (§3.2). Validates the membership preconditions, then ATOMICALLY claims the
- * members inside one db.transaction with a WHERE-guarded, rowcount-checked
- * UPDATE (PIN D) that closes the TOCTOU window between validation and write.
+ * Create a merge group two ways (exactly one arm; the route + shared schema
+ * enforce exactly-one-of, the service double-checks):
  *
- * No event on create — merge.group.started fires at markIntegrating (§10.2).
+ *  - `memberRequestIds` (back-compat): bind >=2 existing queued, ungrouped
+ *    requests (§3.2). ATOMICALLY claims the members inside one db.transaction
+ *    with a WHERE-guarded, rowcount-checked UPDATE (PIN D) that closes the
+ *    TOCTOU window between validation and write.
+ *
+ *  - `members` (atomic submit-and-group): submit >=2 NEW member requests AND
+ *    form the group in ONE txn, so members are born group-bound (status queued,
+ *    groupId set) and never exist as an ungrouped/pickable row — closing the
+ *    submit/group pickup race (a single-repo pickup can never grab a member
+ *    mid-grouping; Part B's transitionToIntegrating guard is the structural
+ *    backstop).
+ *
+ * No event on create either way — merge.group.started fires at markIntegrating
+ * (§10.2), and the atomic arm emits ZERO per-member MERGE_REQUEST_QUEUED so a
+ * born-grouped member is never advertised as individually pickable.
  */
 export function createGroup(params: CreateGroupParams): GroupWithMembers {
+  const hasIds = params.memberRequestIds !== undefined;
+  const hasSpecs = params.members !== undefined;
+  if (hasIds === hasSpecs) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "Provide exactly one of memberRequestIds or members.",
+    );
+  }
+  return hasSpecs ? createGroupFromSpecs(params) : createGroupFromIds(params);
+}
+
+/**
+ * Atomic submit-and-group arm. Pre-validates every spec, then in ONE txn inserts
+ * the forming group row FIRST (FK target) and each member via the shared
+ * `insertRequestRow` (status "queued", groupId = the forming group). Members are
+ * born group-bound; no row is ever ungrouped, so the pickup race cannot occur.
+ */
+function createGroupFromSpecs(params: CreateGroupParams): GroupWithMembers {
+  ensureProjectExists(params.projectId);
+  ensureUserExists(params.submittedBy);
+
+  const specs = params.members!;
+  if (specs.length < 2) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "A merge group requires at least 2 member specs.",
+    );
+  }
+
+  const resource = params.resource ?? "main";
+
+  // Pre-txn validation (no rows written yet, so a throw leaves nothing behind).
+  for (const spec of specs) {
+    if (!spec.branch && !spec.commitSha) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "Each member spec needs at least one of branch / commitSha.",
+      );
+    }
+    validateTaskBelongsToProject(params.projectId, spec.taskId ?? null);
+  }
+
+  const db = getDb();
+  const now = new Date().toISOString();
+  const groupId = createId();
+
+  db.transaction((tx) => {
+    tx.insert(mergeRequestGroups)
+      .values({
+        id: groupId,
+        projectId: params.projectId,
+        resource,
+        state: "forming",
+        submittedBy: params.submittedBy,
+        integratorId: null,
+        resolvedAt: null,
+        resolutionReason: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    for (const spec of specs) {
+      insertRequestRow(tx, {
+        projectId: params.projectId,
+        resource,
+        submittedBy: params.submittedBy,
+        taskId: spec.taskId ?? null,
+        branch: spec.branch ?? null,
+        commitSha: spec.commitSha ?? null,
+        verifyCmd: spec.verifyCmd ?? null,
+        status: "queued",
+        groupId,
+      });
+    }
+  });
+
+  return withMembers(readGroupOrThrow(groupId));
+}
+
+/**
+ * Back-compat bind-existing arm (§3.2). Unchanged from the original createGroup.
+ */
+function createGroupFromIds(params: CreateGroupParams): GroupWithMembers {
   ensureProjectExists(params.projectId);
 
-  if (params.memberRequestIds.length < 2) {
+  const memberRequestIds = params.memberRequestIds!;
+  if (memberRequestIds.length < 2) {
     throw new AppError(
       400,
       "VALIDATION_ERROR",
@@ -310,7 +430,7 @@ export function createGroup(params: CreateGroupParams): GroupWithMembers {
   const resource = params.resource ?? "main";
 
   // Pre-txn validation (re-checked atomically by the rowcount guard below).
-  for (const memberId of params.memberRequestIds) {
+  for (const memberId of memberRequestIds) {
     const member = readRequest(memberId);
     if (!member) {
       throw new AppError(404, "NOT_FOUND", `Merge request not found: ${memberId}`);
@@ -348,7 +468,7 @@ export function createGroup(params: CreateGroupParams): GroupWithMembers {
   const db = getDb();
   const now = new Date().toISOString();
   const id = createId();
-  const memberIds = params.memberRequestIds;
+  const memberIds = memberRequestIds;
 
   db.transaction((tx) => {
     tx.insert(mergeRequestGroups)

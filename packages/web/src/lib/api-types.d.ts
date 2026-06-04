@@ -8629,8 +8629,8 @@ export interface paths {
         };
         put?: never;
         /**
-         * Create a merge group from queued requests
-         * @description Worker submits >=2 already-queued, ungrouped merge requests as one atomic unit (state 'forming'). The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.
+         * Create a merge group (bind existing, or atomic submit-and-group)
+         * @description Create a 'forming' merge group of >=2 members two ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping). The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.
          */
         post: {
             parameters: {
@@ -13042,7 +13042,13 @@ export interface components {
         MergeGroupCreate: {
             /** @default main */
             resource: string;
-            memberRequestIds: string[];
+            memberRequestIds?: string[];
+            members?: {
+                branch?: string;
+                commitSha?: string;
+                verifyCmd?: string;
+                taskId?: string;
+            }[];
         };
         MergeGroupPickup: {
             integratorId?: string;

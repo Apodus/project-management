@@ -13,6 +13,7 @@ import {
   comments,
   gitRefs,
   mergeAttempts,
+  mergeRequestGroups,
   mergeRequests,
 } from "../../src/db/index.js";
 import * as attemptSvc from "../../src/services/merge-attempt.service.js";
@@ -545,6 +546,47 @@ describe("merge-request service", () => {
         }),
       ).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
+      );
+    });
+
+    it("a grouped member → 409 GROUPED_MEMBER (Part B structural guard, independent of group path)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      // Insert a real forming group (FK target), then stamp groupId on the
+      // request. This isolates the guard from the group-pickup path: the guard
+      // reads the column, not the group's state.
+      const now = new Date().toISOString();
+      const groupId = "01GROUP00000000000000000000";
+      testApp.db
+        .insert(mergeRequestGroups)
+        .values({
+          id: groupId,
+          projectId: project.id,
+          resource: "main",
+          state: "forming",
+          submittedBy: submitter.id,
+          integratorId: null,
+          resolvedAt: null,
+          resolutionReason: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      testApp.db
+        .update(mergeRequests)
+        .set({ groupId })
+        .where(eq(mergeRequests.id, r.id))
+        .run();
+      expect(() =>
+        svc.transitionToIntegrating(r.id, {
+          id: integrator.user.id,
+          role: "member",
+          type: "ai_agent",
+        }),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
       );
     });
 

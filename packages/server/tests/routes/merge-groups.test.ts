@@ -146,6 +146,106 @@ describe("Merge Groups API", () => {
       expect(res.status).toBe(409);
     });
 
+    it("201 atomic members form → forming + members born group-bound + queued", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        {
+          token: agent.token,
+          body: {
+            resource: "main",
+            members: [{ branch: "feat/inner" }, { commitSha: "abc1234" }],
+          },
+        },
+      );
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json.data.state).toBe("forming");
+      expect(json.data.members).toHaveLength(2);
+      expect(json.data.members.every((m: { status: string }) => m.status === "queued")).toBe(true);
+
+      // Members written with groupId === the new group + queued.
+      const rows = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.groupId, json.data.id))
+        .all();
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.status === "queued")).toBe(true);
+      expect(rows.some((r) => r.branch === "feat/inner")).toBe(true);
+      expect(rows.some((r) => r.commitSha === "abc1234")).toBe(true);
+    });
+
+    it("400 atomic members form with a spec missing branch+commitSha", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        {
+          token: agent.token,
+          body: {
+            resource: "main",
+            members: [{ branch: "feat/inner" }, { verifyCmd: "pnpm test" }],
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("400 when BOTH memberRequestIds and members are provided", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const a = await submitRequest(project.id, agent.token, { branch: "a" });
+      const b = await submitRequest(project.id, agent.token, { branch: "b" });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        {
+          token: agent.token,
+          body: {
+            resource: "main",
+            memberRequestIds: [a, b],
+            members: [{ branch: "feat/inner" }, { branch: "feat/outer" }],
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("400 when NEITHER memberRequestIds nor members are provided", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        { token: agent.token, body: { resource: "main" } },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("400 atomic members form with fewer than 2 members", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        {
+          token: agent.token,
+          body: { resource: "main", members: [{ branch: "feat/inner" }] },
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
     it("401 when unauthenticated", async () => {
       const project = createTestProject(testApp.db);
       const res = await testApp.app.request(
