@@ -213,7 +213,7 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     const pmClient = makePmClient();
     const outcomes: ResolutionOutcome[] = [];
     const runner = makeRunner({
-      result: { ok: true, durationMs: 10 },
+      result: { kind: "complete", durationMs: 10 },
       resolveFile: { rel: "feature.txt", content: "line-merged\n" },
     });
     const pool = makePool({
@@ -244,7 +244,7 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     const pmClient = makePmClient();
     const outcomes: ResolutionOutcome[] = [];
     const runner = makeRunner({
-      result: { ok: true, durationMs: 10 },
+      result: { kind: "complete", durationMs: 10 },
       resolveFile: { rel: "feature.txt", content: "line-merged\n" },
     });
     const pool = makePool({
@@ -269,12 +269,12 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     expect(pool.leasedCount).toBe(0);
   });
 
-  it("(c) timeout: runner ok:false reason timeout → escalate/escalated", async () => {
+  it("(c) timeout: runner incomplete reason timeout → escalate/escalated", async () => {
     const root = path.join(tmpRoot, "wt-c");
     const pmClient = makePmClient();
     const outcomes: ResolutionOutcome[] = [];
     const runner = makeRunner({
-      result: { ok: false, reason: "timeout", durationMs: 60000 },
+      result: { kind: "incomplete", reason: "timeout", durationMs: 60000 },
     });
     const pool = makePool({
       root,
@@ -297,12 +297,12 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     expect(pool.leasedCount).toBe(0);
   });
 
-  it("(d) spawn_error: runner ok:false reason spawn_error → escalate/failed", async () => {
+  it("(d) spawn_error: runner incomplete reason spawn_error → escalate/failed", async () => {
     const root = path.join(tmpRoot, "wt-d");
     const pmClient = makePmClient();
     const outcomes: ResolutionOutcome[] = [];
     const runner = makeRunner({
-      result: { ok: false, reason: "spawn_error", durationMs: 5 },
+      result: { kind: "incomplete", reason: "spawn_error", durationMs: 5 },
     });
     const pool = makePool({
       root,
@@ -333,13 +333,14 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     // Patch the pmClient so startResolution stamps the shared order counter.
     const origStart = pmClient.startResolution.bind(pmClient);
     let startOrder = -1;
-    (pmClient as { startResolution: typeof pmClient.startResolution }).startResolution =
-      async (id: string) => {
-        startOrder = order.value++;
-        return origStart(id);
-      };
+    (pmClient as { startResolution: typeof pmClient.startResolution }).startResolution = async (
+      id: string,
+    ) => {
+      startOrder = order.value++;
+      return origStart(id);
+    };
     const runner = makeRunner({
-      result: { ok: false, reason: "unresolved", durationMs: 5 },
+      result: { kind: "incomplete", reason: "markers", durationMs: 5 },
       order,
     });
     const pool = makePool({
@@ -368,7 +369,7 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     const runner: ResolverRunner = {
       async run() {
         runnerRan = true;
-        return { ok: true, durationMs: 1 };
+        return { kind: "complete", durationMs: 1 };
       },
     };
     const pool = makePool({
@@ -395,7 +396,7 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     const root = path.join(tmpRoot, "wt-onout-throw");
     const pmClient = makePmClient();
     const runner = makeRunner({
-      result: { ok: false, reason: "unresolved", durationMs: 5 },
+      result: { kind: "incomplete", reason: "markers", durationMs: 5 },
     });
     let sawOutcome = false;
     const pool = makePool({
@@ -424,7 +425,7 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     const pmClient = makePmClient();
     const outcomes: ResolutionOutcome[] = [];
     const runner = makeRunner({
-      result: { ok: false, reason: "unresolved", durationMs: 5 },
+      result: { kind: "incomplete", reason: "markers", durationMs: 5 },
     });
     const pool = makePool({
       root,

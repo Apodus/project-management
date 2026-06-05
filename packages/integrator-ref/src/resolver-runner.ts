@@ -9,17 +9,32 @@
  * outcome (and, in clean cases, writes a resolved file) so no real Claude binary
  * is needed; production wires `createClaudeResolverRunner`.
  *
- * Success is verify-gated DOWNSTREAM (the worker runs the 7.5 pipeline cache-OFF
- * as the sole arbiter). This runner's `ok:true` is a CHEAP pre-filter only — it
- * asserts merely that the agent exited 0 AND left no remaining conflict markers
- * (`<<<<<<<`) in the conflicting files. A residual marker ⇒ `unresolved`. The
- * spawn + SIGTERM→SIGKILL kill path mirrors `GitOps.runVerify` exactly (the kill
- * goes through `killTree`, NOT `child.kill`, because Windows needs `taskkill /T
- * /F` to take down the whole process tree).
+ * The runner reports a four-state outcome driven by a STATUS SENTINEL the agent
+ * writes — a JSON file at `PM_RESOLUTION_STATUS_PATH` (injected into the agent's
+ * env; the path lives OUTSIDE the git worktree, under the pool's `logsDir`, so it
+ * never shows up as a tree change):
+ *   - `complete`   — the agent declared it reconciled both intents. Returned ONLY
+ *                    when the sentinel says `{"status":"complete"}`. NEVER inferred
+ *                    from a clean tree. Success is still verify-gated DOWNSTREAM
+ *                    (the worker runs the 7.5 pipeline cache-OFF as the sole
+ *                    arbiter) — `complete` is the agent's self-report, not a land.
+ *   - `give_up`    — the agent declared it cannot reconcile (`{"status":"give_up",
+ *                    "reason":...}`); the worker escalates with that reason.
+ *   - `incomplete` — no trustworthy `complete`/`give_up` declaration: a timeout, a
+ *                    spawn-level failure, or a fallthrough (absent / unparseable /
+ *                    unrecognized sentinel, residual `<<<<<<<` markers, or a
+ *                    non-zero exit). `reason` distinguishes `timeout` / `spawn_error`
+ *                    / `markers`.
+ *
+ * Precedence on exit is STRICT: timeout ⇒ spawn_error ⇒ sentinel ⇒ marker/exit
+ * fallback (see `finish`). The spawn + SIGTERM→SIGKILL kill path mirrors
+ * `GitOps.runVerify` exactly (the kill goes through `killTree`, NOT `child.kill`,
+ * because Windows needs `taskkill /T /F` to take down the whole process tree); the
+ * wall-clock budget bounds the whole session.
  */
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { DEFAULT_RESOLVER_PROMPT } from "@pm/shared";
 import { killTree } from "./kill-tree.js";
@@ -36,15 +51,25 @@ export interface ResolverRunInput {
    * substituted before the prompt is handed to the agent.
    */
   promptTemplate?: string;
+  /**
+   * Absolute path where the agent writes its status sentinel JSON
+   * (`{"status":"complete"}` or `{"status":"give_up","reason":...}`). Injected
+   * into the agent's env as `PM_RESOLUTION_STATUS_PATH`. This path MUST live
+   * OUTSIDE the git worktree (the pool sets it under `wt.logsDir`) so the sentinel
+   * never registers as a working-tree change the resolution would commit. The
+   * runner deletes any stale file here before spawning.
+   */
+  statusPath: string;
   /** External-cancel seam (parity with runVerify): abort kills the agent tree. */
   signal?: AbortSignal;
 }
 
 export type ResolverRunResult =
-  | { ok: true; durationMs: number; tokensConsumed?: number }
+  | { kind: "complete"; durationMs: number; tokensConsumed?: number }
+  | { kind: "give_up"; reason: string; durationMs: number }
   | {
-      ok: false;
-      reason: "timeout" | "spawn_error" | "unresolved";
+      kind: "incomplete";
+      reason: "markers" | "timeout" | "spawn_error";
       durationMs: number;
       detail?: string;
     };
@@ -72,18 +97,11 @@ export function buildReconcilePrompt(
     : "(the files with conflict markers in this worktree)";
   // Substitute the dynamic placeholders. A custom prompt that omits a placeholder
   // simply doesn't receive that detail — the substitution is replace-if-present.
-  return template
-    .split("{files}")
-    .join(files)
-    .split("{verify_command}")
-    .join(verifyCommand);
+  return template.split("{files}").join(files).split("{verify_command}").join(verifyCommand);
 }
 
 /** True iff any conflicting file still contains a `<<<<<<<` marker. */
-async function hasRemainingMarkers(
-  worktreePath: string,
-  files: string[],
-): Promise<boolean> {
+async function hasRemainingMarkers(worktreePath: string, files: string[]): Promise<boolean> {
   for (const rel of files) {
     try {
       const content = await readFile(path.join(worktreePath, rel), "utf8");
@@ -100,9 +118,15 @@ async function hasRemainingMarkers(
  * Default runner: spawn the headless agent with the reconcile prompt. Mirrors
  * `GitOps.runVerify`'s spawn + timeout + SIGTERM→SIGKILL(killTree) lifecycle.
  *
- * `ok:true` ONLY when the child exits 0 AND no conflicting file still has a
- * marker. Timeout ⇒ `timeout`; spawn-level failure (ENOENT/EACCES) ⇒
- * `spawn_error`; exit ≠ 0 OR residual markers ⇒ `unresolved`.
+ * The outcome is driven by the agent's STATUS SENTINEL at `PM_RESOLUTION_STATUS_PATH`
+ * (injected into the agent env; the path lives OUTSIDE the worktree, under the
+ * pool's `logsDir`). A stale sentinel is deleted before spawn. After exit, the
+ * verdict follows a STRICT precedence (see `finish`): timeout ⇒ `incomplete`
+ * (`timeout`); spawn-level failure ⇒ `incomplete` (`spawn_error`); else the
+ * sentinel decides — `complete` ⇒ `complete`, `give_up` ⇒ `give_up`; an absent /
+ * unparseable / unrecognized sentinel falls through to the marker/exit fallback,
+ * which yields `incomplete` (`markers`). `complete` is NEVER inferred from a clean
+ * tree — only the sentinel can declare it.
  */
 export function createClaudeResolverRunner(cfg: {
   resolver: { command?: string };
@@ -110,9 +134,14 @@ export function createClaudeResolverRunner(cfg: {
   const command = cfg.resolver.command ?? DEFAULT_RESOLVER_COMMAND;
 
   return {
-    run(input: ResolverRunInput): Promise<ResolverRunResult> {
+    async run(input: ResolverRunInput): Promise<ResolverRunResult> {
       const start = Date.now();
       const timeoutMs = input.budget.timeBudgetSec * 1000;
+
+      // Delete any stale sentinel from a prior run BEFORE spawning, so a leftover
+      // `complete` can never be mistaken for THIS run's declaration. `force: true`
+      // ⇒ no-throw when the file is absent.
+      await rm(input.statusPath, { force: true });
 
       return new Promise<ResolverRunResult>((resolve) => {
         const logStream = createWriteStream(input.logPath, { flags: "a" });
@@ -130,6 +159,9 @@ export function createClaudeResolverRunner(cfg: {
         if (input.budget.tokenBudget !== undefined) {
           env.PM_RESOLVER_TOKEN_BUDGET = String(input.budget.tokenBudget);
         }
+        // The agent declares its outcome by writing this JSON file. Inject the
+        // path so the agent knows where to write it.
+        env.PM_RESOLUTION_STATUS_PATH = input.statusPath;
 
         const child = spawn(command, {
           shell: true,
@@ -177,39 +209,75 @@ export function createClaudeResolverRunner(cfg: {
         }, timeoutMs);
         timeout.unref?.();
 
-        const finish = async (
-          exitCode: number | null,
-        ): Promise<ResolverRunResult> => {
+        // Post-exit verdict in STRICT precedence:
+        //   1. timeout      — REGARDLESS of any sentinel the agent managed to
+        //                      write before it was killed.
+        //   2. spawn_error  — the child never really ran.
+        //   3. sentinel     — the agent's own `complete` / `give_up` declaration.
+        //   4. fallback     — no trustworthy declaration: residual markers, a
+        //                      non-zero exit, or a clean exit-0 with NO sentinel
+        //                      all map to `incomplete{markers}`. `complete` is
+        //                      NEVER inferred here — only the sentinel declares it.
+        const finish = async (exitCode: number | null): Promise<ResolverRunResult> => {
           const durationMs = Date.now() - start;
           if (timedOut) {
-            return { ok: false, reason: "timeout", durationMs };
+            return { kind: "incomplete", reason: "timeout", durationMs };
           }
           if (spawnErrored) {
             return {
-              ok: false,
+              kind: "incomplete",
               reason: "spawn_error",
               durationMs,
               detail: spawnErrorMsg,
             };
           }
+
+          // The agent's status sentinel is the ONLY source of `complete`/`give_up`.
+          // A read/parse throw must NOT reject the run — fall through to the
+          // marker/exit fallback below.
+          try {
+            const raw = await readFile(input.statusPath, "utf8");
+            const parsed = JSON.parse(raw) as { status?: unknown; reason?: unknown };
+            if (parsed.status === "complete") {
+              return { kind: "complete", durationMs };
+            }
+            if (parsed.status === "give_up") {
+              return {
+                kind: "give_up",
+                reason: String(parsed.reason ?? "give_up"),
+                durationMs,
+              };
+            }
+            // Recognized file but no recognized `status` → fall through.
+          } catch {
+            // Absent / unreadable / unparseable sentinel → fall through.
+          }
+
+          // Fallback: no trustworthy declaration. Residual markers, a non-zero
+          // exit, and a clean exit-0 lacking a sentinel all mean the agent did
+          // NOT declare completion ⇒ incomplete (markers).
+          if (await hasRemainingMarkers(input.worktreePath, input.conflictingFiles)) {
+            return {
+              kind: "incomplete",
+              reason: "markers",
+              durationMs,
+              detail: "conflict markers remain",
+            };
+          }
           if (exitCode !== 0) {
             return {
-              ok: false,
-              reason: "unresolved",
+              kind: "incomplete",
+              reason: "markers",
               durationMs,
               detail: `agent exited ${exitCode}`,
             };
           }
-          // Exit 0 — verify no conflict markers remain in the conflicting files.
-          if (await hasRemainingMarkers(input.worktreePath, input.conflictingFiles)) {
-            return {
-              ok: false,
-              reason: "unresolved",
-              durationMs,
-              detail: "conflict markers remain after agent exit 0",
-            };
-          }
-          return { ok: true, durationMs };
+          return {
+            kind: "incomplete",
+            reason: "markers",
+            durationMs,
+            detail: "status file absent",
+          };
         };
 
         const settle = (exitCode: number | null): void => {

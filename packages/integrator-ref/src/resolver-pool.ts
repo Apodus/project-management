@@ -341,25 +341,17 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
       const gitOps = w.gitOps(wt.path);
       // Reset the slot to clean live main, then reproduce the conflict in place.
       await wt.resetForAttempt();
-      const { conflictingFiles } = await gitOps.materializeConflict(
-        job.baseSha,
-        job.ref,
-      );
+      const { conflictingFiles } = await gitOps.materializeConflict(job.baseSha, job.ref);
       // Prefer the freshly-observed conflicting files; fall back to the job's
       // (the rebase-seam capture) when the replay reported none.
-      const files = conflictingFiles.length
-        ? conflictingFiles
-        : job.conflictingFiles;
+      const files = conflictingFiles.length ? conflictingFiles : job.conflictingFiles;
 
       const verifyCommand =
         w.verifySteps.length > 0
           ? w.verifySteps.map((s) => s.command).join(" && ")
           : w.defaultVerifyCommand;
 
-      const logPath = path.join(
-        wt.logsDir,
-        `${job.resolutionId}-resolver.log`,
-      );
+      const logPath = path.join(wt.logsDir, `${job.resolutionId}-resolver.log`);
 
       const result = await w.runner.run({
         worktreePath: wt.path,
@@ -371,20 +363,35 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
         },
         promptTemplate: w.prompt,
         logPath,
+        statusPath: path.join(wt.logsDir, `${job.resolutionId}-resolution-status.json`),
       });
 
-      if (!result.ok) {
-        // The agent could not produce a clean tree. spawn_error → the resolver
-        // itself broke (`failed`); timeout / unresolved → the model couldn't
-        // (`escalated`). §4.3.
-        const state: "escalated" | "failed" =
-          result.reason === "spawn_error" ? "failed" : "escalated";
-        const reason =
-          result.reason === "timeout"
-            ? "budget_exceeded"
-            : result.reason === "spawn_error"
-              ? "spawn_error"
-              : "unresolved";
+      if (result.kind !== "complete") {
+        // The agent did not declare completion. Map the runner's four-state union
+        // to the escalate outcome (P2 shim preserves P0/P1 behavior exactly —
+        // the real in-session-loop rewrite is P3):
+        //   - spawn_error → the resolver itself broke (`failed`).
+        //   - timeout     → budget exceeded (`escalated`).
+        //   - markers     → the model couldn't reconcile (`escalated`, unresolved).
+        //   - give_up     → the agent declared it cannot reconcile; escalate with
+        //                   its stated reason (additive — new in P2). §4.3.
+        let state: "escalated" | "failed";
+        let reason: string;
+        if (result.kind === "incomplete" && result.reason === "spawn_error") {
+          state = "failed";
+          reason = "spawn_error";
+        } else if (result.kind === "incomplete" && result.reason === "timeout") {
+          state = "escalated";
+          reason = "budget_exceeded";
+        } else if (result.kind === "incomplete") {
+          state = "escalated";
+          reason = "unresolved";
+        } else {
+          // give_up
+          state = "escalated";
+          reason = result.reason;
+        }
+        const detail = result.kind === "incomplete" ? result.detail : result.reason;
         return {
           kind: "escalate",
           resolutionId: job.resolutionId,
@@ -393,7 +400,7 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
           reason,
           detail: {
             budgetConsumedSec: result.durationMs / 1000,
-            escalationReason: result.detail ?? reason,
+            escalationReason: detail ?? reason,
             ...(logUrlOf(logPath) ? { logUrl: logUrlOf(logPath) } : {}),
           },
         };
@@ -417,8 +424,7 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
         logger: w.logger,
       });
 
-      const verifyVerdict: "pass" | "fail" =
-        pipeline.outcome === "pass" ? "pass" : "fail";
+      const verifyVerdict: "pass" | "fail" = pipeline.outcome === "pass" ? "pass" : "fail";
 
       if (verifyVerdict === "pass") {
         return {
