@@ -11,11 +11,30 @@ import { ulidSchema, timestampSchema, optionalText } from "./common.js";
  * resolver-defaults endpoint, since the web package cannot import @pm/shared).
  */
 export const DEFAULT_RESOLVER_PROMPT =
-  "Two changes touched these files: {files}. They produced a merge conflict that " +
-  "has been materialized in this worktree — the conflict markers (<<<<<<<, =======, " +
-  ">>>>>>>) are in place. Reconcile BOTH intents: edit the conflicted files so the " +
-  "combined change preserves what each side was trying to do, and remove every " +
-  "conflict marker. Then run the verify command and report the result: {verify_command}";
+  "Two changes both modified these files and produced a merge conflict that has been " +
+  "materialized in this worktree — the conflict markers (<<<<<<<, =======, >>>>>>>) are " +
+  "in place in: {files}.\n\n" +
+  "Produce a correct reconciliation that preserves BOTH sides' intent — not a mechanical " +
+  "pick-one-side merge. Work in this order:\n" +
+  "1. INVESTIGATE — for each conflict region, figure out what each side was actually trying " +
+  "to accomplish. Read the conflicted files and the surrounding code until you genuinely " +
+  "understand both intents. Don't guess.\n" +
+  "2. PLAN — decide the resolution that best honors both intents together, using your own " +
+  "engineering judgment about the right end result.\n" +
+  "3. VERIFY THE PLAN — sanity-check that your intended resolution is correct, complete, and " +
+  "would compile, before you touch the code.\n" +
+  "4. EXECUTE — edit the conflicted files so the combined change is correct, make any " +
+  "supporting edits correctness requires, and remove every conflict marker.\n\n" +
+  "You are fully authorized to make these changes on your own. Do not ask anyone for " +
+  "permission or confirmation, and do not stop to confirm intent — investigate, decide, and " +
+  "act. Getting the resolution RIGHT matters more than finishing fast; spend the effort it " +
+  "takes.\n\n" +
+  "You do NOT need to run the project's verify command yourself: the integrator independently " +
+  "gates your resolution by running `{verify_command}` and is the sole arbiter of correctness. " +
+  "Just make sure your resolution will pass it. Leave your resolved files in the working tree " +
+  "— do not commit, push, or create branches; the integrator handles that.\n\n" +
+  "If you delegate any work to sub-agents, use only generic general-purpose sub-agents running " +
+  "the same model you are running. Do not use Explore or any other specialized agent type.";
 
 export const aiAutonomySettingsSchema = z.object({
   can_self_assign: z.boolean(),
@@ -193,8 +212,7 @@ export const integratorSettingsSchema = z
   .refine(
     (v) =>
       !v.enabled ||
-      ((Boolean(v.verify_command) || v.verify_steps.length > 0) &&
-        Boolean(v.worktree_root)),
+      ((Boolean(v.verify_command) || v.verify_steps.length > 0) && Boolean(v.worktree_root)),
     {
       message:
         "When integrator.enabled is true, verify_command (or a non-empty verify_steps) and worktree_root are required and must be non-empty.",
