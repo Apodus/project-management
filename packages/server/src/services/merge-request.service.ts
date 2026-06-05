@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import type {
+  AuditAction,
   MergeAttemptView,
   MergeEscalationTarget,
   MergeRequestLand,
@@ -290,9 +291,13 @@ function assertCanTransition(
 ): TransitionResult {
   switch (op) {
     case "cancel":
-      // Submitter "I changed my mind": only legal from queued.
-      // abandoned → abandoned is idempotent per §6.1.
-      if (from === "queued") return { kind: "proceed" };
+      // Self-service "I changed my mind" / "kill this": legal from queued OR
+      // integrating (collaborative env — any authenticated user; §6). The
+      // queued path is non-audited; the integrating path is audited (action
+      // `cancel`, no `overridden`). abandoned → abandoned is idempotent per §6.1.
+      if (from === "queued" || from === "integrating") {
+        return { kind: "proceed" };
+      }
       if (from === "abandoned") return { kind: "idempotent_noop" };
       throw new AppError(
         409,
@@ -795,24 +800,42 @@ export function getTimeline(id: string): TimelineResult {
 }
 
 /**
- * Submitter (or admin) cancel — queued → abandoned.
+ * Self-service cancel — queued OR integrating → abandoned.
  *
- * Authz: submitter (actor.id === request.submittedBy) OR admin
- * (actor.role === "admin"). Other-worker → 403 NOT_REQUEST_OWNER.
+ * Authz: ANY authenticated user (collaborative env — no ownership gate). The
+ * route is auth-gated; `actor` is still threaded for the audit `cancelledBy`.
  *
- * State machine: per §6 — only legal from queued. abandoned is idempotent.
- * All other states → 409 INVALID_TRANSITION.
+ * Grouped-member guard: a cross-repo group member is NEVER cancellable
+ * individually (it would corrupt the group atom) → 409 GROUPED_MEMBER, point
+ * to the group-reject path. Mirrors the symmetric land-side guard
+ * `assertMemberLandableViaGroup` and `transitionToIntegrating`'s own guard.
+ *
+ * State machine: per §6 — legal from queued or integrating. abandoned is
+ * idempotent. landed/rejected → 409 INVALID_TRANSITION.
+ *
+ * Path split (keeps the queued path byte-identical to 7.1):
+ *   - queued      → `applyAbandon` (non-transactional, NO audit; `reason`
+ *                   rides only on the emitted event).
+ *   - integrating → an AUDITED transactional abandon (action `cancel`, NO
+ *                   `overridden` flag — distinguishes it from admin
+ *                   `force_cancel`). The integrator discovers the abandon on
+ *                   its next land/reject/completeAttempt (which 409s).
  */
-export function cancel(id: string, actor: Actor): MergeRequestView {
+export function cancel(
+  id: string,
+  actor: Actor,
+  reason: string | null = null,
+): MergeRequestView {
   const row = readRequestOrThrow(id);
 
-  const isSubmitter = actor.id === row.submittedBy;
-  const isAdmin = actor.role === "admin";
-  if (!isSubmitter && !isAdmin) {
+  // Structural guard (mirrors transitionToIntegrating / assertMemberLandableViaGroup):
+  // a grouped member must be cancelled via its group (reject the group), never
+  // individually — covers BOTH queued and integrating members.
+  if (row.groupId !== null) {
     throw new AppError(
-      403,
-      "NOT_REQUEST_OWNER",
-      "Only the submitter or an admin may cancel this merge request.",
+      409,
+      "GROUPED_MEMBER",
+      `Merge request ${id} is a group member; cancel via its group (reject the group), not individually.`,
     );
   }
 
@@ -821,7 +844,15 @@ export function cancel(id: string, actor: Actor): MergeRequestView {
     return toView(row);
   }
 
-  return applyAbandon(row, actor, null);
+  // queued: back-compat non-audited abandon. integrating: audited abandon.
+  if (row.status === "queued") {
+    return applyAbandon(row, actor, reason);
+  }
+  return applyAuditedAbandon(row, actor, {
+    action: "cancel",
+    overridden: false,
+    reason,
+  });
 }
 
 /**
@@ -858,6 +889,41 @@ export function forceCancel(
     return toView(row);
   }
 
+  return applyAuditedAbandon(row, actor, {
+    action: "force_cancel",
+    overridden: true,
+    reason,
+  });
+}
+
+/**
+ * Shared audited-abandon helper. Both the admin break-glass `forceCancel`
+ * (action `force_cancel`, `overridden: true`) and the self-service
+ * integrating-`cancel` (action `cancel`, `overridden: false`) funnel through
+ * here so the §1.4 invariant — the status UPDATE and its audit row commit in
+ * ONE transaction — lives in exactly one place.
+ *
+ * Parameterized by:
+ *   - action:     the audit action ("force_cancel" | "cancel").
+ *   - overridden: written into the audit `after` + the emitted event ONLY when
+ *                 true. The `cancel` path passes false → the audit row carries
+ *                 no `overridden` key, which is how a self-service cancel is
+ *                 told apart from an admin force_cancel.
+ *   - reason:     optional; persisted on the audit row and the emitted event.
+ *
+ * Emits MERGE_REQUEST_ABANDONED (+ cancelledBy/reason/overridden) and
+ * audit.recorded AFTER the transaction commits.
+ */
+function applyAuditedAbandon(
+  row: MergeRequestRow,
+  actor: Actor,
+  opts: {
+    action: Extract<AuditAction, "force_cancel" | "cancel">;
+    overridden: boolean;
+    reason: string | null;
+  },
+): MergeRequestView {
+  const { action, overridden, reason } = opts;
   const now = new Date().toISOString();
   let auditId: string | null = null;
   let auditView: AuditLogView | null = null;
@@ -870,11 +936,12 @@ export function forceCancel(
       .run();
 
     const before = { status: row.status };
-    const after = { status: "abandoned", overridden: true };
+    const after: Record<string, unknown> = { status: "abandoned" };
+    if (overridden) after.overridden = true;
     auditId = recordAudit(tx, {
       projectId: row.projectId,
       actorId: actor.id,
-      action: "force_cancel",
+      action,
       targetType: "merge_request",
       targetId: row.id,
       reason,
@@ -886,7 +953,7 @@ export function forceCancel(
       id: auditId,
       projectId: row.projectId,
       actorId: actor.id,
-      action: "force_cancel",
+      action,
       targetType: "merge_request",
       targetId: row.id,
       reason,
@@ -900,7 +967,7 @@ export function forceCancel(
   emit(EVENT_NAMES.MERGE_REQUEST_ABANDONED, updated, actor.id, {
     cancelledBy: actor.id,
     reason,
-    overridden: true,
+    ...(overridden ? { overridden: true } : {}),
   });
   if (auditId !== null && auditView !== null) {
     emitAuditRecorded(auditId, row.projectId, actor.id, auditView);

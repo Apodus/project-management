@@ -423,11 +423,12 @@ describe("Merge Requests API", () => {
       expect(json.data.status).toBe("abandoned");
     });
 
-    it("403 when called by a stranger ai_agent", async () => {
+    it("200 when a non-submitter cancels an integrating request (no ownership gate)", async () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestAiAgent(testApp.db);
       const stranger = createTestAiAgent(testApp.db);
       const requestId = await submitRequest(project.id, submitter.token);
+      forceIntegrating(requestId);
 
       const res = await authRequest(
         testApp.app,
@@ -435,7 +436,51 @@ describe("Merge Requests API", () => {
         `/api/v1/merge-requests/${requestId}/cancel`,
         { token: stranger.token },
       );
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.status).toBe("abandoned");
+    });
+
+    it("200 + reason body accepted on an integrating-cancel", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const requestId = await submitRequest(project.id, agent.token);
+      forceIntegrating(requestId);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/cancel`,
+        { token: agent.token, body: { reason: "superseded" } },
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.status).toBe("abandoned");
+    });
+
+    it("409 GROUPED_MEMBER when cancelling a grouped member independently", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const a = await submitRequest(project.id, agent.token, { branch: "a" });
+      const b = await submitRequest(project.id, agent.token, { branch: "b" });
+
+      const groupRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        { token: agent.token, body: { resource: "main", memberRequestIds: [a, b] } },
+      );
+      expect(groupRes.status).toBe(201);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${a}/cancel`,
+        { token: agent.token },
+      );
+      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(json.error.code).toBe("GROUPED_MEMBER");
     });
 
     it("409 when the request is already in a terminal state (landed)", async () => {

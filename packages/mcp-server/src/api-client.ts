@@ -1226,14 +1226,18 @@ export async function getMergeRequest(
 }
 
 /**
- * Cancel a queued merge request. Submitter or admin only.
+ * Cancel a merge request from queued OR integrating. Any authenticated user
+ * (collaborative env). Pass an optional `reason` (recorded on the audit log for
+ * an integrating-cancel). A grouped member returns 409 GROUPED_MEMBER.
  */
 export async function cancelMergeRequest(
   requestId: string,
+  reason?: string,
 ): Promise<MergeRequestView> {
   return apiRequest<MergeRequestView>(
     "POST",
     `/merge-requests/${encodeURIComponent(requestId)}/cancel`,
+    reason !== undefined ? { reason } : undefined,
   );
 }
 

@@ -116,6 +116,15 @@ export const mergeRequestSubmitSchema = z.object({
 });
 export type MergeRequestSubmit = z.infer<typeof mergeRequestSubmitSchema>;
 
+// Body for POST /api/v1/merge-requests/{id}/cancel (any authenticated user).
+// `reason` is optional (back-compat: pre-existing callers send no body). When
+// supplied on an integrating-cancel it is persisted on the `cancel` audit row;
+// on a queued-cancel it rides only on the emitted event.
+export const mergeRequestCancelSchema = z.object({
+  reason: z.string().min(1).max(2048).optional(),
+});
+export type MergeRequestCancel = z.infer<typeof mergeRequestCancelSchema>;
+
 // Body for POST /api/v1/merge-requests/{id}/reject (integrator).
 // `failedFiles`, `logExcerpt`, `logUrl` are optional at the schema layer.
 // Integrator policy (Step 5) requires at least one log field in practice.

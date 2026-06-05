@@ -252,8 +252,8 @@ The cells below cover every (current state × operation × actor) tuple that the
 | `queued` | `land` | integrator | **409 INVALID_TRANSITION**: no attempt was started. |
 | `queued` | `reject` | integrator | **409 INVALID_TRANSITION**. |
 | `integrating` | `submit` | n/a | (No-op — submit creates new rows, doesn't transition existing ones.) |
-| `integrating` | `cancel` | submitter | **409 INVALID_TRANSITION**: use `forceCancel` (admin only). The submitter cannot abandon a request that an integrator has already picked up — the integrator is doing work on its behalf. |
-| `integrating` | `cancel` | admin | **409 INVALID_TRANSITION**: admins use `forceCancel` from `integrating`. (Two distinct verbs by design: `cancel` is the submitter's "I changed my mind"; `forceCancel` is the admin's "kill it now, I accept the integrator may not notice immediately.") |
+| `integrating` | `cancel` | any authenticated user | **200**: `abandoned`; emit `merge.request.abandoned`. Self-service (collaborative env — no ownership gate). The abandon + a `cancel` audit row (action `cancel`, NO `overridden` flag — that distinguishes it from the admin `force_cancel`) commit in ONE transaction; the integrator discovers the abandon on its next `completeAttempt`/`land`/`reject` (which 409s) — see Section 15. (`cancel` and `forceCancel` now both reach `abandoned` from `integrating`; `forceCancel` remains the admin break-glass that additionally tags the audit row `overridden`.) |
+| `integrating` (grouped member) | `cancel` | any authenticated user | **409 GROUPED_MEMBER**: a cross-repo group member is never cancellable individually (it would corrupt the group atom) — reject the group instead. Mirrors the symmetric land-side guard. |
 | `integrating` | `forceCancel` | admin | **200**: `abandoned`; emit `merge.request.abandoned`. The integrator will discover this on its next service call (`completeAttempt`, `land`, or `reject`) and treat the resulting 409 as "request was force-cancelled" — see Section 15. |
 | `integrating` | `forceCancel` | non-admin | **403** (admin only). |
 | `integrating` | `transitionToIntegrating` | integrator | **409 INVALID_TRANSITION** (already integrating). |
@@ -271,7 +271,7 @@ The cells below cover every (current state × operation × actor) tuple that the
 | `rejected` | `reject` | integrator | **200 idempotent**: returns the existing row. |
 | `rejected` | `land` | integrator | **409 INVALID_TRANSITION** (cross-terminal). |
 | `rejected` | other ops | any | **409** (terminal). |
-| `abandoned` | `cancel` | submitter | **200 idempotent**: returns the existing row. |
+| `abandoned` | `cancel` | any authenticated user | **200 idempotent**: returns the existing row. |
 | `abandoned` | `forceCancel` | admin | **200 idempotent**: returns the existing row. |
 | `abandoned` | `land`, `reject` | integrator | **409 INVALID_TRANSITION** (cross-terminal). |
 | `abandoned` | other ops | any | **409** (terminal). |
@@ -280,7 +280,7 @@ The cells below cover every (current state × operation × actor) tuple that the
 
 > *Calling a terminal-producing operation on a row already in its target terminal state returns 200 with the existing row. Any other terminal-to-terminal or wrong-direction call returns 409 INVALID_TRANSITION.*
 
-Concretely: `land` on `landed` → 200; `reject` on `rejected` → 200; `cancel` on `abandoned` (by submitter) → 200; `forceCancel` on `abandoned` (by admin) → 200. Everything else from a terminal state is 409.
+Concretely: `land` on `landed` → 200; `reject` on `rejected` → 200; `cancel` on `abandoned` (any authenticated user) → 200; `forceCancel` on `abandoned` (by admin) → 200. Everything else from a terminal state is 409.
 
 This rule is small, consistent, and lets the integrator's loop tolerate any single-step retry (e.g. an HTTP retry after a transient network error) without contorting itself into "was that already done?" preflight checks.
 

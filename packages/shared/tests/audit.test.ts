@@ -21,6 +21,7 @@ describe("AUDIT_ACTIONS", () => {
       "force_cancel",
       "land",
       "reject",
+      "cancel",
       "force_claim",
     ]);
   });
@@ -31,6 +32,10 @@ describe("AUDIT_ACTIONS", () => {
 
   it("includes force_cancel (queued-state break-glass)", () => {
     expect(AUDIT_ACTIONS).toContain("force_cancel");
+  });
+
+  it("includes cancel (self-service integrating-cancel)", () => {
+    expect(AUDIT_ACTIONS).toContain("cancel");
   });
 });
 

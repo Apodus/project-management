@@ -7604,8 +7604,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Cancel a queued merge request
-         * @description Submitter or admin cancels a queued request (queued → abandoned). 409 if the request is integrating or already terminal (use force-cancel for integrating).
+         * Cancel a queued or integrating merge request
+         * @description Any authenticated user cancels a request from queued OR integrating (queued|integrating → abandoned) — collaborative env, no ownership gate. An integrating-cancel interrupts the in-flight integration (the integrator discovers it via 409 on its next land/reject/completeAttempt) and is recorded in the audit log (action `cancel`, optional reason). A grouped (cross-repo) member can NOT be cancelled individually → 409 GROUPED_MEMBER (reject the group instead). Optional `reason` body (back-compat: no body is accepted). 409 INVALID_TRANSITION if already terminal (landed/rejected); abandoned → abandoned is the idempotent no-op.
          */
         post: {
             parameters: {
@@ -7616,7 +7616,11 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MergeRequestCancel"];
+                };
+            };
             responses: {
                 /** @description Abandoned */
                 200: {
@@ -7643,20 +7647,6 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Only the submitter or an admin may cancel */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
                 /** @description Request not found */
                 404: {
                     headers: {
@@ -7671,7 +7661,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Invalid transition from current state */
+                /** @description Invalid transition (terminal) or GROUPED_MEMBER (cancel via the group) */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -11735,7 +11725,7 @@ export interface paths {
             parameters: {
                 query?: {
                     userId?: string;
-                    action?: "pause" | "resume" | "force_release_lock" | "force_land" | "force_reject" | "force_cancel" | "land" | "reject" | "force_claim";
+                    action?: "pause" | "resume" | "force_release_lock" | "force_land" | "force_reject" | "force_cancel" | "land" | "reject" | "cancel" | "force_claim";
                     targetType?: "merge_request" | "merge_group" | "merge_lock" | "train" | "task" | "epic" | "proposal";
                     targetId?: string;
                     from?: string;
@@ -12923,6 +12913,9 @@ export interface components {
                 escalationReason?: string;
                 logUrl?: string;
             } | null;
+        };
+        MergeRequestCancel: {
+            reason?: string;
         };
         MergeRequestPickup: {
             batchId?: string;

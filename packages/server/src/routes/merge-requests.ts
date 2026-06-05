@@ -210,6 +210,10 @@ const forceCancelBody = z
   .object({ reason: z.string().min(1).max(2048).optional() })
   .openapi("MergeRequestForceCancel");
 
+const cancelBody = z
+  .object({ reason: z.string().min(1).max(2048).optional() })
+  .openapi("MergeRequestCancel");
+
 const resetToQueuedBody = z
   .object({ reason: z.string().min(1).max(500) })
   .openapi("MergeRequestResetToQueued");
@@ -354,15 +358,18 @@ const cancelRoute = createRoute({
   method: "post",
   path: "/api/v1/merge-requests/{id}/cancel",
   tags: ["Merge Requests"],
-  summary: "Cancel a queued merge request",
-  description: "Submitter or admin cancels a queued request (queued → abandoned). 409 if the request is integrating or already terminal (use force-cancel for integrating).",
-  request: { params: z.object({ id: requestIdParam }) },
+  summary: "Cancel a queued or integrating merge request",
+  description:
+    "Any authenticated user cancels a request from queued OR integrating (queued|integrating → abandoned) — collaborative env, no ownership gate. An integrating-cancel interrupts the in-flight integration (the integrator discovers it via 409 on its next land/reject/completeAttempt) and is recorded in the audit log (action `cancel`, optional reason). A grouped (cross-repo) member can NOT be cancelled individually → 409 GROUPED_MEMBER (reject the group instead). Optional `reason` body (back-compat: no body is accepted). 409 INVALID_TRANSITION if already terminal (landed/rejected); abandoned → abandoned is the idempotent no-op.",
+  request: {
+    params: z.object({ id: requestIdParam }),
+    body: { content: { "application/json": { schema: cancelBody } }, required: false },
+  },
   responses: {
     200: { description: "Abandoned", content: { "application/json": { schema: mergeRequestDataEnvelope } } },
     401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Only the submitter or an admin may cancel", content: { "application/json": { schema: errorEnvelope } } },
     404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Invalid transition from current state", content: { "application/json": { schema: errorEnvelope } } },
+    409: { description: "Invalid transition (terminal) or GROUPED_MEMBER (cancel via the group)", content: { "application/json": { schema: errorEnvelope } } },
   },
 });
 
@@ -575,7 +582,13 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
   router.openapi(cancelRoute, (c) => {
     const { id } = c.req.valid("param");
     const user = requireUser(c.get("currentUser") as AuthUser | null);
-    const view = requestSvc.cancel(id, actorOf(user));
+    let body: { reason?: string } = {};
+    try {
+      body = c.req.valid("json") ?? {};
+    } catch {
+      // Body optional; tolerate empty (pre-existing callers send none).
+    }
+    const view = requestSvc.cancel(id, actorOf(user), body.reason ?? null);
     return c.json({ data: view }, 200);
   });
 

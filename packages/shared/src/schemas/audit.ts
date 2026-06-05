@@ -19,6 +19,12 @@ export const AUDIT_ACTIONS = [
   // ── Natural train actions (ai_agent integrator actions, §2.5) ──
   "land",
   "reject",
+  // cancel: self-service abandon of a queued|integrating request by ANY
+  // authenticated user (collaborative env — no ownership gate). The
+  // queued path is non-audited (back-compat); the integrating path writes
+  // this audit row (no `overridden` flag — that distinguishes it from the
+  // admin break-glass `force_cancel`).
+  "cancel",
   // ── Force-claim (reason-required claim takeover) ──
   "force_claim",
 ] as const;

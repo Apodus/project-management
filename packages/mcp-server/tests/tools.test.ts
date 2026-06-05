@@ -2799,11 +2799,29 @@ describe("MCP Tools", () => {
         arguments: { request_id: "mreq_001" },
       });
 
-      expect(mockCancelMergeRequest).toHaveBeenCalledWith("mreq_001");
+      expect(mockCancelMergeRequest).toHaveBeenCalledWith("mreq_001", undefined);
       const text = (result.content as Array<{ text: string }>)[0].text;
       expect(text).toContain("mreq_001");
       expect(text).toContain("abandoned");
       expect(text).toContain("2026-05-29T14:22:50.000Z");
+    });
+
+    it("pm_cancel_merge_request forwards an optional reason", async () => {
+      mockCancelMergeRequest.mockResolvedValue({
+        ...sampleMergeRequest,
+        status: "abandoned",
+        resolvedAt: "2026-05-29T14:22:50.000Z",
+      });
+
+      await client.callTool({
+        name: "pm_cancel_merge_request",
+        arguments: { request_id: "mreq_001", reason: "superseded by newer branch" },
+      });
+
+      expect(mockCancelMergeRequest).toHaveBeenCalledWith(
+        "mreq_001",
+        "superseded by newer branch",
+      );
     });
   });
 

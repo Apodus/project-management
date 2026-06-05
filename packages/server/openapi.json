@@ -4267,6 +4267,16 @@
           "kind"
         ]
       },
+      "MergeRequestCancel": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          }
+        }
+      },
       "MergeRequestPickup": {
         "type": "object",
         "properties": {
@@ -18887,8 +18897,8 @@
         "tags": [
           "Merge Requests"
         ],
-        "summary": "Cancel a queued merge request",
-        "description": "Submitter or admin cancels a queued request (queued → abandoned). 409 if the request is integrating or already terminal (use force-cancel for integrating).",
+        "summary": "Cancel a queued or integrating merge request",
+        "description": "Any authenticated user cancels a request from queued OR integrating (queued|integrating → abandoned) — collaborative env, no ownership gate. An integrating-cancel interrupts the in-flight integration (the integrator discovers it via 409 on its next land/reject/completeAttempt) and is recorded in the audit log (action `cancel`, optional reason). A grouped (cross-repo) member can NOT be cancelled individually → 409 GROUPED_MEMBER (reject the group instead). Optional `reason` body (back-compat: no body is accepted). 409 INVALID_TRANSITION if already terminal (landed/rejected); abandoned → abandoned is the idempotent no-op.",
         "parameters": [
           {
             "schema": {
@@ -18901,6 +18911,16 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestCancel"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Abandoned",
@@ -18922,36 +18942,6 @@
           },
           "401": {
             "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ]
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Only the submitter or an admin may cancel",
             "content": {
               "application/json": {
                 "schema": {
@@ -19011,7 +19001,7 @@
             }
           },
           "409": {
-            "description": "Invalid transition from current state",
+            "description": "Invalid transition (terminal) or GROUPED_MEMBER (cancel via the group)",
             "content": {
               "application/json": {
                 "schema": {
@@ -25840,6 +25830,7 @@
                 "force_cancel",
                 "land",
                 "reject",
+                "cancel",
                 "force_claim"
               ]
             },

@@ -222,19 +222,20 @@ describe("merge-request service", () => {
       expect(result.status).toBe("abandoned");
     });
 
-    it("cancel by stranger → 403 NOT_REQUEST_OWNER", () => {
+    it("stranger (non-submitter non-admin) cancel-while-queued → abandoned (no ownership gate)", () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestUser(testApp.db, { role: "member" });
       const stranger = createTestUser(testApp.db, { role: "member" });
       const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
-      expect(() =>
-        svc.cancel(r.id, { id: stranger.id, role: "member", type: "human" }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "NOT_REQUEST_OWNER" }),
-      );
+      const result = svc.cancel(r.id, {
+        id: stranger.id,
+        role: "member",
+        type: "human",
+      });
+      expect(result.status).toBe("abandoned");
     });
 
-    it("cancel from integrating → 409 INVALID_TRANSITION", () => {
+    it("submitter cancel from integrating → abandoned + emits MERGE_REQUEST_ABANDONED", () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestUser(testApp.db, { role: "member" });
       const integrator = createTestAiAgent(testApp.db);
@@ -244,11 +245,221 @@ describe("merge-request service", () => {
         role: "member",
         type: "ai_agent",
       });
+      const listener = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_ABANDONED, listener);
+      const result = svc.cancel(r.id, {
+        id: submitter.id,
+        role: "member",
+        type: "human",
+      });
+      expect(result.status).toBe("abandoned");
+      expect(result.resolvedAt).toBeTruthy();
+      expect(listener).toHaveBeenCalledTimes(1);
+      const payload = listener.mock.calls[0][0];
+      expect(payload.entity.cancelledBy).toBe(submitter.id);
+      // self-service cancel is NOT an override — no `overridden` flag.
+      expect(payload.entity.overridden).toBeUndefined();
+    });
+
+    it("non-submitter non-admin cancel from integrating → abandoned (collaborative env)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db, { role: "member" });
+      const stranger = createTestUser(testApp.db, { role: "member" });
+      const integrator = createTestAiAgent(testApp.db);
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      svc.transitionToIntegrating(r.id, {
+        id: integrator.user.id,
+        role: "member",
+        type: "ai_agent",
+      });
+      const result = svc.cancel(r.id, {
+        id: stranger.id,
+        role: "member",
+        type: "human",
+      });
+      expect(result.status).toBe("abandoned");
+    });
+
+    it("cancel of an integrating GROUPED member → 409 GROUPED_MEMBER (reject the group instead)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db, { role: "member" });
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      // Insert a real forming group (FK target), stamp groupId + integrating
+      // directly (a grouped member is flipped via the group path, not pickup).
+      const now = new Date().toISOString();
+      const groupId = "01GROUP00000000000000000000";
+      testApp.db
+        .insert(mergeRequestGroups)
+        .values({
+          id: groupId,
+          projectId: project.id,
+          resource: "main",
+          state: "forming",
+          submittedBy: submitter.id,
+          integratorId: null,
+          resolvedAt: null,
+          resolutionReason: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      testApp.db
+        .update(mergeRequests)
+        .set({ groupId, status: "integrating", pickedUpAt: now })
+        .where(eq(mergeRequests.id, r.id))
+        .run();
+      expect(() =>
+        svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" }),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
+      );
+    });
+
+    it("cancel of a QUEUED grouped member → 409 GROUPED_MEMBER", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db, { role: "member" });
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      const now = new Date().toISOString();
+      const groupId = "01GROUP00000000000000000001";
+      testApp.db
+        .insert(mergeRequestGroups)
+        .values({
+          id: groupId,
+          projectId: project.id,
+          resource: "main",
+          state: "forming",
+          submittedBy: submitter.id,
+          integratorId: null,
+          resolvedAt: null,
+          resolutionReason: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      testApp.db
+        .update(mergeRequests)
+        .set({ groupId })
+        .where(eq(mergeRequests.id, r.id))
+        .run();
+      expect(() =>
+        svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" }),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
+      );
+    });
+
+    it("integrating-cancel writes exactly ONE `cancel` audit row (before/after, reason, cancelledBy, no overridden)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db, { role: "member" });
+      const integrator = createTestAiAgent(testApp.db);
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      svc.transitionToIntegrating(r.id, {
+        id: integrator.user.id,
+        role: "member",
+        type: "ai_agent",
+      });
+      svc.cancel(
+        r.id,
+        { id: submitter.id, role: "member", type: "human" },
+        "changed my mind mid-integration",
+      );
+      const rows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, r.id))
+        .all();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].action).toBe("cancel");
+      expect(rows[0].targetType).toBe("merge_request");
+      expect(rows[0].actorId).toBe(submitter.id);
+      expect(rows[0].reason).toBe("changed my mind mid-integration");
+      expect(rows[0].metadataBefore).toEqual({ status: "integrating" });
+      expect(rows[0].metadataAfter).toEqual({ status: "abandoned" });
+      // No `overridden` key — that distinguishes self-service cancel from force_cancel.
+      expect(
+        (rows[0].metadataAfter as Record<string, unknown>).overridden,
+      ).toBeUndefined();
+    });
+
+    it("queued-cancel writes NO audit row (back-compat with 7.1)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db, { role: "member" });
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" });
+      const rows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, r.id))
+        .all();
+      expect(rows).toHaveLength(0);
+    });
+
+    it("race: land() 200 then cancel() → 409 INVALID_TRANSITION (single-writer + assertCanTransition)", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db, { role: "member" });
+      const integrator = createTestAiAgent(testApp.db);
+      const integratorActor = {
+        id: integrator.user.id,
+        role: "member",
+        type: "ai_agent",
+      };
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      svc.transitionToIntegrating(r.id, integratorActor);
+      const landed = svc.land(r.id, { landedSha: "deadbeef" }, integratorActor);
+      expect(landed.status).toBe("landed");
       expect(() =>
         svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" }),
       ).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
+    });
+
+    it("race: cancel() 200 then land() → 409 INVALID_TRANSITION", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db, { role: "member" });
+      const integrator = createTestAiAgent(testApp.db);
+      const integratorActor = {
+        id: integrator.user.id,
+        role: "member",
+        type: "ai_agent",
+      };
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      svc.transitionToIntegrating(r.id, integratorActor);
+      const cancelled = svc.cancel(r.id, {
+        id: submitter.id,
+        role: "member",
+        type: "human",
+      });
+      expect(cancelled.status).toBe("abandoned");
+      expect(() =>
+        svc.land(r.id, { landedSha: "deadbeef" }, integratorActor),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
+      );
+    });
+
+    it("reason persisted on the integrating-cancel audit row", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db, { role: "member" });
+      const integrator = createTestAiAgent(testApp.db);
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      svc.transitionToIntegrating(r.id, {
+        id: integrator.user.id,
+        role: "member",
+        type: "ai_agent",
+      });
+      svc.cancel(
+        r.id,
+        { id: submitter.id, role: "member", type: "human" },
+        "superseded by a newer branch",
+      );
+      const rows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, r.id))
+        .all();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].reason).toBe("superseded by a newer branch");
     });
 
     it("cancel from landed → 409 INVALID_TRANSITION", () => {

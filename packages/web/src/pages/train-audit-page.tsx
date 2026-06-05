@@ -70,6 +70,7 @@ const AUDIT_ACTION_OPTIONS = [
   "force_land",
   "force_reject",
   "force_cancel",
+  "cancel",
   "land",
   "reject",
 ] as const satisfies readonly AuditLogEntry["action"][];

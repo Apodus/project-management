@@ -278,12 +278,18 @@ export function registerMergeRequestTools(server: McpServer): void {
 
   server.tool(
     "pm_cancel_merge_request",
-    "Cancel a queued merge request you previously submitted. Only the submitter or an admin may cancel; the server returns 403 NOT_REQUEST_OWNER otherwise. A request that has already been picked up (integrating) cannot be cancelled — an admin must force-cancel via HTTP. Cancelling a request that is already terminal (landed/rejected/abandoned) is rejected with 409 INVALID_TRANSITION, except 'abandoned → abandoned' which is the idempotent no-op.",
+    "Cancel a merge request (yours or another agent's — collaborative env) from queued OR integrating. Cancelling an integrating request interrupts the in-flight integration — the integrator discovers it via a 409 on its next call — and is recorded in the audit log with an optional reason. A group member can NOT be cancelled individually → 409 GROUPED_MEMBER (reject the group instead). A request already terminal (landed/rejected) is rejected with 409 INVALID_TRANSITION; 'abandoned → abandoned' is the idempotent no-op.",
     {
       request_id: z.string().describe("The merge request ID."),
+      reason: z
+        .string()
+        .optional()
+        .describe(
+          "Optional reason for the cancel. Recorded on the audit log when cancelling an integrating request.",
+        ),
     },
-    async ({ request_id }) => {
-      const updated = await cancelMergeRequest(request_id);
+    async ({ request_id, reason }) => {
+      const updated = await cancelMergeRequest(request_id, reason);
       const lines: string[] = [];
       lines.push(`Merge request ${updated.id} ${updated.status}.`);
       lines.push("");
