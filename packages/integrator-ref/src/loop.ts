@@ -149,10 +149,7 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
       return { kind: "lock_unavailable", requestId: request.id };
     }
   } catch (err) {
-    logger.warn(
-      { requestId: request.id, err: errMessage(err) },
-      "acquireLock failed",
-    );
+    logger.warn({ requestId: request.id, err: errMessage(err) }, "acquireLock failed");
     return { kind: "error", requestId: request.id, message: errMessage(err) };
   }
 
@@ -164,10 +161,7 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
   }, 60_000);
   heartbeat.unref?.();
 
-  const releaseLock = async (opts: {
-    landedSha?: string;
-    reason?: string;
-  }): Promise<void> => {
+  const releaseLock = async (opts: { landedSha?: string; reason?: string }): Promise<void> => {
     clearInterval(heartbeat);
     try {
       await pmClient.releaseLock(projectId, resource, opts);
@@ -183,10 +177,7 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
     } catch (err) {
       if (isApiError(err, 409)) {
         // Lost the race / admin force-cancelled. Nothing to do.
-        logger.info(
-          { requestId: request.id },
-          "Pickup returned 409; request no longer queued",
-        );
+        logger.info({ requestId: request.id }, "Pickup returned 409; request no longer queued");
         await releaseLock({ reason: "pickup lost" });
         return { kind: "transition_lost", requestId: request.id };
       }
@@ -238,8 +229,7 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
 
     const rebase = await gitOps.rebaseOnto(baseSha, ref);
     if (!rebase.ok) {
-      const reason =
-        "rebase conflict on " + rebase.conflictingFiles.join(", ");
+      const reason = "rebase conflict on " + rebase.conflictingFiles.join(", ");
       const excerpt = rebase.stderr.slice(0, LOG_EXCERPT_CAP);
       await pmClient.completeAttempt(attemptId, {
         status: "failed",
@@ -275,11 +265,10 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
 
     // 7. Run verify against the rebased tree.
     const verifyCommand = request.verifyCmd ?? defaultVerifyCommand;
-    const verify = await gitOps.runVerify(
-      verifyCommand,
-      verifyTimeoutSec * 1000,
-      { cwd: worktree.path, logPath },
-    );
+    const verify = await gitOps.runVerify(verifyCommand, verifyTimeoutSec * 1000, {
+      cwd: worktree.path,
+      logPath,
+    });
 
     if (verify.exitCode !== 0 || verify.timedOut) {
       const cat = categorize({
@@ -289,8 +278,7 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
         stderr: verify.stderr,
         timedOut: verify.timedOut,
       });
-      const reason =
-        cat.reason || summaryLine(verify.stderr || verify.stdout) || "verify failed";
+      const reason = cat.reason || summaryLine(verify.stderr || verify.stdout) || "verify failed";
       const excerpt = `${verify.stdout}\n${verify.stderr}`.slice(0, LOG_EXCERPT_CAP);
       await pmClient.completeAttempt(attemptId, {
         status: "failed",
@@ -317,10 +305,7 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
       if (push.reason === "non_fast_forward") {
         // Push race: main moved during verify. Cancel + re-queue.
         await pmClient.completeAttempt(attemptId, { status: "cancelled" });
-        await pmClient.resetToQueued(
-          request.id,
-          "push race; main moved during verify",
-        );
+        await pmClient.resetToQueued(request.id, "push race; main moved during verify");
         await releaseLock({ reason: "push race" });
         return { kind: "push_race_requeued", requestId: request.id };
       }
@@ -361,6 +346,39 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
       await releaseLock({ reason: "admin force-cancelled" });
       return { kind: "transition_lost", requestId: request.id };
     }
+    // Discriminate (mirrors batch.ts admitAndRebase): a request-fault throw — an
+    // unexpected error from THIS request's own git/worktree ops (e.g. checkout
+    // pathspec-not-found on a branch that doesn't exist in the base repo, a bad
+    // ref, a corrupt submitted commit) — means the request is unprocessable.
+    // REJECT it (integrating → rejected, category `other`) before releasing, so
+    // the lane moves on instead of leaving it stranded `integrating` forever.
+    // An infra/PM fault (now reliably a PmApiError after the pm-client wrapping)
+    // means the request is fine and PM is unreachable: keep today's behavior
+    // (release + error → retried), NEVER rejecting a good request.
+    if (!isApiError(err)) {
+      const reason = `integration error: ${summaryLine(errMessage(err))}`;
+      try {
+        await pmClient.rejectMergeRequest(request.id, {
+          category: "other",
+          reason,
+          logExcerpt: errMessage(err).slice(0, LOG_EXCERPT_CAP),
+        });
+        logger.error(
+          { requestId: request.id, err: errMessage(err) },
+          "Unprocessable request rejected (other) instead of stranding it",
+        );
+        await releaseLock({ reason });
+        return { kind: "rejected", requestId: request.id, category: "other" };
+      } catch (rejectErr) {
+        // The reject itself failed (PM unreachable) — fall through to the
+        // infra-fault path: release + error, leave the request integrating for
+        // crash-recovery rather than risk a half-handled state.
+        logger.warn(
+          { requestId: request.id, err: errMessage(rejectErr) },
+          "Failed to reject unprocessable request; leaving for recovery",
+        );
+      }
+    }
     logger.error(
       { requestId: request.id, err: errMessage(err) },
       "Unexpected error during integration",
@@ -372,10 +390,7 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
 
 // ─── runLoop ──────────────────────────────────────────────────────
 
-export async function runLoop(
-  deps: RunLoopDeps,
-  opts: RunLoopOptions = {},
-): Promise<void> {
+export async function runLoop(deps: RunLoopDeps, opts: RunLoopOptions = {}): Promise<void> {
   const pollMs = opts.pollIntervalMs ?? 30_000;
   const { logger } = deps;
 
@@ -393,10 +408,7 @@ export async function runLoop(
     if (outcome.kind === "idle") {
       // Nothing to do — wait for an SSE wakeup or the poll tick.
       await deps.waitForWork(pollMs);
-    } else if (
-      outcome.kind === "lock_unavailable" ||
-      outcome.kind === "error"
-    ) {
+    } else if (outcome.kind === "lock_unavailable" || outcome.kind === "error") {
       // Back off briefly before retrying so we don't hot-loop on a failure.
       await deps.waitForWork(Math.min(pollMs, 5000));
     }

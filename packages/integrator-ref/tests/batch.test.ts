@@ -16,12 +16,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
-import type {
-  MergeAttemptView,
-  MergeRequestView,
-  VerifyStep,
-  CacheMode,
-} from "@pm/shared";
+import type { MergeAttemptView, MergeRequestView, VerifyStep, CacheMode } from "@pm/shared";
 import { stepConfigSha } from "../src/step-config-sha.js";
 import { createGitOps, type GitOps } from "../src/git-ops.js";
 import { createWorktreePool } from "../src/worktree-pool.js";
@@ -36,7 +31,7 @@ import {
 } from "../src/batch.js";
 import { reclaimStrandedRequests } from "../src/recovery.js";
 import { buildHeartbeat } from "../src/heartbeat.js";
-import { PmApiError, type PmClient } from "../src/pm-client.js";
+import { PmApiError, PmClient } from "../src/pm-client.js";
 import type { RepoLane } from "../src/group-integration.js";
 
 function hasGit(): boolean {
@@ -192,10 +187,7 @@ function makeFakeClient(state: FakeState): PmClient {
       state.lockHeld = false;
       return { ok: true, status: "released" };
     },
-    async pickupMergeRequest(
-      id: string,
-      tags?: BatchTag,
-    ): Promise<MergeRequestView> {
+    async pickupMergeRequest(id: string, tags?: BatchTag): Promise<MergeRequestView> {
       const r = find(id);
       if (!r) throw new PmApiError(404, "NOT_FOUND", "not found");
       if (state.pickupThrows409 || r.status !== "queued")
@@ -206,11 +198,7 @@ function makeFakeClient(state: FakeState): PmClient {
       if (state.pickupTags && tags) state.pickupTags[id] = tags;
       return r;
     },
-    async startAttempt(
-      id: string,
-      baseSha: string,
-      tags?: BatchTag,
-    ): Promise<MergeAttemptView> {
+    async startAttempt(id: string, baseSha: string, tags?: BatchTag): Promise<MergeAttemptView> {
       attemptSeq += 1;
       if (state.startAttemptTags) state.startAttemptTags.push(tags ?? {});
       const att: MergeAttemptView = {
@@ -247,10 +235,7 @@ function makeFakeClient(state: FakeState): PmClient {
         state.completeBodies.push({ status: body.status, steps: body.steps });
       return att;
     },
-    async landMergeRequest(
-      id: string,
-      landedSha: string,
-    ): Promise<MergeRequestView> {
+    async landMergeRequest(id: string, landedSha: string): Promise<MergeRequestView> {
       const r = find(id);
       if (!r) throw new PmApiError(404, "NOT_FOUND", "not found");
       if (r.status !== "integrating")
@@ -300,10 +285,7 @@ function makeFakeClient(state: FakeState): PmClient {
           : (state.trainState ?? "running");
       return { state: ts, resource };
     },
-    async postHeartbeat(
-      _projectId: string,
-      payload: unknown,
-    ): Promise<unknown> {
+    async postHeartbeat(_projectId: string, payload: unknown): Promise<unknown> {
       state.calls.push("postHeartbeat");
       state.heartbeats?.push(payload);
       return {};
@@ -319,9 +301,7 @@ function makeFakeClient(state: FakeState): PmClient {
     },
     async getMergeGroup(groupId: string): Promise<unknown> {
       state.calls.push("getMergeGroup");
-      const g = (state.formingGroups ?? []).find(
-        (x) => (x as { id: string }).id === groupId,
-      );
+      const g = (state.formingGroups ?? []).find((x) => (x as { id: string }).id === groupId);
       return { ...(g as object), members: state.groupMembers ?? [] };
     },
     async markGroupIntegrating(): Promise<unknown> {
@@ -340,9 +320,7 @@ function makeFakeClient(state: FakeState): PmClient {
     ): Promise<unknown> {
       if (state.cacheCalls) state.cacheCalls.lookups += 1;
       state.calls.push("lookupVerifyCache");
-      const k = [key.resource, key.treeSha, key.stepId, key.stepConfigSha].join(
-        " ",
-      );
+      const k = [key.resource, key.treeSha, key.stepId, key.stepConfigSha].join(" ");
       const row = state.verifyCache?.get(k);
       if (!row) return null;
       row.hitCount += 1;
@@ -363,18 +341,10 @@ function makeFakeClient(state: FakeState): PmClient {
         updatedAt: nowIso(),
       };
     },
-    async recordVerifyCache(
-      _projectId: string,
-      entry: VerifyCacheRowFake,
-    ): Promise<unknown> {
+    async recordVerifyCache(_projectId: string, entry: VerifyCacheRowFake): Promise<unknown> {
       if (state.cacheCalls) state.cacheCalls.records += 1;
       state.calls.push(`recordVerifyCache:${entry.result}`);
-      const k = [
-        entry.resource,
-        entry.treeSha,
-        entry.stepId,
-        entry.stepConfigSha,
-      ].join(" ");
+      const k = [entry.resource, entry.treeSha, entry.stepId, entry.stepConfigSha].join(" ");
       const existing = state.verifyCache?.get(k);
       state.verifyCache?.set(k, {
         ...entry,
@@ -526,6 +496,16 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     await author.add(["drift-feature.txt"]);
     await author.commit("add drift feature");
     await author.push(["-u", "origin", "feature/drift"]);
+
+    // A dedicated clean branch for the request-fault reject test (Test A): it
+    // must NOT be pre-landed (so it lands cleanly while its sibling req-bad —
+    // pointing at a non-existent branch — is rejected).
+    await author.checkout("main");
+    await author.checkoutLocalBranch("feature/rejectok");
+    writeFileSync(path.join(authorClone, "rejectok.txt"), "rejectok\n");
+    await author.add(["rejectok.txt"]);
+    await author.commit("add rejectok feature");
+    await author.push(["-u", "origin", "feature/rejectok"]);
     await author.checkout("main");
   });
 
@@ -670,9 +650,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     // existing call-order assertion below stays green).
     const passed = state.completeBodies!.find((b) => b.status === "passed");
     expect(passed).toBeDefined();
-    expect((passed!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual([
-      "verify",
-    ]);
+    expect((passed!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual(["verify"]);
     // Byte-identical to runOnce for N=1: acquire IS before pickup in both.
     // Phase 7.4 (Step 12) interleaves per-pass `getTrainState` pause-checks into
     // the call log (a read-side gate, never a merge op); filter them out so the
@@ -710,6 +688,133 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(state.calls).toContain("releaseLock");
     expect(state.lockHeld).toBe(false);
     expect(deps.pool.leasedCount).toBe(0);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Strand-fix: an unexpected REQUEST-fault error during integration must
+  // REJECT the request (not strand it `integrating` + bail the lane), while a
+  // transient INFRA fault must NOT reject a good request.
+  // ───────────────────────────────────────────────────────────────────
+
+  it("request-fault (real checkout pathspec error) → reject(other) + lane continues + sibling lands", async () => {
+    const root = path.join(tmpRoot, "wt-reqfault");
+    // req-bad points at a branch that does NOT exist in the bare repo, so the
+    // REAL rebaseOnto → `git.checkout` throws `pathspec ... did not match` —
+    // exactly the live bug. It must be ordered first (older enqueuedAt).
+    const badBranch = "feature/does-not-exist";
+    const reqBad = makeRequest({
+      id: "req-bad",
+      branch: badBranch,
+      verifyCmd: "echo ok",
+      enqueuedAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    const reqOk = makeRequest({
+      id: "req-ok",
+      branch: "feature/rejectok",
+      verifyCmd: "echo ok",
+      enqueuedAt: nowIso(),
+    });
+    const state: FakeState = {
+      requests: [reqBad, reqOk],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    // REAL gitOps (the default factory) so the genuine checkout throw fires.
+    const deps = await depsFor(state, { worktreeRoot: root, parallelism: 1 });
+    const outcome = await runBatchOnce(deps);
+
+    // The lane no longer bails on the unexpected error: it drained.
+    expect(outcome.kind).toBe("drained");
+
+    // req-bad is REJECTED as `other`, with the pathspec error surfaced — not
+    // stranded `integrating`.
+    expect(reqBad.status).toBe("rejected");
+    expect(reqBad.rejectCategory).toBe("other");
+    expect(reqBad.rejectReason).toMatch(/pathspec|did not match|does-not-exist/i);
+
+    // The sibling good request still lands (the lane moved on).
+    expect(reqOk.status).toBe("landed");
+
+    // Lock + slots released.
+    expect(state.lockHeld).toBe(false);
+    expect(deps.pool.leasedCount).toBe(0);
+  });
+
+  it("infra-fault (PmApiError during startAttempt) → NO reject, request stays integrating, outcome error", async () => {
+    const root = path.join(tmpRoot, "wt-infra-api");
+    const req = makeRequest({
+      id: "req-infra-a",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, parallelism: 1 });
+    // Make startAttempt throw a transport-level PmApiError (PM unreachable).
+    deps.pmClient.startAttempt = async (): Promise<never> => {
+      throw new PmApiError(0, "NETWORK", "network error calling POST /attempts");
+    };
+
+    const outcome = await runBatchOnce(deps);
+
+    // Infra fault → re-thrown to the batch catch → error outcome; the request is
+    // NOT rejected (it's a good request, PM is just unreachable).
+    expect(outcome.kind).toBe("error");
+    expect(req.status).toBe("integrating");
+    expect(req.status).not.toBe("rejected");
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(false);
+    // The lane lock is released so a retry can re-acquire.
+    expect(state.lockHeld).toBe(false);
+  });
+
+  it("infra-fault (RAW TypeError through real request() → wrapped PmApiError) → NO reject, outcome error", async () => {
+    const root = path.join(tmpRoot, "wt-infra-net");
+    const req = makeRequest({
+      id: "req-infra-n",
+      branch: "feature/clean3",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, parallelism: 1 });
+
+    // A REAL PmClient whose fetchImpl throws a raw TypeError on the attempts
+    // endpoint — proving step-1's request() wrapping converts it to a PmApiError
+    // (so `isApiError` is true → re-throw → NO reject). The fake's startAttempt
+    // delegates to this real client to exercise the wrapping end-to-end.
+    const throwingClient = new PmClient({
+      baseUrl: "http://pm.local",
+      token: "tok",
+      fetchImpl: (async (url: string | URL | Request) => {
+        if (String(url).includes("/attempts")) {
+          throw new TypeError("fetch failed: ECONNRESET");
+        }
+        return new Response(JSON.stringify({ data: {} }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as unknown as typeof fetch,
+    });
+    deps.pmClient.startAttempt = (id, baseSha, tags): Promise<MergeAttemptView> =>
+      throwingClient.startAttempt(id, baseSha, tags);
+
+    const outcome = await runBatchOnce(deps);
+
+    // The raw TypeError became a PmApiError via request() wrapping → infra fault
+    // → re-thrown → error outcome, request NOT rejected.
+    expect(outcome.kind).toBe("error");
+    expect(req.status).toBe("integrating");
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(false);
+    expect(state.lockHeld).toBe(false);
   });
 
   it("land-time drift → resetToQueued → re-pickup → re-verify → land within one drain", async () => {
@@ -765,12 +870,8 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     // resetToQueued must precede a SECOND pickup + startAttempt for the re-admit.
     const reset = state.calls.indexOf("resetToQueued");
     expect(reset).toBeGreaterThanOrEqual(0);
-    const pickupsAfter = state.calls
-      .slice(reset + 1)
-      .filter((c) => c === "pickup").length;
-    const startsAfter = state.calls
-      .slice(reset + 1)
-      .filter((c) => c === "startAttempt").length;
+    const pickupsAfter = state.calls.slice(reset + 1).filter((c) => c === "pickup").length;
+    const startsAfter = state.calls.slice(reset + 1).filter((c) => c === "startAttempt").length;
     expect(pickupsAfter).toBeGreaterThanOrEqual(1);
     expect(startsAfter).toBeGreaterThanOrEqual(1);
     expect(state.lockHeld).toBe(false);
@@ -782,10 +883,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       id: "req-hb",
       branch: "feature/clean",
       // A short sleep so the 20ms heartbeat fires at least once during verify.
-      verifyCmd:
-        process.platform === "win32"
-          ? "ping -n 2 127.0.0.1 > nul"
-          : "sleep 0.3",
+      verifyCmd: process.platform === "win32" ? "ping -n 2 127.0.0.1 > nul" : "sleep 0.3",
     });
     const state: FakeState = {
       requests: [req],
@@ -854,8 +952,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
   // ───────────────────────────────────────────────────────────────────
 
   // win32-safe ~300ms sleep for the overlap test (NEVER bare `sleep 0.3`).
-  const SLEEP_300 =
-    process.platform === "win32" ? "ping -n 2 127.0.0.1 > nul" : "sleep 0.3";
+  const SLEEP_300 = process.platform === "win32" ? "ping -n 2 127.0.0.1 > nul" : "sleep 0.3";
 
   it("chain correctness: member K base == member K-1 rebased tree; all land", async () => {
     const root = path.join(tmpRoot, "wt-chain");
@@ -1372,8 +1469,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
 
   // win32-safe LONG sleep (~9s) for the kill-during-verify test. The kill MUST
   // cut it short; if it doesn't, the test times out — a clear failure signal.
-  const SLEEP_LONG =
-    process.platform === "win32" ? "ping -n 10 127.0.0.1 > nul" : "sleep 9";
+  const SLEEP_LONG = process.platform === "win32" ? "ping -n 10 127.0.0.1 > nul" : "sleep 9";
 
   // A verify that SLEEPS ~2s and THEN fails (exit non-zero). Load-bearing for
   // the suffix-invalidation tests: the failing member must fail AFTER its
@@ -1382,9 +1478,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
   // against main (no speculation on the failed member → nothing to invalidate).
   // The delay guarantees the dependents speculate on the failing member first.
   const DELAY_FAIL =
-    process.platform === "win32"
-      ? "ping -n 3 127.0.0.1 > nul & exit 1"
-      : "sleep 2; exit 1";
+    process.platform === "win32" ? "ping -n 3 127.0.0.1 > nul & exit 1" : "sleep 2; exit 1";
 
   it("Step 6 mid-failure: req1 verify-fails; req0 lands, req2 invalidated→re-admitted→landed onto main+0", async () => {
     const root = path.join(tmpRoot, "wt-s6-mid");
@@ -1583,9 +1677,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
 
     // ENTIRE SUFFIX invalidated: both req1 and req2 were reset + re-picked-up.
     // Two suffix members → at least two resetToQueued calls.
-    expect(
-      state.calls.filter((c) => c === "resetToQueued").length,
-    ).toBeGreaterThanOrEqual(2);
+    expect(state.calls.filter((c) => c === "resetToQueued").length).toBeGreaterThanOrEqual(2);
     // Each suffix member shows a SECOND pickup + startAttempt (re-admit).
     expect(state.attempts.filter((a) => a.requestId === "req-h2").length).toBeGreaterThanOrEqual(2);
     expect(state.attempts.filter((a) => a.requestId === "req-h3").length).toBeGreaterThanOrEqual(2);
@@ -2492,10 +2584,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     const depsA = await depsFor(stateA, { worktreeRoot: path.join(root, "A") });
     const depsB = await depsFor(stateB, { worktreeRoot: path.join(root, "B") });
 
-    const [outA, outB] = await Promise.all([
-      runBatchOnce(depsA),
-      runBatchOnce(depsB),
-    ]);
+    const [outA, outB] = await Promise.all([runBatchOnce(depsA), runBatchOnce(depsB)]);
 
     const outcomes = [outA.kind, outB.kind];
     // Exactly one drained, exactly one lock_unavailable.
@@ -2503,8 +2592,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(outcomes.filter((k) => k === "lock_unavailable").length).toBe(1);
 
     // Identify winner/loser by outcome.
-    const [winState, loseState] =
-      outA.kind === "drained" ? [stateA, stateB] : [stateB, stateA];
+    const [winState, loseState] = outA.kind === "drained" ? [stateA, stateB] : [stateB, stateA];
 
     // Winner landed + pushed exactly once.
     expect(sharedRequests[0].status).toBe("landed");
@@ -2777,10 +2865,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     };
   }
 
-  async function groupDepsFor(
-    state: FakeState,
-    worktreeRoot: string,
-  ): Promise<RunBatchLoopDeps> {
+  async function groupDepsFor(state: FakeState, worktreeRoot: string): Promise<RunBatchLoopDeps> {
     const base = await depsFor(state, { worktreeRoot });
     return {
       ...base,
@@ -2837,9 +2922,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(state.calls).toContain("releaseLock");
     // recoverOrphanedInner re-listed open incidents (the recovery path was
     // reached) — the count call + the recovery call both fire.
-    expect(
-      state.calls.filter((c) => c === "listMergeIncidents").length,
-    ).toBeGreaterThanOrEqual(2);
+    expect(state.calls.filter((c) => c === "listMergeIncidents").length).toBeGreaterThanOrEqual(2);
     // The forming group was NOT integrated (suppressed while paused).
     expect(state.calls).not.toContain("getMergeGroup");
     expect(state.calls).not.toContain("markGroupIntegrating");
@@ -2897,12 +2980,15 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     let warned = false;
     const emit = (): void => {
       rejectingClient
-        .postHeartbeat("proj-1", buildHeartbeat({
-          resource: "main",
-          pool: { size: 1, leasedCount: 0 },
-          inFlight: { requests: 0, batches: 0, groups: 0 },
-          version: "0.0.0",
-        }))
+        .postHeartbeat(
+          "proj-1",
+          buildHeartbeat({
+            resource: "main",
+            pool: { size: 1, leasedCount: 0 },
+            inFlight: { requests: 0, batches: 0, groups: 0 },
+            version: "0.0.0",
+          }),
+        )
         .catch(() => {
           warned = true;
         });

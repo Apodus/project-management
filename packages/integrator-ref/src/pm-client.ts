@@ -147,11 +147,25 @@ export class PmClient {
       Accept: "application/json",
     };
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    const res = await this.fetchImpl(url, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    // Wrap EVERY transport failure as a PmApiError so `isApiError` is a TOTAL
+    // infra discriminator (status 0 = transport-level fault). A `fetch`
+    // rejection (connection refused/reset/DNS/timeout/abort → raw TypeError)
+    // would otherwise escape as a non-PmApiError and be misclassified as a
+    // request-fault by the integrator's catch paths.
+    let res: Awaited<ReturnType<typeof fetch>>;
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch (err) {
+      throw new PmApiError(
+        0,
+        "NETWORK",
+        `network error calling ${method} ${url}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     const contentType = res.headers.get("content-type") ?? "";
     if (!contentType.includes("application/json")) {
       if (!res.ok) {
@@ -159,7 +173,18 @@ export class PmClient {
       }
       return undefined as T;
     }
-    const json = await res.json();
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch (err) {
+      // A successful HTTP response whose body fails to parse as JSON is still
+      // an infra fault, not a request fault — surface it as a PmApiError.
+      throw new PmApiError(
+        0,
+        "PARSE",
+        `failed to parse JSON from ${method} ${url}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     if (!res.ok) {
       const err = (json as { error?: { code?: string; message?: string } })?.error;
       throw new PmApiError(
@@ -186,10 +211,7 @@ export class PmClient {
    * is authoritative about its own lane). Returns the derived health view. The
    * caller fires this and-forgets — a failed POST must NEVER break the loop.
    */
-  postHeartbeat(
-    projectId: string,
-    payload: IntegratorHeartbeat,
-  ): Promise<IntegratorHealthView> {
+  postHeartbeat(projectId: string, payload: IntegratorHeartbeat): Promise<IntegratorHealthView> {
     return this.request<IntegratorHealthView>(
       "POST",
       `/projects/${encodeURIComponent(projectId)}/integrator/heartbeat`,
@@ -426,10 +448,7 @@ export class PmClient {
    * open incident (the corruption fence — a real orphan is recovered by
    * rollforward, never reset). POST /api/v1/merge-groups/{id}/reset.
    */
-  resetGroup(
-    groupId: string,
-    opts?: { reason?: string },
-  ): Promise<MergeGroupWithMembers> {
+  resetGroup(groupId: string, opts?: { reason?: string }): Promise<MergeGroupWithMembers> {
     return this.request<MergeGroupWithMembers>(
       "POST",
       `/merge-groups/${encodeURIComponent(groupId)}/reset`,
@@ -482,10 +501,7 @@ export class PmClient {
    * clean `landed` G1 reserves for group-land. Does NOT open the incident.
    * POST /api/v1/merge-requests/{id}/orphan.
    */
-  markInnerOrphaned(
-    innerRequestId: string,
-    orphanedSha: string,
-  ): Promise<MergeRequestView> {
+  markInnerOrphaned(innerRequestId: string, orphanedSha: string): Promise<MergeRequestView> {
     return this.request<MergeRequestView>(
       "POST",
       `/merge-requests/${encodeURIComponent(innerRequestId)}/orphan`,
@@ -792,10 +808,6 @@ export class PmClient {
       metadata?: Record<string, unknown> | null;
     },
   ): Promise<void> {
-    await this.request<unknown>(
-      "POST",
-      `/tasks/${encodeURIComponent(taskId)}/comments`,
-      body,
-    );
+    await this.request<unknown>("POST", `/tasks/${encodeURIComponent(taskId)}/comments`, body);
   }
 }

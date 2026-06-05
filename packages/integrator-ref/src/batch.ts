@@ -21,12 +21,7 @@ import { pathToFileURL } from "node:url";
 import type { Logger } from "./logger.js";
 import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
-import type {
-  CacheMode,
-  MergeRequestView,
-  VerifyStep,
-  VerifyStepResult,
-} from "@pm/shared";
+import type { CacheMode, MergeRequestView, VerifyStep, VerifyStepResult } from "@pm/shared";
 import { type PmClient } from "./pm-client.js";
 import { categorize, classifyVerifyFailure } from "./categorize.js";
 import { runPipeline, toVerifyStepResults } from "./verify-pipeline.js";
@@ -36,14 +31,8 @@ import {
   type RepoLane,
   type GroupIntegrationOutcome,
 } from "./group-integration.js";
-import {
-  landAssembledGroup,
-  type GroupLandResult,
-} from "./group-land.js";
-import {
-  recoverOrphanedInner,
-  type RecoverResult,
-} from "./group-recovery.js";
+import { landAssembledGroup, type GroupLandResult } from "./group-land.js";
+import { recoverOrphanedInner, type RecoverResult } from "./group-recovery.js";
 
 const LOG_EXCERPT_CAP = 4096;
 
@@ -364,10 +353,7 @@ async function isPaused(deps: {
   logger: Logger;
 }): Promise<boolean> {
   try {
-    const state = await deps.pmClient.getTrainState(
-      deps.projectId,
-      deps.resource,
-    );
+    const state = await deps.pmClient.getTrainState(deps.projectId, deps.resource);
     return state.state === "paused";
   } catch (err) {
     deps.logger.debug(
@@ -517,10 +503,7 @@ function baseShaOf(base: SpeculativeBase): string {
  * predecessor, so neither the speculative base nor the land-time
  * `expectedMainSha` can chain off a rejected member.
  */
-export function survivingPredecessor(
-  member: Member,
-  batch: Batch,
-): Member | undefined {
+export function survivingPredecessor(member: Member, batch: Batch): Member | undefined {
   const surviving = batch.members
     .filter((m) => m.state !== "failed" && m.state !== "invalidated")
     .sort((a, b) => a.speculativePosition - b.speculativePosition);
@@ -573,19 +556,13 @@ export async function computeSpeculativeBase(
     // An in-flight predecessor must hold its slot and have produced a rebased
     // tree by the time this member is admitted (admission+rebase is awaited in
     // order). This is a defensive guard, not an expected path.
-    throw new Error(
-      `predecessor ${predecessor.request.id} has no materializable rebased tree`,
-    );
+    throw new Error(`predecessor ${predecessor.request.id} has no materializable rebased tree`);
   }
 
   // §4.3: pull the predecessor's rebased commit from its worktree into ours.
-  await gitOps.fetchFromPath(
-    predecessor.worktree.path,
-    predecessor.rebasedTreeSha,
-  );
+  await gitOps.fetchFromPath(predecessor.worktree.path, predecessor.rebasedTreeSha);
 
-  const liveMainSha =
-    batch.members[0]?.base?.liveMainSha ?? predecessor.base?.liveMainSha ?? "";
+  const liveMainSha = batch.members[0]?.base?.liveMainSha ?? predecessor.base?.liveMainSha ?? "";
   const predecessorChain = [
     ...predecessor.predecessorChain,
     {
@@ -642,9 +619,7 @@ export async function onMemberFailed(
   const requestId = member.request.id;
   const attemptId = member.attemptId;
   const logUrl =
-    member.worktree && attemptId
-      ? logUrlFor(member.worktree.logsDir, attemptId)
-      : undefined;
+    member.worktree && attemptId ? logUrlFor(member.worktree.logsDir, attemptId) : undefined;
 
   const releaseSlot = (): void => {
     if (member.worktree) {
@@ -702,14 +677,8 @@ export async function onMemberFailed(
       stderr: failure.stderr,
       timedOut: failure.timedOut,
     });
-    const reason =
-      cat.reason ||
-      summaryLine(failure.stderr || failure.stdout) ||
-      "verify failed";
-    const excerpt = `${failure.stdout}\n${failure.stderr}`.slice(
-      0,
-      LOG_EXCERPT_CAP,
-    );
+    const reason = cat.reason || summaryLine(failure.stderr || failure.stdout) || "verify failed";
+    const excerpt = `${failure.stdout}\n${failure.stderr}`.slice(0, LOG_EXCERPT_CAP);
     if (attemptId) {
       await pmClient.completeAttempt(attemptId, {
         status: "failed",
@@ -868,11 +837,7 @@ async function invalidateSuffix(
  * Step 6 grows the failure handling here (richer drift/invalidation), but the
  * ordered-walk skeleton is final.
  */
-export async function tryLand(
-  batch: Batch,
-  deps: BatchDeps,
-  ctx: BatchCtx,
-): Promise<void> {
+export async function tryLand(batch: Batch, deps: BatchDeps, ctx: BatchCtx): Promise<void> {
   // Walk only members still in the active land race — `failed`/`invalidated`
   // members have left the batch (rejected / re-queued) and are not part of the
   // land order. Ordered ascending by position; land each `verified` member and
@@ -1033,8 +998,7 @@ export async function landMember(
  * byte-identical to runOnce (acquire IS before pickup in both).
  */
 export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
-  const { pmClient, pool, logger, projectId, resource, defaultVerifyCommand } =
-    deps;
+  const { pmClient, pool, logger, projectId, resource, defaultVerifyCommand } = deps;
 
   // 1. List queued, oldest first. Empty → idle (NO lock acquired).
   let queued: MergeRequestView[];
@@ -1119,10 +1083,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
   heartbeat.unref?.();
 
   let released = false;
-  const releaseLock = async (opts: {
-    landedSha?: string;
-    reason?: string;
-  }): Promise<void> => {
+  const releaseLock = async (opts: { landedSha?: string; reason?: string }): Promise<void> => {
     if (released) return;
     released = true;
     clearInterval(heartbeat);
@@ -1227,14 +1188,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
         batch.nextPosition += 1;
         // Admission + rebase is AWAITED in order so the predecessor's
         // rebasedTreeSha is set before this member's base is computed.
-        const member = await admitAndRebase(
-          req,
-          wt,
-          position,
-          batch,
-          deps,
-          ctx,
-        );
+        const member = await admitAndRebase(req, wt, position, batch, deps, ctx);
         // If the member reached `verifying`, launch verify (do NOT await).
         // Build an AbortController so a failed predecessor can kill this verify
         // (suffix invalidation, §7.3); expose `controller.abort()` as the
@@ -1288,8 +1242,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
         // failed-at-admit member) OR it landed a member and thereby freed a
         // pool slot for a previously backpressured queued request. Otherwise
         // the queue is drained and every member is terminal → done.
-        if (admittedThisPass > 0 || landedThisPass > 0 || requeuedThisPass > 0)
-          continue;
+        if (admittedThisPass > 0 || landedThisPass > 0 || requeuedThisPass > 0) continue;
         break;
       }
 
@@ -1305,10 +1258,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
       requeued: ctx.requeued,
     };
   } catch (err) {
-    logger.error(
-      { err: errMessage(err) },
-      "Unexpected error draining batch",
-    );
+    logger.error({ err: errMessage(err) }, "Unexpected error draining batch");
     return { kind: "error", message: errMessage(err) };
   } finally {
     // PHASE 7.4 §3.2 (Step 12): the batch has drained (or threw) — clear the
@@ -1324,8 +1274,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     const lastLanded = ctx.landed.at(-1);
     if (lastLanded) {
       const landedSha =
-        batch.members.find((m) => m.request.id === lastLanded)?.landedSha ??
-        undefined;
+        batch.members.find((m) => m.request.id === lastLanded)?.landedSha ?? undefined;
       await releaseLock({ landedSha });
     } else {
       await releaseLock({ reason: "batch drained with no land" });
@@ -1335,8 +1284,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     // states — `landed`/`failed` are terminal; `invalidated` counts members
     // left in the `invalidated` state (their speculation was voided; any
     // re-admitted replacement is a distinct member that lands/fails on its own).
-    const count = (s: MemberState): number =>
-      batch.members.filter((m) => m.state === s).length;
+    const count = (s: MemberState): number => batch.members.filter((m) => m.state === s).length;
     deps.onBatchEvent?.({
       type: "completed",
       batchId: batch.batchId,
@@ -1386,10 +1334,7 @@ async function admitAndRebase(
     });
   } catch (err) {
     if (isApiError(err, 409)) {
-      logger.info(
-        { requestId: req.id },
-        "Pickup returned 409; request no longer queued",
-      );
+      logger.info({ requestId: req.id }, "Pickup returned 409; request no longer queued");
       deps.pool.release(wt);
       return null;
     }
@@ -1420,63 +1365,120 @@ async function admitAndRebase(
   // either invisible (correctly excluded) or visible WITH a correct chain. A
   // not-yet-pushed member is also correctly absent from `survivingPredecessor`.
 
-  // Reset the worktree to clean main (with corruption-repair fallback).
+  // Materialize the request: reset the worktree, compute the speculative base,
+  // open the attempt, and rebase the submitted branch/commit. ANY unexpected
+  // throw from these git/worktree/PM ops must NOT escape to the batch-level
+  // drain catch (which would log + bail, STRANDING this request `integrating`
+  // forever and blocking the lane). We catch here and discriminate:
+  //   • cascade-race (a predecessor invalidated us mid-await) → already handled.
+  //   • infra/PM fault (PmApiError — now TOTAL after pm-client wraps network +
+  //     parse failures) → re-throw so the request stays `integrating`, the loop
+  //     backs off + retries, and crash-recovery reclaims it. NEVER reject a good
+  //     request for a transient PM outage.
+  //   • request fault (a genuine throw from THIS request's own git ops — e.g.
+  //     `git checkout <branch>` pathspec-not-found on a branch that doesn't
+  //     exist in the base repo, a bad ref, a corrupt submitted commit) → the
+  //     request is unprocessable; REJECT it via the existing onMemberFailed /
+  //     push_other terminal path (→ category `other`) so the lane moves on.
+  // The result-handling sub-blocks below (`!ref` reject, `!rebase.ok` conflict)
+  // already TERMINATE the member; they are NOT inside this catch (re-running
+  // their completeAttempt would 409 and re-strand). Any PM throw from them is a
+  // PmApiError → re-thrown, never double-rejected.
+  let rebase: Awaited<ReturnType<ReturnType<BatchDeps["gitOps"]>["rebaseOnto"]>> | null = null;
+  let ref: string | null;
   try {
-    await wt.resetForAttempt();
-  } catch (err) {
-    logger.warn(
-      { requestId: req.id, err: errMessage(err) },
-      "Worktree reset failed; checking for corruption",
-    );
-    if (await wt.detectCorruption()) {
-      logger.warn({ requestId: req.id }, "Worktree corrupt; repairing");
-      await deps.pool.repair(wt);
-      await wt.resetForAttempt();
-    } else {
-      throw err;
-    }
-  }
-
-  const gitOps = deps.gitOps(wt.path);
-  const base = await computeSpeculativeBase(member, batch, gitOps);
-  member.base = base;
-  member.predecessorChain = base.predecessorChain;
-  // Chain is now set — publish the member. From here on it is visible to
-  // `computeSuffix` (with a correct chain) and to later members'
-  // `survivingPredecessor`. Pushing is synchronous (no await between the chain
-  // assignment and the push), so no predecessor-failure can interleave into the
-  // empty-chain window.
-  batch.members.push(member);
-  const baseSha = baseShaOf(base);
-
-  const attempt = await pmClient.startAttempt(req.id, baseSha, {
-    batchId: batch.batchId,
-    speculativePosition: member.speculativePosition,
-  });
-  // CASCADE-RACE GUARD: a predecessor's verify may have failed during the
-  // `startAttempt` await and invalidated this member (state → `invalidated`,
-  // worktree released, PM `resetToQueued`'d). If so, abandon the admit — the
-  // attempt we just started is stale; cancel it and bail. The drain loop will
-  // re-admit this member as a fresh one. (Without this, we'd rebase/verify on a
-  // released worktree against a base that no longer holds.)
-  //
-  // The cast defeats TS control-flow narrowing: `member.state` is mutated
-  // through an aliased reference (invalidateSuffix) DURING the await above, so
-  // its static type at this point is stale. The runtime value can be
-  // "invalidated"; the cast tells TS that's a legitimate comparison.
-  if ((member.state as MemberState) === "invalidated") {
+    // Reset the worktree to clean main (with corruption-repair fallback).
     try {
-      await pmClient.completeAttempt(attempt.id, { status: "cancelled" });
-    } catch {
-      /* best-effort: the request may already be back to queued */
+      await wt.resetForAttempt();
+    } catch (err) {
+      logger.warn(
+        { requestId: req.id, err: errMessage(err) },
+        "Worktree reset failed; checking for corruption",
+      );
+      if (await wt.detectCorruption()) {
+        logger.warn({ requestId: req.id }, "Worktree corrupt; repairing");
+        await deps.pool.repair(wt);
+        await wt.resetForAttempt();
+      } else {
+        throw err;
+      }
     }
+
+    const gitOps = deps.gitOps(wt.path);
+    const base = await computeSpeculativeBase(member, batch, gitOps);
+    member.base = base;
+    member.predecessorChain = base.predecessorChain;
+    // Chain is now set — publish the member. From here on it is visible to
+    // `computeSuffix` (with a correct chain) and to later members'
+    // `survivingPredecessor`. Pushing is synchronous (no await between the chain
+    // assignment and the push), so no predecessor-failure can interleave into the
+    // empty-chain window.
+    batch.members.push(member);
+    const baseSha = baseShaOf(base);
+
+    const attempt = await pmClient.startAttempt(req.id, baseSha, {
+      batchId: batch.batchId,
+      speculativePosition: member.speculativePosition,
+    });
+    // CASCADE-RACE GUARD: a predecessor's verify may have failed during the
+    // `startAttempt` await and invalidated this member (state → `invalidated`,
+    // worktree released, PM `resetToQueued`'d). If so, abandon the admit — the
+    // attempt we just started is stale; cancel it and bail. The drain loop will
+    // re-admit this member as a fresh one. (Without this, we'd rebase/verify on a
+    // released worktree against a base that no longer holds.)
+    //
+    // The cast defeats TS control-flow narrowing: `member.state` is mutated
+    // through an aliased reference (invalidateSuffix) DURING the await above, so
+    // its static type at this point is stale. The runtime value can be
+    // "invalidated"; the cast tells TS that's a legitimate comparison.
+    if ((member.state as MemberState) === "invalidated") {
+      try {
+        await pmClient.completeAttempt(attempt.id, { status: "cancelled" });
+      } catch {
+        /* best-effort: the request may already be back to queued */
+      }
+      return member;
+    }
+    member.attemptId = attempt.id;
+    member.state = "rebasing";
+
+    // Rebase the request's branch/commit onto the speculative base. Do it INSIDE
+    // the try (rebaseOnto's `git.checkout` can throw a pathspec error — the live
+    // bug). The `!ref` and `!rebase.ok` handling happens AFTER the try (below),
+    // so `rebase` is only computed when there IS something to integrate.
+    ref = req.branch ?? req.commitSha;
+    if (ref) rebase = await gitOps.rebaseOnto(baseSha, ref);
+  } catch (err) {
+    // 1) Cascade-race guard FIRST: a predecessor invalidated this member during
+    //    an await — already handled (attempt cancelled, worktree released, PM
+    //    reset-to-queued); do not double-reject. (Mirrors the in-flow guards.)
+    if ((member.state as MemberState) === "invalidated") return member;
+    // 2) Infra fault: any PM/transport error (now ALL PmApiError after the
+    //    pm-client wrapping) means the REQUEST is fine and PM is unreachable —
+    //    re-throw to the batch catch (→ {kind:"error"} → loop backs off +
+    //    retries; the request stays `integrating` and is reclaimed by
+    //    crash-recovery if needed). Do NOT reject a good request.
+    if (isApiError(err)) throw err;
+    // 3) Request fault: an unexpected throw from THIS request's own git/worktree
+    //    ops (checkout pathspec-not-found, bad ref, corrupt submitted commit) →
+    //    the request is genuinely unprocessable. Reject it via the existing
+    //    terminal path (category `other`) so the lane moves on, then continue
+    //    the drain.
+    await onMemberFailed(
+      member,
+      batch,
+      deps,
+      {
+        kind: "push_other",
+        reason: `integration error: ${summaryLine(errMessage(err))}`,
+        stderr: errMessage(err),
+      },
+      ctx,
+    );
+    ctx.rejected.push(req.id);
     return member;
   }
-  member.attemptId = attempt.id;
-  member.state = "rebasing";
 
-  // Rebase the request's branch/commit onto the speculative base.
-  const ref = req.branch ?? req.commitSha;
   if (!ref) {
     // No branch and no commit: nothing to integrate. Reject as "other"
     // (payload parity with loop.ts).
@@ -1498,23 +1500,24 @@ async function admitAndRebase(
     return member;
   }
 
-  const rebase = await gitOps.rebaseOnto(baseSha, ref);
   // CASCADE-RACE GUARD (again, post-rebase await): a predecessor may have failed
-  // and invalidated this member while we rebased. invalidateSuffix already
-  // cancelled its attempt + reset it; do not interpret the rebase result.
+  // and invalidated this member while we rebased (the rebaseOnto await is inside
+  // the try above). invalidateSuffix already cancelled its attempt + reset it;
+  // do not interpret the rebase result.
   // (Cast defeats TS narrowing — see the startAttempt guard above.)
   if ((member.state as MemberState) === "invalidated") {
     return member;
   }
-  if (!rebase.ok) {
+  // `ref` is truthy here (the `!ref` branch returned above), so the rebase ran.
+  if (!rebase || !rebase.ok) {
     const res = await onMemberFailed(
       member,
       batch,
       deps,
       {
         kind: "conflict",
-        conflictingFiles: rebase.conflictingFiles,
-        stderr: rebase.stderr,
+        conflictingFiles: rebase?.conflictingFiles ?? [],
+        stderr: rebase?.stderr ?? "",
       },
       ctx,
     );
@@ -1564,8 +1567,7 @@ async function runVerifyTask(
 
     const gitOps = deps.gitOps(wt.path);
     const verifyCommand = member.request.verifyCmd ?? deps.defaultVerifyCommand;
-    const maxVerifyRetries =
-      deps.maxVerifyRetries ?? DEFAULT_MAX_VERIFY_RETRIES;
+    const maxVerifyRetries = deps.maxVerifyRetries ?? DEFAULT_MAX_VERIFY_RETRIES;
     const schedule = deps.retryBackoffMs ?? VERIFY_RETRY_BACKOFF_MS;
     // The SAME batch tags the original startAttempt used (reconstructed here so a
     // retry's fresh attempt carries identical batch lineage — FIX C).
@@ -1618,9 +1620,7 @@ async function runVerifyTask(
     if (cacheOn) {
       // member.rebasedTreeSha is set before this task runs (state === "verifying"
       // only after batch.ts:1351). Derive the content-addressed tree sha.
-      const treeSha = await gitOps.resolveRef(
-        `${member.rebasedTreeSha as string}^{tree}`,
-      );
+      const treeSha = await gitOps.resolveRef(`${member.rebasedTreeSha as string}^{tree}`);
       cacheCtx = {
         enabled: true,
         mode: deps.cacheMode as CacheMode,
@@ -1712,8 +1712,7 @@ async function runVerifyTask(
       // member.retryCount is already incremented (1-based) above; index
       // retryCount-1 → first retry waits schedule[0]=1s, etc. (design §10.2:
       // 1s / 5s / 15s). Clamp to the last entry once we exceed the schedule.
-      const backoffMs =
-        schedule[member.retryCount - 1] ?? schedule[schedule.length - 1]; // 1s, 5s, 15s
+      const backoffMs = schedule[member.retryCount - 1] ?? schedule[schedule.length - 1]; // 1s, 5s, 15s
       deps.logger.warn?.(
         `verify transient failure (retry ${member.retryCount}/${maxVerifyRetries}) for ${member.request.id}; backing off ${backoffMs}ms`,
       );
@@ -1729,11 +1728,7 @@ async function runVerifyTask(
       // baseShaOf(member.base) (the prefix anchor's liveMainSha or the chained
       // predecessor's rebasedTreeSha). member.base is non-null in `verifying`.
       const baseSha = baseShaOf(member.base as SpeculativeBase);
-      const att = await deps.pmClient.startAttempt(
-        member.request.id,
-        baseSha,
-        tags,
-      );
+      const att = await deps.pmClient.startAttempt(member.request.id, baseSha, tags);
       member.attemptId = att.id;
       // loop: re-run ONLY runVerify (the worktree still holds the rebased tree).
     }
@@ -1792,9 +1787,7 @@ async function runVerifyTask(
  * loop must NOT leak the slots — it releases them here with a clear log + TODO.
  * Step 11 replaces that release with the actual atomic land.
  */
-export async function runGroupLaneOnce(
-  deps: RunBatchLoopDeps,
-): Promise<RunGroupLaneOutcome> {
+export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroupLaneOutcome> {
   const { pmClient, logger, projectId, resource } = deps;
   const groupLane = deps.groupLane;
   if (!groupLane) return { kind: "no_group" };
@@ -1861,10 +1854,7 @@ export async function runGroupLaneOnce(
     try {
       group = await pmClient.getMergeGroup(formingToIntegrate.id);
     } catch (err) {
-      logger.warn(
-        { groupId: formingToIntegrate.id, err: errMessage(err) },
-        "getMergeGroup failed",
-      );
+      logger.warn({ groupId: formingToIntegrate.id, err: errMessage(err) }, "getMergeGroup failed");
       return { kind: "error", message: errMessage(err) };
     }
   }
@@ -1903,20 +1893,14 @@ export async function runGroupLaneOnce(
   heartbeat.unref?.();
 
   let released = false;
-  const releaseLock = async (opts: {
-    landedSha?: string;
-    reason?: string;
-  }): Promise<void> => {
+  const releaseLock = async (opts: { landedSha?: string; reason?: string }): Promise<void> => {
     if (released) return;
     released = true;
     clearInterval(heartbeat);
     try {
       await pmClient.releaseLock(projectId, resource, opts);
     } catch (err) {
-      logger.debug(
-        { err: errMessage(err) },
-        "releaseLock failed (group, non-fatal)",
-      );
+      logger.debug({ err: errMessage(err) }, "releaseLock failed (group, non-fatal)");
     }
   };
 
@@ -2041,10 +2025,7 @@ export async function runBatchLoop(
       try {
         groupOutcome = await runGroupLaneOnce(deps);
       } catch (err) {
-        logger.error(
-          { err: errMessage(err) },
-          "runGroupLaneOnce threw unexpectedly",
-        );
+        logger.error({ err: errMessage(err) }, "runGroupLaneOnce threw unexpectedly");
         groupOutcome = { kind: "error", message: errMessage(err) };
       }
       if (!deps.shouldContinue()) break;
@@ -2053,10 +2034,7 @@ export async function runBatchLoop(
         // A group/recovery was handled (resolved / recovered / lane locked /
         // error). Spend this iteration on it; back off briefly on lock/error,
         // else loop again.
-        if (
-          groupOutcome.kind === "lock_unavailable" ||
-          groupOutcome.kind === "error"
-        ) {
+        if (groupOutcome.kind === "lock_unavailable" || groupOutcome.kind === "error") {
           await deps.waitForWork(Math.min(pollMs, 5000));
         }
         // resolved / recovered → loop again immediately (drain further forming

@@ -7,7 +7,7 @@
  * omitted when not).
  */
 import { describe, it, expect } from "vitest";
-import { PmClient } from "../src/pm-client.js";
+import { PmClient, PmApiError } from "../src/pm-client.js";
 import type { BatchEvent } from "../src/batch.js";
 
 interface CapturedCall {
@@ -80,9 +80,7 @@ describe("PmClient.postBatchEvent", () => {
 
       expect(calls.length).toBe(1);
       expect(calls[0].method).toBe("POST");
-      expect(calls[0].url).toBe(
-        "http://pm.local/api/v1/projects/proj-1/merge-batches/events",
-      );
+      expect(calls[0].url).toBe("http://pm.local/api/v1/projects/proj-1/merge-batches/events");
       expect(calls[0].body).toEqual(marker);
     });
   }
@@ -172,9 +170,7 @@ describe("PmClient verify cache (lookup / record / mismatch)", () => {
       stepConfigSha: "cfg-1",
     });
     expect(calls[0].method).toBe("POST");
-    expect(calls[0].url).toBe(
-      "http://pm.local/api/v1/projects/proj-1/verify-cache/lookup",
-    );
+    expect(calls[0].url).toBe("http://pm.local/api/v1/projects/proj-1/verify-cache/lookup");
     expect(calls[0].body).toEqual({
       resource: "main",
       treeSha: "t-1",
@@ -207,9 +203,7 @@ describe("PmClient verify cache (lookup / record / mismatch)", () => {
       logExcerpt: "ok",
     });
     expect(calls[0].method).toBe("POST");
-    expect(calls[0].url).toBe(
-      "http://pm.local/api/v1/projects/proj-1/verify-cache/record",
-    );
+    expect(calls[0].url).toBe("http://pm.local/api/v1/projects/proj-1/verify-cache/record");
     expect(calls[0].body).toEqual({
       resource: "main",
       treeSha: "t-1",
@@ -236,14 +230,69 @@ describe("PmClient verify cache (lookup / record / mismatch)", () => {
     });
     expect(calls.length).toBe(1);
     expect(calls[0].method).toBe("POST");
-    expect(calls[0].url).toBe(
-      "http://pm.local/api/v1/projects/proj-1/verify-cache/mismatch",
-    );
+    expect(calls[0].url).toBe("http://pm.local/api/v1/projects/proj-1/verify-cache/mismatch");
     expect(calls[0].body).toMatchObject({
       treeSha: "t-1",
       cachedResult: "pass",
       realResult: "fail",
     });
+  });
+});
+
+describe("PmClient.request error wrapping (total infra discriminator)", () => {
+  // A request() failure must ALWAYS surface as a PmApiError so the integrator's
+  // `isApiError` is a reliable "PM/infra fault" discriminator. status 0 signals
+  // a transport-level fault (network reject / JSON parse), distinct from an HTTP
+  // non-ok PmApiError (status = the HTTP code).
+  function makeClientWithFetch(fetchImpl: typeof fetch): PmClient {
+    return new PmClient({ baseUrl: "http://pm.local", token: "tok", fetchImpl });
+  }
+
+  it("wraps a fetch rejection (raw TypeError) as a PmApiError status 0 NETWORK", async () => {
+    const fetchImpl = (async () => {
+      throw new TypeError("fetch failed: ECONNREFUSED");
+    }) as unknown as typeof fetch;
+    const client = makeClientWithFetch(fetchImpl);
+    const err = await client
+      .getProject("proj-1")
+      .then(() => null)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PmApiError);
+    expect((err as PmApiError).status).toBe(0);
+    expect((err as PmApiError).code).toBe("NETWORK");
+    expect((err as PmApiError).message).toContain("ECONNREFUSED");
+  });
+
+  it("wraps a JSON parse failure as a PmApiError status 0 PARSE", async () => {
+    const fetchImpl = (async () =>
+      new Response("<html>not json</html>", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+    const client = makeClientWithFetch(fetchImpl);
+    const err = await client
+      .getProject("proj-1")
+      .then(() => null)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PmApiError);
+    expect((err as PmApiError).status).toBe(0);
+    expect((err as PmApiError).code).toBe("PARSE");
+  });
+
+  it("keeps an HTTP non-ok PmApiError unchanged (status = the HTTP code)", async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ error: { code: "NOT_FOUND", message: "nope" } }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+    const client = makeClientWithFetch(fetchImpl);
+    const err = await client
+      .getProject("proj-1")
+      .then(() => null)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PmApiError);
+    expect((err as PmApiError).status).toBe(404);
+    expect((err as PmApiError).code).toBe("NOT_FOUND");
   });
 });
 
@@ -255,9 +304,7 @@ describe("PmClient pickup/startAttempt batch tags", () => {
       speculativePosition: 3,
     });
     expect(calls[0].method).toBe("POST");
-    expect(calls[0].url).toBe(
-      "http://pm.local/api/v1/merge-requests/req-1/pickup",
-    );
+    expect(calls[0].url).toBe("http://pm.local/api/v1/merge-requests/req-1/pickup");
     expect(calls[0].body).toEqual({ batchId: "b1", speculativePosition: 3 });
   });
 
@@ -273,9 +320,7 @@ describe("PmClient pickup/startAttempt batch tags", () => {
       batchId: "b1",
       speculativePosition: 2,
     });
-    expect(calls[0].url).toBe(
-      "http://pm.local/api/v1/merge-requests/req-1/attempts",
-    );
+    expect(calls[0].url).toBe("http://pm.local/api/v1/merge-requests/req-1/attempts");
     expect(calls[0].body).toEqual({
       baseSha: "base000",
       batchId: "b1",
