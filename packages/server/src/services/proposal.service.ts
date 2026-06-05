@@ -7,15 +7,7 @@ import {
   type ProposalStatus,
   type UserType,
 } from "@pm/shared";
-import {
-  getDb,
-  projects,
-  proposals,
-  comments,
-  epics,
-  tasks,
-  users,
-} from "../db/index.js";
+import { getDb, projects, proposals, comments, epics, tasks, users } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 import {
@@ -88,10 +80,7 @@ export function withClaimStatus<T extends { claimedBy?: string | null }>(
  * Humans always pass. AI agents must hold the claim — unclaimed proposals also
  * reject AI-agent writes (they must call `claim()` first).
  */
-export function assertClaimOk(
-  proposal: { claimedBy?: string | null },
-  actor: Actor,
-): void {
+export function assertClaimOk(proposal: { claimedBy?: string | null }, actor: Actor): void {
   assertClaimOkRaw(proposal.claimedBy ?? null, actor, "proposal");
 }
 
@@ -121,10 +110,7 @@ export function list(
       conditions.push(eq(proposals.claimedBy, caller.id));
     } else {
       // available
-      const availClause = or(
-        isNull(proposals.claimedBy),
-        eq(proposals.claimedBy, caller.id),
-      );
+      const availClause = or(isNull(proposals.claimedBy), eq(proposals.claimedBy, caller.id));
       if (availClause) conditions.push(availClause);
     }
   }
@@ -144,33 +130,17 @@ export function list(
  */
 export function getById(id: string, caller?: { id: string } | null) {
   const db = getDb();
-  const proposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get();
+  const proposal = db.select().from(proposals).where(eq(proposals.id, id)).get();
 
   if (!proposal) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${id}`);
   }
 
-  const proposalComments = db
-    .select()
-    .from(comments)
-    .where(eq(comments.proposalId, id))
-    .all();
+  const proposalComments = db.select().from(comments).where(eq(comments.proposalId, id)).all();
 
-  const linkedEpics = db
-    .select()
-    .from(epics)
-    .where(eq(epics.proposalId, id))
-    .all();
+  const linkedEpics = db.select().from(epics).where(eq(epics.proposalId, id)).all();
 
-  const linkedTasks = db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.proposalId, id))
-    .all();
+  const linkedTasks = db.select().from(tasks).where(eq(tasks.proposalId, id)).all();
 
   return {
     ...withClaimStatus(proposal, caller),
@@ -191,11 +161,7 @@ export function create(projectId: string, data: CreateProposalInput) {
   const now = new Date().toISOString();
   const id = createId();
 
-  const project = db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .get();
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
 
   if (!project) {
     throw new AppError(404, "NOT_FOUND", `Project not found: ${projectId}`);
@@ -214,11 +180,7 @@ export function create(projectId: string, data: CreateProposalInput) {
     })
     .run();
 
-  const result = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get()!;
+  const result = db.select().from(proposals).where(eq(proposals.id, id)).get()!;
 
   getEventBus().emit(EVENT_NAMES.PROPOSAL_CREATED, {
     entity: result,
@@ -239,11 +201,7 @@ export function create(projectId: string, data: CreateProposalInput) {
 export function update(id: string, data: UpdateProposalInput) {
   const db = getDb();
 
-  const existing = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get();
+  const existing = db.select().from(proposals).where(eq(proposals.id, id)).get();
 
   if (!existing) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${id}`);
@@ -255,16 +213,9 @@ export function update(id: string, data: UpdateProposalInput) {
   if (data.title !== undefined) values.title = data.title;
   if (data.description !== undefined) values.description = data.description;
 
-  db.update(proposals)
-    .set(values)
-    .where(eq(proposals.id, id))
-    .run();
+  db.update(proposals).set(values).where(eq(proposals.id, id)).run();
 
-  return db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get()!;
+  return db.select().from(proposals).where(eq(proposals.id, id)).get()!;
 }
 
 /**
@@ -274,11 +225,7 @@ export function update(id: string, data: UpdateProposalInput) {
  */
 export function claim(id: string, actor: Actor): ClaimResult {
   const db = getDb();
-  const proposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get();
+  const proposal = db.select().from(proposals).where(eq(proposals.id, id)).get();
 
   if (!proposal) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${id}`);
@@ -308,11 +255,7 @@ export function claim(id: string, actor: Actor): ClaimResult {
     return { ok: false, status: "claimed_by_another_agent" };
   }
 
-  const fresh = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get()!;
+  const fresh = db.select().from(proposals).where(eq(proposals.id, id)).get()!;
 
   getEventBus().emit(EVENT_NAMES.PROPOSAL_CLAIMED, {
     entity: fresh,
@@ -332,11 +275,7 @@ export function claim(id: string, actor: Actor): ClaimResult {
  */
 export function release(id: string, actor: Actor): ClaimResult {
   const db = getDb();
-  const proposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get();
+  const proposal = db.select().from(proposals).where(eq(proposals.id, id)).get();
 
   if (!proposal) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${id}`);
@@ -352,16 +291,9 @@ export function release(id: string, actor: Actor): ClaimResult {
 
   const now = new Date().toISOString();
   const previousClaimant = proposal.claimedBy;
-  db.update(proposals)
-    .set({ claimedBy: null, updatedAt: now })
-    .where(eq(proposals.id, id))
-    .run();
+  db.update(proposals).set({ claimedBy: null, updatedAt: now }).where(eq(proposals.id, id)).run();
 
-  const fresh = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get()!;
+  const fresh = db.select().from(proposals).where(eq(proposals.id, id)).get()!;
 
   getEventBus().emit(EVENT_NAMES.PROPOSAL_RELEASED, {
     entity: fresh,
@@ -406,18 +338,10 @@ export function forceClaim(
  * - If transitioning to a terminal state (completed/rejected), clears claimed_by
  * - Updates status and updated_at
  */
-export function transition(
-  id: string,
-  toStatus: ProposalStatus,
-  actor: Actor,
-) {
+export function transition(id: string, toStatus: ProposalStatus, actor: Actor) {
   const db = getDb();
 
-  const proposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get();
+  const proposal = db.select().from(proposals).where(eq(proposals.id, id)).get();
 
   if (!proposal) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${id}`);
@@ -459,16 +383,9 @@ export function transition(
     values.claimedBy = null;
   }
 
-  db.update(proposals)
-    .set(values)
-    .where(eq(proposals.id, id))
-    .run();
+  db.update(proposals).set(values).where(eq(proposals.id, id)).run();
 
-  const result = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, id))
-    .get()!;
+  const result = db.select().from(proposals).where(eq(proposals.id, id)).get()!;
 
   getEventBus().emit(EVENT_NAMES.PROPOSAL_TRANSITIONED, {
     entity: result,
@@ -486,29 +403,22 @@ export function transition(
 
 /**
  * Add a comment to a proposal.
- * If proposal status is "open" and the commenter is an AI agent,
- * auto-transition to "discussing". The AI agent must already hold the claim.
+ * If proposal status is "open", a comment by ANYONE (human or AI agent)
+ * auto-transitions it to "discussing" so the proposal can be carried forward.
+ * An AI-agent commenter must already hold the claim (enforced by assertClaimOk).
  */
 export function addComment(proposalId: string, data: AddCommentInput) {
   const db = getDb();
   const now = new Date().toISOString();
   const commentId = createId();
 
-  const proposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, proposalId))
-    .get();
+  const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
 
   if (!proposal) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${proposalId}`);
   }
 
-  const author = db
-    .select()
-    .from(users)
-    .where(eq(users.id, data.authorId))
-    .get();
+  const author = db.select().from(users).where(eq(users.id, data.authorId)).get();
 
   if (author) {
     assertClaimOk(proposal, { id: author.id, type: author.type as UserType });
@@ -526,9 +436,9 @@ export function addComment(proposalId: string, data: AddCommentInput) {
     })
     .run();
 
-  // Auto-transition: if proposal is "open" and commenter is AI agent, move to "discussing"
-  const autoTransitioned =
-    proposal.status === "open" && !!author && author.type === "ai_agent";
+  // Auto-transition: any comment on an "open" proposal (human OR AI agent) moves
+  // it to "discussing", so commenting is enough to carry the proposal forward.
+  const autoTransitioned = proposal.status === "open" && !!author;
   if (autoTransitioned) {
     db.update(proposals)
       .set({ status: "discussing", updatedAt: now })
@@ -536,11 +446,7 @@ export function addComment(proposalId: string, data: AddCommentInput) {
       .run();
   }
 
-  const comment = db
-    .select()
-    .from(comments)
-    .where(eq(comments.id, commentId))
-    .get()!;
+  const comment = db.select().from(comments).where(eq(comments.id, commentId)).get()!;
 
   // Broadcast so idle proposal views update live (SSE → query invalidation).
   // Previously addComment emitted NOTHING, so neither the new comment nor the
@@ -555,11 +461,7 @@ export function addComment(proposalId: string, data: AddCommentInput) {
     timestamp: now,
   });
   if (autoTransitioned) {
-    const updated = db
-      .select()
-      .from(proposals)
-      .where(eq(proposals.id, proposalId))
-      .get()!;
+    const updated = db.select().from(proposals).where(eq(proposals.id, proposalId)).get()!;
     bus.emit(EVENT_NAMES.PROPOSAL_TRANSITIONED, {
       entity: updated,
       entityType: "proposal",
@@ -581,21 +483,13 @@ export function addComment(proposalId: string, data: AddCommentInput) {
 export function listComments(proposalId: string) {
   const db = getDb();
 
-  const proposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, proposalId))
-    .get();
+  const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
 
   if (!proposal) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${proposalId}`);
   }
 
-  return db
-    .select()
-    .from(comments)
-    .where(eq(comments.proposalId, proposalId))
-    .all();
+  return db.select().from(comments).where(eq(comments.proposalId, proposalId)).all();
 }
 
 /**
@@ -604,27 +498,15 @@ export function listComments(proposalId: string) {
 export function getWorkItems(proposalId: string) {
   const db = getDb();
 
-  const proposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, proposalId))
-    .get();
+  const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
 
   if (!proposal) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${proposalId}`);
   }
 
-  const linkedEpics = db
-    .select()
-    .from(epics)
-    .where(eq(epics.proposalId, proposalId))
-    .all();
+  const linkedEpics = db.select().from(epics).where(eq(epics.proposalId, proposalId)).all();
 
-  const linkedTasks = db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.proposalId, proposalId))
-    .all();
+  const linkedTasks = db.select().from(tasks).where(eq(tasks.proposalId, proposalId)).all();
 
   return {
     epics: linkedEpics,
@@ -650,11 +532,7 @@ export function implementProposal(
 ) {
   const db = getDb();
 
-  const proposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, proposalId))
-    .get();
+  const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
 
   if (!proposal) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${proposalId}`);
@@ -673,11 +551,7 @@ export function implementProposal(
 
   const projectId = proposal.projectId;
   if (!projectId) {
-    throw new AppError(
-      400,
-      "NO_PROJECT",
-      `Proposal has no project associated`,
-    );
+    throw new AppError(400, "NO_PROJECT", `Proposal has no project associated`);
   }
 
   const now = new Date().toISOString();
@@ -710,9 +584,7 @@ export function implementProposal(
       createdTaskIds.push(taskId);
 
       const epicId =
-        taskInput.epicIndex !== undefined
-          ? createdEpicIds[taskInput.epicIndex]
-          : undefined;
+        taskInput.epicIndex !== undefined ? createdEpicIds[taskInput.epicIndex] : undefined;
 
       tx.insert(tasks)
         .values({
@@ -787,11 +659,7 @@ export function implementProposal(
     });
   }
 
-  const updatedProposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, proposalId))
-    .get()!;
+  const updatedProposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get()!;
 
   eventBus.emit(EVENT_NAMES.PROPOSAL_PLANNED, {
     entity: updatedProposal,

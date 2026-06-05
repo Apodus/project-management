@@ -11,6 +11,10 @@ export interface ProposalTransitionRule {
 export const PROPOSAL_TRANSITIONS: readonly ProposalTransitionRule[] = [
   { from: "open", to: "discussing", allowedBy: ["human", "ai_agent"] },
   { from: "discussing", to: "accepted", allowedBy: ["human"] },
+  // A human may accept a proposal straight from "open" without a discussion
+  // round (the web Accept button is shown from "open"). AI agents still cannot
+  // accept — acceptance is a human decision.
+  { from: "open", to: "accepted", allowedBy: ["human"] },
   { from: "discussing", to: "rejected", allowedBy: ["human"] },
   { from: "open", to: "rejected", allowedBy: ["human"] },
   { from: "accepted", to: "in_progress", allowedBy: ["human", "ai_agent"] },
@@ -85,10 +89,7 @@ export function getValidTaskTargets(from: TaskStatus): TaskStatus[] {
  * or null if no path exists. Only follows forward transitions
  * (excludes cancelled and backwards moves like ready→backlog).
  */
-export function findTaskTransitionPath(
-  from: TaskStatus,
-  to: TaskStatus,
-): TaskStatus[] | null {
+export function findTaskTransitionPath(from: TaskStatus, to: TaskStatus): TaskStatus[] | null {
   if (from === to) return [];
   if (isValidTaskTransition(from, to)) return [to];
 

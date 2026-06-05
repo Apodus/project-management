@@ -16,8 +16,8 @@ import type { ProposalStatus, TaskStatus } from "../src/index.js";
 // ============================================================
 
 describe("PROPOSAL_TRANSITIONS", () => {
-  it("has exactly 8 transition rules", () => {
-    expect(PROPOSAL_TRANSITIONS).toHaveLength(8);
+  it("has exactly 9 transition rules", () => {
+    expect(PROPOSAL_TRANSITIONS).toHaveLength(9);
   });
 
   it("open -> discussing is allowed by both human and ai_agent", () => {
@@ -29,6 +29,12 @@ describe("PROPOSAL_TRANSITIONS", () => {
 
   it("discussing -> accepted is allowed by human ONLY", () => {
     const rule = PROPOSAL_TRANSITION_MAP.get("discussing->accepted");
+    expect(rule).toBeDefined();
+    expect(rule!.allowedBy).toEqual(["human"]);
+  });
+
+  it("open -> accepted is allowed by human ONLY (direct accept, no discussion)", () => {
+    const rule = PROPOSAL_TRANSITION_MAP.get("open->accepted");
     expect(rule).toBeDefined();
     expect(rule!.allowedBy).toEqual(["human"]);
   });
@@ -91,9 +97,13 @@ describe("isValidProposalTransition", () => {
     expect(isValidProposalTransition("in_progress", "completed")).toBe(true);
   });
 
+  it("returns true for open -> accepted (human may accept directly)", () => {
+    expect(isValidProposalTransition("open", "accepted")).toBe(true);
+  });
+
   // Invalid transitions
-  it("returns false for open -> accepted (must go through discussing)", () => {
-    expect(isValidProposalTransition("open", "accepted")).toBe(false);
+  it("returns false for rejected -> accepted", () => {
+    expect(isValidProposalTransition("rejected", "accepted")).toBe(false);
   });
 
   it("returns false for rejected -> open (no undoing rejection)", () => {
@@ -197,12 +207,13 @@ describe("isValidProposalTransition", () => {
 });
 
 describe("getValidProposalTargets", () => {
-  it("returns [discussing, rejected, in_progress] for open (no actor filter)", () => {
+  it("returns [discussing, accepted, rejected, in_progress] for open (no actor filter)", () => {
     const targets = getValidProposalTargets("open");
     expect(targets).toContain("discussing");
+    expect(targets).toContain("accepted");
     expect(targets).toContain("rejected");
     expect(targets).toContain("in_progress");
-    expect(targets).toHaveLength(3);
+    expect(targets).toHaveLength(4);
   });
 
   it("returns [discussing, in_progress] for open when actor is ai_agent", () => {

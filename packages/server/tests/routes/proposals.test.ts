@@ -9,11 +9,7 @@ import {
   type TestApp,
 } from "../utils.js";
 import { createId } from "@pm/shared";
-import {
-  getEventBus,
-  type EventName,
-  type EventPayload,
-} from "../../src/events/event-bus.js";
+import { getEventBus, type EventName, type EventPayload } from "../../src/events/event-bus.js";
 
 describe("Proposals API", () => {
   let testApp: TestApp;
@@ -31,11 +27,7 @@ describe("Proposals API", () => {
     it("should return empty list when no proposals exist", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/proposals`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/proposals`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -55,11 +47,7 @@ describe("Proposals API", () => {
         createdBy: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/proposals`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/proposals`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -143,9 +131,7 @@ describe("Proposals API", () => {
 
       const body = await res.json();
       expect(body.data.title).toBe("Add user authentication");
-      expect(body.data.description).toBe(
-        "We need login/logout functionality",
-      );
+      expect(body.data.description).toBe("We need login/logout functionality");
       expect(body.data.status).toBe("open");
       expect(body.data.projectId).toBe(project.id);
       expect(body.data.createdBy).toBe(user.id);
@@ -210,14 +196,9 @@ describe("Proposals API", () => {
       const user = createTestUser(testApp.db);
       const fakeId = createId();
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${fakeId}/proposals`,
-        {
-          body: { title: "Test", createdBy: user.id },
-        },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${fakeId}/proposals`, {
+        body: { title: "Test", createdBy: user.id },
+      });
       expect(res.status).toBe(404);
     });
 
@@ -262,11 +243,7 @@ describe("Proposals API", () => {
         title: "Found Me",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -278,11 +255,7 @@ describe("Proposals API", () => {
 
     it("should return 404 for non-existent proposal", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/proposals/${fakeId}`);
       expect(res.status).toBe(404);
 
       const body = await res.json();
@@ -297,12 +270,9 @@ describe("Proposals API", () => {
         title: "Original Title",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/proposals/${proposal.id}`,
-        { body: { title: "Updated Title" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/proposals/${proposal.id}`, {
+        body: { title: "Updated Title" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -312,12 +282,9 @@ describe("Proposals API", () => {
     it("should update proposal description", async () => {
       const proposal = createTestProposal(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/proposals/${proposal.id}`,
-        { body: { description: "New description" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/proposals/${proposal.id}`, {
+        body: { description: "New description" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -326,12 +293,9 @@ describe("Proposals API", () => {
 
     it("should return 404 for non-existent proposal", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/proposals/${fakeId}`,
-        { body: { title: "Nope" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/proposals/${fakeId}`, {
+        body: { title: "Nope" },
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -452,7 +416,7 @@ describe("Proposals API", () => {
     });
 
     // ── Invalid transitions ─────────────────────────────────────
-    it("should reject open → accepted (invalid transition)", async () => {
+    it("should transition open → accepted (human, no discussion round needed)", async () => {
       const proposal = createTestProposal(testApp.db, {
         status: "open",
         createdBy: testApp.testUser.id,
@@ -466,10 +430,32 @@ describe("Proposals API", () => {
           body: { toStatus: "accepted" },
         },
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.error.code).toBe("INVALID_TRANSITION");
+      expect(body.data.status).toBe("accepted");
+    });
+
+    it("should forbid open → accepted for an AI agent (acceptance is human-only)", async () => {
+      const aiAgent = createTestAiAgent(testApp.db);
+      const proposal = createTestProposal(testApp.db, {
+        status: "open",
+        createdBy: testApp.testUser.id,
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/claim`, {
+        token: aiAgent.token,
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/proposals/${proposal.id}/transitions`,
+        {
+          token: aiAgent.token,
+          body: { toStatus: "accepted" },
+        },
+      );
+      expect(res.status).toBe(403);
     });
 
     it("should transition open → in_progress (AI agent with claim)", async () => {
@@ -727,30 +713,19 @@ describe("Proposals API", () => {
 
       // Capture bus events emitted by the comment (so idle views update live).
       const events: { event: EventName; payload: EventPayload }[] = [];
-      const off = getEventBus().onAll((event, payload) =>
-        events.push({ event, payload }),
-      );
+      const off = getEventBus().onAll((event, payload) => events.push({ event, payload }));
 
       // AI agent comments
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/comments`,
-        {
-          token: aiAgent.token,
-          body: {
-            body: "I have some questions about this...",
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/comments`, {
+        token: aiAgent.token,
+        body: {
+          body: "I have some questions about this...",
         },
-      );
+      });
       off();
 
       // Verify the proposal status changed
-      const proposalRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-      );
+      const proposalRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`);
       const proposalBody = await proposalRes.json();
       expect(proposalBody.data.status).toBe("discussing");
 
@@ -774,15 +749,10 @@ describe("Proposals API", () => {
       });
 
       const events: { event: EventName; payload: EventPayload }[] = [];
-      const off = getEventBus().onAll((event, payload) =>
-        events.push({ event, payload }),
-      );
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/comments`,
-        { body: { body: "Looks good to me." } },
-      );
+      const off = getEventBus().onAll((event, payload) => events.push({ event, payload }));
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/comments`, {
+        body: { body: "Looks good to me." },
+      });
       off();
 
       expect(events.map((e) => e.event)).toContain("proposal.commented");
@@ -790,32 +760,34 @@ describe("Proposals API", () => {
       expect(events.map((e) => e.event)).not.toContain("proposal.transitioned");
     });
 
-    it("should NOT auto-transition when human comments on open proposal", async () => {
+    it("should auto-transition open → discussing when a human comments", async () => {
       const proposal = createTestProposal(testApp.db, {
         status: "open",
         createdBy: testApp.testUser.id,
       });
 
+      const events: { event: EventName; payload: EventPayload }[] = [];
+      const off = getEventBus().onAll((event, payload) => events.push({ event, payload }));
       // Human comments (default token is human)
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/comments`,
-        {
-          body: {
-            body: "Adding more context...",
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/comments`, {
+        body: {
+          body: "Adding more context...",
         },
-      );
+      });
+      off();
 
-      // Verify the proposal status did NOT change
-      const proposalRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-      );
+      // A comment carries an open proposal forward to discussing.
+      const proposalRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`);
       const proposalBody = await proposalRes.json();
-      expect(proposalBody.data.status).toBe("open");
+      expect(proposalBody.data.status).toBe("discussing");
+
+      // And it broadcasts the transition so idle views update live.
+      const transition = events.find((e) => e.event === "proposal.transitioned");
+      expect(transition).toBeDefined();
+      expect(transition!.payload.changes?.status).toEqual({
+        from: "open",
+        to: "discussing",
+      });
     });
 
     it("should NOT auto-transition when AI comments on non-open proposal", async () => {
@@ -831,24 +803,15 @@ describe("Proposals API", () => {
       });
 
       // AI comments on a proposal already in "discussing"
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/comments`,
-        {
-          token: aiAgent.token,
-          body: {
-            body: "Here is my analysis...",
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/comments`, {
+        token: aiAgent.token,
+        body: {
+          body: "Here is my analysis...",
         },
-      );
+      });
 
       // Verify status stays "discussing"
-      const proposalRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-      );
+      const proposalRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`);
       const proposalBody = await proposalRes.json();
       expect(proposalBody.data.status).toBe("discussing");
     });
@@ -856,16 +819,11 @@ describe("Proposals API", () => {
     it("should return 404 for non-existent proposal", async () => {
       const fakeId = createId();
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${fakeId}/comments`,
-        {
-          body: {
-            body: "Comment on nothing",
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/proposals/${fakeId}/comments`, {
+        body: {
+          body: "Comment on nothing",
         },
-      );
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -893,22 +851,12 @@ describe("Proposals API", () => {
       });
 
       // Add comments
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/comments`,
-        {
-          body: { body: "First comment" },
-        },
-      );
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/comments`,
-        {
-          body: { body: "Second comment" },
-        },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/comments`, {
+        body: { body: "First comment" },
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/comments`, {
+        body: { body: "Second comment" },
+      });
 
       const res = await authRequest(
         testApp.app,
@@ -924,11 +872,7 @@ describe("Proposals API", () => {
 
     it("should return 404 for non-existent proposal", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${fakeId}/comments`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/proposals/${fakeId}/comments`);
       expect(res.status).toBe(404);
     });
   });
@@ -952,11 +896,7 @@ describe("Proposals API", () => {
 
     it("should return 404 for non-existent proposal", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${fakeId}/work-items`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/proposals/${fakeId}/work-items`);
       expect(res.status).toBe(404);
     });
   });
@@ -1022,18 +962,13 @@ describe("Proposals API", () => {
         token: aiAgent.token,
       });
 
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/implement`,
-        {
-          token: aiAgent.token,
-          body: {
-            epics: [{ name: "Epic A" }],
-            tasks: [],
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/implement`, {
+        token: aiAgent.token,
+        body: {
+          epics: [{ name: "Epic A" }],
+          tasks: [],
         },
-      );
+      });
 
       // Verify work items
       const workItemsRes = await authRequest(
@@ -1058,18 +993,13 @@ describe("Proposals API", () => {
         token: aiAgent.token,
       });
 
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/implement`,
-        {
-          token: aiAgent.token,
-          body: {
-            epics: [],
-            tasks: [{ title: "Standalone Task" }],
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/implement`, {
+        token: aiAgent.token,
+        body: {
+          epics: [],
+          tasks: [{ title: "Standalone Task" }],
         },
-      );
+      });
 
       // Verify work items
       const workItemsRes = await authRequest(
@@ -1094,25 +1024,16 @@ describe("Proposals API", () => {
         token: aiAgent.token,
       });
 
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/implement`,
-        {
-          token: aiAgent.token,
-          body: {
-            epics: [],
-            tasks: [{ title: "Task 1" }],
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/implement`, {
+        token: aiAgent.token,
+        body: {
+          epics: [],
+          tasks: [{ title: "Task 1" }],
         },
-      );
+      });
 
       // Verify proposal status
-      const proposalRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-      );
+      const proposalRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`);
       const proposalBody = await proposalRes.json();
       expect(proposalBody.data.status).toBe("in_progress");
     });
@@ -1128,30 +1049,19 @@ describe("Proposals API", () => {
         token: aiAgent.token,
       });
 
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/implement`,
-        {
-          token: aiAgent.token,
-          body: {
-            epics: [{ name: "Epic 1" }],
-            tasks: [{ title: "Task 1" }, { title: "Task 2" }],
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/implement`, {
+        token: aiAgent.token,
+        body: {
+          epics: [{ name: "Epic 1" }],
+          tasks: [{ title: "Task 1" }, { title: "Task 2" }],
         },
-      );
+      });
 
       // Verify summary comment appears
-      const proposalRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-      );
+      const proposalRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`);
       const proposalBody = await proposalRes.json();
       expect(proposalBody.data.comments).toHaveLength(1);
-      expect(proposalBody.data.comments[0].body).toContain(
-        "Proposal planned",
-      );
+      expect(proposalBody.data.comments[0].body).toContain("Proposal planned");
       expect(proposalBody.data.comments[0].body).toContain("1 epic(s)");
       expect(proposalBody.data.comments[0].body).toContain("2 task(s)");
     });
@@ -1272,18 +1182,13 @@ describe("Proposals API", () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const fakeId = createId();
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${fakeId}/implement`,
-        {
-          token: aiAgent.token,
-          body: {
-            epics: [],
-            tasks: [{ title: "Task" }],
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/proposals/${fakeId}/implement`, {
+        token: aiAgent.token,
+        body: {
+          epics: [],
+          tasks: [{ title: "Task" }],
         },
-      );
+      });
       expect(res.status).toBe(404);
     });
 
@@ -1298,22 +1203,17 @@ describe("Proposals API", () => {
         token: aiAgent.token,
       });
 
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/implement`,
-        {
-          token: aiAgent.token,
-          body: {
-            epics: [{ name: "Epic A" }, { name: "Epic B" }],
-            tasks: [
-              { title: "Task under Epic A", epicIndex: 0 },
-              { title: "Task under Epic B", epicIndex: 1 },
-              { title: "Standalone task" },
-            ],
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/implement`, {
+        token: aiAgent.token,
+        body: {
+          epics: [{ name: "Epic A" }, { name: "Epic B" }],
+          tasks: [
+            { title: "Task under Epic A", epicIndex: 0 },
+            { title: "Task under Epic B", epicIndex: 1 },
+            { title: "Standalone task" },
+          ],
         },
-      );
+      });
 
       // Verify work items
       const workItemsRes = await authRequest(
@@ -1326,21 +1226,13 @@ describe("Proposals API", () => {
       expect(workItemsBody.data.tasks).toHaveLength(3);
 
       // Tasks under Epic A should have epicId matching Epic A's id
-      const epicA = workItemsBody.data.epics.find(
-        (e: any) => e.name === "Epic A",
-      );
-      const taskUnderA = workItemsBody.data.tasks.find(
-        (t: any) => t.title === "Task under Epic A",
-      );
+      const epicA = workItemsBody.data.epics.find((e: any) => e.name === "Epic A");
+      const taskUnderA = workItemsBody.data.tasks.find((t: any) => t.title === "Task under Epic A");
       expect(taskUnderA.epicId).toBe(epicA.id);
 
       // Tasks under Epic B should have epicId matching Epic B's id
-      const epicB = workItemsBody.data.epics.find(
-        (e: any) => e.name === "Epic B",
-      );
-      const taskUnderB = workItemsBody.data.tasks.find(
-        (t: any) => t.title === "Task under Epic B",
-      );
+      const epicB = workItemsBody.data.epics.find((e: any) => e.name === "Epic B");
+      const taskUnderB = workItemsBody.data.tasks.find((t: any) => t.title === "Task under Epic B");
       expect(taskUnderB.epicId).toBe(epicB.id);
 
       // Standalone task should have no epicId
@@ -1359,29 +1251,15 @@ describe("Proposals API", () => {
       });
 
       // Add comments
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/comments`,
-        {
-          body: { body: "Great idea!" },
-        },
-      );
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/comments`,
-        {
-          body: { body: "Let's proceed" },
-        },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/comments`, {
+        body: { body: "Great idea!" },
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/comments`, {
+        body: { body: "Let's proceed" },
+      });
 
       // Get proposal detail
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`);
       const body = await res.json();
 
       expect(body.data.comments).toHaveLength(2);
@@ -1404,28 +1282,16 @@ describe("Proposals API", () => {
       });
 
       // Implement
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/implement`,
-        {
-          token: aiAgent.token,
-          body: {
-            epics: [{ name: "Auth Epic" }],
-            tasks: [
-              { title: "JWT Setup", epicIndex: 0 },
-              { title: "Login Page" },
-            ],
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/implement`, {
+        token: aiAgent.token,
+        body: {
+          epics: [{ name: "Auth Epic" }],
+          tasks: [{ title: "JWT Setup", epicIndex: 0 }, { title: "Login Page" }],
         },
-      );
+      });
 
       // Get proposal detail — should include work items
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`);
       const body = await res.json();
 
       expect(body.data.workItems.epics).toHaveLength(1);
@@ -1469,24 +1335,15 @@ describe("Proposals API", () => {
       expect((await claimRes.json()).data.status).toBe("claimed_by_you");
 
       // 2b. AI agent engages (auto-transitions to discussing)
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposalId}/comments`,
-        {
-          token: aiAgent.token,
-          body: {
-            body: "I can implement dark mode using CSS custom properties. Should we support system preference detection?",
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposalId}/comments`, {
+        token: aiAgent.token,
+        body: {
+          body: "I can implement dark mode using CSS custom properties. Should we support system preference detection?",
         },
-      );
+      });
 
       // Verify auto-transition
-      let proposalRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposalId}`,
-      );
+      let proposalRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposalId}`);
       expect((await proposalRes.json()).data.status).toBe("discussing");
 
       // 3. Human approves (default token = human admin)
@@ -1542,11 +1399,7 @@ describe("Proposals API", () => {
       expect((await implementRes.json()).data.status).toBe("in_progress");
 
       // 5. Verify final state
-      proposalRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposalId}`,
-      );
+      proposalRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposalId}`);
       const finalProposal = (await proposalRes.json()).data;
       expect(finalProposal.status).toBe("in_progress");
       expect(finalProposal.workItems.epics).toHaveLength(1);
@@ -1563,11 +1416,7 @@ describe("Proposals API", () => {
         createdBy: testApp.testUser.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`);
       const body = await res.json();
       expect(body.data.claimedBy).toBeNull();
       expect(body.data.claimStatus).toBe("unclaimed");
@@ -1579,23 +1428,17 @@ describe("Proposals API", () => {
         createdBy: testApp.testUser.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/claim`,
-        { token: agentA.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/claim`, {
+        token: agentA.token,
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data).toEqual({ ok: true, status: "claimed_by_you" });
 
       // Agent A now sees claim_status=claimed_by_you
-      const getRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-        { token: agentA.token },
-      );
+      const getRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`, {
+        token: agentA.token,
+      });
       expect((await getRes.json()).data.claimStatus).toBe("claimed_by_you");
     });
 
@@ -1621,12 +1464,9 @@ describe("Proposals API", () => {
         data: { ok: false, status: "claimed_by_another_agent" },
       });
 
-      const getRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/proposals/${proposal.id}`,
-        { token: agentB.token },
-      );
+      const getRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`, {
+        token: agentB.token,
+      });
       expect((await getRes.json()).data.claimStatus).toBe("claimed_by_other");
     });
 
@@ -1820,12 +1660,9 @@ describe("Proposals API", () => {
         createdBy: testApp.testUser.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/claim`,
-        { token: agent.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/claim`, {
+        token: agent.token,
+      });
       expect((await res.json()).data).toEqual({
         ok: false,
         status: "closed",
