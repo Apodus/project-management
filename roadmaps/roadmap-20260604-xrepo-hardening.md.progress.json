@@ -1,0 +1,20 @@
+{
+  "roadmap": "roadmaps/roadmap-20260604-xrepo-hardening.md",
+  "branch": "campaign-xrepo-hardening",
+  "status": "COMPLETE",
+  "completed_steps": [1, 2, 3, 4],
+  "current_step": null,
+  "commits": ["e9e104a", "d454e84", "86dd297", "e3b3eac"],
+  "final_suite": "monorepo green: integrator 244 pass/1 skip, shared 417, server 1225, mcp 118, web; typecheck 6/6; lint 0 errors; build 5/5",
+  "steps": {
+    "1": { "title": "P1 — Binding clone supports remote-URL linked_repos path", "status": "complete", "commit": "e9e104a" },
+    "2": { "title": "P2 — Materialize LFS-aware", "status": "complete", "commit": "d454e84" },
+    "3": { "title": "P3 — Atomic submit-and-group + pickup guard", "status": "complete", "commit": "86dd297" },
+    "4": { "title": "P4 — Seal: e2e composition test + overlay fail-loud + docs", "status": "complete", "commit": "e3b3eac" }
+  },
+  "open_issues": [],
+  "follow_ups": [
+    "group-recovery LFS-orphan roll-forward deferred (group-recovery.ts TODO(xrepo-lfs)): an orphan adding new LFS objects still throws on outer smudge — no regression, needs O checked out into inner worktree to overlay",
+    "branch campaign-xrepo-hardening NOT merged to main — awaiting user; daemon must rebuild+restart from merged main for the cross-repo fixes to take effect"
+  ]
+}
