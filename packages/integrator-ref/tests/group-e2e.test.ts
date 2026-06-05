@@ -1088,3 +1088,129 @@ describe.skipIf(!RUN || !LFS_AVAILABLE)(
     }, 90_000);
   },
 );
+
+// ─── Flow (f): LFS-bearing orphan → auto-rollforward recovery ─────────
+//
+// Closes TODO(xrepo-lfs): the orphan roll-forward recovery is now LFS-aware.
+// Composes flow (c)'s chaos-orphan structure + the P4 `innerLfs` harness option
+// + flow (e)'s real-bytes precondition.
+//
+// THE DISCRIMINATING SIGNAL is `auto_resolved` ITSELF — NOT a verify trick (the
+// harness default verify_command "exit 0" stays). With an LFS-bearing orphan,
+// the legacy recovery materialize (no inner worktree → no overlay) would throw
+// the outer-smudge 404 → escalate; only the working LFS overlay (checkout O in
+// the inner worktree → real binaries copied) yields auto_resolved. The P4
+// fail-loud pointer guard guarantees materialize THROWS rather than shipping a
+// pointer, so auto_resolved ⟹ real bytes were shipped. The real-bytes
+// precondition (below) guards against a false-green where the inner source
+// could only ever yield a pointer.
+describe.skipIf(!RUN || !LFS_AVAILABLE)(
+  "group E2E (f) — LFS orphan auto-rolls-forward with real binaries",
+  () => {
+    let h: Harness;
+    let refs: FixtureRefs;
+    beforeAll(async () => {
+      // innerLfs:true seeds a real LFS binary on inner; default
+      // innerPathAsFileUrl:false (flows c/d bind the bare path; the LFS object is
+      // in the inner bare's lfs store regardless of how the path is bound).
+      ({ h, refs } = await makeGroupHarness({ innerLfs: true }));
+      // One-shot outer-push-fail chaos → the first outer push fails → orphan +
+      // incident; subsequent pushes (incl. recovery) succeed.
+      await h.spawnIntegrator({ PM_CHAOS_FAIL_OUTER_PUSH: "once" });
+    }, 90_000);
+    afterAll(async () => {
+      if (h) await h.teardown();
+    });
+
+    it("an LFS-bearing orphan auto-rolls-forward (auto_resolved ⟹ real bytes overlaid)", async () => {
+      // ── REQUIRED PRECONDITION (anti-false-green; copies flow (e)) ──
+      // Clone the inner source at feature/inner with LFS smudge ACTIVE, assert
+      // the cloned blob.bin byte-equals originalBytes (and is NOT a pointer) —
+      // proves the orphan's LFS source genuinely yields real bytes, so a later
+      // auto_resolved means the overlay shipped real bytes, not a pointer.
+      const innerFileUrl = "file:///" + h.innerBare.split(path.sep).join("/");
+      const preClone = path.join(h.tmpRoot, "precond-inner-clone-f");
+      const pc = spawnSync(
+        "git",
+        ["clone", "-b", "feature/inner", innerFileUrl, preClone],
+        { stdio: "pipe", encoding: "utf8" },
+      );
+      expect(pc.status, `precondition clone failed: ${pc.stderr}`).toBe(0);
+      const pull = spawnSync("git", ["-C", preClone, "lfs", "pull"], {
+        stdio: "pipe",
+        encoding: "utf8",
+      });
+      expect(pull.status, `precondition lfs pull failed: ${pull.stderr}`).toBe(0);
+      const preBlob = path.join(preClone, "blob.bin");
+      expect(existsSync(preBlob)).toBe(true);
+      expect(
+        Buffer.compare(readFileSync(preBlob), originalBytes),
+        "precondition: inner orphan source did not yield the REAL binary (smudge misconfigured) — an 'auto_resolved' would be a pointer false-green",
+      ).toBe(0);
+      expect(
+        readFileSync(preBlob, "utf8").startsWith("version https://git-lfs"),
+      ).toBe(false);
+
+      // ── 1) Produce the orphan (mirror flow (c)) ──
+      const preOrphanGitlink = await h.gitlinkOnOuterBareMain();
+      const innerTask = createTestTask(h.db, { projectId: h.project.id });
+      const { group: g1 } = await h.submitGroup(
+        refs.innerFeatureSha,
+        refs.outerFeatureSha,
+        { innerVerify: "exit 0", outerVerify: "exit 0", innerTask: innerTask.id },
+      );
+
+      // Poll until one open orphaned_inner incident appears.
+      let incidents: MergeIncident[] = [];
+      const deadline = Date.now() + 90_000;
+      while (Date.now() < deadline) {
+        incidents = await h.listOpenIncidents();
+        if (incidents.length > 0) break;
+        await sleep(200);
+      }
+      expect(incidents).toHaveLength(1);
+      const incident = incidents[0];
+
+      const Ri = await h.innerBareMainSha();
+      expect(incident.type).toBe("orphaned_inner");
+      expect(incident.orphanedSha).toBe(Ri);
+      // Inner DID land; outer NOT advanced (gitlink still at the PRE-orphan SHA).
+      expect(Ri).not.toBe(refs.innerMainSha);
+      expect(await h.gitlinkOnOuterBareMain()).toBe(preOrphanGitlink);
+      const g1Final = await h.getGroup(g1.id);
+      expect(g1Final.state).toBe("partially_landed");
+
+      // ── 2) Trigger recovery: submit a 2nd clean group (mirror flow (c)) ──
+      // recoverOrphanedInner runs FIRST under the lane lock → the LFS-aware
+      // roll-forward (checkout O in the inner worktree → real binaries overlaid)
+      // rolls the gitlink forward to Ri → incident auto_resolved.
+      const second = await seedSecondFeaturePair(h, "f2");
+      await h.submitGroup(second.innerFeat, second.outerFeat, {
+        innerVerify: "exit 0",
+        outerVerify: "exit 0",
+      });
+
+      // Poll the incident until auto_resolved.
+      let resolved: MergeIncident | undefined;
+      const deadline2 = Date.now() + 90_000;
+      while (Date.now() < deadline2) {
+        const inc = await h.getIncident(incident.id);
+        if (inc.state === "auto_resolved") {
+          resolved = inc;
+          break;
+        }
+        await sleep(200);
+      }
+      // auto_resolved is THE load-bearing proof the LFS overlay ran: with
+      // innerLfs the legacy materialize would have thrown the outer-smudge 404 →
+      // escalate (incident stays open); only the working overlay reaches here.
+      expect(resolved).toBeDefined();
+      expect(resolved!.resolution?.mode).toBe("auto_rollforward");
+
+      // ── 3) Durable outer BARE state (not the ephemeral worktree) ──
+      // The gitlink rolled forward to Ri on outer bare main; no open incidents.
+      expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+    }, 120_000);
+  },
+);

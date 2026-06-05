@@ -215,20 +215,41 @@ async function rollforwardOne(
     // O is published on inner main, so fetch it from the inner remote (or the
     // configured inner clone path) into the OUTER store so updateSubmoduleGitlink
     // + (the post-assembly read) can resolve it.
-    await outerGit.fetchFromPath(deps.innerRemotePath ?? gitRemote, O);
-    await outerGit.updateSubmoduleGitlink(gitlinkPath, O);
-    // TODO(xrepo-lfs): no innerWorktreePath here — the orphan roll-forward has no
-    // inner pool worktree checked out at O, so the LFS overlay can't run. This
-    // call therefore stays byte-identical to today: an LFS-bearing orphan would
-    // still throw on the outer smudge 404 (same as before — NO regression). The
-    // recovery LFS roll-forward is DEFERRED to a follow-up (would need to clone /
-    // check out O's inner sources to overlay the real binaries).
-    await outerGit.materializeSubmoduleWorktree(gitlinkPath, O);
+    //
+    // The whole assemble window is wrapped in try/catch: ANY throw (smudge
+    // failure, the P4 fail-loud pointer guard, a bad object) → clean escalate
+    // (incident stays OPEN, nothing pushed). The deferred returns above (pool
+    // exhaustion) and below (drift, push race) live OUTSIDE this window.
+    try {
+      // Check O out in the inner worktree so the overlay sources O's
+      // correctly-smudged real LFS binaries. resetForAttempt (above) left
+      // innerWt at inner MAIN, which can be AHEAD of O in production — the
+      // overlay must copy O's versions (`git lfs ls-files` reflects the
+      // checked-out HEAD), not inner-main's. O is reachable in innerWt (it is
+      // on inner main's history; the ancestry check above already required it).
+      // The inner clone's LFS filter smudges (fetching O's objects from origin;
+      // a local bare in tests = offline).
+      await innerGit.checkout(O);
 
-    // Post-assembly assertion (§11): the committed gitlink must reference O.
-    const assembledGitlink = await outerGit.readSubmoduleGitlink(gitlinkPath);
-    if (assembledGitlink !== O) {
-      return escalate(incident, "post-assembly gitlink mismatch", logger);
+      await outerGit.fetchFromPath(deps.innerRemotePath ?? gitRemote, O);
+      await outerGit.updateSubmoduleGitlink(gitlinkPath, O);
+      // Materialize WITH the LFS overlay: pass the inner worktree (checked out
+      // at O) as the 3rd arg so the real inner LFS binaries are copied into the
+      // outer working tree (as the LAND assemble does). The P4 fail-loud pointer
+      // guard refuses to overlay an unsmudged pointer → throws → escalate.
+      await outerGit.materializeSubmoduleWorktree(gitlinkPath, O, innerWt.path);
+
+      // Post-assembly assertion (§11): the committed gitlink must reference O.
+      const assembledGitlink = await outerGit.readSubmoduleGitlink(gitlinkPath);
+      if (assembledGitlink !== O) {
+        return escalate(incident, "post-assembly gitlink mismatch", logger);
+      }
+    } catch (err) {
+      // ANY throw in the assemble window (smudge 404, P4 fail-loud pointer
+      // guard, bad object) → ESCALATE cleanly: incident stays open, nothing
+      // pushed. (A `return` inside this try — e.g. the gitlink-mismatch escalate
+      // above — is NOT intercepted; only throws reach this catch.)
+      return escalate(incident, `roll-forward assemble failed: ${errText(err)}`, logger);
     }
 
     // ── §7.3 step 4: VERIFY the assembled roll-forward tree (THE R1 GATE). ──
