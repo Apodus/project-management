@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // @ts-expect-error — the distribute script is plain ESM (.mjs) with no .d.ts.
-import { distribute, loadConfig, parseArgs } from "../../../scripts/distribute.mjs";
+import {
+  distribute,
+  loadConfig,
+  parseArgs,
+  renderDaemonLauncher,
+} from "../../../scripts/distribute.mjs";
 
 /**
  * These tests exercise the distribute.mjs helpers hermetically: a FAKE repo
@@ -118,6 +123,137 @@ describe("distribute (build: false)", () => {
         expect(existsSync(dest)).toBe(false);
       }
     }
+  });
+});
+
+describe("renderDaemonLauncher", () => {
+  const opts = {
+    bundleName: "pm-integrator.mjs",
+    projectId: "01PROJECT",
+    resource: "main",
+    pmUrl: "http://localhost:3000",
+  };
+
+  it("renders a .bat that runs the local bundle (no dev-repo path) with CRLF", () => {
+    const bat = renderDaemonLauncher("bat", opts);
+    expect(bat).toContain(
+      'node "%~dp0pm-integrator.mjs" --project 01PROJECT --resource main --pm-url http://localhost:3000 %*',
+    );
+    // Loads token from the gitignored sibling file, never references the monorepo.
+    expect(bat).toContain('set /p PM_API_TOKEN=<"%~dp0pm_token.txt"');
+    expect(bat).not.toMatch(/project-management|integrator-ref|dist[\\/]index/);
+    expect(bat).toContain("\r\n");
+  });
+
+  it("renders a .sh that runs the local bundle with LF line endings", () => {
+    const sh = renderDaemonLauncher("sh", opts);
+    expect(sh).toContain(
+      'exec node "$DIR/pm-integrator.mjs" --project 01PROJECT --resource main --pm-url http://localhost:3000 "$@"',
+    );
+    expect(sh).toContain('export PM_API_TOKEN="$(cat "$DIR/pm_token.txt")"');
+    expect(sh).not.toContain("\r\n");
+  });
+
+  it("references the bundle by its actual basename", () => {
+    const bat = renderDaemonLauncher("bat", { ...opts, bundleName: "custom-daemon.mjs" });
+    expect(bat).toContain('node "%~dp0custom-daemon.mjs"');
+  });
+
+  it("defaults resource to main and pmUrl to localhost:3000 when omitted", () => {
+    const bat = renderDaemonLauncher("bat", {
+      bundleName: "pm-integrator.mjs",
+      projectId: "01PROJECT",
+    });
+    expect(bat).toContain("--resource main --pm-url http://localhost:3000");
+  });
+
+  it("throws on an unknown kind", () => {
+    expect(() => renderDaemonLauncher("ps1", opts)).toThrow(/Unknown launcher kind/);
+  });
+});
+
+describe("distribute — daemon launcher emission", () => {
+  function launcherConfig(targetDir: string, extra: Record<string, unknown> = {}) {
+    return {
+      targets: [
+        {
+          name: "t1",
+          mcpDest: join(targetDir, "tools", "pm-mcp-server", "pm-mcp-server.mjs"),
+          integratorDest: join(targetDir, "tools", "pm-integrator", "pm-integrator.mjs"),
+          docsDest: join(targetDir, "docs", "integrator-deployment.md"),
+          workerDocDest: join(targetDir, "docs", "pm-workflow.md"),
+          ...extra,
+        },
+      ],
+    };
+  }
+
+  it("emits run_daemon.bat/.sh + pm_token.txt.template next to the bundle when projectId is set", () => {
+    seedSources(fakeRepoRoot);
+    const targetDir = join(workDir, "target");
+    const config = launcherConfig(targetDir, {
+      projectId: "01KSMSZVN87QWZZBY7AR7QV149",
+      resource: "main",
+      pmUrl: "http://localhost:3000",
+    });
+
+    distribute({ config, repoRoot: fakeRepoRoot, build: false });
+
+    const launcherDir = join(targetDir, "tools", "pm-integrator");
+    const bat = readFileSync(join(launcherDir, "run_daemon.bat"), "utf8");
+    expect(bat).toContain(
+      'node "%~dp0pm-integrator.mjs" --project 01KSMSZVN87QWZZBY7AR7QV149 --resource main',
+    );
+    expect(existsSync(join(launcherDir, "run_daemon.sh"))).toBe(true);
+    expect(readFileSync(join(launcherDir, "pm_token.txt.template"), "utf8")).toContain(
+      "paste-your-pm-api-token-here",
+    );
+    // Never writes the real secret file.
+    expect(existsSync(join(launcherDir, "pm_token.txt"))).toBe(false);
+  });
+
+  it("emits NO launcher when projectId is absent (back-compat)", () => {
+    seedSources(fakeRepoRoot);
+    const targetDir = join(workDir, "target");
+    const config = launcherConfig(targetDir);
+
+    distribute({ config, repoRoot: fakeRepoRoot, build: false });
+
+    const launcherDir = join(targetDir, "tools", "pm-integrator");
+    expect(existsSync(join(launcherDir, "run_daemon.bat"))).toBe(false);
+    expect(existsSync(join(launcherDir, "run_daemon.sh"))).toBe(false);
+    // The bundle itself still landed.
+    expect(existsSync(join(launcherDir, "pm-integrator.mjs"))).toBe(true);
+  });
+
+  it("dryRun writes no launcher files even with projectId set", () => {
+    seedSources(fakeRepoRoot);
+    const targetDir = join(workDir, "target");
+    const config = launcherConfig(targetDir, { projectId: "01PROJECT" });
+
+    distribute({ config, repoRoot: fakeRepoRoot, build: false, dryRun: true });
+
+    expect(existsSync(join(targetDir, "tools", "pm-integrator", "run_daemon.bat"))).toBe(false);
+  });
+
+  it("loadConfig rejects a non-empty-string projectId", () => {
+    const bad = join(workDir, "badpid.json");
+    writeFileSync(
+      bad,
+      JSON.stringify({
+        targets: [
+          {
+            name: "t1",
+            mcpDest: "/a",
+            integratorDest: "/b",
+            docsDest: "/c",
+            workerDocDest: "/d",
+            projectId: "",
+          },
+        ],
+      }),
+    );
+    expect(() => loadConfig(bad)).toThrow(/projectId/);
   });
 });
 

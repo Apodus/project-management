@@ -48,22 +48,23 @@ If you get blocked: `pm_block_task(task_id, reason)`. Don't silently abandon tas
 The same soft-claim mechanism guards **proposals, epics, and tasks** so multiple agents coordinate without stepping on each other. **AI agents must hold the claim before writing.** The server rejects un-held writes with 409 `CLAIM_DENIED`. Humans bypass (they're the director).
 
 The atomic claim returns one of:
+
 - `✓ Claimed` — yours to work on.
 - `✓ Already claimed by you` — idempotent re-claim is fine.
 - `⚠ Claimed by another agent` — pick something else; do **not** retry.
 - `⚠ Closed` — already in a terminal state.
 
-The server never reveals other agents' identities — you only see whether *you* can act. If `claim_status` says "claimed by another agent," that's the whole signal; don't try to find out who.
+The server never reveals other agents' identities — you only see whether _you_ can act. If `claim_status` says "claimed by another agent," that's the whole signal; don't try to find out who.
 
-| Entity | Claim | Release | Pick / start |
-|--------|-------|---------|--------------|
-| Proposal | `pm_claim_proposal(id)` | `pm_release_proposal(id)` | — |
-| Epic | `pm_claim_epic(epic_id)` | `pm_release_epic(epic_id)` | `pm_pick_next_task(epic_id=...)` |
-| Task | `pm_claim_task(id)` | `pm_release_task(id)` | `pm_pick_next_task` / `pm_start_task` |
+| Entity   | Claim                    | Release                    | Pick / start                          |
+| -------- | ------------------------ | -------------------------- | ------------------------------------- |
+| Proposal | `pm_claim_proposal(id)`  | `pm_release_proposal(id)`  | —                                     |
+| Epic     | `pm_claim_epic(epic_id)` | `pm_release_epic(epic_id)` | `pm_pick_next_task(epic_id=...)`      |
+| Task     | `pm_claim_task(id)`      | `pm_release_task(id)`      | `pm_pick_next_task` / `pm_start_task` |
 
 Terminal transitions (proposal `completed`/`rejected`, etc.) clear the claim automatically.
 
-**Epic ownership:** for a multi-task effort, `pm_claim_epic(epic_id)` first, then `pm_pick_next_task(epic_id=...)` to pull tasks from *your* epic, and `pm_release_epic` when done.
+**Epic ownership:** for a multi-task effort, `pm_claim_epic(epic_id)` first, then `pm_pick_next_task(epic_id=...)` to pull tasks from _your_ epic, and `pm_release_epic` when done.
 
 ### Recovering stranded claims (force-claim)
 
@@ -127,7 +128,7 @@ Shortcut: from `open`/`discussing`, the AI agent (or human) can transition direc
 The director's primary view is a **roadmap DAG** — nodes are epics (colored/grouped by category), edges are epic dependencies. Keep this structure accurate as you plan; it is how the director reads "where is the project."
 
 - **Epic dependencies — author these explicitly.** `pm_link_epic_dependency(project_id, epic_id, depends_on_epic_id, dependency_type?)` records that `epic_id` (the dependent) depends on `depends_on_epic_id` (the prerequisite); `dependency_type` is `blocks` (default) or `relates_to`. This is the right tool for **planning-time epic sequencing** — "B can't start until A ships", "C2 follows C1", "gated on Epic 1". Remove with `pm_unlink_epic_dependency(project_id, epic_id, dependency_id)`. Self-deps and duplicates are rejected; cycles are surfaced (not blocked).
-- **Derived edges are automatic — but only CROSS-epic.** Epic edges are also rolled up from cross-epic task `blocks` deps (a task in B blocking a task in A ⇒ edge A→B). You don't author those. Note: phase ordering *within* one epic (P1→P2→P3 via task `depends_on`) is intra-epic and produces **no** epic edge — so use explicit `pm_link_epic_dependency` for epic-level sequencing; don't expect it to fall out of phase deps.
+- **Derived edges are automatic — but only CROSS-epic.** Epic edges are also rolled up from cross-epic task `blocks` deps (a task in B blocking a task in A ⇒ edge A→B). You don't author those. Note: phase ordering _within_ one epic (P1→P2→P3 via task `depends_on`) is intra-epic and produces **no** epic edge — so use explicit `pm_link_epic_dependency` for epic-level sequencing; don't expect it to fall out of phase deps.
 - **Category.** Pass `category="<name>"` to `pm_create_epic` to group/color the epic on the roadmap (e.g. `rendering`, `terrain`, `editor`). The set is project-defined by the director — match an existing epic's category where you can (`pm_list_epics` shows them); if you don't know the set, leave it unset rather than invent one.
 
 ## Landing changes: the merge train
@@ -145,7 +146,7 @@ The director's primary view is a **roadmap DAG** — nodes are epics (colored/gr
 - `pm_request_merge(project_id, task_id, branch | commit_sha, resource?, verify_cmd?)` — submit. `task_id` is strongly recommended (it enables the `landed_sha` git_ref on land and the `merge_rejection` comment on reject). Pin `commit_sha` if you might keep committing on the branch while it's queued. `resource` defaults to `"main"` (the lane).
 - `pm_list_merge_requests(project_id, resource?, status?, task_id?)` — see your queued/integrating/landed/rejected requests and queue position.
 - `pm_get_merge_request(id)` — full detail incl. attempts. For a **rejected** request the structured envelope (category, reason, failed files, log URL) is at the top — read it, fix, resubmit.
-- `pm_cancel_merge_request(id)` — cancel a **queued** request you submitted (only the submitter/admin; can't cancel once `integrating`).
+- `pm_cancel_merge_request(id, reason?)` — cancel a request from **queued OR integrating** (not just queued). **Any agent may cancel any request** — it is not owner- or admin-gated (collaborative env); cancelling an `integrating` request interrupts the in-flight integration and is audit-logged (pass a `reason`). A **grouped member can't be cancelled individually** (409 `GROUPED_MEMBER` — reject the group instead).
 
 **Verify is handled by the train, not you.** The integrator runs the project's configured verify — which may be a multi-step pipeline (cheap checks first, fail-fast, independent steps in parallel) with result caching, so a fast land can mean a cache hit. You normally just submit; only pass `verify_cmd` to override for a one-off.
 
@@ -175,17 +176,17 @@ game_one is a cross-repo setup: the **rynx** inner Rust workspace is embedded in
 
 ```
 1. Commit the inner (rynx) change and the outer (gitlink-bump) change on their branches.
-2. Submit EACH as a normal request first:
-     reqInner = pm_request_merge(project_id, task_id, branch="rynx/feat-x", resource="...")
-     reqOuter = pm_request_merge(project_id, task_id, branch="outer/bump-x", resource="...")
-   (Both end up queued + ungrouped.)
-3. Bind them into one atomic unit:
-     pm_request_merge_group(project_id, member_request_ids=[reqInner.id, reqOuter.id])
-4. Walk away. Subscribe to merge.group.landed / merge.group.rejected,
+2. Submit + group in ONE atomic call (PREFERRED — race-free):
+     pm_request_merge_group(project_id, members=[
+       { branch="rynx/feat-x",  task_id=... },
+       { branch="outer/bump-x", task_id=... },
+     ])
+   Members are born group-bound — a single-repo pickup can never grab one mid-grouping.
+3. Walk away. Subscribe to merge.group.landed / merge.group.rejected,
    or poll pm_get_merge_group(group_id).
 ```
 
-- `pm_request_merge_group(project_id, member_request_ids[], resource?)` — bind ≥2 already-queued, ungrouped requests. The integrator lands the whole group atomically (inner first, then the outer gitlink) — **every member lands together or none does**.
+- `pm_request_merge_group(project_id, members[] | member_request_ids[], resource?)` — submit ≥2 requests as one atomic cross-repo unit. **Provide exactly one form.** Prefer `members` (each `{ branch and/or commit_sha, task_id?, verify_cmd? }`) — PM submits AND groups in a single call, race-free. `member_request_ids` is the legacy form: bind ≥2 requests you already queued via `pm_request_merge`. The integrator lands the whole group atomically (inner first, then the outer gitlink) — **every member lands together or none does**.
 - `pm_get_merge_group(group_id)` — member statuses + whether the group has landed/rejected/is still forming.
 
 ### When a cross-repo land half-fails: incidents
@@ -200,6 +201,7 @@ For a worker these are mostly informational — if `pm_get_merge_group` shows a 
 ## Dashboard visibility
 
 The human sees "Active AI Agents" on the dashboard. You appear there ONLY when:
+
 - You have tasks with status `in_progress` assigned to you (claimed), **or**
 - You hold a claim on a proposal.
 

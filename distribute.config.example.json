@@ -1,12 +1,16 @@
 {
   "_comment": "Copy to distribute.config.json (gitignored), set absolute dest paths, run: node scripts/distribute.mjs",
+  "_launcher_comment": "Add projectId (and optional resource/pmUrl) to a target to auto-generate a self-contained run_daemon.bat/.sh + pm_token.txt.template next to the integrator bundle. resource defaults to 'main', pmUrl to 'http://localhost:3000'.",
   "targets": [
     {
       "name": "game_one",
       "mcpDest": "D:/code/game_one/tools/pm-mcp-server/pm-mcp-server.mjs",
       "integratorDest": "D:/code/game_one/tools/pm-integrator/pm-integrator.mjs",
       "docsDest": "D:/code/game_one/docs/integrator-deployment.md",
-      "workerDocDest": "D:/code/game_one/docs/pm-workflow.md"
+      "workerDocDest": "D:/code/game_one/docs/pm-workflow.md",
+      "projectId": "01KSMSZVN87QWZZBY7AR7QV149",
+      "resource": "main",
+      "pmUrl": "http://localhost:3000"
     }
   ]
 }
