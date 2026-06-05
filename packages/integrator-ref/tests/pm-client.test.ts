@@ -239,6 +239,60 @@ describe("PmClient verify cache (lookup / record / mismatch)", () => {
   });
 });
 
+describe("PmClient.listResolutions + listMergeRequests resolvedFrom (7.6.1)", () => {
+  function makeListClient(): { client: PmClient; calls: CapturedCall[] } {
+    const calls: CapturedCall[] = [];
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        method: init?.method ?? "GET",
+        url: String(url),
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      return new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    const client = new PmClient({ baseUrl: "http://pm.local", token: "tok", fetchImpl });
+    return { client, calls };
+  }
+
+  it("listResolutions with state+resource builds the encoded query", async () => {
+    const { client, calls } = makeListClient();
+    await client.listResolutions("proj 1", { state: "resolving", resource: "main" });
+    expect(calls[0].method).toBe("GET");
+    expect(calls[0].url).toBe(
+      "http://pm.local/api/v1/projects/proj%201/merge-resolutions?state=resolving&resource=main",
+    );
+  });
+
+  it("listResolutions with no filters omits the query string", async () => {
+    const { client, calls } = makeListClient();
+    await client.listResolutions("proj-1");
+    expect(calls[0].url).toBe("http://pm.local/api/v1/projects/proj-1/merge-resolutions");
+  });
+
+  it("listMergeRequests({resolvedFrom}) builds the camelCase query, encoded", async () => {
+    const { client, calls } = makeListClient();
+    await client.listMergeRequests("proj-1", { resolvedFrom: "origin/42" });
+    expect(calls[0].url).toBe(
+      "http://pm.local/api/v1/projects/proj-1/merge-requests?resolvedFrom=origin%2F42",
+    );
+  });
+
+  it("listMergeRequests composes resolvedFrom with other filters", async () => {
+    const { client, calls } = makeListClient();
+    await client.listMergeRequests("proj-1", {
+      resource: "main",
+      status: "queued",
+      resolvedFrom: "o-1",
+    });
+    expect(calls[0].url).toBe(
+      "http://pm.local/api/v1/projects/proj-1/merge-requests?resource=main&status=queued&resolvedFrom=o-1",
+    );
+  });
+});
+
 describe("PmClient.request error wrapping (total infra discriminator)", () => {
   // A request() failure must ALWAYS surface as a PmApiError so the integrator's
   // `isApiError` is a reliable "PM/infra fault" discriminator. status 0 signals

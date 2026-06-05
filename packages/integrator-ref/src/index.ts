@@ -379,6 +379,11 @@ async function main(): Promise<void> {
       gitRemote: cfg.gitRemote,
       gitMainBranch: cfg.gitMainBranch,
       groupLane,
+      // Phase 7.6.1: gate + budget for the reclaim sweep that recovers
+      // `resolving` resolutions stranded by a dead/timed-out resolver session.
+      // Off ⇒ no sweep (byte-identical to pre-7.6.1).
+      resolverEnabled: cfg.resolver.enabled,
+      resolverTimeBudgetSec: cfg.resolver.timeBudgetSec,
       // Phase 7.4 §3.2: the shared in-flight counters the batch + group lane
       // mutate; the heartbeat reads them to mint the in_flight payload + status.
       inFlight,

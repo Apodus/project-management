@@ -152,14 +152,11 @@ describe("Merge Requests API", () => {
 
     it("401 when unauthenticated", async () => {
       const project = createTestProject(testApp.db);
-      const res = await testApp.app.request(
-        `/api/v1/projects/${project.id}/merge-requests`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resource: "main" }),
-        },
-      );
+      const res = await testApp.app.request(`/api/v1/projects/${project.id}/merge-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resource: "main" }),
+      });
       expect(res.status).toBe(401);
     });
 
@@ -237,6 +234,36 @@ describe("Merge Requests API", () => {
       expect(json.data[0].id).toBe(queuedId);
       expect(json.data[0].status).toBe("queued");
     });
+
+    it("filters by ?resolvedFrom=<origin> — NARROWS to only the resubmission (7.6.1)", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      // An origin request, a resubmission pointing at it, and an unrelated one.
+      const originId = await submitRequest(project.id, agent.token, {
+        branch: "feature/origin",
+      });
+      const resubId = await submitRequest(project.id, agent.token, {
+        branch: "pm/resolution-1",
+        resolvedFrom: originId,
+      });
+      await submitRequest(project.id, agent.token, { branch: "feature/unrelated" });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/merge-requests?resolvedFrom=${originId}`,
+        { token: agent.token },
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      // The filter MUST narrow — exactly the resubmission, NOT all 3 requests.
+      // (The camelCase-key trap: a mismatched key is silently dropped by the
+      // non-strict listQuery and would return all requests.)
+      expect(json.data).toHaveLength(1);
+      expect(json.data[0].id).toBe(resubId);
+      expect(json.data[0].resolvedFrom).toBe(originId);
+      expect(json.pagination.total).toBe(1);
+    });
   });
 
   // ─── C. GET by id ────────────────────────────────────────────────
@@ -256,12 +283,9 @@ describe("Merge Requests API", () => {
       );
       expect(startRes.status).toBe(201);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/merge-requests/${requestId}`,
-        { token: agent.token },
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/merge-requests/${requestId}`, {
+        token: agent.token,
+      });
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.data.id).toBe(requestId);
@@ -289,12 +313,10 @@ describe("Merge Requests API", () => {
       const agent = createTestAiAgent(testApp.db);
       const requestId = await submitRequest(project.id, agent.token);
       forceIntegrating(requestId);
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/merge-requests/${requestId}/attempts`,
-        { token: agent.token, body: { baseSha: "base1234" } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/attempts`, {
+        token: agent.token,
+        body: { baseSha: "base1234" },
+      });
 
       const res = await authRequest(
         testApp.app,
@@ -338,20 +360,15 @@ describe("Merge Requests API", () => {
           stepConfigSha: "cfg-unit",
         },
       ];
-      await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/merge-attempts/${attemptId}`,
-        {
-          token: agent.token,
-          body: {
-            status: "failed",
-            failureCategory: "test_failed",
-            failureReason: "unit failed",
-            steps,
-          },
+      await authRequest(testApp.app, "PATCH", `/api/v1/merge-attempts/${attemptId}`, {
+        token: agent.token,
+        body: {
+          status: "failed",
+          failureCategory: "test_failed",
+          failureReason: "unit failed",
+          steps,
         },
-      );
+      });
 
       const res = await authRequest(
         testApp.app,
@@ -360,9 +377,7 @@ describe("Merge Requests API", () => {
         { token: agent.token },
       );
       const json = await res.json();
-      const attempt = json.data.events.find(
-        (e: { kind: string }) => e.kind === "attempt",
-      );
+      const attempt = json.data.events.find((e: { kind: string }) => e.kind === "attempt");
       expect(attempt.steps).toEqual(steps);
     });
 
@@ -381,10 +396,9 @@ describe("Merge Requests API", () => {
       const project = createTestProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const requestId = await submitRequest(project.id, agent.token);
-      const res = await testApp.app.request(
-        `/api/v1/merge-requests/${requestId}/timeline`,
-        { method: "GET" },
-      );
+      const res = await testApp.app.request(`/api/v1/merge-requests/${requestId}/timeline`, {
+        method: "GET",
+      });
       expect(res.status).toBe(401);
     });
   });
@@ -472,12 +486,9 @@ describe("Merge Requests API", () => {
       );
       expect(groupRes.status).toBe(201);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/merge-requests/${a}/cancel`,
-        { token: agent.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${a}/cancel`, {
+        token: agent.token,
+      });
       expect(res.status).toBe(409);
       const json = await res.json();
       expect(json.error.code).toBe("GROUPED_MEMBER");
@@ -503,10 +514,9 @@ describe("Merge Requests API", () => {
       const agent = createTestAiAgent(testApp.db);
       const requestId = await submitRequest(project.id, agent.token);
 
-      const res = await testApp.app.request(
-        `/api/v1/merge-requests/${requestId}/cancel`,
-        { method: "POST" },
-      );
+      const res = await testApp.app.request(`/api/v1/merge-requests/${requestId}/cancel`, {
+        method: "POST",
+      });
       expect(res.status).toBe(401);
     });
   });
@@ -579,10 +589,9 @@ describe("Merge Requests API", () => {
       const agent = createTestAiAgent(testApp.db);
       const requestId = await submitRequest(project.id, agent.token);
 
-      const res = await testApp.app.request(
-        `/api/v1/merge-requests/${requestId}/pickup`,
-        { method: "POST" },
-      );
+      const res = await testApp.app.request(`/api/v1/merge-requests/${requestId}/pickup`, {
+        method: "POST",
+      });
       expect(res.status).toBe(401);
     });
   });
@@ -723,15 +732,10 @@ describe("Merge Requests API", () => {
 
     it("200 when completing with status=passed + treeSha", async () => {
       const { attemptId, agent } = await setupRunningAttempt();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/merge-attempts/${attemptId}`,
-        {
-          token: agent.token,
-          body: { status: "passed", treeSha: "tree1234" },
-        },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/merge-attempts/${attemptId}`, {
+        token: agent.token,
+        body: { status: "passed", treeSha: "tree1234" },
+      });
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.data.status).toBe("passed");
@@ -782,26 +786,19 @@ describe("Merge Requests API", () => {
 
     it("400 when status=passed is missing treeSha", async () => {
       const { attemptId, agent } = await setupRunningAttempt();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/merge-attempts/${attemptId}`,
-        { token: agent.token, body: { status: "passed" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/merge-attempts/${attemptId}`, {
+        token: agent.token,
+        body: { status: "passed" },
+      });
       expect(res.status).toBe(400);
     });
 
     it("403 when non-integrator (human admin) completes", async () => {
       const { attemptId } = await setupRunningAttempt();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/merge-attempts/${attemptId}`,
-        {
-          token: testApp.testToken,
-          body: { status: "passed", treeSha: "tree1234" },
-        },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/merge-attempts/${attemptId}`, {
+        token: testApp.testToken,
+        body: { status: "passed", treeSha: "tree1234" },
+      });
       expect(res.status).toBe(403);
     });
   });
@@ -833,14 +830,8 @@ describe("Merge Requests API", () => {
       expect(json.data.status).toBe("landed");
       expect(json.data.landedSha).toBe("landed999");
 
-      const refs = testApp.db
-        .select()
-        .from(gitRefs)
-        .where(eq(gitRefs.taskId, task.id))
-        .all();
-      const landedRef = refs.find(
-        (r) => r.refType === "landed_sha" && r.refValue === "landed999",
-      );
+      const refs = testApp.db.select().from(gitRefs).where(eq(gitRefs.taskId, task.id)).all();
+      const landedRef = refs.find((r) => r.refType === "landed_sha" && r.refValue === "landed999");
       expect(landedRef).toBeTruthy();
     });
 
@@ -890,12 +881,10 @@ describe("Merge Requests API", () => {
       expect(groupRes.status).toBe(201);
       forceIntegrating(a);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/merge-requests/${a}/land`,
-        { token: agent.token, body: { landedSha: "landed999" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${a}/land`, {
+        token: agent.token,
+        body: { landedSha: "landed999" },
+      });
       expect(res.status).toBe(409);
       const json = await res.json();
       expect(json.error.code).toBe("GROUPED_MEMBER");
@@ -916,12 +905,10 @@ describe("Merge Requests API", () => {
         taskId: task.id,
       });
       forceIntegrating(requestId);
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/merge-requests/${requestId}/attempts`,
-        { token: agent.token, body: { baseSha: "base0001" } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/attempts`, {
+        token: agent.token,
+        body: { baseSha: "base0001" },
+      });
 
       const res = await authRequest(
         testApp.app,
@@ -947,9 +934,7 @@ describe("Merge Requests API", () => {
         .from(comments)
         .where(eq(comments.taskId, task.id))
         .all();
-      const rejectionComment = commentRows.find(
-        (c) => c.commentType === "merge_rejection",
-      );
+      const rejectionComment = commentRows.find((c) => c.commentType === "merge_rejection");
       expect(rejectionComment).toBeTruthy();
       const meta = rejectionComment?.metadata as Record<string, unknown>;
       expect(meta.mergeRequestId).toBe(requestId);

@@ -22,10 +22,7 @@ import {
 } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
-import {
-  cancelOpenAttempts,
-  emitAttemptCompleted,
-} from "./merge-attempt.service.js";
+import { cancelOpenAttempts, emitAttemptCompleted } from "./merge-attempt.service.js";
 import {
   emitAuditRecorded,
   list as listAudit,
@@ -65,6 +62,7 @@ export interface ListParams {
   resource?: string;
   status?: string;
   taskId?: string;
+  resolvedFrom?: string;
   page?: number;
   perPage?: number;
   /**
@@ -167,11 +165,7 @@ export function validateTaskBelongsToProject(
 
 function readRequest(id: string): MergeRequestRow | null {
   const db = getDb();
-  const row = db
-    .select()
-    .from(mergeRequests)
-    .where(eq(mergeRequests.id, id))
-    .get();
+  const row = db.select().from(mergeRequests).where(eq(mergeRequests.id, id)).get();
   return (row as MergeRequestRow | undefined) ?? null;
 }
 
@@ -280,13 +274,7 @@ type TransitionResult = { kind: "proceed" } | { kind: "idempotent_noop" };
 
 function assertCanTransition(
   from: string,
-  op:
-    | "cancel"
-    | "forceCancel"
-    | "transitionToIntegrating"
-    | "resetToQueued"
-    | "land"
-    | "reject",
+  op: "cancel" | "forceCancel" | "transitionToIntegrating" | "resetToQueued" | "land" | "reject",
   requestId: string,
 ): TransitionResult {
   switch (op) {
@@ -424,10 +412,7 @@ export interface InsertRequestRowParams {
  *
  * Accepts a db-or-tx handle so it composes inside an outer transaction.
  */
-export function insertRequestRow(
-  dbOrTx: DbOrTx,
-  params: InsertRequestRowParams,
-): string {
+export function insertRequestRow(dbOrTx: DbOrTx, params: InsertRequestRowParams): string {
   const now = new Date().toISOString();
   const id = createId();
   dbOrTx
@@ -505,6 +490,7 @@ export function list(projectId: string, params: ListParams = {}): ListResult {
   if (params.resource) conditions.push(eq(mergeRequests.resource, params.resource));
   if (params.status) conditions.push(eq(mergeRequests.status, params.status));
   if (params.taskId) conditions.push(eq(mergeRequests.taskId, params.taskId));
+  if (params.resolvedFrom) conditions.push(eq(mergeRequests.resolvedFrom, params.resolvedFrom));
   if (params.ungrouped) {
     conditions.push(sql`${mergeRequests.groupId} IS NULL`);
   }
@@ -744,9 +730,7 @@ export function getTimeline(id: string): TimelineResult {
 
   // 4. Incident (orphaned-inner). No index on innerRequestId — list the
   // project's incidents and filter in JS (the cheap, project-scoped path).
-  const incidents = listIncidents(row.projectId).filter(
-    (inc) => inc.innerRequestId === id,
-  );
+  const incidents = listIncidents(row.projectId).filter((inc) => inc.innerRequestId === id);
   for (const inc of incidents) {
     events.push({
       at: inc.openedAt,
@@ -821,11 +805,7 @@ export function getTimeline(id: string): TimelineResult {
  *                   `force_cancel`). The integrator discovers the abandon on
  *                   its next land/reject/completeAttempt (which 409s).
  */
-export function cancel(
-  id: string,
-  actor: Actor,
-  reason: string | null = null,
-): MergeRequestView {
+export function cancel(id: string, actor: Actor, reason: string | null = null): MergeRequestView {
   const row = readRequestOrThrow(id);
 
   // Structural guard (mirrors transitionToIntegrating / assertMemberLandableViaGroup):
@@ -877,11 +857,7 @@ export function forceCancel(
   const row = readRequestOrThrow(id);
 
   if (actor.role !== "admin") {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "Only admins may force-cancel a merge request.",
-    );
+    throw new AppError(403, "FORBIDDEN", "Only admins may force-cancel a merge request.");
   }
 
   const result = assertCanTransition(row.status, "forceCancel", id);
@@ -975,11 +951,7 @@ function applyAuditedAbandon(
   return toView(updated);
 }
 
-function applyAbandon(
-  row: MergeRequestRow,
-  actor: Actor,
-  reason: string | null,
-): MergeRequestView {
+function applyAbandon(row: MergeRequestRow, actor: Actor, reason: string | null): MergeRequestView {
   const db = getDb();
   const now = new Date().toISOString();
   db.update(mergeRequests)
@@ -1078,11 +1050,7 @@ export function transitionToIntegrating(
  *
  * State machine: per §6 — only legal from integrating.
  */
-export function resetToQueued(
-  id: string,
-  actor: Actor,
-  reason: string,
-): MergeRequestView {
+export function resetToQueued(id: string, actor: Actor, reason: string): MergeRequestView {
   const row = readRequestOrThrow(id);
 
   if (actor.type !== "ai_agent") {
@@ -1144,11 +1112,7 @@ export function resetToQueued(
  *
  * Event MERGE_REQUEST_LANDED emits AFTER the transaction commits (§12.1).
  */
-export function land(
-  id: string,
-  body: MergeRequestLand,
-  actor: Actor,
-): MergeRequestView {
+export function land(id: string, body: MergeRequestLand, actor: Actor): MergeRequestView {
   if (actor.type !== "ai_agent") {
     throw new AppError(
       403,
@@ -1241,11 +1205,7 @@ export function land(
  *
  * Event MERGE_REQUEST_REJECTED emits AFTER the transaction commits (§12.1).
  */
-export function reject(
-  id: string,
-  body: MergeRequestReject,
-  actor: Actor,
-): MergeRequestView {
+export function reject(id: string, body: MergeRequestReject, actor: Actor): MergeRequestView {
   if (actor.type !== "ai_agent") {
     throw new AppError(
       403,

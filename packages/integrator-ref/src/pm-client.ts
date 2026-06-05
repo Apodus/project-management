@@ -26,6 +26,7 @@ import type {
   VerifyStepResult,
   CacheMode,
   MergeResolutionView,
+  MergeResolutionState,
   MergeResolutionDetail,
   CommentType,
 } from "@pm/shared";
@@ -243,12 +244,23 @@ export class PmClient {
        *  passes this so a grouped member is never speculatively interleaved
        *  (design §9 finding 3). */
       ungrouped?: boolean;
+      /**
+       * Phase 7.6.1 reclaim sweep: narrow to requests resubmitted FROM the given
+       * origin (resolved_from == originRequestId). The key MUST be spelled
+       * `resolvedFrom` (camelCase) to match the route Zod — a mismatched key is
+       * silently dropped by the non-strict z.object and the filter would return
+       * ALL requests (a false reconcile).
+       */
+      resolvedFrom?: string;
     },
   ): Promise<MergeRequestView[]> {
     const params: string[] = [];
     if (filters?.resource) params.push(`resource=${encodeURIComponent(filters.resource)}`);
     if (filters?.status) params.push(`status=${encodeURIComponent(filters.status)}`);
     if (filters?.ungrouped) params.push(`ungrouped=true`);
+    if (filters?.resolvedFrom) {
+      params.push(`resolvedFrom=${encodeURIComponent(filters.resolvedFrom)}`);
+    }
     const qs = params.length > 0 ? `?${params.join("&")}` : "";
     return this.request<MergeRequestView[]>(
       "GET",
@@ -708,6 +720,28 @@ export class PmClient {
       "POST",
       `/projects/${encodeURIComponent(projectId)}/merge-resolutions`,
       { originRequestId, resource, conflictingFiles },
+    );
+  }
+
+  /**
+   * List merge resolutions for a project (Phase 7.6.1 reclaim sweep). The sweep
+   * lists `state: "resolving"` rows for its lane to find sessions stranded by a
+   * dead/timed-out resolver. Query keys `state` / `resource` match the route
+   * Zod. GET /api/v1/projects/{projectId}/merge-resolutions?qs.
+   */
+  listResolutions(
+    projectId: string,
+    filters?: { state?: MergeResolutionState; resource?: string },
+  ): Promise<MergeResolutionView[]> {
+    const params: string[] = [];
+    if (filters?.state) params.push(`state=${encodeURIComponent(filters.state)}`);
+    if (filters?.resource) {
+      params.push(`resource=${encodeURIComponent(filters.resource)}`);
+    }
+    const qs = params.length > 0 ? `?${params.join("&")}` : "";
+    return this.request<MergeResolutionView[]>(
+      "GET",
+      `/projects/${encodeURIComponent(projectId)}/merge-resolutions${qs}`,
     );
   }
 

@@ -179,25 +179,35 @@ const errorEnvelope = z.object({
 
 // ─── Param + query schemas ────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const requestIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01JE7KQXZJ9P3M4ABCDEF0X1Y2",
-});
+const requestIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01JE7KQXZJ9P3M4ABCDEF0X1Y2",
+  });
 
-const attemptIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01JE7KQXZJ9P3M4ATTEMPT01",
-});
+const attemptIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01JE7KQXZJ9P3M4ATTEMPT01",
+  });
 
 const listQuery = z.object({
   resource: z.string().optional(),
   status: z.enum(MERGE_REQUEST_STATUSES).optional(),
   taskId: z.string().optional(),
+  resolvedFrom: z.string().optional(),
   ungrouped: z
     .enum(["true", "false"])
     .optional()
@@ -236,9 +246,7 @@ const submitBody = z
   })
   .openapi("MergeRequestSubmit");
 
-const landBody = z
-  .object({ landedSha: z.string().min(1) })
-  .openapi("MergeRequestLand");
+const landBody = z.object({ landedSha: z.string().min(1) }).openapi("MergeRequestLand");
 
 const rejectBody = z
   .object({
@@ -304,10 +312,22 @@ const submitRoute = createRoute({
     body: { content: { "application/json": { schema: submitBody } }, required: true },
   },
   responses: {
-    201: { description: "Queued request", content: { "application/json": { schema: mergeRequestDataEnvelope } } },
-    400: { description: "Validation error (e.g. taskId not in this project)", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project or task not found", content: { "application/json": { schema: errorEnvelope } } },
+    201: {
+      description: "Queued request",
+      content: { "application/json": { schema: mergeRequestDataEnvelope } },
+    },
+    400: {
+      description: "Validation error (e.g. taskId not in this project)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project or task not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -316,12 +336,22 @@ const listRoute = createRoute({
   path: "/api/v1/projects/{projectId}/merge-requests",
   tags: ["Merge Requests"],
   summary: "List merge requests in a project",
-  description: "Returns requests for the project ordered by enqueuedAt ASC. Optional filters: resource, status, taskId. Paginated.",
+  description:
+    "Returns requests for the project ordered by enqueuedAt ASC. Optional filters: resource, status, taskId. Paginated.",
   request: { params: z.object({ projectId: projectIdParam }), query: listQuery },
   responses: {
-    200: { description: "Filtered list", content: { "application/json": { schema: mergeRequestListEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Filtered list",
+      content: { "application/json": { schema: mergeRequestListEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -333,9 +363,18 @@ const getRoute = createRoute({
   description: "Returns the request plus all attempts (most-recent first).",
   request: { params: z.object({ id: requestIdParam }) },
   responses: {
-    200: { description: "Request + attempts", content: { "application/json": { schema: mergeRequestDetailEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Request + attempts",
+      content: { "application/json": { schema: mergeRequestDetailEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -348,9 +387,18 @@ const timelineRoute = createRoute({
     "Returns the request plus its chronological state history (design §5.7): the queued/integrating/terminal milestones, every attempt with its log pointers + failureCategory, the land/reject/force_land/force_reject audit rows, and any orphaned-inner incident. Events are ordered ascending by timestamp. Any authenticated user may read.",
   request: { params: z.object({ id: requestIdParam }) },
   responses: {
-    200: { description: "Request + ordered events", content: { "application/json": { schema: timelineEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Request + ordered events",
+      content: { "application/json": { schema: timelineEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -366,10 +414,22 @@ const cancelRoute = createRoute({
     body: { content: { "application/json": { schema: cancelBody } }, required: false },
   },
   responses: {
-    200: { description: "Abandoned", content: { "application/json": { schema: mergeRequestDataEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Invalid transition (terminal) or GROUPED_MEMBER (cancel via the group)", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Abandoned",
+      content: { "application/json": { schema: mergeRequestDataEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Invalid transition (terminal) or GROUPED_MEMBER (cancel via the group)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -385,11 +445,26 @@ const pickupRoute = createRoute({
     body: { content: { "application/json": { schema: pickupBody } }, required: false },
   },
   responses: {
-    200: { description: "Picked up", content: { "application/json": { schema: mergeRequestDataEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Request not in 'queued' state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Picked up",
+      content: { "application/json": { schema: mergeRequestDataEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Request not in 'queued' state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -405,11 +480,26 @@ const resetToQueuedRoute = createRoute({
     body: { content: { "application/json": { schema: resetToQueuedBody } }, required: true },
   },
   responses: {
-    200: { description: "Re-queued", content: { "application/json": { schema: mergeRequestDataEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Request not in 'integrating' state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Re-queued",
+      content: { "application/json": { schema: mergeRequestDataEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Request not in 'integrating' state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -418,17 +508,30 @@ const forceCancelRoute = createRoute({
   path: "/api/v1/merge-requests/{id}/force-cancel",
   tags: ["Merge Requests"],
   summary: "Admin force-cancel any non-terminal request",
-  description: "Admin override: forces queued OR integrating → abandoned. The integrator discovers this on its next land/reject/completeAttempt call (which returns 409 INVALID_TRANSITION).",
+  description:
+    "Admin override: forces queued OR integrating → abandoned. The integrator discovers this on its next land/reject/completeAttempt call (which returns 409 INVALID_TRANSITION).",
   request: {
     params: z.object({ id: requestIdParam }),
     body: { content: { "application/json": { schema: forceCancelBody } }, required: false },
   },
   responses: {
-    200: { description: "Abandoned", content: { "application/json": { schema: mergeRequestDataEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Abandoned",
+      content: { "application/json": { schema: mergeRequestDataEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
     403: { description: "Admins only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Invalid transition (terminal)", content: { "application/json": { schema: errorEnvelope } } },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Invalid transition (terminal)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -443,12 +546,30 @@ const startAttemptRoute = createRoute({
     body: { content: { "application/json": { schema: startAttemptBody } }, required: true },
   },
   responses: {
-    201: { description: "Attempt started", content: { "application/json": { schema: mergeAttemptDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Request not in 'integrating' state", content: { "application/json": { schema: errorEnvelope } } },
+    201: {
+      description: "Attempt started",
+      content: { "application/json": { schema: mergeAttemptDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Request not in 'integrating' state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -457,18 +578,37 @@ const completeAttemptRoute = createRoute({
   path: "/api/v1/merge-attempts/{id}",
   tags: ["Merge Requests"],
   summary: "Integrator completes an attempt",
-  description: "Discriminated on status: passed requires treeSha; failed requires failureCategory + failureReason; cancelled requires only status.",
+  description:
+    "Discriminated on status: passed requires treeSha; failed requires failureCategory + failureReason; cancelled requires only status.",
   request: {
     params: z.object({ id: attemptIdParam }),
     body: { content: { "application/json": { schema: completeAttemptBody } }, required: true },
   },
   responses: {
-    200: { description: "Attempt completed", content: { "application/json": { schema: mergeAttemptDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Attempt not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Attempt not in 'running' state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Attempt completed",
+      content: { "application/json": { schema: mergeAttemptDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Attempt not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Attempt not in 'running' state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -477,18 +617,38 @@ const landRoute = createRoute({
   path: "/api/v1/merge-requests/{id}/land",
   tags: ["Merge Requests"],
   summary: "Integrator lands the request",
-  description: "integrating → landed. Transactionally creates a git_refs row of type 'landed_sha' if the request is linked to a task. Idempotent on landed → landed.",
+  description:
+    "integrating → landed. Transactionally creates a git_refs row of type 'landed_sha' if the request is linked to a task. Idempotent on landed → landed.",
   request: {
     params: z.object({ id: requestIdParam }),
     body: { content: { "application/json": { schema: landBody } }, required: true },
   },
   responses: {
-    200: { description: "Landed", content: { "application/json": { schema: mergeRequestDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Request not in 'integrating' state, or it is a grouped member that must land via its group (GROUPED_MEMBER)", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Landed",
+      content: { "application/json": { schema: mergeRequestDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description:
+        "Request not in 'integrating' state, or it is a grouped member that must land via its group (GROUPED_MEMBER)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -497,18 +657,37 @@ const rejectRoute = createRoute({
   path: "/api/v1/merge-requests/{id}/reject",
   tags: ["Merge Requests"],
   summary: "Integrator rejects the request",
-  description: "integrating → rejected. Transactionally creates a 'merge_rejection' comment on the linked task with structured metadata. Idempotent on rejected → rejected.",
+  description:
+    "integrating → rejected. Transactionally creates a 'merge_rejection' comment on the linked task with structured metadata. Idempotent on rejected → rejected.",
   request: {
     params: z.object({ id: requestIdParam }),
     body: { content: { "application/json": { schema: rejectBody } }, required: true },
   },
   responses: {
-    200: { description: "Rejected", content: { "application/json": { schema: mergeRequestDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Request not in 'integrating' state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Rejected",
+      content: { "application/json": { schema: mergeRequestDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Request not in 'integrating' state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -558,6 +737,7 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
       resource: query.resource,
       status: query.status,
       taskId: query.taskId,
+      resolvedFrom: query.resolvedFrom,
       ungrouped: query.ungrouped,
       page: query.page,
       perPage: query.perPage,

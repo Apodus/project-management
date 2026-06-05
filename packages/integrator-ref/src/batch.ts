@@ -33,6 +33,7 @@ import {
 } from "./group-integration.js";
 import { landAssembledGroup, type GroupLandResult } from "./group-land.js";
 import { recoverOrphanedInner, type RecoverResult } from "./group-recovery.js";
+import { reclaimResolvingResolutions } from "./reclaim-resolutions.js";
 
 const LOG_EXCERPT_CAP = 4096;
 
@@ -377,6 +378,19 @@ export interface RunBatchLoopDeps extends BatchDeps {
    * assembleGroup leases from + their binding clones.
    */
   groupLane?: GroupLaneDeps;
+  /**
+   * Phase 7.6.1 reclaim sweep gate. True ⇒ a throttled, non-fatal sweep at the
+   * top of each loop tick reclaims `merge_resolutions` rows stranded in
+   * `resolving` (the resolver session died/timed out). False/absent ⇒ no sweep
+   * (byte-identical to pre-7.6.1). Threaded from `settings.integrator.resolver`.
+   */
+  resolverEnabled?: boolean;
+  /**
+   * Phase 7.6.1: the resolver time budget (settings.integrator.resolver.
+   * time_budget_sec). The sweep uses it to compute the reclaim deadline so a
+   * still-LIVE resolver session is never reclaimed out from under itself.
+   */
+  resolverTimeBudgetSec?: number;
 }
 
 /**
@@ -2018,7 +2032,31 @@ export async function runBatchLoop(
   const pollMs = opts.pollIntervalMs ?? 30_000;
   const { logger } = deps;
 
+  // Phase 7.6.1 reclaim-sweep throttle: at most once per RESOLVER_SWEEP_INTERVAL_MS.
+  let lastResolverSweepAt = 0;
+  const RESOLVER_SWEEP_INTERVAL_MS = 60_000;
+
   while (deps.shouldContinue()) {
+    // ── Phase 7.6.1 reclaim sweep (gated, throttled, NON-FATAL) ──────────
+    // Recover `merge_resolutions` rows stranded in `resolving` (resolver session
+    // died/timed out). Runs at the TOP of the tick, BEFORE the group/single
+    // dispatch, and ALWAYS falls through (never `continue`s / blocks the train).
+    // Gated on resolverEnabled; throttled to once a minute; any throw swallowed.
+    if (deps.resolverEnabled && Date.now() - lastResolverSweepAt >= RESOLVER_SWEEP_INTERVAL_MS) {
+      lastResolverSweepAt = Date.now();
+      try {
+        await reclaimResolvingResolutions({
+          pmClient: deps.pmClient,
+          logger: deps.logger,
+          projectId: deps.projectId,
+          resource: deps.resource,
+          timeBudgetSec: deps.resolverTimeBudgetSec ?? 600,
+        });
+      } catch (err) {
+        deps.logger.error({ err: errMessage(err) }, "resolver reclaim sweep threw (swallowed)");
+      }
+    }
+
     // ── Phase 7.3 group dispatch (Step 10). Only when a group lane exists. ──
     if (deps.groupLane) {
       let groupOutcome: RunGroupLaneOutcome;
