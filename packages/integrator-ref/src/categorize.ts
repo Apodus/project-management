@@ -35,6 +35,36 @@ function parsePytestFailedFiles(text: string): string[] {
   return [...out];
 }
 
+/**
+ * A C/C++ toolchain compile-or-link failure: MSVC compiler (`error C2065`),
+ * linker (`error LNK2019` / `fatal error LNK1236`), clang/gcc (`file:line:col:
+ * error:`), or the MSBuild summary line (`N Error(s)` with N ≥ 1). Deliberately
+ * matched BEFORE the lint heuristic so a real build error in a log that also
+ * carries thousands of (non-fatal, `/WX-`) warnings is never mis-reported as a
+ * lint failure. `N Error(s)` is pinned to its own MSBuild summary line and to
+ * N ≥ 1 so a successful "0 Error(s)" build never matches.
+ */
+const CXX_BUILD_ERROR =
+  /\bfatal error (?:LNK|C)\d+|\berror LNK\d+|\berror C\d{4}\b|^[^\n]*:\d+:\d+:\s+error:|^\s*[1-9]\d* Error\(s\)\s*$/m;
+
+/** Best-effort failed-file extraction from C/C++/MSVC/linker error lines only. */
+function parseCxxFailedFiles(text: string): string[] {
+  const out = new Set<string>();
+  for (const line of text.split("\n")) {
+    if (!/\b(?:fatal )?error (?:LNK|C)\d+\b|:\d+:\d+:\s+error:/.test(line)) continue;
+    // A real source ref (file.cpp(123,45): … / file.cpp:12:5: …) is the most useful.
+    const src = line.match(/([^\s(]+\.(?:cpp|cc|cxx|c|hpp|hxx|h|inl))[\s(:]/i);
+    if (src) {
+      out.add(src[1]);
+      continue;
+    }
+    // Linker errors carry no source; fall back to the failing MSBuild project.
+    const proj = line.match(/\[([^\]\n]+\.vcxproj)\]/);
+    if (proj) out.add(proj[1]);
+  }
+  return [...out];
+}
+
 export function categorize(input: CategorizeInput): CategorizeResult {
   const { exitCode, signal, stdout, stderr, timedOut } = input;
   const combined = `${stdout}\n${stderr}`;
@@ -43,11 +73,36 @@ export function categorize(input: CategorizeInput): CategorizeResult {
     return { category: "verify_timeout", reason: "verify timed out", failedFiles: [] };
   }
 
-  if (/error\[E\d{2,4}\]/.test(combined) || (/error:/.test(combined) && /could not compile/.test(combined))) {
+  if (
+    /error\[E\d{2,4}\]/.test(combined) ||
+    (/error:/.test(combined) && /could not compile/.test(combined))
+  ) {
     return {
       category: "build_failed",
-      reason: firstLineMatching(combined, /(error\[E\d+\][^\n]*|error:[^\n]*could not compile[^\n]*)/) || "build failed",
+      reason:
+        firstLineMatching(combined, /(error\[E\d+\][^\n]*|error:[^\n]*could not compile[^\n]*)/) ||
+        "build failed",
       failedFiles: parseRustcFiles(combined),
+    };
+  }
+
+  // C/C++ / MSVC / linker / MSBuild compile-or-link failure — BEFORE the lint
+  // check, so a hard error is never mis-reported as a warning. (Real-world bite:
+  // an MSVC build with /WX- emits thousands of non-fatal warnings + one fatal
+  // `LNK1236`; the old code fell through to the warning-matching lint branch and
+  // surfaced a random `warning:` line as the reason.)
+  if (CXX_BUILD_ERROR.test(combined)) {
+    return {
+      category: "build_failed",
+      reason:
+        firstLineMatching(
+          combined,
+          /[^\n]*\b(?:fatal error (?:LNK|C)\d+|error LNK\d+|error C\d{4})\b[^\n]*/,
+        ) ||
+        firstLineMatching(combined, /[^\n]*:\d+:\d+:\s+error:[^\n]*/) ||
+        firstLineMatching(combined, /^\s*[1-9]\d* Error\(s\)\s*$/m) ||
+        "build failed",
+      failedFiles: parseCxxFailedFiles(combined),
     };
   }
 
@@ -62,15 +117,24 @@ export function categorize(input: CategorizeInput): CategorizeResult {
   if (/test result: FAILED/.test(combined) || /^FAIL\s/m.test(combined)) {
     return {
       category: "test_failed",
-      reason: firstLineMatching(combined, /test result: FAILED[^\n]*|^FAIL\s[^\n]*/m) || "tests failed",
+      reason:
+        firstLineMatching(combined, /test result: FAILED[^\n]*|^FAIL\s[^\n]*/m) || "tests failed",
       failedFiles: [],
     };
   }
 
-  if (exitCode !== 0 && (/^warning:/m.test(combined) || /eslint/i.test(combined) || /Prettier/.test(combined) || /clippy::/.test(combined))) {
+  if (
+    exitCode !== 0 &&
+    (/^warning:/m.test(combined) ||
+      /eslint/i.test(combined) ||
+      /Prettier/.test(combined) ||
+      /clippy::/.test(combined))
+  ) {
     return {
       category: "lint_failed",
-      reason: firstLineMatching(combined, /^warning:[^\n]*|eslint[^\n]*|clippy::[^\n]*/m) || "lint failure",
+      reason:
+        firstLineMatching(combined, /^warning:[^\n]*|eslint[^\n]*|clippy::[^\n]*/m) ||
+        "lint failure",
       failedFiles: [],
     };
   }
