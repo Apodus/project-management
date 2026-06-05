@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   Activity,
@@ -19,18 +19,9 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProject, useProjectStats } from "@/hooks/use-projects";
 import { useProjectActivity } from "@/hooks/use-activity";
 import { useTasks } from "@/hooks/use-tasks";
@@ -39,25 +30,13 @@ import { useUsers } from "@/hooks/use-users";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
 import { EpicRoadmapCanvas } from "@/components/epic-roadmap-canvas";
-import {
-  formatRelativeTime,
-  formatStatus,
-  getStatusColor,
-  getPriorityColor,
-} from "@/lib/format";
+import { formatRelativeTime, formatStatus, getStatusColor, getPriorityColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ActivityLogEntry, Task } from "@/lib/api";
 
 // ---- Task status ordering for the bar chart ----
 
-const STATUS_ORDER = [
-  "backlog",
-  "ready",
-  "in_progress",
-  "in_review",
-  "done",
-  "cancelled",
-] as const;
+const STATUS_ORDER = ["backlog", "ready", "in_progress", "in_review", "done", "cancelled"] as const;
 
 const STATUS_BAR_COLORS: Record<string, string> = {
   backlog: "bg-gray-400 dark:bg-gray-500",
@@ -80,11 +59,7 @@ const PROPOSAL_PIPELINE = [
 
 // ---- Stats Section ----
 
-function StatsSection({
-  projectId,
-}: {
-  projectId: string;
-}) {
+function StatsSection({ projectId }: { projectId: string }) {
   const { data: stats, isLoading } = useProjectStats(projectId);
 
   if (isLoading) {
@@ -118,7 +93,7 @@ function StatsSection({
             </div>
             <div>
               <p className="text-2xl font-bold">{totalTasks}</p>
-              <p className="text-xs text-muted-foreground">Total Tasks</p>
+              <p className="text-muted-foreground text-xs">Total Tasks</p>
             </div>
           </CardContent>
         </Card>
@@ -130,7 +105,7 @@ function StatsSection({
             </div>
             <div>
               <p className="text-2xl font-bold">{tasksByStatus["done"] ?? 0}</p>
-              <p className="text-xs text-muted-foreground">Tasks Done</p>
+              <p className="text-muted-foreground text-xs">Tasks Done</p>
             </div>
           </CardContent>
         </Card>
@@ -142,7 +117,7 @@ function StatsSection({
             </div>
             <div>
               <p className="text-2xl font-bold">{stats.epicCount ?? 0}</p>
-              <p className="text-xs text-muted-foreground">Epics</p>
+              <p className="text-muted-foreground text-xs">Epics</p>
             </div>
           </CardContent>
         </Card>
@@ -154,7 +129,7 @@ function StatsSection({
             </div>
             <div>
               <p className="text-2xl font-bold">{stats.proposalCount ?? 0}</p>
-              <p className="text-xs text-muted-foreground">Proposals</p>
+              <p className="text-muted-foreground text-xs">Proposals</p>
             </div>
           </CardContent>
         </Card>
@@ -164,13 +139,13 @@ function StatsSection({
       {totalTasks > 0 && (
         <Card className="py-4">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+            <CardTitle className="text-muted-foreground text-sm font-medium">
               Tasks by Status
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {/* Horizontal stacked bar */}
-            <div className="flex h-4 overflow-hidden rounded-full bg-muted">
+            <div className="bg-muted flex h-4 overflow-hidden rounded-full">
               {STATUS_ORDER.map((status) => {
                 const count = tasksByStatus[status] ?? 0;
                 if (count === 0) return null;
@@ -179,15 +154,14 @@ function StatsSection({
                   <Tooltip key={status}>
                     <TooltipTrigger asChild>
                       <div
-                        className={cn(
-                          "transition-all cursor-default",
-                          STATUS_BAR_COLORS[status],
-                        )}
+                        className={cn("cursor-default transition-all", STATUS_BAR_COLORS[status])}
                         style={{ width: `${pct}%` }}
                       />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>{formatStatus(status)}: {count}</p>
+                      <p>
+                        {formatStatus(status)}: {count}
+                      </p>
                     </TooltipContent>
                   </Tooltip>
                 );
@@ -201,15 +175,8 @@ function StatsSection({
                 if (count === 0) return null;
                 return (
                   <div key={status} className="flex items-center gap-1.5 text-xs">
-                    <div
-                      className={cn(
-                        "size-2.5 rounded-full",
-                        STATUS_BAR_COLORS[status],
-                      )}
-                    />
-                    <span className="text-muted-foreground">
-                      {formatStatus(status)}
-                    </span>
+                    <div className={cn("size-2.5 rounded-full", STATUS_BAR_COLORS[status])} />
+                    <span className="text-muted-foreground">{formatStatus(status)}</span>
                     <span className="font-medium">{count}</span>
                   </div>
                 );
@@ -279,28 +246,21 @@ function CompactActivityEntry({
   return (
     <div className="flex items-center gap-3 py-2">
       <div
-        className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-full",
-          iconColor,
-        )}
+        className={cn("flex size-6 shrink-0 items-center justify-center rounded-full", iconColor)}
       >
         <Icon className="size-3" />
       </div>
       <p className="min-w-0 flex-1 truncate text-sm">
-        <span className="font-medium">{displayActorName}</span>
-        {" "}
+        <span className="font-medium">{displayActorName}</span>{" "}
         <span className="text-muted-foreground">
           {formatStatus(entry.action).toLowerCase()} {entry.entityType}
-        </span>
-        {" "}
+        </span>{" "}
         <span className="font-medium">&apos;{displayTitle}&apos;</span>
         {entry.epicName && (
-          <span className="text-muted-foreground/70 text-xs ml-1">
-            (Epic: {entry.epicName})
-          </span>
+          <span className="text-muted-foreground/70 ml-1 text-xs">(Epic: {entry.epicName})</span>
         )}
       </p>
-      <span className="shrink-0 text-xs text-muted-foreground/60">
+      <span className="text-muted-foreground/60 shrink-0 text-xs">
         {formatRelativeTime(entry.createdAt)}
       </span>
     </div>
@@ -322,7 +282,7 @@ function RecentActivitySection({
     <Card className="py-4">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
+          <CardTitle className="text-muted-foreground text-sm font-medium">
             Recent Activity
           </CardTitle>
           <Button
@@ -356,24 +316,16 @@ function RecentActivitySection({
 
         {!isLoading && entries.length === 0 && (
           <div className="flex flex-col items-center py-6">
-            <Activity className="mb-2 size-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">No recent activity</p>
+            <Activity className="text-muted-foreground/40 mb-2 size-8" />
+            <p className="text-muted-foreground text-sm">No recent activity</p>
           </div>
         )}
 
         {!isLoading && entries.length > 0 && (
           <div className="divide-y">
             {entries.map((entry) => {
-              const actor = entry.actorId
-                ? userMap.get(entry.actorId)
-                : undefined;
-              return (
-                <CompactActivityEntry
-                  key={entry.id}
-                  entry={entry}
-                  actorName={actor?.name}
-                />
-              );
+              const actor = entry.actorId ? userMap.get(entry.actorId) : undefined;
+              return <CompactActivityEntry key={entry.id} entry={entry} actorName={actor?.name} />;
             })}
           </div>
         )}
@@ -398,9 +350,7 @@ function MyTasksSection({
     order: "asc",
     perPage: 10,
   });
-  const tasks = (data?.data ?? []).filter(
-    (t) => t.status !== "done" && t.status !== "cancelled",
-  );
+  const tasks = (data?.data ?? []).filter((t) => t.status !== "done" && t.status !== "cancelled");
 
   // Collapse to nothing when there's no work to show. An empty "My Tasks"
   // card was reserving half the dashboard for a small team that's usually
@@ -413,9 +363,7 @@ function MyTasksSection({
     <Card className="py-4">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            My Tasks
-          </CardTitle>
+          <CardTitle className="text-muted-foreground text-sm font-medium">My Tasks</CardTitle>
           {tasks.length > 0 && (
             <Button
               variant="ghost"
@@ -452,10 +400,8 @@ function MyTasksSection({
             {tasks.map((task: Task) => (
               <div
                 key={task.id}
-                className="flex cursor-pointer items-center gap-3 py-2 transition-colors hover:bg-muted/30"
-                onClick={() =>
-                  navigate({ to: "/tasks/$taskId", params: { taskId: task.id } })
-                }
+                className="hover:bg-muted/30 flex cursor-pointer items-center gap-3 py-2 transition-colors"
+                onClick={() => navigate({ to: "/tasks/$taskId", params: { taskId: task.id } })}
               >
                 <Badge
                   variant="secondary"
@@ -463,15 +409,10 @@ function MyTasksSection({
                 >
                   {formatStatus(task.status)}
                 </Badge>
-                <span className="min-w-0 flex-1 truncate text-sm">
-                  {task.title}
-                </span>
+                <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
                 <Badge
                   variant="secondary"
-                  className={cn(
-                    "shrink-0 text-[10px]",
-                    getPriorityColor(task.priority),
-                  )}
+                  className={cn("shrink-0 text-[10px]", getPriorityColor(task.priority))}
                 >
                   {formatStatus(task.priority)}
                 </Badge>
@@ -524,7 +465,7 @@ function ActiveAIAgentsSection({
   return (
     <Card className="py-4">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+        <CardTitle className="text-muted-foreground text-sm font-medium">
           Active AI Agents
         </CardTitle>
       </CardHeader>
@@ -545,23 +486,19 @@ function ActiveAIAgentsSection({
 
         {!isLoading && aiTasks.length === 0 && (
           <div className="flex flex-col items-center py-6">
-            <Bot className="mb-2 size-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              No AI agents currently working
-            </p>
+            <Bot className="text-muted-foreground/40 mb-2 size-8" />
+            <p className="text-muted-foreground text-sm">No AI agents currently working</p>
           </div>
         )}
 
         {!isLoading && aiTasks.length > 0 && (
           <div className="divide-y">
             {aiTasks.map((task) => {
-              const agent = task.assigneeId
-                ? userMap.get(task.assigneeId)
-                : undefined;
+              const agent = task.assigneeId ? userMap.get(task.assigneeId) : undefined;
               return (
                 <div
                   key={task.id}
-                  className="flex cursor-pointer items-center gap-3 py-2.5 transition-colors hover:bg-muted/30"
+                  className="hover:bg-muted/30 flex cursor-pointer items-center gap-3 py-2.5 transition-colors"
                   onClick={() =>
                     navigate({
                       to: "/tasks/$taskId",
@@ -573,13 +510,11 @@ function ActiveAIAgentsSection({
                     <Bot className="size-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
-                      {task.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="truncate text-sm font-medium">{task.title}</p>
+                    <p className="text-muted-foreground text-xs">
                       {agent?.name ?? task.assigneeId}
                       {task.startedAt && (
-                        <span className="ml-1.5 text-muted-foreground/60">
+                        <span className="text-muted-foreground/60 ml-1.5">
                           {formatDuration(task.startedAt)}
                         </span>
                       )}
@@ -597,18 +532,13 @@ function ActiveAIAgentsSection({
 
 // ---- Proposal Pipeline ----
 
-function ProposalPipelineSection({
-  projectId,
-}: {
-  projectId: string;
-}) {
+function ProposalPipelineSection({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const { data: allProposals, isLoading } = useProposals(projectId);
 
   const counts = PROPOSAL_PIPELINE.reduce(
     (acc, stage) => {
-      acc[stage.status] =
-        allProposals?.filter((p) => p.status === stage.status).length ?? 0;
+      acc[stage.status] = allProposals?.filter((p) => p.status === stage.status).length ?? 0;
       return acc;
     },
     {} as Record<string, number>,
@@ -619,7 +549,7 @@ function ProposalPipelineSection({
   return (
     <Card className="py-4">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+        <CardTitle className="text-muted-foreground text-sm font-medium">
           Proposal Pipeline
         </CardTitle>
       </CardHeader>
@@ -634,10 +564,8 @@ function ProposalPipelineSection({
 
         {!isLoading && totalProposals === 0 && (
           <div className="flex flex-col items-center py-6">
-            <FileText className="mb-2 size-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              No proposals yet
-            </p>
+            <FileText className="text-muted-foreground/40 mb-2 size-8" />
+            <p className="text-muted-foreground text-sm">No proposals yet</p>
           </div>
         )}
 
@@ -663,9 +591,7 @@ function ProposalPipelineSection({
                   }
                 >
                   <span className="text-lg font-bold">{count}</span>
-                  <span className="text-[10px] font-medium opacity-90">
-                    {stage.label}
-                  </span>
+                  <span className="text-[10px] font-medium opacity-90">{stage.label}</span>
                 </button>
               );
             })}
@@ -678,11 +604,7 @@ function ProposalPipelineSection({
 
 // ---- Attention Needed ----
 
-function AttentionSection({
-  projectId,
-}: {
-  projectId: string;
-}) {
+function AttentionSection({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
 
   // Fetch blocked tasks count
@@ -705,7 +627,7 @@ function AttentionSection({
     return (
       <Card className="py-4">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
+          <CardTitle className="text-muted-foreground text-sm font-medium">
             Attention Needed
           </CardTitle>
         </CardHeader>
@@ -721,7 +643,7 @@ function AttentionSection({
     // Collapse to a slim one-line notice — when nothing needs attention this
     // widget should take a single row, not a full card's worth of estate.
     return (
-      <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+      <div className="bg-muted/30 text-muted-foreground flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
         <CheckCircle2 className="size-4 shrink-0 text-green-500/70" />
         All clear — nothing needs attention
       </div>
@@ -731,7 +653,7 @@ function AttentionSection({
   return (
     <Card className="py-4">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+        <CardTitle className="text-muted-foreground text-sm font-medium">
           Attention Needed
         </CardTitle>
       </CardHeader>
@@ -788,13 +710,78 @@ function AttentionSection({
 
 // ---- Roadmap Hero ----
 
+const ROADMAP_HEIGHT_KEY = "pm:dashboard:roadmap-height";
+const ROADMAP_MIN_HEIGHT = 320;
+const ROADMAP_MAX_HEIGHT = 1600;
+const ROADMAP_DEFAULT_HEIGHT = 480;
+
+function clampRoadmapHeight(px: number): number {
+  return Math.min(ROADMAP_MAX_HEIGHT, Math.max(ROADMAP_MIN_HEIGHT, px));
+}
+
+function readStoredRoadmapHeight(): number {
+  if (typeof window === "undefined") return ROADMAP_DEFAULT_HEIGHT;
+  const raw = window.localStorage.getItem(ROADMAP_HEIGHT_KEY);
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) ? clampRoadmapHeight(parsed) : ROADMAP_DEFAULT_HEIGHT;
+}
+
 function RoadmapHeroSection({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
+  // Height is user-resizable via the bottom drag handle and persisted across
+  // sessions. We track it in a ref too so the pointerup persist sees the latest
+  // value without re-subscribing the window listeners on every drag frame.
+  const [height, setHeight] = useState<number>(readStoredRoadmapHeight);
+  const heightRef = useRef(height);
+  heightRef.current = height;
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+
+  useEffect(() => {
+    function onMove(e: PointerEvent): void {
+      const drag = dragRef.current;
+      if (!drag) return;
+      setHeight(clampRoadmapHeight(drag.startH + (e.clientY - drag.startY)));
+    }
+    function onUp(): void {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      try {
+        window.localStorage.setItem(ROADMAP_HEIGHT_KEY, String(heightRef.current));
+      } catch {
+        // Private-mode / storage-disabled: keep the in-session height, skip persist.
+      }
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, []);
+
+  function startDrag(e: React.PointerEvent<HTMLDivElement>): void {
+    e.preventDefault();
+    dragRef.current = { startY: e.clientY, startH: heightRef.current };
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "ns-resize";
+  }
+
+  function resetHeight(): void {
+    setHeight(ROADMAP_DEFAULT_HEIGHT);
+    try {
+      window.localStorage.setItem(ROADMAP_HEIGHT_KEY, String(ROADMAP_DEFAULT_HEIGHT));
+    } catch {
+      // ignore persist failure
+    }
+  }
+
   return (
-    <section className="flex h-[480px] flex-col rounded-xl border bg-card shadow-sm">
+    <section className="bg-card flex flex-col rounded-xl border shadow-sm" style={{ height }}>
       <div className="flex items-center justify-between border-b px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <Network className="size-4 text-muted-foreground" />
+          <Network className="text-muted-foreground size-4" />
           <h2 className="text-sm font-semibold tracking-tight">Roadmap</h2>
         </div>
         <Button
@@ -814,6 +801,17 @@ function RoadmapHeroSection({ projectId }: { projectId: string }) {
       </div>
       <div className="flex min-h-0 flex-1 flex-col p-2">
         <EpicRoadmapCanvas projectId={projectId} variant="compact" />
+      </div>
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize roadmap (drag; double-click to reset)"
+        title="Drag to resize · double-click to reset"
+        onPointerDown={startDrag}
+        onDoubleClick={resetHeight}
+        className="hover:bg-muted group flex h-2.5 shrink-0 cursor-ns-resize items-center justify-center rounded-b-xl border-t"
+      >
+        <div className="bg-border group-hover:bg-muted-foreground/50 h-1 w-10 rounded-full transition-colors" />
       </div>
     </section>
   );
@@ -838,9 +836,7 @@ export function DashboardPage() {
 
   // Fetch users for activity actor names and AI agent filtering
   const { data: users } = useUsers();
-  const userMap = new Map(
-    (users ?? []).map((u) => [u.id, { name: u.displayName, type: u.type }]),
-  );
+  const userMap = new Map((users ?? []).map((u) => [u.id, { name: u.displayName, type: u.type }]));
 
   if (!projectId) return null;
 
@@ -848,7 +844,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <LayoutDashboard className="size-6 text-muted-foreground" />
+        <LayoutDashboard className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         {project && (
           <Badge variant="outline" className="text-xs font-normal">
@@ -877,12 +873,7 @@ export function DashboardPage() {
           vs Proposal Pipeline) — no reserved dead space. */}
       <div className="columns-1 gap-6 lg:columns-2 [&>*]:mb-6 [&>*]:break-inside-avoid">
         <RecentActivitySection projectId={projectId} userMap={userMap} />
-        {currentUser && (
-          <MyTasksSection
-            projectId={projectId}
-            currentUserId={currentUser.id}
-          />
-        )}
+        {currentUser && <MyTasksSection projectId={projectId} currentUserId={currentUser.id} />}
         <ActiveAIAgentsSection projectId={projectId} userMap={userMap} />
         <ProposalPipelineSection projectId={projectId} />
       </div>
