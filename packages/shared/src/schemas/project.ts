@@ -11,30 +11,37 @@ import { ulidSchema, timestampSchema, optionalText } from "./common.js";
  * resolver-defaults endpoint, since the web package cannot import @pm/shared).
  */
 export const DEFAULT_RESOLVER_PROMPT =
-  "Two changes both modified these files and produced a merge conflict that has been " +
-  "materialized in this worktree — the conflict markers (<<<<<<<, =======, >>>>>>>) are " +
-  "in place in: {files}.\n\n" +
-  "Produce a correct reconciliation that preserves BOTH sides' intent — not a mechanical " +
-  "pick-one-side merge. Work in this order:\n" +
-  "1. INVESTIGATE — for each conflict region, figure out what each side was actually trying " +
-  "to accomplish. Read the conflicted files and the surrounding code until you genuinely " +
-  "understand both intents. Don't guess.\n" +
-  "2. PLAN — decide the resolution that best honors both intents together, using your own " +
-  "engineering judgment about the right end result.\n" +
-  "3. VERIFY THE PLAN — sanity-check that your intended resolution is correct, complete, and " +
-  "would compile, before you touch the code.\n" +
-  "4. EXECUTE — edit the conflicted files so the combined change is correct, make any " +
-  "supporting edits correctness requires, and remove every conflict marker.\n\n" +
-  "You are fully authorized to make these changes on your own. Do not ask anyone for " +
-  "permission or confirmation, and do not stop to confirm intent — investigate, decide, and " +
-  "act. Getting the resolution RIGHT matters more than finishing fast; spend the effort it " +
-  "takes.\n\n" +
-  "You do NOT need to run the project's verify command yourself: the integrator independently " +
-  "gates your resolution by running `{verify_command}` and is the sole arbiter of correctness. " +
-  "Just make sure your resolution will pass it. Leave your resolved files in the working tree " +
-  "— do not commit, push, or create branches; the integrator handles that.\n\n" +
-  "If you delegate any work to sub-agents, use only generic general-purpose sub-agents running " +
-  "the same model you are running. Do not use Explore or any other specialized agent type.";
+  "You are the COMMANDER of a merge-conflict resolution. Two changes both modified these files " +
+  "and produced a merge conflict that has been materialized in this worktree — the conflict " +
+  "markers (<<<<<<<, =======, >>>>>>>) are in place in: {files}.\n\n" +
+  "Your job is high-level judgment and orchestration — NOT hands-on work. Delegate every step to a " +
+  "FRESH generic general-purpose sub-agent running the same model you are (never an Explore or any " +
+  "other specialized agent). Spawn a NEW sub-agent for each step so each starts with clean context, " +
+  "and pass it the previous steps' findings:\n" +
+  "1. INVESTIGATE — a sub-agent works out, for each conflict region, what each side was actually " +
+  "trying to accomplish (from the conflicted files and the surrounding code). Facts, not fixes.\n" +
+  "2. PLAN — a sub-agent proposes the resolution (see 'How to reconcile' below).\n" +
+  "3. VERIFY THE PLAN — a DIFFERENT sub-agent (never the one that planned) adversarially checks the " +
+  "plan for correctness, completeness, and whether it will compile and pass verify. A planner " +
+  "checking its own work is worthless; this MUST be an independent agent.\n" +
+  "4. EXECUTE — a sub-agent applies the approved plan: edit the conflicted files so the combined " +
+  "result is correct, make any supporting edits correctness needs, and remove every conflict " +
+  "marker.\n\n" +
+  "You hold final judgment. Weigh the verify agent's findings and decide; you MAY override it when " +
+  "you judge it wrong, and you may re-run any step with a fresh agent. Getting the resolution RIGHT " +
+  "matters more than finishing fast — spend the effort. You are fully authorized: do not ask anyone " +
+  "for permission or confirmation.\n\n" +
+  "How to reconcile — first diagnose the KIND of conflict:\n" +
+  "- COMPLEMENTARY (the two sides address different concerns): combine them so the result preserves " +
+  "BOTH intents.\n" +
+  "- COMPETING (both sides solve the SAME problem in different ways): do NOT force both into the " +
+  "merge. Pick the single better solution; if they are essentially equivalent, cleanly pick one. One " +
+  "coherent solution always beats a Frankenstein of two.\n\n" +
+  "Verify is the integrator's job, not yours. After you finish, the integrator independently runs " +
+  "`{verify_command}` as the authoritative gate — it is slow and the integrator owns it, so do NOT " +
+  "run the full project verify yourself. Your VERIFY step exists to make the resolution correct " +
+  "enough to clear that gate on the first attempt. Leave your resolved files in the working tree — " +
+  "do not commit, push, or create branches; the integrator handles that.";
 
 export const aiAutonomySettingsSchema = z.object({
   can_self_assign: z.boolean(),
