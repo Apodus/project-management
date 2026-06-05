@@ -232,9 +232,7 @@ describe("metrics service", () => {
     // durations sorted asc: [1,2,...,10] minutes.
     for (let k = 1; k <= 10; k++) {
       const resolvedAt = ago(2 * HOUR); // well within 24h
-      const enqueuedAt = new Date(
-        Date.parse(resolvedAt) - k * 60_000,
-      ).toISOString();
+      const enqueuedAt = new Date(Date.parse(resolvedAt) - k * 60_000).toISOString();
       seedRequest(testApp, {
         projectId: project.id,
         submittedBy: user.id,
@@ -679,6 +677,6 @@ describe("metrics service", () => {
     expect(r.budgetUtilization.meanConsumedSec).toBeNull();
     expect(r.budgetUtilization.ratio).toBeNull();
     // Default budget when unset (the shared-schema default).
-    expect(r.budgetUtilization.budgetSec).toBe(600);
+    expect(r.budgetUtilization.budgetSec).toBe(3600);
   });
 });

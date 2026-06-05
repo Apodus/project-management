@@ -16,7 +16,7 @@ export function resolverConfigFromProject(
   const config: ResolverConfig = {
     enabled: resolver.enabled ?? false,
     max_concurrent: resolver.max_concurrent ?? 1,
-    time_budget_sec: resolver.time_budget_sec ?? 600,
+    time_budget_sec: resolver.time_budget_sec ?? 3600,
   };
   if (resolver.token_budget != null) config.token_budget = resolver.token_budget;
   if (resolver.command != null) config.command = resolver.command;

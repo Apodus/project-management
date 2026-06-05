@@ -4,15 +4,18 @@ import { buildReconcilePrompt } from "../src/resolver-runner.js";
 
 describe("buildReconcilePrompt (Phase 7.6 — resolver.prompt override)", () => {
   it("substitutes {files} and {verify_command} in the default prompt", () => {
-    const out = buildReconcilePrompt(
-      DEFAULT_RESOLVER_PROMPT,
-      ["a.ts", "b.ts"],
-      "pnpm test",
-    );
+    const out = buildReconcilePrompt(DEFAULT_RESOLVER_PROMPT, ["a.ts", "b.ts"], "pnpm test");
     expect(out).toContain("a.ts, b.ts");
     expect(out).toContain("pnpm test");
     expect(out).not.toContain("{files}");
     expect(out).not.toContain("{verify_command}");
+  });
+
+  it("includes the status-file + full-verify in-session instructions (Phase 7.6.1)", () => {
+    const out = buildReconcilePrompt(DEFAULT_RESOLVER_PROMPT, ["a.ts", "b.ts"], "pnpm test");
+    // The agent owns the verify loop and declares via the status sentinel file.
+    expect(out).toContain("PM_RESOLUTION_STATUS_PATH");
+    expect(out).toMatch(/full[\s\S]*suite/i);
   });
 
   it("uses a placeholder for an empty conflicting-files list", () => {

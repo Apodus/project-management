@@ -135,12 +135,12 @@ const integratorSettingsSchema = z
     // used by @hono/zod-openapi) yields a literal `{}` with inner defaults NOT
     // applied. The contract is identical OUTPUT shape, so we use `.prefault({})`
     // here — prefault feeds `{}` as INPUT, so the inner defaults DO run, yielding
-    // the same inert `{ enabled:false, max_concurrent:1, time_budget_sec:600 }`.
+    // the same inert `{ enabled:false, max_concurrent:1, time_budget_sec:3600 }`.
     resolver: z
       .object({
         enabled: z.boolean().default(false),
         max_concurrent: z.number().int().min(1).default(1),
-        time_budget_sec: z.number().positive().default(600),
+        time_budget_sec: z.number().positive().default(3600),
         token_budget: z.number().positive().optional(),
         command: z.string().min(1).optional(),
         prompt: z.string().min(1).optional(),
@@ -176,8 +176,7 @@ const integratorSettingsSchema = z
   .refine(
     (v) =>
       !v.enabled ||
-      ((Boolean(v.verify_command) || v.verify_steps.length > 0) &&
-        Boolean(v.worktree_root)),
+      ((Boolean(v.verify_command) || v.verify_steps.length > 0) && Boolean(v.worktree_root)),
     {
       message:
         "When integrator.enabled is true, verify_command (or a non-empty verify_steps) and worktree_root are required and must be non-empty.",
@@ -294,10 +293,13 @@ const updateProjectBody = z
   })
   .openapi("UpdateProject");
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 

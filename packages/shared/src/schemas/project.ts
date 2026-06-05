@@ -27,6 +27,20 @@ export const DEFAULT_RESOLVER_PROMPT =
   "4. EXECUTE — a sub-agent applies the approved plan: edit the conflicted files so the combined " +
   "result is correct, make any supporting edits correctness needs, and remove every conflict " +
   "marker.\n\n" +
+  "5. VERIFY (you own it) — you yourself run the project's verify command `{verify_command}` (and/or " +
+  "its individual steps) and iterate the loop: resolve → verify → read the failure → fix (delegate " +
+  "each fix to a FRESH sub-agent, same as every other step) → re-verify. Targeted or partial checks " +
+  "are fine for fast iteration while you converge, but you MUST see the FULL `{verify_command}` suite " +
+  "pass green before you may declare complete. Do NOT declare done on a partial or targeted check — " +
+  "only a clean full-suite run counts.\n" +
+  "6. DECLARE (mandatory final action) — as your FINAL action, write your outcome as JSON to the file " +
+  "path given in the PM_RESOLUTION_STATUS_PATH environment variable. That path is OUTSIDE this " +
+  "worktree — write it there and do NOT create it inside the tree. Write exactly " +
+  '`{"status":"complete"}` once the full `{verify_command}` suite is green, or ' +
+  '`{"status":"give_up","reason":"…"}` if after genuine effort no clear path to a green full suite ' +
+  "exists. Writing this file is MANDATORY: if it is absent the resolution is treated as incomplete " +
+  "and escalated. Do not thrash — if you cannot get there, give up honestly rather than loop " +
+  "forever.\n\n" +
   "You hold final judgment. Weigh the verify agent's findings and decide; you MAY override it when " +
   "you judge it wrong, and you may re-run any step with a fresh agent. Getting the resolution RIGHT " +
   "matters more than finishing fast — spend the effort. You are fully authorized: do not ask anyone " +
@@ -37,11 +51,11 @@ export const DEFAULT_RESOLVER_PROMPT =
   "- COMPETING (both sides solve the SAME problem in different ways): do NOT force both into the " +
   "merge. Pick the single better solution; if they are essentially equivalent, cleanly pick one. One " +
   "coherent solution always beats a Frankenstein of two.\n\n" +
-  "Verify is the integrator's job, not yours. After you finish, the integrator independently runs " +
-  "`{verify_command}` as the authoritative gate — it is slow and the integrator owns it, so do NOT " +
-  "run the full project verify yourself. Your VERIFY step exists to make the resolution correct " +
-  "enough to clear that gate on the first attempt. Leave your resolved files in the working tree — " +
-  "do not commit, push, or create branches; the integrator handles that.";
+  "After you finish, the integrator independently re-runs `{verify_command}` as the final landing " +
+  "gate — but that is a BACKSTOP, not a substitute for getting the full suite green in-session. A " +
+  "resolution that has not passed the full suite under your own VERIFY step wastes that gate and gets " +
+  "escalated; getting the full suite green yourself is the whole job. Leave your resolved files in " +
+  "the working tree — do not commit, push, or create branches; the integrator handles that.";
 
 export const aiAutonomySettingsSchema = z.object({
   can_self_assign: z.boolean(),
@@ -173,14 +187,16 @@ export const integratorSettingsSchema = z
       .optional(),
     // Phase 7.6 — intelligent merge-conflict resolution (§3). Inert until
     // `enabled = true`; absent/empty block ⇒ `{ enabled:false, max_concurrent:1,
-    // time_budget_sec:600 }`. Zod 3 applies the inner defaults when the outer
+    // time_budget_sec:3600 }`. Zod 3 applies the inner defaults when the outer
     // `.default({})` fires (the Zod-4 route mirror must use `.prefault({})` to
-    // match — see packages/server/src/routes/projects.ts).
+    // match — see packages/server/src/routes/projects.ts). Phase 7.6.1:
+    // time_budget_sec now bounds the WHOLE in-session resolve→verify loop the
+    // agent owns (not a single attempt), hence the larger default.
     resolver: z
       .object({
         enabled: z.boolean().default(false),
         max_concurrent: z.number().int().min(1).default(1),
-        time_budget_sec: z.number().positive().default(600),
+        time_budget_sec: z.number().positive().default(3600),
         token_budget: z.number().positive().optional(),
         command: z.string().min(1).optional(),
         // Override for the reconcile instruction the headless resolver receives.

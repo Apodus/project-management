@@ -449,9 +449,7 @@ describe("projectSettingsSchema", () => {
 
   it("rejects a self-loop (a->a)", () => {
     expect(() =>
-      projectSettingsSchema.parse(
-        stepsSettings([{ id: "a", command: "x", depends_on: ["a"] }]),
-      ),
+      projectSettingsSchema.parse(stepsSettings([{ id: "a", command: "x", depends_on: ["a"] }])),
     ).toThrow();
   });
 
@@ -507,10 +505,7 @@ describe("projectSettingsSchema", () => {
         clean_keep: ["node_modules", ".cache/build"],
       },
     });
-    expect(parsed!.integrator!.clean_keep).toEqual([
-      "node_modules",
-      ".cache/build",
-    ]);
+    expect(parsed!.integrator!.clean_keep).toEqual(["node_modules", ".cache/build"]);
   });
 
   it("rejects an empty-string clean_keep pattern", () => {
@@ -560,6 +555,14 @@ describe("projectSettingsSchema", () => {
     expect(DEFAULT_RESOLVER_PROMPT).toContain("{verify_command}");
   });
 
+  it("DEFAULT_RESOLVER_PROMPT owns the verify loop + declares via status sentinel", () => {
+    // Phase 7.6.1: the agent runs the full verify suite itself and declares its
+    // outcome to PM_RESOLUTION_STATUS_PATH (P2 depends on this exact env var name).
+    expect(DEFAULT_RESOLVER_PROMPT).toContain("PM_RESOLUTION_STATUS_PATH");
+    expect(DEFAULT_RESOLVER_PROMPT).toContain("give_up");
+    expect(DEFAULT_RESOLVER_PROMPT).toMatch(/full[\s\S]*suite/i);
+  });
+
   it("applies resolver field defaults when only enabled is given", () => {
     const parsed = projectSettingsSchema.parse({
       ...validSettings,
@@ -573,7 +576,7 @@ describe("projectSettingsSchema", () => {
     const r = parsed!.integrator!.resolver;
     expect(r.enabled).toBe(true);
     expect(r.max_concurrent).toBe(1);
-    expect(r.time_budget_sec).toBe(600);
+    expect(r.time_budget_sec).toBe(3600);
     expect(r.token_budget).toBeUndefined();
     expect(r.command).toBeUndefined();
   });
@@ -586,7 +589,7 @@ describe("projectSettingsSchema", () => {
     expect(parsed!.integrator!.resolver).toEqual({
       enabled: false,
       max_concurrent: 1,
-      time_budget_sec: 600,
+      time_budget_sec: 3600,
     });
   });
 
@@ -598,7 +601,7 @@ describe("projectSettingsSchema", () => {
     expect(parsed!.integrator!.resolver).toEqual({
       enabled: false,
       max_concurrent: 1,
-      time_budget_sec: 600,
+      time_budget_sec: 3600,
     });
   });
 
@@ -690,15 +693,13 @@ describe("epicGraphNodeSchema (epic categories)", () => {
   };
 
   it("accepts a node with a category string", () => {
-    expect(
-      epicGraphNodeSchema.parse({ ...validNode, category: "Backend" }).category,
-    ).toBe("Backend");
+    expect(epicGraphNodeSchema.parse({ ...validNode, category: "Backend" }).category).toBe(
+      "Backend",
+    );
   });
 
   it("accepts a node with a null category", () => {
-    expect(
-      epicGraphNodeSchema.parse({ ...validNode, category: null }).category,
-    ).toBeNull();
+    expect(epicGraphNodeSchema.parse({ ...validNode, category: null }).category).toBeNull();
   });
 
   it("accepts a node with category omitted (optional)", () => {
@@ -808,7 +809,14 @@ describe("selectProposalSchema", () => {
   });
 
   it("accepts all valid proposal statuses", () => {
-    for (const status of ["open", "discussing", "accepted", "in_progress", "completed", "rejected"]) {
+    for (const status of [
+      "open",
+      "discussing",
+      "accepted",
+      "in_progress",
+      "completed",
+      "rejected",
+    ]) {
       expect(selectProposalSchema.parse({ ...validProposal, status })).toBeTruthy();
     }
   });
@@ -904,15 +912,11 @@ describe("selectEpicSchema", () => {
   });
 
   it("accepts a category string", () => {
-    expect(
-      selectEpicSchema.parse({ ...validEpic, category: "Backend" }).category,
-    ).toBe("Backend");
+    expect(selectEpicSchema.parse({ ...validEpic, category: "Backend" }).category).toBe("Backend");
   });
 
   it("accepts a null category", () => {
-    expect(
-      selectEpicSchema.parse({ ...validEpic, category: null }).category,
-    ).toBeNull();
+    expect(selectEpicSchema.parse({ ...validEpic, category: null }).category).toBeNull();
   });
 
   it("accepts an omitted category (optional)", () => {
@@ -985,9 +989,7 @@ describe("selectTaskSchema", () => {
 
   it("accepts all valid effort sizes", () => {
     for (const effort of ["xs", "s", "m", "l", "xl"]) {
-      expect(
-        selectTaskSchema.parse({ ...validTask, estimated_effort: effort }),
-      ).toBeTruthy();
+      expect(selectTaskSchema.parse({ ...validTask, estimated_effort: effort })).toBeTruthy();
     }
   });
 
@@ -1139,9 +1141,7 @@ describe("selectCommentSchema", () => {
   });
 
   it("rejects invalid comment_type", () => {
-    expect(() =>
-      selectCommentSchema.parse({ ...validComment, comment_type: "note" }),
-    ).toThrow();
+    expect(() => selectCommentSchema.parse({ ...validComment, comment_type: "note" })).toThrow();
   });
 
   it("rejects empty body", () => {
@@ -1179,15 +1179,11 @@ describe("progressUpdateMetadataSchema", () => {
   });
 
   it("rejects completion_pct > 100", () => {
-    expect(() =>
-      progressUpdateMetadataSchema.parse({ completion_pct: 101 }),
-    ).toThrow();
+    expect(() => progressUpdateMetadataSchema.parse({ completion_pct: 101 })).toThrow();
   });
 
   it("rejects completion_pct < 0", () => {
-    expect(() =>
-      progressUpdateMetadataSchema.parse({ completion_pct: -1 }),
-    ).toThrow();
+    expect(() => progressUpdateMetadataSchema.parse({ completion_pct: -1 })).toThrow();
   });
 
   it("accepts progress update with only completion_pct", () => {
@@ -1208,15 +1204,11 @@ describe("decisionMetadataSchema", () => {
   });
 
   it("rejects missing decision", () => {
-    expect(() =>
-      decisionMetadataSchema.parse({ rationale: "Because" }),
-    ).toThrow();
+    expect(() => decisionMetadataSchema.parse({ rationale: "Because" })).toThrow();
   });
 
   it("rejects missing rationale", () => {
-    expect(() =>
-      decisionMetadataSchema.parse({ decision: "Use X" }),
-    ).toThrow();
+    expect(() => decisionMetadataSchema.parse({ decision: "Use X" })).toThrow();
   });
 
   it("accepts decision without alternatives", () => {
@@ -1237,9 +1229,7 @@ describe("handoffMetadataSchema", () => {
   });
 
   it("rejects missing summary", () => {
-    expect(() =>
-      handoffMetadataSchema.parse({ files_changed: ["file.ts"] }),
-    ).toThrow();
+    expect(() => handoffMetadataSchema.parse({ files_changed: ["file.ts"] })).toThrow();
   });
 
   it("accepts handoff with only summary", () => {
@@ -1419,15 +1409,11 @@ describe("selectActivityLogSchema", () => {
   });
 
   it("rejects invalid entity_type", () => {
-    expect(() =>
-      selectActivityLogSchema.parse({ ...validLog, entity_type: "label" }),
-    ).toThrow();
+    expect(() => selectActivityLogSchema.parse({ ...validLog, entity_type: "label" })).toThrow();
   });
 
   it("rejects invalid action", () => {
-    expect(() =>
-      selectActivityLogSchema.parse({ ...validLog, action: "deleted" }),
-    ).toThrow();
+    expect(() => selectActivityLogSchema.parse({ ...validLog, action: "deleted" })).toThrow();
   });
 });
 
@@ -1500,21 +1486,15 @@ describe("selectGitRefSchema", () => {
   });
 
   it("rejects invalid ref_type", () => {
-    expect(() =>
-      selectGitRefSchema.parse({ ...validGitRef, ref_type: "tag" }),
-    ).toThrow();
+    expect(() => selectGitRefSchema.parse({ ...validGitRef, ref_type: "tag" })).toThrow();
   });
 
   it("rejects invalid status", () => {
-    expect(() =>
-      selectGitRefSchema.parse({ ...validGitRef, status: "draft" }),
-    ).toThrow();
+    expect(() => selectGitRefSchema.parse({ ...validGitRef, status: "draft" })).toThrow();
   });
 
   it("rejects empty ref_value", () => {
-    expect(() =>
-      selectGitRefSchema.parse({ ...validGitRef, ref_value: "" }),
-    ).toThrow();
+    expect(() => selectGitRefSchema.parse({ ...validGitRef, ref_value: "" })).toThrow();
   });
 });
 
@@ -1561,21 +1541,15 @@ describe("selectMilestoneSchema", () => {
   });
 
   it("accepts milestone with null target_date", () => {
-    expect(
-      selectMilestoneSchema.parse({ ...validMilestone, target_date: null }),
-    ).toBeTruthy();
+    expect(selectMilestoneSchema.parse({ ...validMilestone, target_date: null })).toBeTruthy();
   });
 
   it("rejects invalid status", () => {
-    expect(() =>
-      selectMilestoneSchema.parse({ ...validMilestone, status: "active" }),
-    ).toThrow();
+    expect(() => selectMilestoneSchema.parse({ ...validMilestone, status: "active" })).toThrow();
   });
 
   it("rejects empty name", () => {
-    expect(() =>
-      selectMilestoneSchema.parse({ ...validMilestone, name: "" }),
-    ).toThrow();
+    expect(() => selectMilestoneSchema.parse({ ...validMilestone, name: "" })).toThrow();
   });
 
   it("rejects missing project_id", () => {

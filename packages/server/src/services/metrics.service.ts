@@ -9,20 +9,11 @@ import {
 } from "../db/index.js";
 import type { MergeResolutionDetail } from "@pm/shared";
 import { AppError } from "../types.js";
-import {
-  getHealth,
-  type IntegratorHealthView,
-} from "./health.service.js";
-import {
-  readAlertLatch,
-  setAlertLatch,
-} from "./train.service.js";
+import { getHealth, type IntegratorHealthView } from "./health.service.js";
+import { readAlertLatch, setAlertLatch } from "./train.service.js";
 import * as mergeGroupService from "./merge-group.service.js";
 import * as verifyCacheService from "./verify-cache.service.js";
-import type {
-  CacheHitRate,
-  PerStepMetric,
-} from "./verify-cache.service.js";
+import type { CacheHitRate, PerStepMetric } from "./verify-cache.service.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
 import type { MergeRequestGroupView } from "@pm/shared";
 
@@ -241,11 +232,7 @@ function computeQueueDepth(
   );
 }
 
-function computeTimeToLand(
-  projectId: string,
-  resource: string,
-  cutoff: string,
-): TimeToLandMetric {
+function computeTimeToLand(projectId: string, resource: string, cutoff: string): TimeToLandMetric {
   const db = getDb();
   const rows = db
     .select({
@@ -367,10 +354,7 @@ function computeAbandonRate(
   };
 }
 
-function computePoolUtilization(
-  projectId: string,
-  resource: string,
-): PoolUtilizationMetric {
+function computePoolUtilization(projectId: string, resource: string): PoolUtilizationMetric {
   const db = getDb();
   const row = db
     .select({
@@ -378,12 +362,7 @@ function computePoolUtilization(
       poolLeased: integratorHealth.poolLeased,
     })
     .from(integratorHealth)
-    .where(
-      and(
-        eq(integratorHealth.projectId, projectId),
-        eq(integratorHealth.resource, resource),
-      ),
-    )
+    .where(and(eq(integratorHealth.projectId, projectId), eq(integratorHealth.resource, resource)))
     .get();
 
   if (!row) {
@@ -391,8 +370,7 @@ function computePoolUtilization(
   }
   const size = row.poolSize;
   const leased = row.poolLeased;
-  const ratio =
-    size !== null && size > 0 && leased !== null ? leased / size : null;
+  const ratio = size !== null && size > 0 && leased !== null ? leased / size : null;
   return { size, leased, ratio };
 }
 
@@ -408,9 +386,9 @@ function computeSlo(
   verify: VerifySuccessRateMetric,
   abandon: AbandonRateMetric,
 ): SloBlock {
-  const settings = readSettings(projectId) as
-    | { integrator?: { slo?: Record<string, unknown> } }
-    | null;
+  const settings = readSettings(projectId) as {
+    integrator?: { slo?: Record<string, unknown> };
+  } | null;
   const slo = settings?.integrator?.slo ?? null;
 
   const block: SloBlock = { overallCompliant: null };
@@ -453,8 +431,7 @@ function computeSlo(
     dims.push(compliant);
   }
 
-  block.overallCompliant =
-    dims.length === 0 ? null : dims.every((d) => d);
+  block.overallCompliant = dims.length === 0 ? null : dims.every((d) => d);
   return block;
 }
 
@@ -462,10 +439,7 @@ function computeSlo(
  * The ISO timestamp of the oldest `queued` request in the lane (MIN(enqueuedAt))
  * — null when the queue is empty. The stuck-alert age basis (§7.3).
  */
-function computeOldestQueuedAt(
-  projectId: string,
-  resource: string,
-): string | null {
+function computeOldestQueuedAt(projectId: string, resource: string): string | null {
   const db = getDb();
   const row = db
     .select({ oldest: sql<string | null>`MIN(${mergeRequests.enqueuedAt})` })
@@ -599,16 +573,13 @@ function computeVerify(
   from: string,
   to: string,
 ): VerifyMetric {
-  const settings = readSettings(projectId) as
-    | { integrator?: { cache_enabled?: unknown; cache_mode?: unknown } }
-    | null;
+  const settings = readSettings(projectId) as {
+    integrator?: { cache_enabled?: unknown; cache_mode?: unknown };
+  } | null;
   const integrator = settings?.integrator ?? null;
   const cacheEnabled =
-    typeof integrator?.cache_enabled === "boolean"
-      ? integrator.cache_enabled
-      : false;
-  const cacheMode =
-    typeof integrator?.cache_mode === "string" ? integrator.cache_mode : "off";
+    typeof integrator?.cache_enabled === "boolean" ? integrator.cache_enabled : false;
+  const cacheMode = typeof integrator?.cache_mode === "string" ? integrator.cache_mode : "off";
 
   return {
     cacheEnabled,
@@ -627,25 +598,21 @@ function computeVerify(
  * (project, resource) with createdAt >= cutoff.
  *
  * time_budget_sec is read from settings.integrator.resolver.time_budget_sec
- * (default 600 — the shared schema default). budgetUtilization.ratio is null
+ * (default 3600 — the shared schema default). budgetUtilization.ratio is null
  * when there is no consumed-seconds sample.
  *
  * Inert when the resolver is disabled: no rows ⇒ attempts 0, every ratio null.
  */
-function computeResolution(
-  projectId: string,
-  resource: string,
-  cutoff: string,
-): ResolutionMetric {
+function computeResolution(projectId: string, resource: string, cutoff: string): ResolutionMetric {
   const db = getDb();
 
-  const settings = readSettings(projectId) as
-    | { integrator?: { resolver?: { time_budget_sec?: unknown } } }
-    | null;
+  const settings = readSettings(projectId) as {
+    integrator?: { resolver?: { time_budget_sec?: unknown } };
+  } | null;
   const budgetSec =
     typeof settings?.integrator?.resolver?.time_budget_sec === "number"
       ? settings.integrator.resolver.time_budget_sec
-      : 600;
+      : 3600;
 
   // attempts = every resolution row created in the window for this lane.
   const attempts = Number(
@@ -669,10 +636,7 @@ function computeResolution(
     db
       .select({ c: sql<number>`count(*)` })
       .from(mergeResolutions)
-      .innerJoin(
-        mergeRequests,
-        eq(mergeResolutions.resolvedRequestId, mergeRequests.id),
-      )
+      .innerJoin(mergeRequests, eq(mergeResolutions.resolvedRequestId, mergeRequests.id))
       .where(
         and(
           eq(mergeResolutions.projectId, projectId),
@@ -727,15 +691,9 @@ function computeResolution(
   // null (PRECISION NOTE 2 — mirrors computeTimeToLand's null filter).
   const wallClocks = rows
     .filter((r) => r.attemptStartedAt !== null && r.attemptEndedAt !== null)
-    .map(
-      (r) =>
-        Date.parse(r.attemptEndedAt as string) -
-        Date.parse(r.attemptStartedAt as string),
-    );
+    .map((r) => Date.parse(r.attemptEndedAt as string) - Date.parse(r.attemptStartedAt as string));
   const meanWallClockMs =
-    wallClocks.length === 0
-      ? null
-      : wallClocks.reduce((a, b) => a + b, 0) / wallClocks.length;
+    wallClocks.length === 0 ? null : wallClocks.reduce((a, b) => a + b, 0) / wallClocks.length;
 
   // budgetUtilization: mean(detail.budgetConsumedSec) over rows that reported
   // it, and the ratio of that mean against the configured time_budget_sec.
@@ -743,9 +701,7 @@ function computeResolution(
     .map((r) => r.detail?.budgetConsumedSec)
     .filter((s): s is number => typeof s === "number");
   const meanConsumedSec =
-    consumed.length === 0
-      ? null
-      : consumed.reduce((a, b) => a + b, 0) / consumed.length;
+    consumed.length === 0 ? null : consumed.reduce((a, b) => a + b, 0) / consumed.length;
 
   return {
     attempts,
@@ -761,10 +717,7 @@ function computeResolution(
     },
     meanWallClockMs,
     budgetUtilization: {
-      ratio:
-        meanConsumedSec === null || budgetSec === 0
-          ? null
-          : meanConsumedSec / budgetSec,
+      ratio: meanConsumedSec === null || budgetSec === 0 ? null : meanConsumedSec / budgetSec,
       meanConsumedSec,
       budgetSec,
     },
@@ -799,9 +752,7 @@ function checkAlerts(
 
   // ── STUCK ──────────────────────────────────────────────────────
   const oldestQueuedAgeMs =
-    oldestQueuedAt !== null
-      ? Date.parse(now) - Date.parse(oldestQueuedAt)
-      : null;
+    oldestQueuedAt !== null ? Date.parse(now) - Date.parse(oldestQueuedAt) : null;
   const fireStuck =
     oldestQueuedAgeMs !== null &&
     oldestQueuedAgeMs > STUCK_THRESHOLD_MS &&
@@ -863,9 +814,9 @@ function checkAlerts(
   //   GATE 2 — only groupId IS NULL (grouped members follow the atomic group
   //     lifecycle, enforced inside computeOldestStalledIntegrating).
   //   GATE 3 — not paused (a paused lane is deliberately held, mirror STUCK).
-  const stalledIntegrator = readSettings(projectId) as
-    | { integrator?: { parallelism?: unknown; verify_timeout_sec?: unknown } }
-    | null;
+  const stalledIntegrator = readSettings(projectId) as {
+    integrator?: { parallelism?: unknown; verify_timeout_sec?: unknown };
+  } | null;
   const parallelism =
     typeof stalledIntegrator?.integrator?.parallelism === "number"
       ? stalledIntegrator.integrator.parallelism
@@ -874,10 +825,7 @@ function checkAlerts(
     typeof stalledIntegrator?.integrator?.verify_timeout_sec === "number"
       ? stalledIntegrator.integrator.verify_timeout_sec
       : 600;
-  const thresholdMs = Math.max(
-    STALL_FLOOR_MS,
-    (verifyTimeoutSec + STALL_GRACE_SEC) * 1000,
-  );
+  const thresholdMs = Math.max(STALL_FLOOR_MS, (verifyTimeoutSec + STALL_GRACE_SEC) * 1000);
 
   const stalled =
     parallelism === 1 && row.state !== "paused"
@@ -917,17 +865,11 @@ function checkAlerts(
  * read) so that a dashboard metrics read fires the train.integrator_unhealthy
  * stale edge exactly once per stale episode (design §3.4 / §7.3).
  */
-export function computeMetrics(
-  projectId: string,
-  resource = "main",
-  now?: string,
-): MetricsBundle {
+export function computeMetrics(projectId: string, resource = "main", now?: string): MetricsBundle {
   ensureProjectExists(projectId);
 
   const nowIso = now ?? new Date().toISOString();
-  const cutoff = new Date(
-    (now ? Date.parse(now) : Date.now()) - WINDOW_MS,
-  ).toISOString();
+  const cutoff = new Date((now ? Date.parse(now) : Date.now()) - WINDOW_MS).toISOString();
 
   const queueDepth = computeQueueDepth(projectId, resource, "queued");
   const inFlight = computeQueueDepth(projectId, resource, "integrating");
@@ -977,10 +919,7 @@ export function computeMetrics(
  * rows. The server does NOT compute speculativePosition/batchId — the dashboard
  * enriches those from the SSE stream (7.2 events-not-tables contract).
  */
-export function getInFlight(
-  projectId: string,
-  resource = "main",
-): InFlightBundle {
+export function getInFlight(projectId: string, resource = "main"): InFlightBundle {
   ensureProjectExists(projectId);
   const db = getDb();
 

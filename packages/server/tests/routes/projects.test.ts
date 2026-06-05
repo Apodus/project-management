@@ -48,11 +48,7 @@ describe("Projects API", () => {
       createTestProject(testApp.db, { status: "paused" });
       createTestProject(testApp.db, { status: "active" });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/projects?status=active",
-      );
+      const res = await authRequest(testApp.app, "GET", "/api/v1/projects?status=active");
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -63,11 +59,7 @@ describe("Projects API", () => {
     it("should return empty list for status filter with no matches", async () => {
       createTestProject(testApp.db, { status: "active" });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/projects?status=paused",
-      );
+      const res = await authRequest(testApp.app, "GET", "/api/v1/projects?status=paused");
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -188,32 +180,23 @@ describe("Projects API", () => {
 
     it("should deduplicate slugs within workspace", async () => {
       // Create first project
-      const res1 = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/projects",
-        { body: { name: "Duplicate Name" } },
-      );
+      const res1 = await authRequest(testApp.app, "POST", "/api/v1/projects", {
+        body: { name: "Duplicate Name" },
+      });
       const body1 = await res1.json();
       expect(body1.data.slug).toBe("duplicate-name");
 
       // Create second project with same name
-      const res2 = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/projects",
-        { body: { name: "Duplicate Name" } },
-      );
+      const res2 = await authRequest(testApp.app, "POST", "/api/v1/projects", {
+        body: { name: "Duplicate Name" },
+      });
       const body2 = await res2.json();
       expect(body2.data.slug).toBe("duplicate-name-2");
 
       // Create third project with same name
-      const res3 = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/projects",
-        { body: { name: "Duplicate Name" } },
-      );
+      const res3 = await authRequest(testApp.app, "POST", "/api/v1/projects", {
+        body: { name: "Duplicate Name" },
+      });
       const body3 = await res3.json();
       expect(body3.data.slug).toBe("duplicate-name-3");
     });
@@ -224,11 +207,7 @@ describe("Projects API", () => {
     it("should return a project by ID", async () => {
       const project = createTestProject(testApp.db, { name: "Found Me" });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -238,11 +217,7 @@ describe("Projects API", () => {
 
     it("should return 404 for non-existent project", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${fakeId}`);
       expect(res.status).toBe(404);
 
       const body = await res.json();
@@ -252,11 +227,7 @@ describe("Projects API", () => {
     it("should return data envelope", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await res.json();
       expect(body).toHaveProperty("data");
       expect(body.data.id).toBe(project.id);
@@ -268,12 +239,9 @@ describe("Projects API", () => {
     it("should update project name", async () => {
       const project = createTestProject(testApp.db, { name: "Original" });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        { body: { name: "Updated Name" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: { name: "Updated Name" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -284,12 +252,9 @@ describe("Projects API", () => {
     it("should update project description", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        { body: { description: "New description" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: { description: "New description" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -300,22 +265,15 @@ describe("Projects API", () => {
       const project = createTestProject(testApp.db);
 
       // Get current state
-      const before = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}`,
-      );
+      const before = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const beforeBody = await before.json();
 
       // Small delay to ensure timestamp difference
       await new Promise((r) => setTimeout(r, 10));
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        { body: { description: "trigger update" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: { description: "trigger update" },
+      });
       const afterBody = await res.json();
 
       expect(afterBody.data.updatedAt).not.toBe(beforeBody.data.updatedAt);
@@ -323,24 +281,18 @@ describe("Projects API", () => {
 
     it("should return 404 for non-existent project", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${fakeId}`,
-        { body: { name: "Nope" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${fakeId}`, {
+        body: { name: "Nope" },
+      });
       expect(res.status).toBe(404);
     });
 
     it("should handle no-op update (empty body)", async () => {
       const project = createTestProject(testApp.db, { name: "NoOp" });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        { body: {} },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {},
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -353,11 +305,7 @@ describe("Projects API", () => {
     it("should archive a project (set status to archived)", async () => {
       const project = createTestProject(testApp.db, { status: "active" });
 
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/projects/${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/projects/${project.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -367,29 +315,17 @@ describe("Projects API", () => {
 
     it("should return 404 for non-existent project", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/projects/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/projects/${fakeId}`);
       expect(res.status).toBe(404);
     });
 
     it("should persist the archived status", async () => {
       const project = createTestProject(testApp.db, { status: "active" });
 
-      await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/projects/${project.id}`,
-      );
+      await authRequest(testApp.app, "DELETE", `/api/v1/projects/${project.id}`);
 
       // Verify by fetching it again
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await res.json();
       expect(body.data.status).toBe("archived");
     });
@@ -400,11 +336,7 @@ describe("Projects API", () => {
     it("should return zero counts for project with no tasks/epics/proposals", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/stats`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/stats`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -472,11 +404,7 @@ describe("Projects API", () => {
         ])
         .run();
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/stats`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/stats`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -554,11 +482,7 @@ describe("Projects API", () => {
         ])
         .run();
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/stats`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/stats`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -568,22 +492,14 @@ describe("Projects API", () => {
 
     it("should return 404 for non-existent project", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${fakeId}/stats`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${fakeId}/stats`);
       expect(res.status).toBe(404);
     });
 
     it("should return data envelope", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/stats`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/stats`);
       const body = await res.json();
 
       expect(body).toHaveProperty("data");
@@ -632,24 +548,19 @@ describe("Projects API", () => {
       // settings sub-block. The web settings pages each read-merge-write one block,
       // so requiring the three core blocks made every settings page un-saveable.
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              // A PARTIAL ai_autonomy block (only one of its six fields) — exactly what
-              // the web settings pages preserve when a project's stored settings were
-              // seeded partially. The block, and its inner fields, must both be optional.
-              ai_autonomy: { can_create_tasks: true },
-              integrator: {
-                resolver: { enabled: true, max_concurrent: 1, time_budget_sec: 600 },
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            // A PARTIAL ai_autonomy block (only one of its six fields) — exactly what
+            // the web settings pages preserve when a project's stored settings were
+            // seeded partially. The block, and its inner fields, must both be optional.
+            ai_autonomy: { can_create_tasks: true },
+            integrator: {
+              resolver: { enabled: true, max_concurrent: 1, time_budget_sec: 600 },
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.settings.integrator.resolver.enabled).toBe(true);
@@ -679,23 +590,18 @@ describe("Projects API", () => {
 
     it("accepts a fully valid enabled integrator config and applies defaults", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
@@ -709,64 +615,49 @@ describe("Projects API", () => {
 
     it("rejects integrator.enabled = true without verify_command", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: { enabled: true, worktree_root: "/tmp/wt" },
-            },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: { enabled: true, worktree_root: "/tmp/wt" },
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
     it("rejects integrator.enabled = true without worktree_root", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: { enabled: true, verify_command: "pnpm test" },
-            },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: { enabled: true, verify_command: "pnpm test" },
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
     it("round-trips a fully specified integrator config including non-default git fields", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "make verify",
-                verify_timeout_sec: 1200,
-                worktree_root: "/var/wt",
-                git_remote: "upstream",
-                git_main_branch: "trunk",
-                worktree_name: "game_one-int",
-                parallelism: 3,
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "make verify",
+              verify_timeout_sec: 1200,
+              worktree_root: "/var/wt",
+              git_remote: "upstream",
+              git_main_branch: "trunk",
+              worktree_name: "game_one-int",
+              parallelism: 3,
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
@@ -783,69 +674,54 @@ describe("Projects API", () => {
 
     it("rejects verify_timeout_sec < 1", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "x",
-                worktree_root: "/tmp",
-                verify_timeout_sec: 0,
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "x",
+              worktree_root: "/tmp",
+              verify_timeout_sec: 0,
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
     it("rejects parallelism < 1", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "x",
-                worktree_root: "/tmp",
-                parallelism: 0,
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "x",
+              worktree_root: "/tmp",
+              parallelism: 0,
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
     it("defaults linked_repos to [] when integrator config omits it", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
@@ -854,37 +730,32 @@ describe("Projects API", () => {
 
     it("round-trips a valid 2-entry linked_repos config", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-                linked_repos: [
-                  {
-                    name: "rynx-inner",
-                    path: "engine",
-                    role: "inner",
-                    gitlink_parent: "game_one",
-                    gitlink_path: "vendor/rynx",
-                  },
-                  {
-                    name: "game_one",
-                    path: ".",
-                    role: "outer",
-                  },
-                ],
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
+              linked_repos: [
+                {
+                  name: "rynx-inner",
+                  path: "engine",
+                  role: "inner",
+                  gitlink_parent: "game_one",
+                  gitlink_path: "vendor/rynx",
+                },
+                {
+                  name: "game_one",
+                  path: ".",
+                  role: "outer",
+                },
+              ],
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
@@ -906,23 +777,18 @@ describe("Projects API", () => {
 
     it("defaults clean_keep to [] when integrator config omits it", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
@@ -931,83 +797,63 @@ describe("Projects API", () => {
 
     it("round-trips a non-empty clean_keep config", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-                clean_keep: ["node_modules", ".cache"],
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
+              clean_keep: ["node_modules", ".cache"],
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
-      expect(body.data.settings.integrator.clean_keep).toEqual([
-        "node_modules",
-        ".cache",
-      ]);
+      expect(body.data.settings.integrator.clean_keep).toEqual(["node_modules", ".cache"]);
     });
 
     it("rejects linked_repos with an invalid role", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "x",
-                worktree_root: "/tmp",
-                linked_repos: [
-                  { name: "rynx", path: "engine", role: "sideways" },
-                ],
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "x",
+              worktree_root: "/tmp",
+              linked_repos: [{ name: "rynx", path: "engine", role: "sideways" }],
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
     // ── slo + heartbeat_interval_sec (Phase 7.4 §6.1) ──────────────
     it("accepts a fully specified slo block and round-trips it", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-                slo: {
-                  target_p95_time_to_land_sec: 600,
-                  target_verify_success_rate: 0.9,
-                  target_abandon_rate: 0.1,
-                },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
+              slo: {
+                target_p95_time_to_land_sec: 600,
+                target_verify_success_rate: 0.9,
+                target_abandon_rate: 0.1,
               },
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
@@ -1020,23 +866,18 @@ describe("Projects API", () => {
 
     it("defaults slo to undefined and heartbeat_interval_sec to 30 when omitted", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
@@ -1046,70 +887,55 @@ describe("Projects API", () => {
 
     it("rejects slo.target_verify_success_rate > 1 (proves the Zod-4 mirror validates)", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-                slo: { target_verify_success_rate: 1.5 },
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
+              slo: { target_verify_success_rate: 1.5 },
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
     it("rejects slo.target_abandon_rate < 0", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-                slo: { target_abandon_rate: -0.1 },
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
+              slo: { target_abandon_rate: -0.1 },
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
     it("rejects heartbeat_interval_sec < 5", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              integrator: {
-                enabled: true,
-                verify_command: "pnpm test",
-                worktree_root: "/tmp/wt",
-                heartbeat_interval_sec: 1,
-              },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "pnpm test",
+              worktree_root: "/tmp/wt",
+              heartbeat_interval_sec: 1,
             },
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
@@ -1302,7 +1128,7 @@ describe("Projects API", () => {
       const r = body.data.settings.integrator.resolver;
       expect(r.enabled).toBe(true);
       expect(r.max_concurrent).toBe(1);
-      expect(r.time_budget_sec).toBe(600);
+      expect(r.time_budget_sec).toBe(3600);
     });
 
     // The absent-block test proves the Zod-4 mirror's `.prefault({})` form yields
@@ -1321,7 +1147,7 @@ describe("Projects API", () => {
       expect(body.data.settings.integrator.resolver).toEqual({
         enabled: false,
         max_concurrent: 1,
-        time_budget_sec: 600,
+        time_budget_sec: 3600,
       });
     });
 
@@ -1339,7 +1165,7 @@ describe("Projects API", () => {
       expect(body.data.settings.integrator.resolver).toEqual({
         enabled: false,
         max_concurrent: 1,
-        time_budget_sec: 600,
+        time_budget_sec: 3600,
       });
     });
 
@@ -1386,19 +1212,14 @@ describe("Projects API", () => {
     it("round-trips a valid discord_url + alerts_enabled through PATCH → GET", async () => {
       const project = createTestProject(testApp.db);
       const url = "https://discord.com/api/webhooks/123456/abcdef";
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              webhooks: { discord_url: url, alerts_enabled: true },
-            },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            webhooks: { discord_url: url, alerts_enabled: true },
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
@@ -1409,19 +1230,14 @@ describe("Projects API", () => {
 
     it("rejects a non-URL discord_url with 400 (the Zod-4 mirror validates)", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              webhooks: { discord_url: "not-a-url" },
-            },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            webhooks: { discord_url: "not-a-url" },
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
   });
@@ -1449,14 +1265,9 @@ describe("Projects API", () => {
         { name: "Backend", color: "#FF0000", sort_order: 0 },
         { name: "Frontend", color: "#00FF00", sort_order: 1 },
       ];
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: { settings: { ...validBaseSettings, epic_categories } },
-        },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: { settings: { ...validBaseSettings, epic_categories } },
+      });
       expect(res.status).toBe(200);
       const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
       const body = await get.json();
@@ -1466,37 +1277,27 @@ describe("Projects API", () => {
 
     it("rejects an epic_categories entry with an empty name with 400", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              epic_categories: [{ name: "", color: "#FF0000", sort_order: 0 }],
-            },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            epic_categories: [{ name: "", color: "#FF0000", sort_order: 0 }],
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
     it("rejects an epic_categories entry missing sort_order with 400", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/projects/${project.id}`,
-        {
-          body: {
-            settings: {
-              ...validBaseSettings,
-              epic_categories: [{ name: "Backend", color: "#FF0000" }],
-            },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            epic_categories: [{ name: "Backend", color: "#FF0000" }],
           },
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
   });

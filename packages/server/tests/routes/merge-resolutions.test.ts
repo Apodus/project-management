@@ -23,11 +23,7 @@ describe("Merge Resolutions API", () => {
   // ── helpers ─────────────────────────────────────────────────────
 
   /** Submit a merge request via the agent token → returns its id (FK-valid). */
-  async function makeRequest(
-    projectId: string,
-    token: string,
-    branch = "feat-a",
-  ): Promise<string> {
+  async function makeRequest(projectId: string, token: string, branch = "feat-a"): Promise<string> {
     const res = await authRequest(
       testApp.app,
       "POST",
@@ -60,12 +56,9 @@ describe("Merge Resolutions API", () => {
 
   /** Walk a resolution to "resolving" so escalate/resolved are legal. */
   async function startResolution(id: string, token: string): Promise<void> {
-    const res = await authRequest(
-      testApp.app,
-      "POST",
-      `/api/v1/merge-resolutions/${id}/start`,
-      { token },
-    );
+    const res = await authRequest(testApp.app, "POST", `/api/v1/merge-resolutions/${id}/start`, {
+      token,
+    });
     expect(res.status).toBe(200);
   }
 
@@ -110,12 +103,9 @@ describe("Merge Resolutions API", () => {
       const originId = await makeRequest(project.id, agent.token);
       const id = await openResolution(project.id, agent.token, originId);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/merge-resolutions/${id}/start`,
-        { token: agent.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-resolutions/${id}/start`, {
+        token: agent.token,
+      });
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.data.state).toBe("resolving");
@@ -128,12 +118,9 @@ describe("Merge Resolutions API", () => {
       const originId = await makeRequest(project.id, agent.token);
       const id = await openResolution(project.id, agent.token, originId);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/merge-resolutions/${id}/start`,
-        { token: testApp.testToken },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-resolutions/${id}/start`, {
+        token: testApp.testToken,
+      });
       expect(res.status).toBe(403);
     });
 
@@ -145,19 +132,14 @@ describe("Merge Resolutions API", () => {
       await startResolution(id, agent.token);
       // Drive to resolved, then start again → illegal.
       const resolvedId = await makeRequest(project.id, agent.token, "feat-b");
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/merge-resolutions/${id}/resolved`,
-        { token: agent.token, body: { resolvedRequestId: resolvedId } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/merge-resolutions/${id}/resolved`, {
+        token: agent.token,
+        body: { resolvedRequestId: resolvedId },
+      });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/merge-resolutions/${id}/start`,
-        { token: agent.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-resolutions/${id}/start`, {
+        token: agent.token,
+      });
       expect(res.status).toBe(409);
     });
   });
@@ -308,12 +290,9 @@ describe("Merge Resolutions API", () => {
       const originId = await makeRequest(project.id, agent.token);
       const id = await openResolution(project.id, agent.token, originId);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/merge-resolutions/${id}`,
-        { token: testApp.testToken },
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/merge-resolutions/${id}`, {
+        token: testApp.testToken,
+      });
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.data.id).toBe(id);
@@ -382,14 +361,11 @@ describe("Merge Resolutions API", () => {
   // ─── G. 401 ──────────────────────────────────────────────────────
   it("401 when unauthenticated", async () => {
     const project = createTestProject(testApp.db);
-    const res = await testApp.app.request(
-      `/api/v1/projects/${project.id}/merge-resolutions`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ originRequestId: "x" }),
-      },
-    );
+    const res = await testApp.app.request(`/api/v1/projects/${project.id}/merge-resolutions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ originRequestId: "x" }),
+    });
     expect(res.status).toBe(401);
   });
 
@@ -403,7 +379,7 @@ describe("Merge Resolutions API", () => {
       const body = (await res.json()) as { data: Record<string, unknown> };
       expect(body.data.enabled).toBe(false);
       expect(body.data.max_concurrent).toBe(1);
-      expect(body.data.time_budget_sec).toBe(600);
+      expect(body.data.time_budget_sec).toBe(3600);
       expect(body.data.token_budget).toBeNull();
       expect(typeof body.data.prompt).toBe("string");
       expect(body.data.prompt as string).toContain("{files}");

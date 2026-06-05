@@ -60,15 +60,21 @@ const errorEnvelope = z.object({
 
 // ─── Param + query schemas ────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const resolutionIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01JE7KQXZJ9P3M4RESOLUTN0X1",
-});
+const resolutionIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01JE7KQXZJ9P3M4RESOLUTN0X1",
+  });
 
 const listQuery = z.object({
   state: z.enum(MERGE_RESOLUTION_STATES).optional(),
@@ -118,11 +124,26 @@ const openResolutionRoute = createRoute({
     },
   },
   responses: {
-    201: { description: "Opened resolution", content: { "application/json": { schema: mergeResolutionDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    201: {
+      description: "Opened resolution",
+      content: { "application/json": { schema: mergeResolutionDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -135,11 +156,26 @@ const startResolutionRoute = createRoute({
     "The resolver built the worktree and spawned the headless agent. Sets attemptStartedAt. Legal only from 'pending'. Integrator (ai_agent) only.",
   request: { params: z.object({ id: resolutionIdParam }) },
   responses: {
-    200: { description: "Now resolving", content: { "application/json": { schema: mergeResolutionDataEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Resolution not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Invalid transition from current state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Now resolving",
+      content: { "application/json": { schema: mergeResolutionDataEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Resolution not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Invalid transition from current state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -158,12 +194,30 @@ const resolvedResolutionRoute = createRoute({
     },
   },
   responses: {
-    200: { description: "Now resolved", content: { "application/json": { schema: mergeResolutionDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Resolution not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Invalid transition from current state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Now resolved",
+      content: { "application/json": { schema: mergeResolutionDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Resolution not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Invalid transition from current state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -182,12 +236,30 @@ const escalateResolutionRoute = createRoute({
     },
   },
   responses: {
-    200: { description: "Now escalated/failed", content: { "application/json": { schema: mergeResolutionDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Resolution not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Invalid transition from current state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Now escalated/failed",
+      content: { "application/json": { schema: mergeResolutionDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Resolution not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Invalid transition from current state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -200,9 +272,18 @@ const listResolutionsRoute = createRoute({
     "Returns resolutions for the project ordered by createdAt asc. Optional filters: state, resource. Any authenticated user (debug + dashboard).",
   request: { params: z.object({ projectId: projectIdParam }), query: listQuery },
   responses: {
-    200: { description: "Filtered list", content: { "application/json": { schema: mergeResolutionListEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Filtered list",
+      content: { "application/json": { schema: mergeResolutionListEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -215,9 +296,18 @@ const getResolutionRoute = createRoute({
     "Returns the resolution row including its detail and lineage (originRequestId, resolvedRequestId). Any authenticated user.",
   request: { params: z.object({ id: resolutionIdParam }) },
   responses: {
-    200: { description: "Resolution", content: { "application/json": { schema: mergeResolutionDataEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Resolution not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Resolution",
+      content: { "application/json": { schema: mergeResolutionDataEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Resolution not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -244,7 +334,10 @@ const resolverDefaultsRoute = createRoute({
       description: "Resolver defaults",
       content: { "application/json": { schema: z.object({ data: resolverDefaultsSchema }) } },
     },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -269,11 +362,7 @@ function actorOf(user: AuthUser): { id: string; role: string; type: string } {
  */
 function requireIntegrator(user: AuthUser, what: string): void {
   if (user.type !== "ai_agent") {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      `Only integrator (ai_agent) users may ${what}.`,
-    );
+    throw new AppError(403, "FORBIDDEN", `Only integrator (ai_agent) users may ${what}.`);
   }
 }
 
@@ -370,7 +459,7 @@ export function createMergeResolutionRoutes(): OpenAPIHono<{
         data: {
           enabled: false,
           max_concurrent: 1,
-          time_budget_sec: 600,
+          time_budget_sec: 3600,
           token_budget: null,
           command: null,
           prompt: DEFAULT_RESOLVER_PROMPT,

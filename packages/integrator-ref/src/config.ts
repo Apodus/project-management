@@ -93,24 +93,17 @@ export async function loadConfig(
 ): Promise<IntegratorConfig> {
   const projectId = args.project ?? env.PM_PROJECT_ID;
   if (!projectId) {
-    throw new ConfigError(
-      "Project id is required: pass --project <id> or set PM_PROJECT_ID",
-    );
+    throw new ConfigError("Project id is required: pass --project <id> or set PM_PROJECT_ID");
   }
 
   const resource = args.resource ?? "main";
 
-  const pmUrl = (args.pmUrl ?? env.PM_API_URL ?? "http://localhost:3000").replace(
-    /\/+$/,
-    "",
-  );
+  const pmUrl = (args.pmUrl ?? env.PM_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
 
   const tokenEnvVar = args.token ?? "PM_API_TOKEN";
   const token = env[tokenEnvVar];
   if (!token) {
-    throw new ConfigError(
-      `Token env var ${tokenEnvVar} is empty; set it to a valid PM API token`,
-    );
+    throw new ConfigError(`Token env var ${tokenEnvVar} is empty; set it to a valid PM API token`);
   }
 
   const logLevel = args.logLevel ?? env.PM_LOG_LEVEL ?? "info";
@@ -133,16 +126,12 @@ export async function loadConfig(
     );
   }
   if (!ic.worktree_root) {
-    throw new ConfigError(
-      `settings.integrator.worktree_root is required when enabled`,
-    );
+    throw new ConfigError(`settings.integrator.worktree_root is required when enabled`);
   }
 
   const gitRepoUrl = project.gitRepoUrl;
   if (!gitRepoUrl) {
-    throw new ConfigError(
-      "project has no gitRepoUrl; the integrator needs a clonable repo URL",
-    );
+    throw new ConfigError("project has no gitRepoUrl; the integrator needs a clonable repo URL");
   }
 
   return {
@@ -175,12 +164,12 @@ export async function loadConfig(
       gitlinkPath: r.gitlink_path,
     })),
     // Phase 7.6 §3: mirror the canonical schema defaults (project.ts §resolver:
-    // enabled false / max_concurrent 1 / time_budget_sec 600). Absent block ⇒
+    // enabled false / max_concurrent 1 / time_budget_sec 3600). Absent block ⇒
     // inert (byte-identical to 7.5). Same pattern as cacheEnabled above.
     resolver: {
       enabled: ic.resolver?.enabled ?? false,
       maxConcurrent: ic.resolver?.max_concurrent ?? 1,
-      timeBudgetSec: ic.resolver?.time_budget_sec ?? 600,
+      timeBudgetSec: ic.resolver?.time_budget_sec ?? 3600,
       tokenBudget: ic.resolver?.token_budget,
       command: ic.resolver?.command,
       prompt: ic.resolver?.prompt,
