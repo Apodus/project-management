@@ -75,6 +75,12 @@ function maybeShowToast(eventType: string, payload: SSEPayload): void {
     });
     return;
   }
+  if (eventType === "train.integration_stalled") {
+    toast.warning("Integration stalled", {
+      description: "A merge request is stuck integrating without progress.",
+    });
+    return;
+  }
 
   const titleLabel = payload.entity_title
     ? `'${payload.entity_title}'`
@@ -215,6 +221,7 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       "train.integrator_unhealthy",
       "train.stuck",
       "train.abandon_rate_high",
+      "train.integration_stalled",
       // Break-glass audit — an R1-override was recorded → refresh the audit log.
       "audit.recorded",
     ];

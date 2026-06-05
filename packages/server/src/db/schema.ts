@@ -822,6 +822,7 @@ export const trainState = sqliteTable(
     // true when its alert fires and reset to false when the condition clears.
     stuckNotified: integer("stuck_notified", { mode: "boolean" }).notNull().default(false),
     abandonNotified: integer("abandon_notified", { mode: "boolean" }).notNull().default(false),
+    stalledNotified: integer("stalled_notified", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

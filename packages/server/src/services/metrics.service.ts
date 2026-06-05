@@ -37,6 +37,15 @@ const STUCK_THRESHOLD_MS = 600_000; // 10 min — oldest queued sat un-picked-up
 const ABANDON_ALERT_THRESHOLD = 0.3; // 24h abandon ratio.
 const ABANDON_MIN_SAMPLE = 5; // don't alert on a tiny sample (1-of-1).
 
+// train.integration_stalled (design §7.3 follow-up). A single-repo request
+// stranded `integrating` — the integrator started an attempt and never
+// finished it (e.g. rebaseOnto threw and the request stayed integrating),
+// while train.stuck (needs in-flight=0) and integrator_unhealthy (needs a
+// stale heartbeat) both miss it. The floor is generous (20 min) so a normal
+// long verify never trips it; the threshold scales with verify_timeout_sec.
+const STALL_FLOOR_MS = 1_200_000; // 20 min — minimum stall age before firing.
+const STALL_GRACE_SEC = 600; // 10 min added atop verify_timeout_sec.
+
 // ─── Types ────────────────────────────────────────────────────────
 
 export interface TimeToLandMetric {
@@ -473,6 +482,108 @@ function computeOldestQueuedAt(
 }
 
 /**
+ * The oldest single-repo request stranded `integrating` past `thresholdMs`, or
+ * null when none. The basis of the train.integration_stalled alert (§7.3
+ * follow-up): the integrator started an attempt (or picked the request up) and
+ * never finished it — e.g. rebaseOnto threw and the request stayed integrating.
+ *
+ * Two strandings count, both gated to `groupId IS NULL` (grouped members follow
+ * the atomic group lifecycle, not this alert):
+ *   (a) the request's LATEST attempt (max attemptNumber) is still `running` and
+ *       its startedAt is older than the cutoff; OR
+ *   (b) the request has NO attempt rows at all and its pickedUpAt is older than
+ *       the cutoff (picked up, attempt never even opened).
+ *
+ * The latest-attempt-per-request join uses a MAX(attemptNumber) correlated
+ * subquery (mirrors merge-attempt.service.getNextAttemptNumber +
+ * computeResolution's join shape). The cutoff is an ISO string bound into the
+ * query and compared lexicographically — NEVER SQLite datetime() (the stored
+ * timestamps are toISOString(), per the §5.4 note at computeMetrics). The
+ * caller is responsible for the parallelism===1 + not-paused gates; this helper
+ * only enforces the groupId/status/age predicate.
+ */
+function computeOldestStalledIntegrating(
+  projectId: string,
+  resource: string,
+  now: string,
+  thresholdMs: number,
+): { requestId: string; stalenessMs: number } | null {
+  const db = getDb();
+  const cutoffMs = Date.parse(now) - thresholdMs;
+  const cutoffIso = new Date(cutoffMs).toISOString();
+
+  // Case (a): integrating + ungrouped + the request's LATEST attempt is running
+  // (no attempt with a higher attemptNumber exists) + that attempt's startedAt
+  // is older than the cutoff. The join keys the attempt to its request; the
+  // NOT EXISTS "no newer attempt" clause pins it to the latest attempt without a
+  // correlated MAX() in the JOIN ON (which SQLite rejects as a misused
+  // aggregate). The inner subquery uses a distinct alias (`newer`) + raw column
+  // names so it references the OUTER merge_attempts row, not itself.
+  const caseA = db
+    .select({
+      requestId: mergeRequests.id,
+      basis: mergeAttempts.startedAt,
+    })
+    .from(mergeRequests)
+    .innerJoin(mergeAttempts, eq(mergeAttempts.requestId, mergeRequests.id))
+    .where(
+      and(
+        eq(mergeRequests.projectId, projectId),
+        eq(mergeRequests.resource, resource),
+        eq(mergeRequests.status, "integrating"),
+        sql`${mergeRequests.groupId} IS NULL`,
+        sql`${mergeRequests.pickedUpAt} IS NOT NULL`,
+        eq(mergeAttempts.status, "running"),
+        sql`${mergeAttempts.startedAt} IS NOT NULL`,
+        sql`${mergeAttempts.startedAt} < ${cutoffIso}`,
+        // The running attempt is the LATEST: no sibling with a higher number.
+        sql`NOT EXISTS (
+          SELECT 1 FROM ${mergeAttempts} AS newer
+          WHERE newer.request_id = ${mergeAttempts.requestId}
+            AND newer.attempt_number > ${mergeAttempts.attemptNumber}
+        )`,
+      ),
+    )
+    .all() as Array<{ requestId: string; basis: string }>;
+
+  // Case (b): integrating + ungrouped + NO attempt rows + pickedUpAt older than
+  // the cutoff. The NOT EXISTS keeps it to requests the integrator picked up but
+  // never opened an attempt for.
+  const caseB = db
+    .select({
+      requestId: mergeRequests.id,
+      basis: mergeRequests.pickedUpAt,
+    })
+    .from(mergeRequests)
+    .where(
+      and(
+        eq(mergeRequests.projectId, projectId),
+        eq(mergeRequests.resource, resource),
+        eq(mergeRequests.status, "integrating"),
+        sql`${mergeRequests.groupId} IS NULL`,
+        sql`${mergeRequests.pickedUpAt} IS NOT NULL`,
+        sql`${mergeRequests.pickedUpAt} < ${cutoffIso}`,
+        sql`NOT EXISTS (
+          SELECT 1 FROM ${mergeAttempts} AS ma
+          WHERE ma.request_id = ${mergeRequests.id}
+        )`,
+      ),
+    )
+    .all() as Array<{ requestId: string; basis: string }>;
+
+  // The oldest basis (max staleness) across both sets.
+  let best: { requestId: string; stalenessMs: number } | null = null;
+  const nowMs = Date.parse(now);
+  for (const r of [...caseA, ...caseB]) {
+    const stalenessMs = nowMs - Date.parse(r.basis);
+    if (best === null || stalenessMs > best.stalenessMs) {
+      best = { requestId: r.requestId, stalenessMs };
+    }
+  }
+  return best;
+}
+
+/**
  * The Phase 7.5 §7.2 verify sub-block, computed over the same [cutoff, nowIso]
  * window as the rest of the bundle. cache_enabled/cache_mode are read off
  * projects.settings.integrator (defaulting to off/empty — the shipped
@@ -738,6 +849,58 @@ function checkAlerts(
     });
   } else if (!fireAbandon && row.abandonNotified) {
     setAlertLatch(row.id, "abandonNotified", false, now);
+  }
+
+  // ── INTEGRATION STALLED ────────────────────────────────────────
+  // A single-repo request stranded `integrating` (an attempt started but never
+  // completed, older than verify_timeout+grace). GATED so it NEVER false-fires:
+  //   GATE 1 — only at parallelism===1. At parallelism>1 a healthy speculative
+  //     member holds an OPEN `running` attempt for the whole predecessor
+  //     land-chain (verify-pass doesn't complete the attempt; completeAttempt
+  //     fires only at land), and there's no DB column to identify speculative
+  //     members — so we structurally exclude that case by only evaluating on a
+  //     serial lane (parallelism 1 ⇒ no speculative land-chain exists).
+  //   GATE 2 — only groupId IS NULL (grouped members follow the atomic group
+  //     lifecycle, enforced inside computeOldestStalledIntegrating).
+  //   GATE 3 — not paused (a paused lane is deliberately held, mirror STUCK).
+  const stalledIntegrator = readSettings(projectId) as
+    | { integrator?: { parallelism?: unknown; verify_timeout_sec?: unknown } }
+    | null;
+  const parallelism =
+    typeof stalledIntegrator?.integrator?.parallelism === "number"
+      ? stalledIntegrator.integrator.parallelism
+      : 1;
+  const verifyTimeoutSec =
+    typeof stalledIntegrator?.integrator?.verify_timeout_sec === "number"
+      ? stalledIntegrator.integrator.verify_timeout_sec
+      : 600;
+  const thresholdMs = Math.max(
+    STALL_FLOOR_MS,
+    (verifyTimeoutSec + STALL_GRACE_SEC) * 1000,
+  );
+
+  const stalled =
+    parallelism === 1 && row.state !== "paused"
+      ? computeOldestStalledIntegrating(projectId, resource, now, thresholdMs)
+      : null;
+  const fireStalled = stalled !== null;
+
+  if (fireStalled && !row.stalledNotified) {
+    setAlertLatch(row.id, "stalledNotified", true, now);
+    getEventBus().emit(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, {
+      entity: {
+        resource,
+        requestId: stalled.requestId,
+        stalenessMs: stalled.stalenessMs,
+      },
+      entityType: "train",
+      entityId: resource,
+      projectId,
+      actorId: null,
+      timestamp: now,
+    });
+  } else if (!fireStalled && row.stalledNotified) {
+    setAlertLatch(row.id, "stalledNotified", false, now);
   }
 }
 

@@ -141,6 +141,13 @@
       "when": 1781395200000,
       "tag": "0019_epic_category",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1781481600000,
+      "tag": "0020_train_state_stalled_notified",
+      "breakpoints": true
     }
   ]
 }

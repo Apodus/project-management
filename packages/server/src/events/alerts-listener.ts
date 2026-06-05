@@ -9,8 +9,8 @@ import {
 
 // ─── Outbound Discord alert delivery (Phase 7.4 §7.2 — half (b)) ───
 //
-// A minimal outbound webhook listener: on each of the three train alert events
-// it POSTs a Discord-shaped message ({ content }) to the project's configured
+// A minimal outbound webhook listener: on each train alert event it POSTs a
+// Discord-shaped message ({ content }) to the project's configured
 // discord_url, fire-and-forget. There is NO existing outbound delivery to
 // reuse (§7.1) — this is the smallest mechanism that satisfies the intent. No
 // queue, no retry daemon, no pluggable-provider abstraction.
@@ -72,6 +72,12 @@ function formatAlert(event: EventName, payload: EventPayload): string {
       const lastSeenAt = e.lastSeenAt ? String(e.lastSeenAt) : "unknown";
       return `:rotating_light: Integrator unhealthy on \`${resource}\` — last heartbeat ${lastSeenAt}.`;
     }
+    case EVENT_NAMES.TRAIN_INTEGRATION_STALLED: {
+      const requestId = String(e.requestId ?? "unknown");
+      const stalenessMs = Number(e.stalenessMs ?? 0);
+      const stalenessMin = Math.round(stalenessMs / 60_000);
+      return `:rotating_light: Integration stalled on \`${resource}\` — request ${requestId} stuck integrating ${stalenessMin}m with no attempt progress.`;
+    }
     default:
       return `:warning: Train alert (${event}) on \`${resource}\`.`;
   }
@@ -99,8 +105,8 @@ async function deliverDiscordAlert(
 }
 
 /**
- * Register the outbound Discord alert listener for the three train alert
- * events. The handler guards its sync path (NOTE 2) and never awaits the
+ * Register the outbound Discord alert listener for the train alert events. The
+ * handler guards its sync path (NOTE 2) and never awaits the
  * fetch — a failed POST is swallowed via .catch and logged, never crashing
  * the read path that emitted the event.
  */
@@ -127,5 +133,8 @@ export function registerWebhookAlertListener(): void {
   );
   bus.on(EVENT_NAMES.TRAIN_INTEGRATOR_UNHEALTHY, (p) =>
     handler(EVENT_NAMES.TRAIN_INTEGRATOR_UNHEALTHY, p),
+  );
+  bus.on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
+    handler(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, p),
   );
 }

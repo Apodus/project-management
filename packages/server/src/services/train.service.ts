@@ -55,6 +55,7 @@ interface TrainStateRow {
   changedAt: string | null;
   stuckNotified: boolean;
   abandonNotified: boolean;
+  stalledNotified: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -162,6 +163,7 @@ function getOrCreateTrainState(
         changedAt: null,
         stuckNotified: false,
         abandonNotified: false,
+        stalledNotified: false,
         createdAt: now,
         updatedAt: now,
       })
@@ -323,6 +325,7 @@ export interface TrainAlertLatchRow {
   state: string;
   stuckNotified: boolean;
   abandonNotified: boolean;
+  stalledNotified: boolean;
 }
 
 /**
@@ -339,6 +342,7 @@ export function readAlertLatch(
     state: row.state,
     stuckNotified: row.stuckNotified,
     abandonNotified: row.abandonNotified,
+    stalledNotified: row.stalledNotified,
   };
 }
 
@@ -350,7 +354,7 @@ export function readAlertLatch(
  */
 export function setAlertLatch(
   rowId: string,
-  field: "stuckNotified" | "abandonNotified",
+  field: "stuckNotified" | "abandonNotified" | "stalledNotified",
   value: boolean,
   now: string,
 ): void {
@@ -359,7 +363,9 @@ export function setAlertLatch(
     .set(
       field === "stuckNotified"
         ? { stuckNotified: value, updatedAt: now }
-        : { abandonNotified: value, updatedAt: now },
+        : field === "abandonNotified"
+          ? { abandonNotified: value, updatedAt: now }
+          : { stalledNotified: value, updatedAt: now },
     )
     .where(eq(trainState.id, rowId))
     .run();

@@ -96,6 +96,12 @@ export const EVENT_NAMES = {
   // the outbound Discord listener (events/alerts-listener.ts).
   TRAIN_STUCK: "train.stuck",
   TRAIN_ABANDON_RATE_HIGH: "train.abandon_rate_high",
+  // A single-repo (parallelism=1, ungrouped) request stranded `integrating` —
+  // an attempt started but never completed, older than verify_timeout+grace.
+  // Closes the gap left by train.stuck (needs in-flight=0) and
+  // integrator_unhealthy (needs a stale heartbeat); neither catches a request
+  // stuck integrating while the integrator is still alive.
+  TRAIN_INTEGRATION_STALLED: "train.integration_stalled",
 
   // Smart-verification (Phase 7.5 §9 — the shadow-mode false-pass detector).
   // Emitted (relayed, not persisted) when shadow mode finds a cached verdict

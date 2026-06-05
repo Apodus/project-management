@@ -1055,6 +1055,8 @@ describe("Database schema", () => {
       expect(result!.changedBy).toBeNull();
       expect(result!.stuckNotified).toBe(false);
       expect(result!.abandonNotified).toBe(false);
+      // Migration 0020: the integration-stalled alert latch, default false.
+      expect(result!.stalledNotified).toBe(false);
     });
 
     it("should reject a duplicate (project, resource) lane (unique index)", () => {

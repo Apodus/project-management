@@ -12,6 +12,9 @@ describe("getInvalidationKeys — merge-train wiring", () => {
     expect(getInvalidationKeys("train.abandon_rate_high")).toEqual([
       trainKeys.all,
     ]);
+    expect(getInvalidationKeys("train.integration_stalled")).toEqual([
+      trainKeys.all,
+    ]);
   });
 
   it("invalidates trainKeys on audit.recorded (the audit query lives under trainKeys.all)", () => {
