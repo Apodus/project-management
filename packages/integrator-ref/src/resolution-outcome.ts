@@ -75,10 +75,7 @@ function resolutionBranch(resolutionId: string): string {
  * reason + the literal fix-forward note so the author knows their original
  * commit is intact and must NOT be redone.
  */
-function buildRejectionBody(
-  outcome: ResolutionOutcome,
-  reason: string,
-): string {
+function buildRejectionBody(outcome: ResolutionOutcome, reason: string): string {
   const files = outcome.job.conflictingFiles.length
     ? outcome.job.conflictingFiles.join(", ")
     : "(none reported)";
@@ -192,12 +189,15 @@ export function makeOnOutcome(
 
     // 4. Record the resolution `resolved`, cross-linking the new request.
     //
-    //    PARTIAL-FAILURE NUANCE (KNOWN v1 LIMITATION): the submit at step 3 has
+    //    PARTIAL-FAILURE NUANCE (KNOWN LIMITATION): the submit at step 3 has
     //    ALREADY succeeded — the resubmitted request is on the train. If THIS
     //    call throws we must NOT escalate (that would be a lie: the resolution
     //    DID produce a landable resubmission). The resolution row is stranded in
-    //    `resolving`; we log loudly and return. A v2 resolving-reclaim sweep
-    //    should reconcile such rows. We do NOT re-submit (no double-submit).
+    //    `resolving`; we log loudly and return. The periodic resolving-reclaim
+    //    sweep (reclaim-resolutions.ts, run in batch.ts/runBatchLoop) reconciles
+    //    such stranded rows — it finds the resubmission with resolved_from =
+    //    origin and marks the resolution `resolved`, else escalates. We do NOT
+    //    re-submit here (no double-submit).
     try {
       await pmClient.resolvedResolution(outcome.resolutionId, {
         resolvedRequestId: newReq.id,
@@ -212,7 +212,8 @@ export function makeOnOutcome(
         },
         "resolved: resolvedResolution failed AFTER successful resubmit; " +
           "resolution row may be stranded in resolving; resubmitted request " +
-          `${newReq.id} still rides the train (v2: add a resolving-reclaim sweep)`,
+          `${newReq.id} still rides the train ` +
+          "(recovered by the periodic resolving-reclaim sweep — reclaim-resolutions.ts)",
       );
       return;
     }
@@ -249,13 +250,9 @@ export function makeOnOutcome(
       );
       return;
     }
-    await escalateAndComment(
-      outcome,
-      outcome.state,
-      outcome.reason,
-      origin,
-      { alreadyEscalated: true },
-    );
+    await escalateAndComment(outcome, outcome.state, outcome.reason, origin, {
+      alreadyEscalated: true,
+    });
   }
 
   return async function onOutcome(outcome: ResolutionOutcome): Promise<void> {

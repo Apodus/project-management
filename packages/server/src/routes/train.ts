@@ -3,32 +3,42 @@ import type { AppVariables, AuthUser } from "../types.js";
 import { AppError } from "../types.js";
 import * as trainService from "../services/train.service.js";
 import * as metricsService from "../services/metrics.service.js";
-import type {
-  InFlightBundle,
-  MetricsBundle,
-} from "../services/metrics.service.js";
+import type { InFlightBundle, MetricsBundle } from "../services/metrics.service.js";
 
 // ─── Param + query schemas ────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const requestIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const requestIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const resourcePathParam = z.string().min(1).openapi({
-  param: { name: "resource", in: "path" },
-  example: "main",
-});
+const resourcePathParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "resource", in: "path" },
+    example: "main",
+  });
 
-const resourceQuery = z.string().min(1).optional().openapi({
-  param: { name: "resource", in: "query" },
-  example: "main",
-});
+const resourceQuery = z
+  .string()
+  .min(1)
+  .optional()
+  .openapi({
+    param: { name: "resource", in: "query" },
+    example: "main",
+  });
 
 // ─── Body schemas (Zod-4 mirror) ──────────────────────────────────
 
@@ -222,6 +232,8 @@ const metricsBundleSchema = z
         attempts: z.number(),
       }),
       mean_wall_clock_ms: z.number().nullable(),
+      mean_session_sec: z.number().nullable(),
+      reclaimed_count: z.number(),
       budget_utilization: z.object({
         ratio: z.number().nullable(),
         mean_consumed_sec: z.number().nullable(),
@@ -286,10 +298,19 @@ const pauseRoute = createRoute({
     body: { content: { "application/json": { schema: pauseBody } }, required: false },
   },
   responses: {
-    200: { description: "Train paused", content: { "application/json": { schema: trainStateEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Train paused",
+      content: { "application/json": { schema: trainStateEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
     403: { description: "Admin only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -305,10 +326,19 @@ const resumeRoute = createRoute({
     body: { content: { "application/json": { schema: resumeBody } }, required: false },
   },
   responses: {
-    200: { description: "Train resumed", content: { "application/json": { schema: trainStateEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Train resumed",
+      content: { "application/json": { schema: trainStateEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
     403: { description: "Admin only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -324,10 +354,19 @@ const forceReleaseRoute = createRoute({
     body: { content: { "application/json": { schema: forceReleaseBody } }, required: false },
   },
   responses: {
-    200: { description: "Lock force-released", content: { "application/json": { schema: lockReleaseEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Lock force-released",
+      content: { "application/json": { schema: lockReleaseEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
     403: { description: "Admin only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -343,12 +382,27 @@ const forceLandRoute = createRoute({
     body: { content: { "application/json": { schema: forceLandBody } }, required: true },
   },
   responses: {
-    200: { description: "Force-landed", content: { "application/json": { schema: mergeRequestEnvelope } } },
-    400: { description: "Validation error (missing/empty reason or landedSha)", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Force-landed",
+      content: { "application/json": { schema: mergeRequestEnvelope } },
+    },
+    400: {
+      description: "Validation error (missing/empty reason or landedSha)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
     403: { description: "Admin only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Merge request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Grouped member or invalid transition", content: { "application/json": { schema: errorEnvelope } } },
+    404: {
+      description: "Merge request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Grouped member or invalid transition",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -364,12 +418,27 @@ const forceRejectRoute = createRoute({
     body: { content: { "application/json": { schema: forceRejectBody } }, required: true },
   },
   responses: {
-    200: { description: "Force-rejected", content: { "application/json": { schema: mergeRequestEnvelope } } },
-    400: { description: "Validation error (missing/empty reason)", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Force-rejected",
+      content: { "application/json": { schema: mergeRequestEnvelope } },
+    },
+    400: {
+      description: "Validation error (missing/empty reason)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
     403: { description: "Admin only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Merge request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Invalid transition", content: { "application/json": { schema: errorEnvelope } } },
+    404: {
+      description: "Merge request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Invalid transition",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -385,9 +454,18 @@ const getTrainStateRoute = createRoute({
     query: z.object({ resource: resourceQuery }),
   },
   responses: {
-    200: { description: "The train state", content: { "application/json": { schema: trainStateEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "The train state",
+      content: { "application/json": { schema: trainStateEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -403,9 +481,18 @@ const getMetricsRoute = createRoute({
     query: z.object({ resource: resourceQuery }),
   },
   responses: {
-    200: { description: "The metric bundle", content: { "application/json": { schema: metricsEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "The metric bundle",
+      content: { "application/json": { schema: metricsEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -421,9 +508,18 @@ const getInFlightRoute = createRoute({
     query: z.object({ resource: resourceQuery }),
   },
   responses: {
-    200: { description: "The in-flight composition", content: { "application/json": { schema: inFlightEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "The in-flight composition",
+      content: { "application/json": { schema: inFlightEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -452,9 +548,7 @@ function requireAdmin(user: AuthUser): void {
 }
 
 /** camelCase metric bundle → snake_case wire response (§5.6). */
-function metricsToResponse(
-  bundle: MetricsBundle,
-): z.infer<typeof metricsBundleSchema> {
+function metricsToResponse(bundle: MetricsBundle): z.infer<typeof metricsBundleSchema> {
   const slo = bundle.slo;
   const sloResponse: z.infer<typeof metricsBundleSchema>["slo"] = {
     overall_compliant: slo.overallCompliant,
@@ -543,8 +637,7 @@ function metricsToResponse(
       attempts: bundle.resolution.attempts,
       auto_resolve_success_rate: {
         ratio: bundle.resolution.autoResolveSuccessRate.ratio,
-        resolved_and_landed:
-          bundle.resolution.autoResolveSuccessRate.resolvedAndLanded,
+        resolved_and_landed: bundle.resolution.autoResolveSuccessRate.resolvedAndLanded,
         attempts: bundle.resolution.autoResolveSuccessRate.attempts,
       },
       escalation_rate: {
@@ -553,6 +646,8 @@ function metricsToResponse(
         attempts: bundle.resolution.escalationRate.attempts,
       },
       mean_wall_clock_ms: bundle.resolution.meanWallClockMs,
+      mean_session_sec: bundle.resolution.meanSessionSec,
+      reclaimed_count: bundle.resolution.reclaimedCount,
       budget_utilization: {
         ratio: bundle.resolution.budgetUtilization.ratio,
         mean_consumed_sec: bundle.resolution.budgetUtilization.meanConsumedSec,
@@ -565,9 +660,7 @@ function metricsToResponse(
 }
 
 /** camelCase in-flight bundle → snake_case wire response (§5.3). */
-function inFlightToResponse(
-  bundle: InFlightBundle,
-): z.infer<typeof inFlightSchema> {
+function inFlightToResponse(bundle: InFlightBundle): z.infer<typeof inFlightSchema> {
   return {
     groups: bundle.groups.map((g) => ({
       id: g.id,

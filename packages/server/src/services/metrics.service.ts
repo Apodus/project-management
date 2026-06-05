@@ -136,6 +136,17 @@ export interface ResolutionMetric {
   autoResolveSuccessRate: ResolutionAutoResolveMetric;
   escalationRate: ResolutionEscalationMetric;
   meanWallClockMs: number | null;
+  // The seconds view of mean_wall_clock_ms (same source timestamps:
+  // attempt_started_at→attempt_ended_at, the WHOLE resolving-session span — NOT
+  // detail.budgetConsumedSec, which is agent runtime only).
+  meanSessionSec: number | null;
+  // Counts rows the periodic reclaim sweep (reclaim-resolutions.ts) ESCALATED
+  // (session_died_or_timeout). Sweep-RECONCILED rows (resubmission found ->
+  // resolvedResolution) write no marker -> indistinguishable from a normal
+  // resolved row -> intentionally NOT counted (they land work; counted in
+  // auto_resolve_success_rate). Counting them would need a schema marker
+  // (deferred, no migration in 7.6.1).
+  reclaimedCount: number;
   budgetUtilization: ResolutionBudgetMetric;
 }
 
@@ -669,6 +680,7 @@ function computeResolution(projectId: string, resource: string, cutoff: string):
   // Wall-clock + budget rows: pull the timestamps + detail for the window.
   const rows = db
     .select({
+      state: mergeResolutions.state,
       attemptStartedAt: mergeResolutions.attemptStartedAt,
       attemptEndedAt: mergeResolutions.attemptEndedAt,
       detail: mergeResolutions.detail,
@@ -682,6 +694,7 @@ function computeResolution(projectId: string, resource: string, cutoff: string):
       ),
     )
     .all() as Array<{
+    state: string;
     attemptStartedAt: string | null;
     attemptEndedAt: string | null;
     detail: MergeResolutionDetail | null;
@@ -694,6 +707,18 @@ function computeResolution(projectId: string, resource: string, cutoff: string):
     .map((r) => Date.parse(r.attemptEndedAt as string) - Date.parse(r.attemptStartedAt as string));
   const meanWallClockMs =
     wallClocks.length === 0 ? null : wallClocks.reduce((a, b) => a + b, 0) / wallClocks.length;
+  // meanSessionSec: the seconds view of meanWallClockMs (same source timestamps).
+  const meanSessionSec = meanWallClockMs === null ? null : meanWallClockMs / 1000;
+
+  // reclaimedCount: rows the periodic reclaim sweep (reclaim-resolutions.ts)
+  // ESCALATED with escalationReason === "session_died_or_timeout". Sweep-
+  // RECONCILED rows write no marker (see ResolutionMetric.reclaimedCount), so
+  // they are intentionally NOT counted here.
+  const reclaimedCount = rows.filter(
+    (r) =>
+      (r.state === "escalated" || r.state === "failed") &&
+      r.detail?.escalationReason === "session_died_or_timeout",
+  ).length;
 
   // budgetUtilization: mean(detail.budgetConsumedSec) over rows that reported
   // it, and the ratio of that mean against the configured time_budget_sec.
@@ -716,6 +741,8 @@ function computeResolution(projectId: string, resource: string, cutoff: string):
       attempts,
     },
     meanWallClockMs,
+    meanSessionSec,
+    reclaimedCount,
     budgetUtilization: {
       ratio: meanConsumedSec === null || budgetSec === 0 ? null : meanConsumedSec / budgetSec,
       meanConsumedSec,

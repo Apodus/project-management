@@ -453,7 +453,7 @@
                         "type": "number",
                         "minimum": 0,
                         "exclusiveMinimum": true,
-                        "default": 600
+                        "default": 3600
                       },
                       "token_budget": {
                         "type": "number",
@@ -779,7 +779,7 @@
                         "type": "number",
                         "minimum": 0,
                         "exclusiveMinimum": true,
-                        "default": 600
+                        "default": 3600
                       },
                       "token_budget": {
                         "type": "number",
@@ -6106,6 +6106,13 @@
                 "type": "number",
                 "nullable": true
               },
+              "mean_session_sec": {
+                "type": "number",
+                "nullable": true
+              },
+              "reclaimed_count": {
+                "type": "number"
+              },
               "budget_utilization": {
                 "type": "object",
                 "properties": {
@@ -6133,6 +6140,8 @@
               "auto_resolve_success_rate",
               "escalation_rate",
               "mean_wall_clock_ms",
+              "mean_session_sec",
+              "reclaimed_count",
               "budget_utilization"
             ]
           },
@@ -18549,6 +18558,14 @@
             },
             "required": false,
             "name": "taskId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "resolvedFrom",
             "in": "query"
           },
           {

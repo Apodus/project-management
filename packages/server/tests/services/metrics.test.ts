@@ -633,33 +633,53 @@ describe("metrics service", () => {
       ...mkWindow(300_000),
       detail: { budgetConsumedSec: 360 },
     });
-    // D: failed, 400s, budget 480s.
+    // D: failed BY THE RECLAIM SWEEP (session_died_or_timeout), 400s, budget
+    // 480s. This is the one row reclaimed_count must count.
     seedResolution(testApp, {
       projectId: project.id,
       state: "failed",
       escalationTarget: "human",
       ...mkWindow(400_000),
-      detail: { budgetConsumedSec: 480 },
+      detail: { budgetConsumedSec: 480, escalationReason: "session_died_or_timeout" },
+    });
+    // E: NEGATIVE CONTROL — escalated, but a DIFFERENT escalationReason (a normal
+    // verify-fail escalation, NOT a reclaim). Must NOT count toward
+    // reclaimed_count. Null timestamps / no budget so it doesn't perturb the
+    // wall-clock or budget means (only attempts + escalation counts).
+    seedResolution(testApp, {
+      projectId: project.id,
+      state: "escalated",
+      escalationTarget: "author",
+      attemptStartedAt: null,
+      attemptEndedAt: null,
+      detail: { escalationReason: "verify_failed" },
     });
 
     const m = metrics.computeMetrics(project.id, "main", NOW);
     const r = m.resolution;
 
-    expect(r.attempts).toBe(4);
+    expect(r.attempts).toBe(5);
 
-    // auto-resolve success: only A resolved AND landed → 1/4 = 0.25.
+    // auto-resolve success: only A resolved AND landed → 1/5 = 0.2.
     expect(r.autoResolveSuccessRate.resolvedAndLanded).toBe(1);
-    expect(r.autoResolveSuccessRate.attempts).toBe(4);
-    expect(r.autoResolveSuccessRate.ratio).toBeCloseTo(0.25, 10);
+    expect(r.autoResolveSuccessRate.attempts).toBe(5);
+    expect(r.autoResolveSuccessRate.ratio).toBeCloseTo(0.2, 10);
 
-    // escalation: C + D → 2/4 = 0.5.
-    expect(r.escalationRate.escalated).toBe(2);
-    expect(r.escalationRate.ratio).toBeCloseTo(0.5, 10);
+    // escalation: C + D + E → 3/5 = 0.6.
+    expect(r.escalationRate.escalated).toBe(3);
+    expect(r.escalationRate.ratio).toBeCloseTo(0.6, 10);
 
-    // mean wall-clock = (100+200+300+400)s / 4 = 250000ms.
+    // mean wall-clock = (100+200+300+400)s / 4 = 250000ms (E excluded: null ts).
     expect(r.meanWallClockMs).toBe(250_000);
+    // meanSessionSec = the seconds view of the same wall-clock = 250s.
+    expect(r.meanSessionSec).toBe(250);
 
-    // budget: mean consumed (120+240+360+480)/4 = 300s; budget 600s → 0.5.
+    // reclaimed_count = exactly D (state failed + session_died_or_timeout). The
+    // negative control E (different escalationReason) is NOT counted.
+    expect(r.reclaimedCount).toBe(1);
+
+    // budget: mean consumed (120+240+360+480)/4 = 300s; budget 600s → 0.5
+    // (E excluded: no budgetConsumedSec).
     expect(r.budgetUtilization.budgetSec).toBe(600);
     expect(r.budgetUtilization.meanConsumedSec).toBe(300);
     expect(r.budgetUtilization.ratio).toBeCloseTo(0.5, 10);
@@ -674,6 +694,8 @@ describe("metrics service", () => {
     expect(r.autoResolveSuccessRate.ratio).toBeNull();
     expect(r.escalationRate.ratio).toBeNull();
     expect(r.meanWallClockMs).toBeNull();
+    expect(r.meanSessionSec).toBeNull();
+    expect(r.reclaimedCount).toBe(0);
     expect(r.budgetUtilization.meanConsumedSec).toBeNull();
     expect(r.budgetUtilization.ratio).toBeNull();
     // Default budget when unset (the shared-schema default).

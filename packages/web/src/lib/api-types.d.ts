@@ -7313,6 +7313,7 @@ export interface paths {
                     resource?: string;
                     status?: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "orphaned";
                     taskId?: string;
+                    resolvedFrom?: string;
                     ungrouped?: "true" | "false";
                     page?: number;
                     perPage?: number;
@@ -11970,7 +11971,7 @@ export interface components {
                         enabled: boolean;
                         /** @default 1 */
                         max_concurrent: number;
-                        /** @default 600 */
+                        /** @default 3600 */
                         time_budget_sec: number;
                         token_budget?: number;
                         command?: string;
@@ -12067,7 +12068,7 @@ export interface components {
                         enabled: boolean;
                         /** @default 1 */
                         max_concurrent: number;
-                        /** @default 600 */
+                        /** @default 3600 */
                         time_budget_sec: number;
                         token_budget?: number;
                         command?: string;
@@ -13376,6 +13377,8 @@ export interface components {
                     attempts: number;
                 };
                 mean_wall_clock_ms: number | null;
+                mean_session_sec: number | null;
+                reclaimed_count: number;
                 budget_utilization: {
                     ratio: number | null;
                     mean_consumed_sec: number | null;

@@ -123,6 +123,8 @@ function seededMetrics(): TrainMetrics {
       },
       escalation_rate: { ratio: 0.25, escalated: 2, attempts: 8 },
       mean_wall_clock_ms: 250_000,
+      mean_session_sec: 250,
+      reclaimed_count: 1,
       budget_utilization: {
         ratio: 0.5,
         mean_consumed_sec: 300,
@@ -176,6 +178,8 @@ function nullMetrics(): TrainMetrics {
       },
       escalation_rate: { ratio: null, escalated: 0, attempts: 0 },
       mean_wall_clock_ms: null,
+      mean_session_sec: null,
+      reclaimed_count: 0,
       budget_utilization: {
         ratio: null,
         mean_consumed_sec: null,
@@ -286,10 +290,7 @@ describe("TrainDashboardPage — seeded data", () => {
   it("links each in-flight member to its per-request timeline", () => {
     render(<TrainDashboardPage />);
     const link = screen.getByRole("link", { name: "mr-bbbb2" });
-    expect(link).toHaveAttribute(
-      "href",
-      "/merge-requests/mr-bbbb2222/timeline",
-    );
+    expect(link).toHaveAttribute("href", "/merge-requests/mr-bbbb2222/timeline");
   });
 
   it("shows the health freshness widget with an 'ago' counter", () => {
@@ -366,9 +367,7 @@ describe("TrainDashboardPage — null-safe rendering (divide-by-null bug class)"
 
   it("shows the empty in-flight state", () => {
     render(<TrainDashboardPage />);
-    expect(
-      screen.getByText("Nothing currently integrating"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Nothing currently integrating")).toBeInTheDocument();
   });
 
   it("shows the disabled verify-cache state without NaN (Phase 7.5)", () => {

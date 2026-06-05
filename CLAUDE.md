@@ -150,14 +150,14 @@ via SSE: `merge.batch.started/member_landed/member_invalidated/completed` marker
 on the existing `merge.request.*` / `merge.attempt.*` frames. No PM batch tables — the integrator owns
 batch state in memory. Full spec: `docs/design/phase-7.2-design.md`.
 
-**Cross-repo atomicity (Phase 7.3).** A change that spans linked repos (game_one's `rynx` inner Rust
+**Cross-repo atomicity (Phase 7.3).** A change that spans linked repos (game*one's `rynx` inner Rust
 workspace + the outer game repo that embeds it as a `160000` gitlink) lands as a unit or not at all.
 Workers submit each repo's change as a normal merge request, then bind them into a **merge group**
 (`pm_request_merge_group`); the integrator picks up the whole group under the **same lane lock**,
 assembles the multi-repo state (inner rebased to `Ri` + outer gitlink committed to `Ri` + the inner
 sources materialized into the outer working tree), runs per-repo verify concurrently (AND-combined),
 and lands **inner-first then outer**. If the inner push fails the whole group rejects cleanly (outer
-never touched); if the outer push fails _after_ the inner landed, the inner commit is marked
+never touched); if the outer push fails \_after* the inner landed, the inner commit is marked
 `orphaned` and a durable **incident** (`orphaned_inner`) is opened so the divergence is detectable
 from PM alone (no SSH into the host). Recovery is **auto-rollforward**: a later integration rolls the
 outer gitlink forward to absorb the orphaned SHA via a verify-gated fast-forward push (when the
@@ -249,7 +249,8 @@ row + enqueue into a **resolver pool** (isolated worktrees, separate from the ve
 resolution runs **OFF the lane lock**. The worker calls `start` (pending→resolving) FIRST,
 materializes the conflict (`GitOps.materializeConflict`, no `--abort`), spawns the **injectable**
 resolver (`claude -p`/`command`, SIGTERM→SIGKILL at `time_budget_sec`, one attempt), commits +
-pushes `pm/resolution-<id>`, then runs the 7.5 verify pipeline **cache-OFF** as the sole gate; on pass
+pushes `pm/resolution-<id>`, then runs the 7.5 verify pipeline **cache-OFF** as the sole gate
+(superseded by 7.6.1 — see below); on pass
 it resubmits with `resolved_from` + the origin's `task_id` AND `verify_cmd` (re-enters the train, real
 verify gate); on fail/budget/spawn-error it escalates (`escalated`|`failed`) + posts a `merge_rejection`
 comment. **No recursion**: `resolved_from != null` ⇒ the resolver never re-engages. All PM/git I/O is
@@ -266,8 +267,24 @@ operator/integrator machinery, like 7.4/7.5) and no new env var (config in `sett
 via `PATCH /projects/{id}`). **Track A** (doc-only, shipped): the worker workflow doc now tells agents
 to **submit-and-move-on** (a rejection is a new ticket, not a stall). **Honest limitation:** the
 resolver is bounded + one-shot; a rare integrator crash mid-resolution strands the row in `resolving`
-(no auto-reclaim sweep yet — v2; no work lost, `main` untouched). Full spec:
+(no auto-reclaim sweep yet — v2 (superseded by 7.6.1 — see below); no work lost, `main` untouched). Full spec:
 `docs/design/phase-7.6-design.md`; operator guide: `docs/integrator-deployment.md` §18.
+
+**In-session resolver loop (Phase 7.6.1).** The agent now owns verification: within its single bounded
+session it runs the **full verify itself** and iterates resolve→verify→fix to a green suite, then
+declares via a **status sentinel** (`PM_RESOLUTION_STATUS_PATH`: `complete`|`give_up`; absent/markers ⇒
+escalate). The daemon **dropped its own verify gate** — the **train re-verify is the sole landing gate**
+(an agent that wrongly declares `complete` just fails the train re-verify; `main` never at risk).
+`time_budget_sec` now bounds the **whole session** (default raised **600 → 3600**; size ≥ a few× verify
+duration). A periodic **reclaim sweep** (`reclaim-resolutions.ts`, in `runBatchLoop`, gated on
+`resolver.enabled`) recovers rows stranded in `resolving` past `attempt_started_at + time_budget_sec +
+grace[max 120s, 0.25×budget]` — **reconcile** (resubmission with `resolved_from` exists → `resolved`,
+never escalate) **or escalate** (`failed`/`session_died_or_timeout` + comment) — closing the v1
+dangling-`resolving` gap. Metrics add **`mean_session_sec`** (seconds view of `mean_wall_clock_ms`) +
+**`reclaimed_count`** (sweep-**escalated** rows only — reconciled rows write no marker, counted in
+`auto_resolve_success_rate`; honest under-count, documented). No `@pm/shared`/migration change. Full
+spec: `docs/design/phase-7.6.1-resolver-in-session-loop.md`; operator guide:
+`docs/integrator-deployment.md` §18.7.
 
 ### Production Deployment
 
