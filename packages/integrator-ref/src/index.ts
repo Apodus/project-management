@@ -37,9 +37,7 @@ async function main(): Promise<void> {
   // heartbeat. Sourced from the generated version.ts (single source of truth =
   // package.json), which is also what we pass to commander's .version() above.
   const version = VERSION;
-  const logger = createLogger(
-    args.logLevel ?? process.env.PM_LOG_LEVEL ?? "info",
-  );
+  const logger = createLogger(args.logLevel ?? process.env.PM_LOG_LEVEL ?? "info");
 
   const tokenEnvVar = args.token ?? "PM_API_TOKEN";
   const token = process.env[tokenEnvVar];
@@ -82,20 +80,13 @@ async function main(): Promise<void> {
     "Integrator ready",
   );
 
-  process.stdout.write(
-    `Integrator ready for project ${cfg.projectId} resource ${cfg.resource}\n`,
-  );
+  process.stdout.write(`Integrator ready for project ${cfg.projectId} resource ${cfg.resource}\n`);
 
   // ── Crash recovery: reclaim any stranded `integrating` requests. ──
   // N-tolerant: loops over EVERY `integrating` request in the lane and resets
   // each to `queued`. Takes no worktree/gitOps — purely a PM-side sweep — so it
   // is unchanged from the 7.1 wiring.
-  const reclaim = await reclaimStrandedRequests(
-    pmClient,
-    cfg.projectId,
-    cfg.resource,
-    logger,
-  );
+  const reclaim = await reclaimStrandedRequests(pmClient, cfg.projectId, cfg.resource, logger);
   if (reclaim.scanned > 0) {
     logger.info(reclaim, "Crash-recovery sweep complete");
   }
@@ -160,7 +151,6 @@ async function main(): Promise<void> {
       gitOps: makeGitOps,
       verifySteps: cfg.verifySteps,
       defaultVerifyCommand: cfg.verifyCommand,
-      verifyTimeoutSec: cfg.verifyTimeoutSec,
       runner: createClaudeResolverRunner(cfg),
       timeBudgetSec: cfg.resolver.timeBudgetSec,
       tokenBudget: cfg.resolver.tokenBudget,
@@ -280,10 +270,7 @@ async function main(): Promise<void> {
           async push(remote: string, branch: string): Promise<PushResult> {
             if (!outerPushFailed) {
               outerPushFailed = true;
-              logger.warn(
-                { worktree: p },
-                "CHAOS: failing outer push once (orphan trigger)",
-              );
+              logger.warn({ worktree: p }, "CHAOS: failing outer push once (orphan trigger)");
               return { ok: false, reason: "network", stderr: "induced chaos outer push failure" };
             }
             return g.push(remote, branch);
@@ -347,10 +334,7 @@ async function main(): Promise<void> {
       .catch((e) => logger.warn(`heartbeat post failed: ${String(e)}`));
   };
   emitHeartbeat(); // boot beat
-  const heartbeatTimer = setInterval(
-    emitHeartbeat,
-    cfg.heartbeatIntervalSec * 1000,
-  );
+  const heartbeatTimer = setInterval(emitHeartbeat, cfg.heartbeatIntervalSec * 1000);
   heartbeatTimer.unref?.();
 
   // ── SSE subscriber (latency hint; poll is the correctness floor). ──
@@ -373,8 +357,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => requestStop("SIGTERM"));
   process.on("SIGINT", () => requestStop("SIGINT"));
 
-  const pollIntervalMs =
-    Math.max(1, Number(args.pollIntervalSec ?? "30") || 30) * 1000;
+  const pollIntervalMs = Math.max(1, Number(args.pollIntervalSec ?? "30") || 30) * 1000;
 
   await runBatchLoop(
     {

@@ -15,28 +15,28 @@
  *      `-<i>`). A resolution running in `<name>-resolver-0` and a verify member
  *      in `<name>-0` are different directories.
  *
- * Step 6 (THIS) implements the job PROCESSOR that drains the queue: per job it
- * transitions the resolution `pending → resolving` FIRST, materializes the
- * conflict in an isolated worktree, spawns an INJECTABLE headless resolver
- * bounded by budget (ONE attempt), runs the 7.5 verify pipeline with cache OFF
- * as the SOLE arbiter, and produces a `ResolutionOutcome` handed to an
- * `onOutcome` callback — the Step-7 seam (resubmit / escalate live in Step 7).
- * The verdict gate is verify-only: a clean agent run that fails verify
- * ESCALATES; the worker never trusts the model's self-assertion.
+ * The job PROCESSOR drains the queue: per job it transitions the resolution
+ * `pending → resolving` FIRST, materializes the conflict in an isolated
+ * worktree, and spawns an INJECTABLE headless resolver bounded by budget (ONE
+ * attempt). The agent verifies the FULL suite IN-SESSION before declaring
+ * completion (Phase 7.6.1) — so a `complete` runner result means verify already
+ * passed inside the session. The pool therefore COMMITS the resolution and
+ * returns `resolved` directly; it runs NO verify gate of its own. The real
+ * landing gate is the train RE-VERIFY: `onOutcome` (resolution-outcome.ts →
+ * submitMergeRequest) re-enters the resolved change into the train, which
+ * verifies it against live main before it can land. The produced
+ * `ResolutionOutcome` is handed to the `onOutcome` callback (resubmit / escalate).
  */
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createWorktree, type Worktree } from "./worktree.js";
 import type { GitOps } from "./git-ops.js";
-import { runPipeline } from "./verify-pipeline.js";
 import type { ResolverRunner } from "./resolver-runner.js";
 import type { PmClient } from "./pm-client.js";
 import type { Logger } from "./logger.js";
 import type { MergeResolutionDetail, VerifyStep } from "@pm/shared";
 import { errMessage } from "./loop.js";
-
-const SYNTHETIC_STEP_ID = "verify";
 
 /** A `file://` URL for the resolver log path (Windows-safe, mirrors loop.ts). */
 function logUrlOf(logPath: string): string {
@@ -73,16 +73,19 @@ export interface ResolutionJob {
  * consumes it (resubmit on `resolved`, escalate on `escalate`) and the
  * corresponding pm-client calls live in Step 7, NOT here.
  *
- *  - `resolved`: the agent produced a tree that PASSED the local verify gate
- *    (cache OFF — the sole arbiter). It carries the COMMITTED `resolvedCommitSha`
- *    and the live `worktreePath`. CRITICAL: the resolved commit exists ONLY in
- *    the resolver clone until Step 7 pushes it; Step 6 therefore keeps the
- *    worktree LEASED until `onOutcome` resolves (the slot is released in
+ *  - `resolved`: the agent declared completion after verifying the FULL suite
+ *    IN-SESSION (Phase 7.6.1 — the pool runs no verify of its own). It carries
+ *    the COMMITTED `resolvedCommitSha` and the live `worktreePath`. The resolved
+ *    change is NOT yet landed: the train RE-VERIFY (resolution-outcome →
+ *    submitMergeRequest) is the real landing gate. CRITICAL: the resolved commit
+ *    exists ONLY in the resolver clone until Step 7 pushes it; Step 6 therefore
+ *    keeps the worktree LEASED until `onOutcome` resolves (the slot is released in
  *    `processJob`'s finally, AFTER `await onOutcome`). Step 7's handler pushes
  *    the commit from `worktreePath`, then resubmits it as a linked new request.
- *  - `escalate`: resolution could not land. `state` distinguishes `escalated`
- *    (the model/verify couldn't — verify_failed / timeout / unresolved) from
- *    `failed` (the resolver itself broke — spawn_error / infra throw), per §4.3.
+ *  - `escalate`: resolution could not be produced. `state` distinguishes
+ *    `escalated` (the model couldn't — give_up / timeout / unresolved markers)
+ *    from `failed` (the resolver itself broke — spawn_error / infra throw), per
+ *    §4.3.
  */
 export type ResolutionOutcome =
   | {
@@ -112,10 +115,11 @@ export interface ResolverWorkerDeps {
   logger: Logger;
   /** Per-worktree GitOps factory (mirrors index.ts `makeGitOps`). */
   gitOps: (worktreePath: string) => GitOps;
-  /** The 7.5 verify DAG (empty → synthetic single step over defaultVerifyCommand). */
+  /** The 7.5 verify DAG (empty → single command over defaultVerifyCommand).
+   *  Used ONLY to build the verify command the AGENT runs in-session; the pool
+   *  itself never runs verify (Phase 7.6.1). */
   verifySteps: VerifyStep[];
   defaultVerifyCommand: string;
-  verifyTimeoutSec: number;
   /** Injectable headless resolver (default `createClaudeResolverRunner`). */
   runner: ResolverRunner;
   /** Resolver budget (design §3): wall-clock cap + optional token cap. */
@@ -224,7 +228,6 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
           gitOps: opts.gitOps,
           verifySteps: opts.verifySteps ?? [],
           defaultVerifyCommand: opts.defaultVerifyCommand ?? "",
-          verifyTimeoutSec: opts.verifyTimeoutSec ?? 600,
           runner: opts.runner,
           timeBudgetSec: opts.timeBudgetSec ?? 600,
           tokenBudget: opts.tokenBudget,
@@ -232,19 +235,6 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
           onOutcome: opts.onOutcome,
         }
       : null;
-
-  // The verify DAG to gate resolutions on: the configured steps, or a single
-  // synthetic `verify` step over the default verify command (byte-identical to
-  // the train's single-command fallback). Cache is ALWAYS off (cache: undefined).
-  function buildVerifySteps(): VerifyStep[] {
-    if (worker && worker.verifySteps.length > 0) return worker.verifySteps;
-    return [
-      {
-        id: SYNTHETIC_STEP_ID,
-        command: worker?.defaultVerifyCommand ?? "",
-      } as VerifyStep,
-    ];
-  }
 
   // ── Drain machinery. A single `draining` flag serializes the fire-and-forget
   //    drain so two enqueues don't spawn two competing drains; it is re-kicked
@@ -327,9 +317,11 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
 
   /**
    * The resolution attempt proper (§5.2). Materialize the conflict, run the
-   * INJECTABLE headless resolver (one attempt), and — on a clean agent run —
-   * commit the resolution and gate it on the 7.5 verify pipeline with cache OFF
-   * (the SOLE arbiter). Returns a ResolutionOutcome; converts ANY infra throw
+   * INJECTABLE headless resolver (one attempt) — the agent verifies the FULL
+   * suite IN-SESSION (Phase 7.6.1) — and, on a `complete` declaration, COMMIT
+   * the resolution and return `resolved` directly. The pool runs NO verify gate
+   * of its own; the train RE-VERIFY (resolution-outcome → submitMergeRequest) is
+   * the real landing gate. Returns a ResolutionOutcome; converts ANY infra throw
    * into a `failed` escalate outcome (never throws).
    */
   async function runResolution(
@@ -368,13 +360,12 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
 
       if (result.kind !== "complete") {
         // The agent did not declare completion. Map the runner's four-state union
-        // to the escalate outcome (P2 shim preserves P0/P1 behavior exactly —
-        // the real in-session-loop rewrite is P3):
+        // to the escalate outcome (§4.3):
         //   - spawn_error → the resolver itself broke (`failed`).
         //   - timeout     → budget exceeded (`escalated`).
         //   - markers     → the model couldn't reconcile (`escalated`, unresolved).
         //   - give_up     → the agent declared it cannot reconcile; escalate with
-        //                   its stated reason (additive — new in P2). §4.3.
+        //                   its stated reason.
         let state: "escalated" | "failed";
         let reason: string;
         if (result.kind === "incomplete" && result.reason === "spawn_error") {
@@ -406,57 +397,23 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
         };
       }
 
-      // The agent reports a clean tree. COMMIT the resolution (completes the
-      // in-progress rebase non-interactively with explicit identity) so a real
-      // commit sha exists, then gate it on verify (cache OFF — the sole arbiter).
+      // The agent declared completion AFTER verifying the full suite in-session
+      // (Phase 7.6.1). COMMIT the resolution (completes the in-progress rebase
+      // non-interactively with explicit identity) so a real commit sha exists,
+      // then return `resolved` directly — the pool runs NO verify of its own.
+      // The train RE-VERIFY (resolution-outcome → submitMergeRequest) is the
+      // real landing gate.
       const resolvedCommitSha = await gitOps.commitResolution();
 
-      const pipeline = await runPipeline(buildVerifySteps(), {
-        gitOps,
-        cwd: wt.path,
-        verifyTimeoutSec: w.verifyTimeoutSec,
-        logsDir: wt.logsDir,
-        attemptId: `resolution-${job.resolutionId}`,
-        // cache: undefined → cache OFF. A resolution is novel; verify is the
-        // sole arbiter and we neither read nor pollute the cache here (the same
-        // stance as group orphan-recovery in 7.5).
-        cache: undefined,
-        logger: w.logger,
-      });
-
-      const verifyVerdict: "pass" | "fail" = pipeline.outcome === "pass" ? "pass" : "fail";
-
-      if (verifyVerdict === "pass") {
-        return {
-          kind: "resolved",
-          resolutionId: job.resolutionId,
-          job,
-          resolvedCommitSha,
-          worktreePath: wt.path,
-          detail: {
-            budgetConsumedSec: result.durationMs / 1000,
-            ...(result.tokensConsumed !== undefined
-              ? { tokensConsumed: result.tokensConsumed }
-              : {}),
-            verifyVerdict,
-            ...(logUrlOf(logPath) ? { logUrl: logUrlOf(logPath) } : {}),
-          },
-        };
-      }
-
-      // Clean tree but verify FAILED → escalate (escalated, verify_failed). The
-      // model reconciled the markers but broke the build/tests — honest "too
-      // hard". Verify is the only arbiter; the agent's "ok" does NOT land.
       return {
-        kind: "escalate",
+        kind: "resolved",
         resolutionId: job.resolutionId,
         job,
-        state: "escalated",
-        reason: "verify_failed",
+        resolvedCommitSha,
+        worktreePath: wt.path,
         detail: {
           budgetConsumedSec: result.durationMs / 1000,
-          verifyVerdict,
-          escalationReason: "verify_failed",
+          ...(result.tokensConsumed !== undefined ? { tokensConsumed: result.tokensConsumed } : {}),
           ...(logUrlOf(logPath) ? { logUrl: logUrlOf(logPath) } : {}),
         },
       };

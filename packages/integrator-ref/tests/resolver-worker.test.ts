@@ -1,18 +1,19 @@
 /**
- * Resolver worker tests (Phase 7.6 Step 6).
+ * Resolver worker tests (Phase 7.6 Step 6 / 7.6.1 in-session-loop).
  *
- * Drives the real Step-6 worker against a GENUINE textual conflict (real git,
+ * Drives the real worker against a GENUINE textual conflict (real git,
  * bare-repo + author-clone fixture) with an INJECTED fake `ResolverRunner` (no
  * real Claude binary). The fake scripts the agent's outcome and, in clean cases,
- * writes a resolved file (markers removed) so the subsequent commit + verify gate
- * exercise the real path.
+ * writes a resolved file (markers removed) so the subsequent commit exercises the
+ * real path.
  *
  * Asserts the design contract:
  *  - startResolution is called FIRST, before any fallible work, in every case.
- *  - VERIFY (cache OFF) is the SOLE arbiter: a clean agent run that fails verify
- *    ESCALATES (never lands on the agent's say-so).
- *  - escalate states map per §4.3: timeout/unresolved → escalated, spawn_error →
- *    failed.
+ *  - A `complete` runner result ⇒ the agent already verified the FULL suite
+ *    IN-SESSION (7.6.1); the pool COMMITS and returns `resolved` UNCONDITIONALLY
+ *    — it runs no verify gate of its own. The train re-verify is the real gate.
+ *  - escalate states map per §4.3: timeout/unresolved/give_up → escalated,
+ *    spawn_error → failed.
  *  - NO worker throw ever escapes into the train (onOutcome throw → slot still
  *    released, no escape; startResolution throw → abandon, no escalate, no
  *    onOutcome).
@@ -186,7 +187,6 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
       gitOps: (p) => createGitOps(simpleGit(p)),
       verifySteps: [],
       defaultVerifyCommand: args.verifyCommand,
-      verifyTimeoutSec: 60,
       runner: args.runner,
       timeBudgetSec: 60,
       onOutcome: args.onOutcome,
@@ -208,7 +208,7 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     }
   }
 
-  it("(a) resolved: clean agent + verify exit 0 → outcome resolved with a real sha", async () => {
+  it("(a) resolved: complete agent (verified in-session) → outcome resolved with a real sha, UNCONDITIONALLY", async () => {
     const root = path.join(tmpRoot, "wt-a");
     const pmClient = makePmClient();
     const outcomes: ResolutionOutcome[] = [];
@@ -221,7 +221,9 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
       maxConcurrent: 1,
       pmClient,
       runner,
-      verifyCommand: process.platform === "win32" ? "cmd /c exit 0" : "exit 0",
+      // The verifyCommand is now irrelevant to the outcome — the pool runs no
+      // verify of its own; a `complete` result lands as `resolved` regardless.
+      verifyCommand: process.platform === "win32" ? "cmd /c exit 1" : "exit 1",
       onOutcome: (o) => void outcomes.push(o),
     });
     await pool.ensureAll();
@@ -234,37 +236,34 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     if (o.kind === "resolved") {
       expect(o.resolvedCommitSha).toMatch(/^[0-9a-f]{7,40}$/);
       expect(o.worktreePath).toContain("wt-resolver-0");
-      expect(o.detail.verifyVerdict).toBe("pass");
     }
     expect(pool.leasedCount).toBe(0);
   });
 
-  it("(b) verify-fail: clean agent but verify exit 1 → escalate/escalated/verify_failed", async () => {
-    const root = path.join(tmpRoot, "wt-b");
+  it("(b) give_up: runner give_up → escalate/escalated with the agent's reason", async () => {
+    const root = path.join(tmpRoot, "wt-giveup");
     const pmClient = makePmClient();
     const outcomes: ResolutionOutcome[] = [];
     const runner = makeRunner({
-      result: { kind: "complete", durationMs: 10 },
-      resolveFile: { rel: "feature.txt", content: "line-merged\n" },
+      result: { kind: "give_up", reason: "cannot reconcile", durationMs: 5 },
     });
     const pool = makePool({
       root,
       maxConcurrent: 1,
       pmClient,
       runner,
-      verifyCommand: process.platform === "win32" ? "cmd /c exit 1" : "exit 1",
+      verifyCommand: "exit 0",
       onOutcome: (o) => void outcomes.push(o),
     });
     await pool.ensureAll();
-    pool.enqueue(baseJob("res-b"));
+    pool.enqueue(baseJob("res-giveup"));
     await waitForOutcomes(outcomes, 1);
 
     const o = outcomes[0];
     expect(o.kind).toBe("escalate");
     if (o.kind === "escalate") {
       expect(o.state).toBe("escalated");
-      expect(o.reason).toBe("verify_failed");
-      expect(o.detail.verifyVerdict).toBe("fail");
+      expect(o.reason).toBe("cannot reconcile");
     }
     expect(pool.leasedCount).toBe(0);
   });
