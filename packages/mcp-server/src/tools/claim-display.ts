@@ -1,5 +1,6 @@
 import type {
   ClaimResultData,
+  ClaimState,
   ClaimStatusValue,
   ForceClaimResultData,
 } from "../api-client.js";
@@ -16,6 +17,31 @@ export function claimStatusLabel(status: ClaimStatusValue | undefined): string {
     case "unclaimed":
     case undefined:
       return "available to claim";
+  }
+}
+
+/**
+ * Render a claim_state enum (C3 liveness view) as agent-friendly text. Unlike
+ * claim_status (holder-vs-caller only), claim_state folds in lease liveness so
+ * an agent can SEE whether another holder is actively working (live) or may
+ * have walked away (stale). Identity-masked — the enum never carries a holder
+ * id, so this never leaks who holds the claim.
+ *
+ * `undefined` → "" (fail-safe for an older server that doesn't send the field;
+ * callers guard on non-empty and simply omit the segment).
+ */
+export function claimStateLabel(state: ClaimState | undefined): string {
+  switch (state) {
+    case "yours":
+      return "yours (you hold this)";
+    case "live":
+      return "live (actively worked)";
+    case "stale":
+      return "stale (claim lease lapsed — may be abandoned)";
+    case "unclaimed":
+      return "unclaimed (free to pick up)";
+    case undefined:
+      return "";
   }
 }
 

@@ -9,6 +9,7 @@ import {
 } from "../api-client.js";
 import {
   claimResultText,
+  claimStateLabel,
   claimStatusLabel,
   forceClaimResultText,
 } from "./claim-display.js";
@@ -42,7 +43,7 @@ export function registerEpicTools(server: McpServer): void {
 
       const text = epics
         .map((e) => {
-          const claimLine = `  Claim: ${claimStatusLabel(e.claimStatus)}`;
+          const claimLine = `  Claim: ${claimStateLabel(e.claimState) || claimStatusLabel(e.claimStatus)}`;
           const progress = e.taskSummary
             ? `  Tasks: ${e.taskSummary.done}/${e.taskSummary.total} done`
             : "";
@@ -95,7 +96,7 @@ export function registerEpicTools(server: McpServer): void {
         `**ID:** ${epic.id}`,
         `**Status:** ${epic.status}`,
         `**Priority:** ${epic.priority}`,
-        `**Claim:** ${claimStatusLabel(epic.claimStatus)}`,
+        `**Claim:** ${claimStateLabel(epic.claimState) || claimStatusLabel(epic.claimStatus)}`,
         `**Project:** ${epic.projectId}`,
       ];
 

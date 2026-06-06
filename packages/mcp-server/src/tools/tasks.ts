@@ -8,7 +8,11 @@ import {
   listTasks,
   releaseTask,
 } from "../api-client.js";
-import { claimResultText, forceClaimResultText } from "./claim-display.js";
+import {
+  claimResultText,
+  claimStateLabel,
+  forceClaimResultText,
+} from "./claim-display.js";
 
 export function registerTaskTools(server: McpServer): void {
   server.tool(
@@ -73,7 +77,8 @@ export function registerTaskTools(server: McpServer): void {
         .map((t) => {
           const assignee = t.assigneeName ?? t.assigneeId;
           const epic = t.epicName ?? t.epicId;
-          return `- [${t.priority.toUpperCase()}] **${t.title}**\n  ID: ${t.id}\n  Status: ${t.status} | Type: ${t.type}${assignee ? ` | Assignee: ${assignee}` : ""}${epic ? ` | Epic: ${epic}` : ""}`;
+          const claim = claimStateLabel(t.claimState);
+          return `- [${t.priority.toUpperCase()}] **${t.title}**\n  ID: ${t.id}\n  Status: ${t.status} | Type: ${t.type}${assignee ? ` | Assignee: ${assignee}` : ""}${epic ? ` | Epic: ${epic}` : ""}${claim ? ` | Claim: ${claim}` : ""}`;
         })
         .join("\n\n");
 
@@ -112,6 +117,10 @@ export function registerTaskTools(server: McpServer): void {
       }
       if (task.assigneeId) {
         sections.push(`**Assignee:** ${task.assigneeName ?? task.assigneeId}`);
+      }
+      const taskClaim = claimStateLabel(task.claimState);
+      if (taskClaim) {
+        sections.push(`**Claim:** ${taskClaim}`);
       }
       if (task.estimatedEffort) sections.push(`**Estimated Effort:** ${task.estimatedEffort}`);
       if (task.dueDate) sections.push(`**Due Date:** ${task.dueDate}`);
@@ -249,7 +258,9 @@ export function registerTaskTools(server: McpServer): void {
       const lines = data.inFlight.map((t) => {
         const who = t.assignee?.name ?? t.assignee?.id ?? "unassigned";
         const branch = t.gitBranch ? ` on \`${t.gitBranch}\`` : "";
-        return `- ${who}${branch} — "${t.title}" (task ${t.taskId})`;
+        const claim = claimStateLabel(t.claimState);
+        const liveness = claim ? ` — ${claim}` : "";
+        return `- ${who}${branch} — "${t.title}" (task ${t.taskId})${liveness}`;
       });
       const header = label
         ? `${data.total} agent(s) in flight in \`${label}\`:`

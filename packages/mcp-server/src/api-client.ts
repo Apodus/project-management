@@ -173,6 +173,7 @@ export interface ProposalSummary {
   createdBy: string | null;
   claimedBy?: string | null;
   claimStatus?: ClaimStatusValue;
+  claimState?: ClaimState;
   commentCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -362,6 +363,8 @@ export interface TaskSummary {
   assigneeType: string | null;
   reporterName: string | null;
   reporterType: string | null;
+  // Identity-masked liveness view of the claim (C3): unclaimed/live/stale/yours.
+  claimState?: ClaimState;
 }
 
 export interface TaskFilters {
@@ -878,6 +881,7 @@ export interface EpicSummary {
   milestoneId: string | null;
   assigneeId: string | null;
   claimStatus?: ClaimStatusValue;
+  claimState?: ClaimState;
   name: string;
   description: string | null;
   status: string;
@@ -1035,6 +1039,7 @@ export interface AwarenessInFlightEntry {
   taskId: string;
   title: string;
   assignee: AwarenessAssignee | null;
+  claimState?: ClaimState;
   gitBranch: string | null;
   startedAt: string | null;
 }
@@ -1184,6 +1189,7 @@ import type {
   MergeRequestStatus,
   MergeRequestGroupView,
   MergeIncidentView,
+  ClaimState,
 } from "@pm/shared";
 
 // Re-export so MCP tool files can pull types from one place.
@@ -1192,6 +1198,7 @@ export type {
   MergeAttemptView,
   MergeRequestStatus,
   MergeRejectCategory,
+  ClaimState,
 } from "@pm/shared";
 
 export interface MergeRequestDetailView extends MergeRequestView {

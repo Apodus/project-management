@@ -28,6 +28,9 @@ vi.mock("../src/api-client.js", () => ({
   releaseProposal: vi.fn(),
   createProposal: vi.fn(),
   createEpic: vi.fn(),
+  listEpics: vi.fn(),
+  getEpic: vi.fn(),
+  getAgentIdentity: vi.fn(),
   listTasks: vi.fn(),
   getTask: vi.fn(),
   search: vi.fn(),
@@ -75,6 +78,9 @@ const mockClaimProposal = vi.mocked(apiClient.claimProposal);
 const mockReleaseProposal = vi.mocked(apiClient.releaseProposal);
 const mockCreateProposal = vi.mocked(apiClient.createProposal);
 const mockCreateEpic = vi.mocked(apiClient.createEpic);
+const mockListEpics = vi.mocked(apiClient.listEpics);
+const mockGetEpic = vi.mocked(apiClient.getEpic);
+const mockGetAgentIdentity = vi.mocked(apiClient.getAgentIdentity);
 const mockListTasks = vi.mocked(apiClient.listTasks);
 const mockGetTask = vi.mocked(apiClient.getTask);
 const mockSearch = vi.mocked(apiClient.search);
@@ -3028,6 +3034,189 @@ describe("MCP Tools", () => {
       expect(text).toContain("T1");
       expect(text).toContain("outer-land");
       expect(text).toContain("fixed by hand");
+    });
+  });
+
+  // ---- C3 P2: claim_state (liveness) rendering ----
+
+  describe("claim_state (liveness) rendering", () => {
+    it("pm_list_tasks renders each claim_state, never the holder id", async () => {
+      mockListTasks.mockResolvedValue([
+        { ...sampleTask, id: "task_yours", title: "Yours", claimState: "yours" },
+        {
+          ...sampleTask,
+          id: "task_live",
+          title: "Live",
+          // name shown in the assignee slot; id stays a no-leak sentinel
+          assigneeName: "Agent X",
+          assigneeId: "user_secret_X",
+          claimState: "live",
+        },
+        { ...sampleTask, id: "task_stale", title: "Stale", claimState: "stale" },
+        {
+          ...sampleTask,
+          id: "task_unclaimed",
+          title: "Unclaimed",
+          claimState: "unclaimed",
+        },
+      ]);
+
+      const result = await client.callTool({
+        name: "pm_list_tasks",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("yours");
+      expect(text).toContain("live");
+      expect(text).toContain("stale");
+      expect(text).toContain("unclaimed");
+      expect(text).not.toContain("user_secret_X");
+    });
+
+    it("pm_get_task renders the claim_state, never the holder id", async () => {
+      mockGetTask.mockResolvedValue({
+        ...sampleTask,
+        assigneeName: "Agent Y",
+        assigneeId: "user_secret_Y",
+        claimState: "stale",
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_task",
+        arguments: { task_id: "task_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("stale");
+      expect(text).not.toContain("user_secret_Y");
+    });
+
+    it("pm_list_epics renders claim_state, never the holder id", async () => {
+      mockListEpics.mockResolvedValue([
+        {
+          id: "epic_live",
+          projectId: "proj_001",
+          proposalId: null,
+          milestoneId: null,
+          assigneeId: "user_secret_E",
+          claimState: "live",
+          name: "Live epic",
+          description: null,
+          status: "active",
+          priority: "high",
+          targetDate: null,
+          sortOrder: 0,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          createdBy: null,
+          taskSummary: { total: 0, done: 0, byStatus: {} },
+        },
+      ]);
+
+      const result = await client.callTool({
+        name: "pm_list_epics",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("live");
+      expect(text).not.toContain("user_secret_E");
+    });
+
+    it("pm_get_epic renders claim_state, never the holder id", async () => {
+      mockGetEpic.mockResolvedValue({
+        id: "epic_live",
+        projectId: "proj_001",
+        proposalId: null,
+        milestoneId: null,
+        assigneeId: "user_secret_G",
+        claimState: "live",
+        name: "Live epic",
+        description: null,
+        status: "active",
+        priority: "high",
+        targetDate: null,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        createdBy: null,
+        taskSummary: { total: 0, done: 0, byStatus: {} },
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_epic",
+        arguments: { epic_id: "epic_live" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("live");
+      expect(text).not.toContain("user_secret_G");
+    });
+
+    it("pm_get_my_work renders claim_state on in-progress tasks, no id leak", async () => {
+      mockGetAgentIdentity.mockReturnValue({
+        userId: "user_me",
+        username: "me",
+        displayName: "Me",
+      });
+      mockListTasks.mockResolvedValue([
+        {
+          ...sampleTask,
+          id: "task_mine",
+          title: "My task",
+          status: "in_progress",
+          assigneeId: "user_secret_M",
+          claimState: "yours",
+        },
+      ]);
+      mockListProposals.mockResolvedValue([]);
+
+      const result = await client.callTool({
+        name: "pm_get_my_work",
+        arguments: {},
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("yours");
+      expect(text).not.toContain("user_secret_M");
+    });
+
+    it("pm_awareness_check renders claim_state per in-flight task, no holder leak", async () => {
+      mockAwareness.mockResolvedValue({
+        label: null,
+        total: 2,
+        inFlight: [
+          {
+            taskId: "task_live",
+            title: "Live work",
+            // name present → render uses the name; the id stays a no-leak sentinel
+            assignee: { id: "user_secret_A", name: "Agent Alpha", type: "ai_agent" },
+            claimState: "live",
+            gitBranch: null,
+            startedAt: null,
+          },
+          {
+            taskId: "task_stale",
+            title: "Stale work",
+            assignee: { id: "user_secret_B", name: "Agent Bravo", type: "ai_agent" },
+            claimState: "stale",
+            gitBranch: null,
+            startedAt: null,
+          },
+        ],
+      });
+
+      const result = await client.callTool({
+        name: "pm_awareness_check",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("live");
+      expect(text).toContain("stale");
+      expect(text).not.toContain("user_secret_A");
+      expect(text).not.toContain("user_secret_B");
     });
   });
 });

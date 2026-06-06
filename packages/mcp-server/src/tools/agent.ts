@@ -4,6 +4,7 @@ import {
   listProposals,
   listTasks,
 } from "../api-client.js";
+import { claimStateLabel } from "./claim-display.js";
 
 export function registerAgentTools(server: McpServer): void {
   // ---- pm_get_my_work ----
@@ -55,8 +56,9 @@ export function registerAgentTools(server: McpServer): void {
         sections.push(`## In-Progress Tasks (${myTasks.length})`);
         for (const task of myTasks) {
           const epic = task.epicName ?? task.epicId;
+          const claim = claimStateLabel(task.claimState);
           sections.push(
-            `- [${task.priority.toUpperCase()}] **${task.title}** (${task.id})${epic ? ` [Epic: ${epic}]` : ""}`,
+            `- [${task.priority.toUpperCase()}] **${task.title}** (${task.id})${epic ? ` [Epic: ${epic}]` : ""}${claim ? ` — ${claim}` : ""}`,
           );
         }
         sections.push("");
