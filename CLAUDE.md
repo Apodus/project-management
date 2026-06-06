@@ -321,6 +321,29 @@ yet is still correctly gated off the taken work). **Back-compat:** keyless `clai
 callers degrade to today's grab-any-free-agent behavior, and static `PM_API_TOKEN` users (already
 stable) are a no-op. Full spec: `docs/design/phase-c1-stable-worker-identity.md`.
 
+**Liveness surfacing (Campaign C3).** The C2 lease becomes a first-class, **identity-masked**
+`claim_state` (`unclaimed | live | stale | yours`) surfaced on every read used to decide pickup —
+REST + MCP (agent-friendly renders: "live (actively worked)" / "stale (claim lease lapsed — may be
+abandoned)") + web badges (board / epic / roadmap canvas) — derived from the C2 lease via
+`deriveClaimState(holder, lease, now, caller)` (fail-safe-to-live: a claimed entity with no lease row
+reads **live**, never stale). It never carries a holder id (masked like `deriveClaimStatus`). Pickup
+acts on it: `pm_pick_next_task` **skips live**-claimed work and, in mode `on`, **reclaims-then-claims a
+stale** one (the atomic merge-lock idiom — one winner on a race); `pm_awareness_check` reports live vs
+stale in-flight. An **edge-triggered stale-claim alert** (`claim.stale_alert`) fires once per stale
+episode (latched on `claims_alert_state`, re-arms on resolution — `train.stuck` parity) BOTH in-app
+(SSE banner) AND out-of-band to Discord, identity-masked to an aggregate count + oldest-stale age.
+**Handoff primitives** compose the audited transfer core (`performClaimTransfer` — terminal guard +
+txn clearing old/setting new holder + ONE `force_claim` audit row + post-commit event + lease transfer
+to the new holder): `release-to` (`POST .../{tasks|epics|proposals}/{id}/release-to`, MCP
+`pm_release_*_to`) hands a claim to a **named worker** — its own authz lets the **current holder**
+(or any human) transfer, the load-bearing case `force_claim`'s gate could not serve (an AI holder
+handing off to another worker); `request-takeover` (`POST .../{id}/request-takeover`, MCP
+`pm_request_takeover_*`) is **stomp-safe** — a **stale** claim auto-grants to the requester, a **live**
+claim is **NEVER mutated** (the cardinal invariant — it only emits `claim.takeover_requested` to notify
+the holder and returns `notified_holder`). The arc does **NOT** flip `PM_LEASE_MODE` (operator
+decision; C1 made `on` safe; the lease still ships in `shadow`). Full spec:
+`docs/design/phase-c3-liveness-surfacing.md`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:

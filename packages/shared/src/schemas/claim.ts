@@ -8,6 +8,9 @@ export const CLAIM_RESULT_STATUSES = [
   "not_held",
   "closed",
   "force_claimed",
+  // Campaign C3 §P5b — request-takeover against a LIVE claim: the holder was
+  // notified, NOTHING was mutated (the cardinal invariant). ok=false.
+  "notified_holder",
 ] as const;
 export type ClaimResultStatus = (typeof CLAIM_RESULT_STATUSES)[number];
 

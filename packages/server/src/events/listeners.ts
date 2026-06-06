@@ -51,6 +51,12 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.CLAIM_LEASE_RECLAIMED:
       return "assigned";
 
+    // Takeover-requested notification (Campaign C3 §P5b). No mutation occurred —
+    // a live claim is never touched — so this is its own activity verb, NOT
+    // "assigned".
+    case EVENT_NAMES.CLAIM_TAKEOVER_REQUESTED:
+      return "takeover_requested";
+
     // Commented events
     case EVENT_NAMES.PROPOSAL_COMMENTED:
     case EVENT_NAMES.TASK_COMMENTED:

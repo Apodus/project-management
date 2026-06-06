@@ -149,6 +149,29 @@ const forceClaimResultEnvelope = z.object({
   }),
 });
 
+// Handoff bodies (Campaign C3 §P5b).
+const releaseToBody = z
+  .object({
+    reason: z.string().min(1).max(2048),
+    targetId: z.string().min(1),
+  })
+  .openapi("ReleaseProposal");
+
+const requestTakeoverBody = z
+  .object({
+    reason: z.string().min(1).max(2048),
+  })
+  .openapi("RequestTakeoverProposal");
+
+const requestTakeoverResultEnvelope = z.object({
+  data: z.object({
+    ok: z.boolean(),
+    status: z.enum(CLAIM_RESULT_STATUSES),
+    previousHolder: z.string().optional(),
+    newHolder: z.string().optional(),
+  }),
+});
+
 const errorEnvelope = z.object({
   error: z.object({
     code: z.string(),
@@ -557,6 +580,74 @@ const releaseProposalRoute = createRoute({
   },
 });
 
+const releaseToProposalRoute = createRoute({
+  method: "post",
+  path: "/api/v1/proposals/{id}/release-to",
+  tags: ["Proposals"],
+  summary: "Release proposal claim to a named worker (handoff)",
+  description:
+    "Hand this proposal's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target.",
+  request: {
+    params: z.object({ id: proposalIdParam }),
+    body: {
+      content: { "application/json": { schema: releaseToBody } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Release-to outcome",
+      content: { "application/json": { schema: forceClaimResultEnvelope } },
+    },
+    400: {
+      description: "Validation error (empty reason / missing target)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Forbidden (non-holder agent)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Proposal or target user not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Proposal closed / not associated with a project",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const requestTakeoverProposalRoute = createRoute({
+  method: "post",
+  path: "/api/v1/proposals/{id}/request-takeover",
+  tags: ["Proposals"],
+  summary: "Request takeover of a proposal claim (stomp-safe)",
+  description:
+    "Ask to take over this proposal's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.",
+  request: {
+    params: z.object({ id: proposalIdParam }),
+    body: {
+      content: { "application/json": { schema: requestTakeoverBody } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Takeover-request outcome",
+      content: {
+        "application/json": { schema: requestTakeoverResultEnvelope },
+      },
+    },
+    400: {
+      description: "Validation error (empty reason)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Proposal not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createProposalRoutes(): OpenAPIHono<{
@@ -752,6 +843,32 @@ export function createProposalRoutes(): OpenAPIHono<{
       type: user!.type as UserType,
     });
 
+    return c.json({ data: result }, 200);
+  });
+
+  // POST /api/v1/proposals/:id/release-to
+  router.openapi(releaseToProposalRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const user = c.get("currentUser");
+    const result = proposalService.releaseTo(
+      id,
+      { id: user!.id, type: user!.type as UserType },
+      { reason: body.reason, targetId: body.targetId },
+    );
+    return c.json({ data: result }, 200);
+  });
+
+  // POST /api/v1/proposals/:id/request-takeover
+  router.openapi(requestTakeoverProposalRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const user = c.get("currentUser");
+    const result = proposalService.requestTakeover(
+      id,
+      { id: user!.id, type: user!.type as UserType },
+      { reason: body.reason },
+    );
     return c.json({ data: result }, 200);
   });
 

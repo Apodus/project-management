@@ -41,9 +41,14 @@ import {
   deriveClaimStatus,
   deriveClaimState,
   forceClaim as forceClaimShared,
+  releaseTo as releaseToShared,
+  requestTakeover as requestTakeoverShared,
   type Actor as ClaimActor,
   type ClaimFilter,
+  type ForceClaimConfig,
   type ForceClaimResult,
+  type ReleaseToResult,
+  type RequestTakeoverResult,
 } from "./claim-helpers.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 import {
@@ -1291,19 +1296,45 @@ export function release(id: string, actor: Actor): ClaimResult {
  * Force-claim (take over) a task claim — reason-required + audited. Delegates
  * to the shared helper (the DRY home for the authz/reason/audit logic).
  */
+const TASK_HANDOFF_CFG: ForceClaimConfig = {
+  table: tasks,
+  holderKey: "assigneeId",
+  holderJsonKey: "assignee_id",
+  terminalStatuses: CLAIM_TERMINAL_STATUSES,
+  eventName: EVENT_NAMES.TASK_CLAIM_FORCED,
+  entityType: "task",
+};
+
 export function forceClaim(
   id: string,
   actor: Actor,
   opts: { reason: string; newAssigneeId?: string | null },
 ): ForceClaimResult {
-  return forceClaimShared(id, actor, opts, {
-    table: tasks,
-    holderKey: "assigneeId",
-    holderJsonKey: "assignee_id",
-    terminalStatuses: CLAIM_TERMINAL_STATUSES,
-    eventName: EVENT_NAMES.TASK_CLAIM_FORCED,
-    entityType: "task",
-  });
+  return forceClaimShared(id, actor, opts, TASK_HANDOFF_CFG);
+}
+
+/**
+ * release-to — hand this task's claim to a named worker (audited). The holder
+ * (or a human) may release to another worker. Delegates to the shared helper.
+ */
+export function releaseTo(
+  id: string,
+  actor: Actor,
+  opts: { reason: string; targetId: string },
+): ReleaseToResult {
+  return releaseToShared(id, actor, opts, TASK_HANDOFF_CFG);
+}
+
+/**
+ * request-takeover — ask to take over this task's claim (stomp-safe). A stale
+ * claim auto-grants to the requester; a live claim only notifies its holder.
+ */
+export function requestTakeover(
+  id: string,
+  actor: Actor,
+  opts: { reason: string },
+): RequestTakeoverResult {
+  return requestTakeoverShared(id, actor, opts, TASK_HANDOFF_CFG);
 }
 
 // ─── Awareness ─────────────────────────────────────────────────

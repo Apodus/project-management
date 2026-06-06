@@ -6,12 +6,16 @@ import {
   getEpic,
   listEpics,
   releaseEpic,
+  releaseEpicTo,
+  requestTakeoverEpic,
 } from "../api-client.js";
 import {
   claimResultText,
   claimStateLabel,
   claimStatusLabel,
   forceClaimResultText,
+  releaseToResultText,
+  requestTakeoverResultText,
 } from "./claim-display.js";
 
 export function registerEpicTools(server: McpServer): void {
@@ -200,6 +204,59 @@ export function registerEpicTools(server: McpServer): void {
           {
             type: "text" as const,
             text: claimResultText(result, "release", "epic"),
+          },
+        ],
+      };
+    },
+  );
+
+  // ---- pm_release_epic_to ----
+
+  server.tool(
+    "pm_release_epic_to",
+    "Hand off your epic claim to a named worker (reason required, audited). You must currently hold the claim (a human director may hand off any claim). The claim and its liveness lease transfer to the target.",
+    {
+      epic_id: z.string().describe("The epic ID to hand off"),
+      reason: z
+        .string()
+        .describe("Why you are handing off (required, recorded in the audit log)"),
+      target: z
+        .string()
+        .describe("The user id of the worker to hand the claim to"),
+    },
+    async ({ epic_id, reason, target }) => {
+      const result = await releaseEpicTo(epic_id, reason, target);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: releaseToResultText(result, "epic"),
+          },
+        ],
+      };
+    },
+  );
+
+  // ---- pm_request_takeover_epic ----
+
+  server.tool(
+    "pm_request_takeover_epic",
+    "Request to take over an epic's claim (stomp-safe). If the current claim is stale (the holder's liveness lease lapsed) it is auto-granted to you; if it is LIVE (actively held) nothing changes — the holder is notified and you should pick a different epic or wait.",
+    {
+      epic_id: z.string().describe("The epic ID to request takeover of"),
+      reason: z
+        .string()
+        .describe(
+          "Why you want to take over (required, recorded in the audit log on a stale grant)",
+        ),
+    },
+    async ({ epic_id, reason }) => {
+      const result = await requestTakeoverEpic(epic_id, reason);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: requestTakeoverResultText(result, "epic"),
           },
         ],
       };

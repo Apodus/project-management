@@ -51,6 +51,12 @@ vi.mock("../src/api-client.js", () => ({
   forceClaimTask: vi.fn(),
   forceClaimEpic: vi.fn(),
   forceClaimProposal: vi.fn(),
+  releaseTaskTo: vi.fn(),
+  releaseEpicTo: vi.fn(),
+  releaseProposalTo: vi.fn(),
+  requestTakeoverTask: vi.fn(),
+  requestTakeoverEpic: vi.fn(),
+  requestTakeoverProposal: vi.fn(),
   awareness: vi.fn(),
   acquireMergeLock: vi.fn(),
   heartbeatMergeLock: vi.fn(),
@@ -101,6 +107,12 @@ const mockReleaseTask = vi.mocked(apiClient.releaseTask);
 const mockForceClaimTask = vi.mocked(apiClient.forceClaimTask);
 const mockForceClaimEpic = vi.mocked(apiClient.forceClaimEpic);
 const mockForceClaimProposal = vi.mocked(apiClient.forceClaimProposal);
+const mockReleaseTaskTo = vi.mocked(apiClient.releaseTaskTo);
+const mockReleaseEpicTo = vi.mocked(apiClient.releaseEpicTo);
+const mockReleaseProposalTo = vi.mocked(apiClient.releaseProposalTo);
+const mockRequestTakeoverTask = vi.mocked(apiClient.requestTakeoverTask);
+const mockRequestTakeoverEpic = vi.mocked(apiClient.requestTakeoverEpic);
+const mockRequestTakeoverProposal = vi.mocked(apiClient.requestTakeoverProposal);
 const mockAwareness = vi.mocked(apiClient.awareness);
 const mockAcquireMergeLock = vi.mocked(apiClient.acquireMergeLock);
 const mockHeartbeatMergeLock = vi.mocked(apiClient.heartbeatMergeLock);
@@ -761,6 +773,131 @@ describe("MCP Tools", () => {
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("Force-claimed");
       expect(text).not.toContain("user_secret_A");
+    });
+  });
+
+  // ── Handoff tools (Campaign C3 §P5b) ─────────────────────────────
+  describe("pm_release_*_to (handoff)", () => {
+    it("pm_release_task_to calls releaseTaskTo (id, reason, target) and renders no-leak text", async () => {
+      mockReleaseTaskTo.mockResolvedValue({
+        ok: true,
+        status: "force_claimed",
+        previousHolder: "user_secret_A",
+        newHolder: "user_target_B",
+      });
+
+      const result = await client.callTool({
+        name: "pm_release_task_to",
+        arguments: {
+          task_id: "task_001",
+          reason: "handing off",
+          target: "user_target_B",
+        },
+      });
+
+      expect(mockReleaseTaskTo).toHaveBeenCalledWith(
+        "task_001",
+        "handing off",
+        "user_target_B",
+      );
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Handed off");
+      // identity-masked: neither holder id appears.
+      expect(text).not.toContain("user_secret_A");
+      expect(text).not.toContain("user_target_B");
+    });
+
+    it("pm_release_epic_to calls releaseEpicTo", async () => {
+      mockReleaseEpicTo.mockResolvedValue({
+        ok: true,
+        status: "force_claimed",
+        previousHolder: "user_secret_A",
+        newHolder: "user_target_B",
+      });
+      const result = await client.callTool({
+        name: "pm_release_epic_to",
+        arguments: { epic_id: "epic_001", reason: "handing off", target: "user_target_B" },
+      });
+      expect(mockReleaseEpicTo).toHaveBeenCalledWith(
+        "epic_001",
+        "handing off",
+        "user_target_B",
+      );
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).not.toContain("user_secret_A");
+      expect(text).not.toContain("user_target_B");
+    });
+
+    it("pm_release_proposal_to calls releaseProposalTo", async () => {
+      mockReleaseProposalTo.mockResolvedValue({
+        ok: true,
+        status: "force_claimed",
+        previousHolder: "user_secret_A",
+        newHolder: "user_target_B",
+      });
+      const result = await client.callTool({
+        name: "pm_release_proposal_to",
+        arguments: {
+          proposal_id: "prop_001",
+          reason: "handing off",
+          target: "user_target_B",
+        },
+      });
+      expect(mockReleaseProposalTo).toHaveBeenCalledWith(
+        "prop_001",
+        "handing off",
+        "user_target_B",
+      );
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).not.toContain("user_secret_A");
+    });
+  });
+
+  describe("pm_request_takeover_* (stomp-safe)", () => {
+    it("stale grant → renders 'Taken over', never leaks a holder id", async () => {
+      mockRequestTakeoverTask.mockResolvedValue({
+        ok: true,
+        status: "force_claimed",
+        previousHolder: "user_secret_A",
+        newHolder: "user_me",
+      });
+      const result = await client.callTool({
+        name: "pm_request_takeover_task",
+        arguments: { task_id: "task_001", reason: "holder went dark" },
+      });
+      expect(mockRequestTakeoverTask).toHaveBeenCalledWith(
+        "task_001",
+        "holder went dark",
+      );
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Taken over");
+      expect(text).not.toContain("user_secret_A");
+    });
+
+    it("live claim → renders the notified-holder message (no mutation), never leaks a holder id", async () => {
+      mockRequestTakeoverEpic.mockResolvedValue({
+        ok: false,
+        status: "notified_holder",
+      });
+      const result = await client.callTool({
+        name: "pm_request_takeover_epic",
+        arguments: { epic_id: "epic_001", reason: "may I have it" },
+      });
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("actively held");
+      expect(text).toContain("notified");
+    });
+
+    it("pm_request_takeover_proposal passes (id, reason)", async () => {
+      mockRequestTakeoverProposal.mockResolvedValue({
+        ok: false,
+        status: "notified_holder",
+      });
+      await client.callTool({
+        name: "pm_request_takeover_proposal",
+        arguments: { proposal_id: "prop_001", reason: "please" },
+      });
+      expect(mockRequestTakeoverProposal).toHaveBeenCalledWith("prop_001", "please");
     });
   });
 

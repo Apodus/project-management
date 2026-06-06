@@ -3049,6 +3049,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/proposals/{id}/release-to": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release proposal claim to a named worker (handoff)
+         * @description Hand this proposal's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ReleaseProposal"];
+                };
+            };
+            responses: {
+                /** @description Release-to outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                                /** @enum {string} */
+                                status: "force_claimed";
+                                previousHolder: string;
+                                newHolder: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error (empty reason / missing target) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Forbidden (non-holder agent) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Proposal or target user not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Proposal closed / not associated with a project */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals/{id}/request-takeover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request takeover of a proposal claim (stomp-safe)
+         * @description Ask to take over this proposal's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RequestTakeoverProposal"];
+                };
+            };
+            responses: {
+                /** @description Takeover-request outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                                /** @enum {string} */
+                                status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
+                                previousHolder?: string;
+                                newHolder?: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error (empty reason) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Proposal not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/epics": {
         parameters: {
             query?: never;
@@ -3527,6 +3717,196 @@ export interface paths {
                     content: {
                         "application/json": {
                             data: components["schemas"]["EpicClaimResult"];
+                        };
+                    };
+                };
+                /** @description Epic not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/epics/{id}/release-to": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release epic claim to a named worker (handoff)
+         * @description Hand this epic's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ReleaseEpic"];
+                };
+            };
+            responses: {
+                /** @description Release-to outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                                /** @enum {string} */
+                                status: "force_claimed";
+                                previousHolder: string;
+                                newHolder: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error (empty reason / missing target) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Forbidden (non-holder agent) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Epic or target user not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Epic closed / not associated with a project */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/epics/{id}/request-takeover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request takeover of an epic claim (stomp-safe)
+         * @description Ask to take over this epic's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RequestTakeoverEpic"];
+                };
+            };
+            responses: {
+                /** @description Takeover-request outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                                /** @enum {string} */
+                                status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
+                                previousHolder?: string;
+                                newHolder?: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error (empty reason) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
                         };
                     };
                 };
@@ -4547,6 +4927,196 @@ export interface paths {
                     content: {
                         "application/json": {
                             data: components["schemas"]["TaskClaimResult"];
+                        };
+                    };
+                };
+                /** @description Task not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/release-to": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release task claim to a named worker (handoff)
+         * @description Hand this task's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target. Never stomps a live claim — it directly transfers the holder's own claim.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ReleaseTask"];
+                };
+            };
+            responses: {
+                /** @description Release-to outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                                /** @enum {string} */
+                                status: "force_claimed";
+                                previousHolder: string;
+                                newHolder: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error (empty reason / missing target) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Forbidden (non-holder agent) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Task or target user not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Task closed / not associated with a project */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/request-takeover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request takeover of a task claim (stomp-safe)
+         * @description Ask to take over this task's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RequestTakeoverTask"];
+                };
+            };
+            responses: {
+                /** @description Takeover-request outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                ok: boolean;
+                                /** @enum {string} */
+                                status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
+                                previousHolder?: string;
+                                newHolder?: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Validation error (empty reason) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
                         };
                     };
                 };
@@ -12280,11 +12850,18 @@ export interface components {
         ClaimResult: {
             ok: boolean;
             /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed";
+            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
         };
         ForceClaimProposal: {
             reason: string;
             newAssigneeId?: string;
+        };
+        ReleaseProposal: {
+            reason: string;
+            targetId: string;
+        };
+        RequestTakeoverProposal: {
+            reason: string;
         };
         Epic: {
             id: string;
@@ -12344,11 +12921,18 @@ export interface components {
         EpicClaimResult: {
             ok: boolean;
             /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed";
+            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
         };
         ForceClaimEpic: {
             reason: string;
             newAssigneeId?: string;
+        };
+        ReleaseEpic: {
+            reason: string;
+            targetId: string;
+        };
+        RequestTakeoverEpic: {
+            reason: string;
         };
         EpicGraph: {
             nodes: components["schemas"]["EpicGraphNode"][];
@@ -12558,11 +13142,18 @@ export interface components {
         TaskClaimResult: {
             ok: boolean;
             /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed";
+            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
         };
         ForceClaimTask: {
             reason: string;
             newAssigneeId?: string;
+        };
+        ReleaseTask: {
+            reason: string;
+            targetId: string;
+        };
+        RequestTakeoverTask: {
+            reason: string;
         };
         Awareness: {
             label: string | null;

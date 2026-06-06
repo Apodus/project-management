@@ -59,6 +59,14 @@ export const EVENT_NAMES = {
   // id — only an aggregate count + the oldest-stale age.
   CLAIM_STALE_ALERT: "claim.stale_alert",
 
+  // Takeover-requested notification (Campaign C3 §P5b — emitted by
+  // claim-helpers.requestTakeover when a takeover is requested against a LIVE
+  // claim). The cardinal invariant: a live claim is NEVER mutated, so this
+  // event ONLY notifies the live holder (no state change). Identity-masked: the
+  // payload carries NO holder id — only {projectId, entityType, entityId}. onAll
+  // auto-forwards it to the SSE stream.
+  CLAIM_TAKEOVER_REQUESTED: "claim.takeover_requested",
+
   // Merge lock events
   MERGE_LOCK_ACQUIRED: "merge.lock.acquired",
   MERGE_LOCK_QUEUED: "merge.lock.queued",

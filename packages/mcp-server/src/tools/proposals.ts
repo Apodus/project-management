@@ -8,6 +8,8 @@ import {
   getProposal,
   listProposals,
   releaseProposal,
+  releaseProposalTo,
+  requestTakeoverProposal,
   transitionProposal,
 } from "../api-client.js";
 import {
@@ -15,6 +17,8 @@ import {
   claimResultText,
   claimStatusLabel,
   forceClaimResultText,
+  releaseToResultText,
+  requestTakeoverResultText,
 } from "./claim-display.js";
 
 // ---------------------------------------------------------------------------
@@ -195,6 +199,57 @@ export function registerProposalTools(server: McpServer): void {
           {
             type: "text" as const,
             text: claimResultText(result, "release", "proposal"),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "pm_release_proposal_to",
+    "Hand off your proposal claim to a named worker (reason required, audited). You must currently hold the claim (a human director may hand off any claim). The claim and its liveness lease transfer to the target.",
+    {
+      proposal_id: z.string().describe("The proposal ID to hand off"),
+      reason: z
+        .string()
+        .describe("Why you are handing off (required, recorded in the audit log)"),
+      target: z
+        .string()
+        .describe("The user id of the worker to hand the claim to"),
+    },
+    async ({ proposal_id, reason, target }) => {
+      const result = await releaseProposalTo(proposal_id, reason, target);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: releaseToResultText(result, "proposal"),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "pm_request_takeover_proposal",
+    "Request to take over a proposal's claim (stomp-safe). If the current claim is stale (the holder's liveness lease lapsed) it is auto-granted to you; if it is LIVE (actively held) nothing changes — the holder is notified and you should pick a different proposal or wait.",
+    {
+      proposal_id: z
+        .string()
+        .describe("The proposal ID to request takeover of"),
+      reason: z
+        .string()
+        .describe(
+          "Why you want to take over (required, recorded in the audit log on a stale grant)",
+        ),
+    },
+    async ({ proposal_id, reason }) => {
+      const result = await requestTakeoverProposal(proposal_id, reason);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: requestTakeoverResultText(result, "proposal"),
           },
         ],
       };

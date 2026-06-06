@@ -10,4 +10,14 @@ describe("CLAIM_RESULT_STATUSES", () => {
     const result = { ok: true, status: "force_claimed" as const };
     expect(claimResultSchema.parse(result)).toEqual(result);
   });
+
+  // Campaign C3 §P5b — request-takeover against a LIVE claim.
+  it("includes notified_holder", () => {
+    expect(CLAIM_RESULT_STATUSES).toContain("notified_holder");
+  });
+
+  it("accepts a notified_holder result", () => {
+    const result = { ok: false, status: "notified_holder" as const };
+    expect(claimResultSchema.parse(result)).toEqual(result);
+  });
 });

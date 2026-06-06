@@ -1,5 +1,11 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { CLAIM_STATUSES, CLAIM_STATES, EPIC_STATUSES, PRIORITIES } from "@pm/shared";
+import {
+  CLAIM_STATUSES,
+  CLAIM_STATES,
+  CLAIM_RESULT_STATUSES,
+  EPIC_STATUSES,
+  PRIORITIES,
+} from "@pm/shared";
 import type { UserType } from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import * as epicService from "../services/epic.service.js";
@@ -49,15 +55,7 @@ const epicListEnvelope = z.object({
 const claimResultSchema = z
   .object({
     ok: z.boolean(),
-    status: z.enum([
-      "claimed_by_you",
-      "already_claimed_by_you",
-      "claimed_by_another_agent",
-      "released",
-      "not_held",
-      "closed",
-      "force_claimed",
-    ]),
+    status: z.enum(CLAIM_RESULT_STATUSES),
   })
   .openapi("EpicClaimResult");
 
@@ -76,6 +74,29 @@ const forceClaimResultEnvelope = z.object({
     status: z.literal("force_claimed"),
     previousHolder: z.string(),
     newHolder: z.string(),
+  }),
+});
+
+// Handoff bodies (Campaign C3 §P5b).
+const releaseToBody = z
+  .object({
+    reason: z.string().min(1).max(2048),
+    targetId: z.string().min(1),
+  })
+  .openapi("ReleaseEpic");
+
+const requestTakeoverBody = z
+  .object({
+    reason: z.string().min(1).max(2048),
+  })
+  .openapi("RequestTakeoverEpic");
+
+const requestTakeoverResultEnvelope = z.object({
+  data: z.object({
+    ok: z.boolean(),
+    status: z.enum(CLAIM_RESULT_STATUSES),
+    previousHolder: z.string().optional(),
+    newHolder: z.string().optional(),
   }),
 });
 
@@ -341,6 +362,74 @@ const releaseEpicRoute = createRoute({
   },
 });
 
+const releaseToEpicRoute = createRoute({
+  method: "post",
+  path: "/api/v1/epics/{id}/release-to",
+  tags: ["Epics"],
+  summary: "Release epic claim to a named worker (handoff)",
+  description:
+    "Hand this epic's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target.",
+  request: {
+    params: z.object({ id: epicIdParam }),
+    body: {
+      content: { "application/json": { schema: releaseToBody } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Release-to outcome",
+      content: { "application/json": { schema: forceClaimResultEnvelope } },
+    },
+    400: {
+      description: "Validation error (empty reason / missing target)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Forbidden (non-holder agent)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Epic or target user not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Epic closed / not associated with a project",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const requestTakeoverEpicRoute = createRoute({
+  method: "post",
+  path: "/api/v1/epics/{id}/request-takeover",
+  tags: ["Epics"],
+  summary: "Request takeover of an epic claim (stomp-safe)",
+  description:
+    "Ask to take over this epic's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.",
+  request: {
+    params: z.object({ id: epicIdParam }),
+    body: {
+      content: { "application/json": { schema: requestTakeoverBody } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Takeover-request outcome",
+      content: {
+        "application/json": { schema: requestTakeoverResultEnvelope },
+      },
+    },
+    400: {
+      description: "Validation error (empty reason)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Epic not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
@@ -453,6 +542,32 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
       type: user.type as UserType,
     });
 
+    return c.json({ data: result }, 200);
+  });
+
+  // POST /api/v1/epics/:id/release-to
+  router.openapi(releaseToEpicRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const user = c.get("currentUser") as AuthUser;
+    const result = epicService.releaseTo(
+      id,
+      { id: user.id, type: user.type as UserType },
+      { reason: body.reason, targetId: body.targetId },
+    );
+    return c.json({ data: result }, 200);
+  });
+
+  // POST /api/v1/epics/:id/request-takeover
+  router.openapi(requestTakeoverEpicRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const user = c.get("currentUser") as AuthUser;
+    const result = epicService.requestTakeover(
+      id,
+      { id: user.id, type: user.type as UserType },
+      { reason: body.reason },
+    );
     return c.json({ data: result }, 200);
   });
 

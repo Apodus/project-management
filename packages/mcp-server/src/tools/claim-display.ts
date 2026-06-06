@@ -3,6 +3,7 @@ import type {
   ClaimState,
   ClaimStatusValue,
   ForceClaimResultData,
+  RequestTakeoverResultData,
 } from "../api-client.js";
 
 /**
@@ -91,6 +92,41 @@ export function forceClaimResultText(
   entity: string,
 ): string {
   return `✓ Force-claimed — this ${entity} is now yours. The previous holder was displaced (recorded in the audit log).`;
+}
+
+/**
+ * Render a release-to (handoff) result as agent-friendly text. MUST NOT
+ * interpolate `previousHolder`/`newHolder` — identities are recorded in the
+ * audit log, never leaked.
+ */
+export function releaseToResultText(
+  _result: ForceClaimResultData,
+  entity: string,
+): string {
+  return `✓ Handed off — this ${entity}'s claim was transferred to the named worker (recorded in the audit log).`;
+}
+
+/**
+ * Render a request-takeover result as agent-friendly text. Stomp-safe: a LIVE
+ * claim is NEVER taken — the holder is only notified. MUST NOT interpolate any
+ * holder id (identity-masked).
+ */
+export function requestTakeoverResultText(
+  result: RequestTakeoverResultData,
+  entity: string,
+): string {
+  switch (result.status) {
+    case "force_claimed":
+      return `✓ Taken over — the previous holder's claim was stale (lease lapsed), so this ${entity} is now yours (recorded in the audit log).`;
+    case "notified_holder":
+      return `⚠ This ${entity} is actively held (live claim). Nothing was changed — the current holder has been notified of your takeover request. Pick a different ${entity} or wait.`;
+    case "already_claimed_by_you":
+      return `✓ You already hold this ${entity}.`;
+    case "not_held":
+      return `This ${entity} isn't claimed — just claim it directly.`;
+    default:
+      return `Unexpected takeover result: ${result.status}`;
+  }
 }
 
 /**

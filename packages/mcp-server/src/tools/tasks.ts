@@ -7,11 +7,15 @@ import {
   getTask,
   listTasks,
   releaseTask,
+  releaseTaskTo,
+  requestTakeoverTask,
 } from "../api-client.js";
 import {
   claimResultText,
   claimStateLabel,
   forceClaimResultText,
+  releaseToResultText,
+  requestTakeoverResultText,
 } from "./claim-display.js";
 
 export function registerTaskTools(server: McpServer): void {
@@ -222,6 +226,59 @@ export function registerTaskTools(server: McpServer): void {
           {
             type: "text" as const,
             text: claimResultText(result, "release", "task"),
+          },
+        ],
+      };
+    },
+  );
+
+  // ---- pm_release_task_to ----
+
+  server.tool(
+    "pm_release_task_to",
+    "Hand off your task claim to a named worker (reason required, audited). You must currently hold the claim (a human director may hand off any claim). The claim and its liveness lease transfer to the target.",
+    {
+      task_id: z.string().describe("The task ID to hand off"),
+      reason: z
+        .string()
+        .describe("Why you are handing off (required, recorded in the audit log)"),
+      target: z
+        .string()
+        .describe("The user id of the worker to hand the claim to"),
+    },
+    async ({ task_id, reason, target }) => {
+      const result = await releaseTaskTo(task_id, reason, target);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: releaseToResultText(result, "task"),
+          },
+        ],
+      };
+    },
+  );
+
+  // ---- pm_request_takeover_task ----
+
+  server.tool(
+    "pm_request_takeover_task",
+    "Request to take over a task's claim (stomp-safe). If the current claim is stale (the holder's liveness lease lapsed) it is auto-granted to you; if it is LIVE (actively held) nothing changes — the holder is notified and you should pick a different task or wait.",
+    {
+      task_id: z.string().describe("The task ID to request takeover of"),
+      reason: z
+        .string()
+        .describe(
+          "Why you want to take over (required, recorded in the audit log on a stale grant)",
+        ),
+    },
+    async ({ task_id, reason }) => {
+      const result = await requestTakeoverTask(task_id, reason);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: requestTakeoverResultText(result, "task"),
           },
         ],
       };

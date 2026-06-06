@@ -10,9 +10,14 @@ import {
   deriveClaimStatus,
   deriveClaimState,
   forceClaim as forceClaimShared,
+  releaseTo as releaseToShared,
+  requestTakeover as requestTakeoverShared,
   type Actor,
   type ClaimFilter,
+  type ForceClaimConfig,
   type ForceClaimResult,
+  type ReleaseToResult,
+  type RequestTakeoverResult,
 } from "./claim-helpers.js";
 import {
   acquireLease,
@@ -458,19 +463,45 @@ export function release(id: string, actor: Actor): ClaimResult {
  * Force-claim (take over) an epic claim — reason-required + audited. Delegates
  * to the shared helper (the DRY home for the authz/reason/audit logic).
  */
+const EPIC_HANDOFF_CFG: ForceClaimConfig = {
+  table: epics,
+  holderKey: "assigneeId",
+  holderJsonKey: "assignee_id",
+  terminalStatuses: TERMINAL_STATUSES,
+  eventName: EVENT_NAMES.EPIC_CLAIM_FORCED,
+  entityType: "epic",
+};
+
 export function forceClaim(
   id: string,
   actor: Actor,
   opts: { reason: string; newAssigneeId?: string | null },
 ): ForceClaimResult {
-  return forceClaimShared(id, actor, opts, {
-    table: epics,
-    holderKey: "assigneeId",
-    holderJsonKey: "assignee_id",
-    terminalStatuses: TERMINAL_STATUSES,
-    eventName: EVENT_NAMES.EPIC_CLAIM_FORCED,
-    entityType: "epic",
-  });
+  return forceClaimShared(id, actor, opts, EPIC_HANDOFF_CFG);
+}
+
+/**
+ * release-to — hand this epic's claim to a named worker (audited). The holder
+ * (or a human) may release to another worker. Delegates to the shared helper.
+ */
+export function releaseTo(
+  id: string,
+  actor: Actor,
+  opts: { reason: string; targetId: string },
+): ReleaseToResult {
+  return releaseToShared(id, actor, opts, EPIC_HANDOFF_CFG);
+}
+
+/**
+ * request-takeover — ask to take over this epic's claim (stomp-safe). A stale
+ * claim auto-grants to the requester; a live claim only notifies its holder.
+ */
+export function requestTakeover(
+  id: string,
+  actor: Actor,
+  opts: { reason: string },
+): RequestTakeoverResult {
+  return requestTakeoverShared(id, actor, opts, EPIC_HANDOFF_CFG);
 }
 
 /**

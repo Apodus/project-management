@@ -16,9 +16,14 @@ import {
   deriveClaimStatus,
   deriveClaimState,
   forceClaim as forceClaimShared,
+  releaseTo as releaseToShared,
+  requestTakeover as requestTakeoverShared,
   type Actor as ClaimActor,
   type ClaimFilter as ClaimFilterShared,
+  type ForceClaimConfig,
   type ForceClaimResult,
+  type ReleaseToResult,
+  type RequestTakeoverResult,
 } from "./claim-helpers.js";
 import {
   acquireLease,
@@ -365,19 +370,47 @@ export function release(id: string, actor: Actor): ClaimResult {
  * logic). The proposal holds its claim in `claimedBy` (vs assigneeId for
  * task/epic).
  */
+const PROPOSAL_HANDOFF_CFG: ForceClaimConfig = {
+  table: proposals,
+  holderKey: "claimedBy",
+  holderJsonKey: "claimed_by",
+  terminalStatuses: TERMINAL_STATUSES,
+  eventName: EVENT_NAMES.PROPOSAL_CLAIM_FORCED,
+  entityType: "proposal",
+};
+
 export function forceClaim(
   id: string,
   actor: Actor,
   opts: { reason: string; newAssigneeId?: string | null },
 ): ForceClaimResult {
-  return forceClaimShared(id, actor, opts, {
-    table: proposals,
-    holderKey: "claimedBy",
-    holderJsonKey: "claimed_by",
-    terminalStatuses: TERMINAL_STATUSES,
-    eventName: EVENT_NAMES.PROPOSAL_CLAIM_FORCED,
-    entityType: "proposal",
-  });
+  return forceClaimShared(id, actor, opts, PROPOSAL_HANDOFF_CFG);
+}
+
+/**
+ * release-to — hand this proposal's claim to a named worker (audited). The
+ * holder (or a human) may release to another worker. Delegates to the shared
+ * helper.
+ */
+export function releaseTo(
+  id: string,
+  actor: Actor,
+  opts: { reason: string; targetId: string },
+): ReleaseToResult {
+  return releaseToShared(id, actor, opts, PROPOSAL_HANDOFF_CFG);
+}
+
+/**
+ * request-takeover — ask to take over this proposal's claim (stomp-safe). A
+ * stale claim auto-grants to the requester; a live claim only notifies its
+ * holder.
+ */
+export function requestTakeover(
+  id: string,
+  actor: Actor,
+  opts: { reason: string },
+): RequestTakeoverResult {
+  return requestTakeoverShared(id, actor, opts, PROPOSAL_HANDOFF_CFG);
 }
 
 /**

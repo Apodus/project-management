@@ -196,7 +196,10 @@ export type ClaimResultStatus =
   | "released"
   | "not_held"
   | "closed"
-  | "force_claimed";
+  | "force_claimed"
+  // Campaign C3 §P5b — request-takeover against a LIVE claim: the holder was
+  // notified, nothing was mutated.
+  | "notified_holder";
 
 export interface ClaimResultData {
   ok: boolean;
@@ -208,6 +211,20 @@ export interface ForceClaimResultData {
   status: "force_claimed";
   previousHolder: string;
   newHolder: string;
+}
+
+/**
+ * request-takeover result (Campaign C3 §P5b). A stale claim auto-grants
+ * (force_claimed + holders); a live claim notifies (notified_holder); a free
+ * entity returns not_held; the caller's own claim returns
+ * already_claimed_by_you. Holder fields are present only on the stale grant and
+ * are NEVER surfaced to the agent (identity-masked render).
+ */
+export interface RequestTakeoverResultData {
+  ok: boolean;
+  status: ClaimResultStatus;
+  previousHolder?: string;
+  newHolder?: string;
 }
 
 export interface CommentData {
@@ -284,6 +301,29 @@ export async function forceClaimProposal(
     "POST",
     `/proposals/${encodeURIComponent(proposalId)}/force-claim`,
     { reason, newAssigneeId: assigneeId },
+  );
+}
+
+export async function releaseProposalTo(
+  proposalId: string,
+  reason: string,
+  targetId: string,
+): Promise<ForceClaimResultData> {
+  return apiRequest<ForceClaimResultData>(
+    "POST",
+    `/proposals/${encodeURIComponent(proposalId)}/release-to`,
+    { reason, targetId },
+  );
+}
+
+export async function requestTakeoverProposal(
+  proposalId: string,
+  reason: string,
+): Promise<RequestTakeoverResultData> {
+  return apiRequest<RequestTakeoverResultData>(
+    "POST",
+    `/proposals/${encodeURIComponent(proposalId)}/request-takeover`,
+    { reason },
   );
 }
 
@@ -970,6 +1010,29 @@ export async function releaseEpic(epicId: string): Promise<ClaimResultData> {
   );
 }
 
+export async function releaseEpicTo(
+  epicId: string,
+  reason: string,
+  targetId: string,
+): Promise<ForceClaimResultData> {
+  return apiRequest<ForceClaimResultData>(
+    "POST",
+    `/epics/${encodeURIComponent(epicId)}/release-to`,
+    { reason, targetId },
+  );
+}
+
+export async function requestTakeoverEpic(
+  epicId: string,
+  reason: string,
+): Promise<RequestTakeoverResultData> {
+  return apiRequest<RequestTakeoverResultData>(
+    "POST",
+    `/epics/${encodeURIComponent(epicId)}/request-takeover`,
+    { reason },
+  );
+}
+
 export async function forceClaimEpic(
   epicId: string,
   reason: string,
@@ -1026,6 +1089,29 @@ export async function forceClaimTask(
     "POST",
     `/tasks/${encodeURIComponent(taskId)}/force-claim`,
     { reason, newAssigneeId: assigneeId },
+  );
+}
+
+export async function releaseTaskTo(
+  taskId: string,
+  reason: string,
+  targetId: string,
+): Promise<ForceClaimResultData> {
+  return apiRequest<ForceClaimResultData>(
+    "POST",
+    `/tasks/${encodeURIComponent(taskId)}/release-to`,
+    { reason, targetId },
+  );
+}
+
+export async function requestTakeoverTask(
+  taskId: string,
+  reason: string,
+): Promise<RequestTakeoverResultData> {
+  return apiRequest<RequestTakeoverResultData>(
+    "POST",
+    `/tasks/${encodeURIComponent(taskId)}/request-takeover`,
+    { reason },
   );
 }
 
