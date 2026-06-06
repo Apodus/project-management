@@ -774,13 +774,28 @@ export interface AgentClaimResponse {
     type: string;
   };
   token: string;
+  /**
+   * Opaque server-issued handle for a keyed binding (present only when a
+   * workerKey was supplied). Carried on the wire for honesty; unconsumed by
+   * the client — rebind keys on workerKey, so a stable workerKey suffices.
+   */
+  bindHandle?: string;
 }
 
 /**
  * Claim an agent from a named pool using the pool secret.
  * This is an unauthenticated call (authenticated by pool secret in body).
+ *
+ * When `workerKey` is supplied, the server re-binds the SAME agent identity
+ * across reconnect/restart for a given (pool, workerKey); omitting it is the
+ * legacy behavior (grab any free agent). The request body is byte-identical to
+ * the keyless form when `workerKey` is absent.
  */
-export async function claimAgent(poolName: string, poolSecret: string): Promise<AgentClaimResponse> {
+export async function claimAgent(
+  poolName: string,
+  poolSecret: string,
+  workerKey?: string,
+): Promise<AgentClaimResponse> {
   const url = `${getBaseUrl()}/api/v1/auth/agent-claim`;
 
   const res = await fetch(url, {
@@ -789,7 +804,7 @@ export async function claimAgent(poolName: string, poolSecret: string): Promise<
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ poolName, poolSecret }),
+    body: JSON.stringify({ poolName, poolSecret, ...(workerKey ? { workerKey } : {}) }),
   });
 
   const json = await res.json();
@@ -823,6 +838,26 @@ export async function releaseAgent(): Promise<void> {
   _claimedUserId = null;
   _claimedUsername = null;
   _claimedDisplayName = null;
+}
+
+/**
+ * Decide whether to release the pool claim on process shutdown.
+ *
+ * Release only a keyless pool claim (legacy behavior). When PM_WORKER_KEY is
+ * set the binding is durable by design — the server's releaseAgent deletes the
+ * claim with NO worker_key filter, so releasing on shutdown would strand the
+ * keyed binding and force the next respawn to first-bind a NEW identity,
+ * defeating stable-identity (C1). Returns false for a static token (never a
+ * pool claim) and when no identity was claimed.
+ */
+export function shouldReleaseOnShutdown(): boolean {
+  const workerKey = process.env.PM_WORKER_KEY?.trim() || undefined;
+  return Boolean(
+    !process.env.PM_API_TOKEN &&
+      process.env.PM_POOL_SECRET &&
+      !workerKey &&
+      getAgentIdentity(),
+  );
 }
 
 /**

@@ -338,6 +338,8 @@ Add the following to your Claude MCP settings (e.g., `claude_desktop_config.json
 
 Replace `/path/to/project-management` with the absolute path to this project. `PM_API_URL` can point to any machine running the server (e.g., `http://192.168.1.x:3000` for a remote host).
 
+When auto-claiming from an agent pool (`PM_POOL_SECRET` instead of a static `PM_API_TOKEN`), also set a **distinct** `PM_WORKER_KEY` per worker so a reconnect/restart re-binds the SAME identity instead of grabbing a new free agent (avoids stranded claims). The game_one distribute bundle (a separate repo — do not edit from here) should write a distinct `PM_WORKER_KEY` per worker alongside the per-worker `PM_POOL_*` it already emits.
+
 ### Available MCP Tools
 
 The MCP server exposes tools for:
@@ -366,6 +368,7 @@ The MCP server exposes tools for:
 | `PM_LEASE_GRACE_SEC`| `86400`                 | Reclaim grace (seconds) beyond TTL before sweep |
 | `PM_API_URL`        | `http://localhost:3000` | MCP server: API base URL                |
 | `PM_API_TOKEN`      | (none)                  | MCP server: API authentication token    |
+| `PM_WORKER_KEY`     | (none)                  | MCP server: stable per-worker identity key. With the pool secret, re-binds the SAME agent identity across reconnect/restart (no stranded claims). Must be DISTINCT per worker. Unset ⇒ legacy behavior (grab any free agent). |
 
 See `.env.example` for a template.
 

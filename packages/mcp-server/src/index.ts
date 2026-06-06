@@ -8,6 +8,7 @@ import {
   releaseAgent,
   agentHeartbeat,
   getAgentIdentity,
+  shouldReleaseOnShutdown,
 } from "./api-client.js";
 
 /**
@@ -47,9 +48,10 @@ async function autoClaimAgent(): Promise<boolean> {
   }
 
   const poolName = process.env.PM_POOL_NAME ?? "default";
+  const workerKey = process.env.PM_WORKER_KEY?.trim() || undefined;
 
   try {
-    const result = await claimAgent(poolName, poolSecret);
+    const result = await claimAgent(poolName, poolSecret, workerKey);
     const identity = getAgentIdentity();
     process.stderr.write(
       `Agent claimed: ${identity?.displayName ?? result.user.username} (${result.user.id})\n`,
@@ -94,8 +96,13 @@ async function cleanup(): Promise<void> {
     heartbeatInterval = null;
   }
 
-  // Only release if we claimed via pool (not static token)
-  if (!process.env.PM_API_TOKEN && process.env.PM_POOL_SECRET && getAgentIdentity()) {
+  // Only release a keyless pool claim (legacy behavior). When PM_WORKER_KEY is
+  // set, the binding is durable by design (it outlives the TTL so the next
+  // respawn re-binds the SAME identity); the server's releaseAgent deletes the
+  // claim with NO worker_key filter, so releasing on shutdown would strand the
+  // keyed binding and force the next respawn to first-bind a NEW identity —
+  // defeating stable-identity (C1). See shouldReleaseOnShutdown.
+  if (shouldReleaseOnShutdown()) {
     try {
       await releaseAgent();
       process.stderr.write("Agent released.\n");

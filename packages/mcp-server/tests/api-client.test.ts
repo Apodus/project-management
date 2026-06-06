@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { apiRequest, ApiError } from "../src/api-client.js";
+import {
+  apiRequest,
+  ApiError,
+  claimAgent,
+  releaseAgent,
+  getAgentIdentity,
+  shouldReleaseOnShutdown,
+} from "../src/api-client.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -180,5 +187,171 @@ describe("apiRequest", () => {
 
     const [url] = fetchMock.mock.calls[0];
     expect(url).toBe("http://test-server:9999/api/v1/projects");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Agent pool — claimAgent (stable per-worker identity, C1 P2)
+// ---------------------------------------------------------------------------
+
+describe("claimAgent", () => {
+  beforeEach(() => {
+    process.env.PM_API_URL = "http://test-server:9999";
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.PM_API_URL;
+    delete process.env.PM_API_TOKEN;
+    delete process.env.PM_POOL_SECRET;
+    delete process.env.PM_WORKER_KEY;
+  });
+
+  it("sends a byte-identical keyless body when no workerKey is supplied", async () => {
+    const fetchMock = mockFetch({
+      status: 200,
+      ok: true,
+      body: { data: { user: { id: "u1", username: "agent-1" }, token: "tok-A" } },
+    });
+
+    await claimAgent("default", "secret");
+
+    const [, init] = fetchMock.mock.calls[0];
+    // No workerKey key present at all (conditional spread → keyless byte-identical).
+    expect(JSON.parse(init.body)).toEqual({ poolName: "default", poolSecret: "secret" });
+  });
+
+  it("threads workerKey into the body when supplied", async () => {
+    const fetchMock = mockFetch({
+      status: 200,
+      ok: true,
+      body: { data: { user: { id: "u1", username: "agent-1" }, token: "tok-A" } },
+    });
+
+    await claimAgent("default", "secret", "worker-1");
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({
+      poolName: "default",
+      poolSecret: "secret",
+      workerKey: "worker-1",
+    });
+  });
+
+  it("re-binds the same identity and adopts the fresh token on reconnect", async () => {
+    // First claim → identity u1, token tok-A, with a bindHandle on the wire.
+    mockFetch({
+      status: 200,
+      ok: true,
+      body: {
+        data: {
+          user: { id: "u1", username: "agent-1", displayName: "Agent One" },
+          token: "tok-A",
+          bindHandle: "h1",
+        },
+      },
+    });
+
+    await claimAgent("default", "secret", "worker-1");
+    expect(getAgentIdentity()?.userId).toBe("u1");
+
+    // Reconnect: same (pool, workerKey) re-binds the SAME row, fresh token.
+    mockFetch({
+      status: 200,
+      ok: true,
+      body: {
+        data: {
+          user: { id: "u1", username: "agent-1", displayName: "Agent One" },
+          token: "tok-B",
+          bindHandle: "h1",
+        },
+      },
+    });
+
+    await claimAgent("default", "secret", "worker-1");
+    expect(getAgentIdentity()?.userId).toBe("u1");
+
+    // A subsequent authenticated request must use the refreshed token.
+    const fetchMock = mockFetch({ status: 200, ok: true, body: { data: [] } });
+    await apiRequest("GET", "/projects");
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.Authorization).toBe("Bearer tok-B");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Release-on-shutdown gate (C1 P2, verifier correction 2)
+// ---------------------------------------------------------------------------
+
+describe("shouldReleaseOnShutdown", () => {
+  beforeEach(() => {
+    process.env.PM_API_URL = "http://test-server:9999";
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.PM_API_URL;
+    delete process.env.PM_API_TOKEN;
+    delete process.env.PM_POOL_SECRET;
+    delete process.env.PM_WORKER_KEY;
+  });
+
+  async function claimIdentity(): Promise<void> {
+    mockFetch({
+      status: 200,
+      ok: true,
+      body: {
+        data: { user: { id: "u1", username: "agent-1", displayName: "Agent One" }, token: "tok-A" },
+      },
+    });
+    await claimAgent("default", "secret", process.env.PM_WORKER_KEY || undefined);
+  }
+
+  it("does NOT release a keyed pool claim (no agent-release POST)", async () => {
+    process.env.PM_POOL_SECRET = "secret";
+    process.env.PM_WORKER_KEY = "worker-1";
+    await claimIdentity();
+
+    expect(shouldReleaseOnShutdown()).toBe(false);
+
+    // Simulate the cleanup gate: release only when shouldReleaseOnShutdown().
+    const fetchMock = mockFetch({ status: 200, ok: true, body: { data: { message: "ok" } } });
+    if (shouldReleaseOnShutdown()) {
+      await releaseAgent();
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("releases a keyless pool claim (agent-release POST is issued)", async () => {
+    process.env.PM_POOL_SECRET = "secret";
+    // PM_WORKER_KEY unset → keyless.
+    await claimIdentity();
+
+    expect(shouldReleaseOnShutdown()).toBe(true);
+
+    const fetchMock = mockFetch({ status: 200, ok: true, body: { data: { message: "ok" } } });
+    if (shouldReleaseOnShutdown()) {
+      await releaseAgent();
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://test-server:9999/api/v1/auth/agent-release");
+    expect(init.method).toBe("POST");
+  });
+
+  it("treats whitespace-only PM_WORKER_KEY as keyless (releases)", async () => {
+    process.env.PM_POOL_SECRET = "secret";
+    process.env.PM_WORKER_KEY = "   ";
+    await claimIdentity();
+
+    expect(shouldReleaseOnShutdown()).toBe(true);
+  });
+
+  it("never releases under a static PM_API_TOKEN", async () => {
+    process.env.PM_API_TOKEN = "static";
+    process.env.PM_POOL_SECRET = "secret";
+    await claimIdentity();
+
+    expect(shouldReleaseOnShutdown()).toBe(false);
   });
 });
