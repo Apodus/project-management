@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { CLAIM_RESULT_STATUSES, CLAIM_STATUSES, PROPOSAL_STATUSES, COMMENT_TYPES } from "@pm/shared";
+import { CLAIM_RESULT_STATUSES, CLAIM_STATUSES, CLAIM_STATES, PROPOSAL_STATUSES, COMMENT_TYPES } from "@pm/shared";
 import type { UserType } from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as proposalService from "../services/proposal.service.js";
@@ -16,6 +16,7 @@ const proposalSchema = z
     createdBy: z.string(),
     claimedBy: z.string().nullable(),
     claimStatus: z.enum(CLAIM_STATUSES),
+    claimState: z.enum(CLAIM_STATES),
     resolvedBy: z.string().nullable(),
     resolvedAt: z.string().nullable(),
     createdAt: z.string(),

@@ -1,6 +1,6 @@
 import { eq, and, count, isNull, or } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import { type ClaimResult, type ClaimStatus } from "@pm/shared";
+import { type ClaimResult, type ClaimState, type ClaimStatus } from "@pm/shared";
 import { getDb, epics, proposals, tasks } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
@@ -8,6 +8,7 @@ import { assertClaimOk as assertProposalClaimOk } from "./proposal.service.js";
 import {
   assertClaimOk as assertClaimOkRaw,
   deriveClaimStatus,
+  deriveClaimState,
   forceClaim as forceClaimShared,
   type Actor,
   type ClaimFilter,
@@ -16,7 +17,10 @@ import {
 import {
   acquireLease,
   deleteLease,
+  readLease,
+  readLeasesFor,
   sweepStaleClaims,
+  type ClaimLeaseRow,
 } from "./claim-lease.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -58,16 +62,29 @@ export interface EpicTaskSummary {
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "cancelled"]);
 
 /**
- * Decorate an epic row with claim_status derived from the caller.
+ * Decorate an epic row with claim_status AND claim_state derived from the caller.
  * Epics use `assigneeId` as the claim-holder field.
+ *
+ * `claimState` (C3.P1) folds in the C2 lease liveness. `lease`/`now` are optional
+ * so existing `(row, caller)` call sites keep working: when absent we fall back to
+ * a fresh `now` + a null lease → fail-safe-to-live. The `claimStatus` value is
+ * unchanged (additive).
  */
 function withClaimStatus<T extends { assigneeId?: string | null }>(
   row: T,
   caller?: { id: string } | null,
-): T & { claimStatus: ClaimStatus } {
+  lease?: ClaimLeaseRow | null,
+  now?: Date,
+): T & { claimStatus: ClaimStatus; claimState: ClaimState } {
   return {
     ...row,
     claimStatus: deriveClaimStatus(row.assigneeId ?? null, caller),
+    claimState: deriveClaimState(
+      row.assigneeId ?? null,
+      lease ?? null,
+      now ?? new Date(),
+      caller,
+    ),
   };
 }
 
@@ -154,6 +171,12 @@ export function list(
     .where(and(...conditions))
     .all();
 
+  const leases = readLeasesFor(
+    "epic",
+    epicList.map((e) => e.id),
+  );
+  const now = new Date();
+
   return epicList.map((epic) =>
     withClaimStatus(
       {
@@ -161,6 +184,8 @@ export function list(
         taskSummary: getTaskSummary(epic.id),
       },
       caller,
+      leases.get(epic.id) ?? null,
+      now,
     ),
   );
 }
@@ -182,6 +207,8 @@ export function getById(id: string, caller?: { id: string } | null) {
       taskSummary: getTaskSummary(epic.id),
     },
     caller,
+    readLease("epic", epic.id),
+    new Date(),
   );
 }
 

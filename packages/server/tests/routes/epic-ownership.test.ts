@@ -226,6 +226,8 @@ describe("Epic Ownership", () => {
       const body1 = await res1.json();
       expect(body1.data.assigneeId).toBeNull();
       expect(body1.data.claimStatus).toBe("unclaimed");
+      // C3.P1: claim_state alongside claim_status.
+      expect(body1.data.claimState).toBe("unclaimed");
 
       // After claiming
       await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`);
@@ -237,6 +239,7 @@ describe("Epic Ownership", () => {
       const body2 = await res2.json();
       expect(body2.data.assigneeId).toBe(testApp.testUser.id);
       expect(body2.data.claimStatus).toBe("claimed_by_you");
+      expect(body2.data.claimState).toBe("yours");
     });
 
     it("should show claimed_by_other to a different caller", async () => {
@@ -254,6 +257,8 @@ describe("Epic Ownership", () => {
       );
       const body = await res.json();
       expect(body.data.claimStatus).toBe("claimed_by_other");
+      // C3.P1: another caller sees claimState "live" (held, no lease → fail-safe).
+      expect(body.data.claimState).toBe("live");
     });
   });
 
@@ -312,6 +317,8 @@ describe("Epic Ownership", () => {
       const body = await res.json();
       expect(body.data).toHaveLength(1);
       expect(body.data[0].name).toBe("Mine");
+      // C3.P1: list-view rows carry claimState (the caller holds this one).
+      expect(body.data[0].claimState).toBe("yours");
     });
   });
 

@@ -1,4 +1,4 @@
-import { and, asc, eq, lt } from "drizzle-orm";
+import { and, asc, eq, inArray, lt } from "drizzle-orm";
 import {
   createId,
   LEASE_MODES,
@@ -164,6 +164,37 @@ export function readLease(
     )
     .get();
   return (row as ClaimLeaseRow | undefined) ?? null;
+}
+
+/**
+ * Batch-read leases for many entities of one type (C3.P1 list-path helper).
+ * Returns a Map keyed by entityId — only entities that HAVE a lease row are
+ * present (a missing key ⇒ no lease ⇒ fail-safe-to-live downstream). The list
+ * views use this to avoid an N+1 per-row readLease.
+ *
+ * Guards the empty-array case: drizzle's `inArray(col, [])` produces invalid
+ * SQL, so an empty id set short-circuits to an empty Map (no query).
+ */
+export function readLeasesFor(
+  entityType: LeaseEntityType,
+  entityIds: string[],
+): Map<string, ClaimLeaseRow> {
+  const result = new Map<string, ClaimLeaseRow>();
+  if (entityIds.length === 0) return result;
+
+  const rows = getDb()
+    .select()
+    .from(claimLeases)
+    .where(
+      and(
+        eq(claimLeases.entityType, entityType),
+        inArray(claimLeases.entityId, entityIds),
+      ),
+    )
+    .all() as ClaimLeaseRow[];
+
+  for (const row of rows) result.set(row.entityId, row);
+  return result;
 }
 
 /**

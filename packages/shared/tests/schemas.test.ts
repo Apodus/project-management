@@ -40,6 +40,7 @@ import {
   selectMilestoneSchema,
   insertMilestoneSchema,
   DEFAULT_RESOLVER_PROMPT,
+  CLAIM_STATES,
 } from "../src/index.js";
 
 // ============================================================
@@ -798,6 +799,7 @@ describe("selectProposalSchema", () => {
     created_by: VALID_ULID,
     claimed_by: null,
     claim_status: "unclaimed" as const,
+    claim_state: "unclaimed" as const,
     resolved_by: null,
     resolved_at: null,
     created_at: VALID_TIMESTAMP,
@@ -860,6 +862,16 @@ describe("insertProposalSchema", () => {
 });
 
 // ============================================================
+// CLAIM_STATES enum (C3.P1)
+// ============================================================
+
+describe("CLAIM_STATES", () => {
+  it("has the four expected members", () => {
+    expect([...CLAIM_STATES].sort()).toEqual(["live", "stale", "unclaimed", "yours"]);
+  });
+});
+
+// ============================================================
 // Epic
 // ============================================================
 
@@ -877,6 +889,7 @@ describe("selectEpicSchema", () => {
     target_date: null,
     sort_order: 0,
     claim_status: "unclaimed" as const,
+    claim_state: "unclaimed" as const,
     created_at: VALID_TIMESTAMP,
     updated_at: VALID_TIMESTAMP,
     created_by: VALID_ULID,
@@ -965,6 +978,7 @@ describe("selectTaskSchema", () => {
     sort_order: 0,
     context: null,
     git_branch: null,
+    claim_state: "unclaimed" as const,
     created_at: VALID_TIMESTAMP,
     updated_at: VALID_TIMESTAMP,
     started_at: null,

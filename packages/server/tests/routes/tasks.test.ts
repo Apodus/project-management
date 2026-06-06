@@ -66,6 +66,8 @@ describe("Tasks API", () => {
       const body = await res.json();
       expect(body.data).toHaveLength(2);
       expect(body.pagination.total).toBe(2);
+      // C3.P1: every list-view row carries claimState (unclaimed here).
+      expect(body.data[0].claimState).toBe("unclaimed");
     });
 
     it("should not return tasks from other projects", async () => {
@@ -1219,6 +1221,39 @@ describe("Tasks API", () => {
       const got = await get.json();
       expect(got.data.assigneeId).toBe(a.user.id);
       expect(got.data.claimStatus).toBe("claimed_by_you");
+      // C3.P1: the holder sees claimState "yours".
+      expect(got.data.claimState).toBe("yours");
+
+      // Another caller sees claimState "live" (held, lease fresh, fail-safe ok).
+      const b = createTestAiAgent(testApp.db);
+      const getOther = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/tasks/${task.id}`,
+        { token: b.token },
+      );
+      const gotOther = await getOther.json();
+      expect(gotOther.data.claimStatus).toBe("claimed_by_other");
+      expect(gotOther.data.claimState).toBe("live");
+    });
+
+    it("an unclaimed task reads claimState 'unclaimed' (C3.P1)", async () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: a.user.id,
+        // assigneeId omitted — unclaimed
+      });
+      const get = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/tasks/${task.id}`,
+        { token: a.token },
+      );
+      const got = await get.json();
+      expect(got.data.claimStatus).toBe("unclaimed");
+      expect(got.data.claimState).toBe("unclaimed");
     });
 
     it("is idempotent for the holder", async () => {

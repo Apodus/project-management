@@ -13,7 +13,7 @@ import {
   type SQLWrapper,
 } from "drizzle-orm";
 import { createId, isValidTaskTransition, getValidTaskTargets, findTaskTransitionPath } from "@pm/shared";
-import type { ClaimResult, ClaimStatus, TaskStatus, UserType } from "@pm/shared";
+import type { ClaimResult, ClaimState, ClaimStatus, TaskStatus, UserType } from "@pm/shared";
 import {
   getDb,
   getRawDb,
@@ -32,6 +32,7 @@ import * as autonomyService from "./autonomy.service.js";
 import {
   assertClaimOk as assertClaimOkRaw,
   deriveClaimStatus,
+  deriveClaimState,
   forceClaim as forceClaimShared,
   type Actor as ClaimActor,
   type ClaimFilter,
@@ -41,7 +42,10 @@ import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 import {
   acquireLease,
   deleteLease,
+  readLease,
+  readLeasesFor,
   sweepStaleClaims,
+  type ClaimLeaseRow,
 } from "./claim-lease.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -102,7 +106,7 @@ export interface TaskListFilters {
 }
 
 export type TaskListItem = typeof tasks.$inferSelect &
-  EnrichedFields & { claimStatus: ClaimStatus };
+  EnrichedFields & { claimStatus: ClaimStatus; claimState: ClaimState };
 
 export interface TaskListResult {
   data: TaskListItem[];
@@ -242,13 +246,29 @@ const CLAIM_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
 export type Actor = ClaimActor;
 export { type ClaimFilter };
 
+/**
+ * Decorate a task row with claim_status AND claim_state derived from the caller.
+ * Tasks use `assigneeId` as the claim-holder field.
+ *
+ * `claimState` (C3.P1) folds in the C2 lease liveness; `lease`/`now` are optional
+ * so existing `(row, caller)` call sites keep working (absent → fresh `now` + null
+ * lease → fail-safe-to-live). The `claimStatus` value is unchanged (additive).
+ */
 export function withClaimStatus<T extends { assigneeId?: string | null }>(
   row: T,
   caller?: { id: string } | null,
-): T & { claimStatus: ClaimStatus } {
+  lease?: ClaimLeaseRow | null,
+  now?: Date,
+): T & { claimStatus: ClaimStatus; claimState: ClaimState } {
   return {
     ...row,
     claimStatus: deriveClaimStatus(row.assigneeId ?? null, caller),
+    claimState: deriveClaimState(
+      row.assigneeId ?? null,
+      lease ?? null,
+      now ?? new Date(),
+      caller,
+    ),
   };
 }
 
@@ -449,8 +469,16 @@ export function list(
     .offset(offset)
     .all();
 
+  const leases = readLeasesFor(
+    "task",
+    data.map((t) => t.id),
+  );
+  const now = new Date();
+
   return {
-    data: enrichTasks(data).map((t) => withClaimStatus(t, caller ?? null)),
+    data: enrichTasks(data).map((t) =>
+      withClaimStatus(t, caller ?? null, leases.get(t.id) ?? null, now),
+    ),
     pagination: {
       page,
       perPage,
@@ -472,7 +500,12 @@ export function getById(id: string, caller?: { id: string } | null) {
     throw new AppError(404, "NOT_FOUND", `Task not found: ${id}`);
   }
 
-  return withClaimStatus(enrichTask(task), caller ?? null);
+  return withClaimStatus(
+    enrichTask(task),
+    caller ?? null,
+    readLease("task", task.id),
+    new Date(),
+  );
 }
 
 /**
@@ -694,7 +727,14 @@ export function listSubtasks(
     .from(tasks)
     .where(eq(tasks.parentTaskId, parentTaskId))
     .all();
-  return enrichTasks(rows).map((t) => withClaimStatus(t, caller ?? null));
+  const leases = readLeasesFor(
+    "task",
+    rows.map((r) => r.id),
+  );
+  const now = new Date();
+  return enrichTasks(rows).map((t) =>
+    withClaimStatus(t, caller ?? null, leases.get(t.id) ?? null, now),
+  );
 }
 
 // ─── Workflow engine ─────────────────────────────────────────────
@@ -1143,6 +1183,10 @@ export interface AwarenessInFlight {
   } | null;
   gitBranch: string | null;
   startedAt: string | null;
+  // C3.P1: the identity-masked liveness of the in-flight task's claim. Awareness
+  // is caller-agnostic (list is called without a caller below), so this is only
+  // ever "live" / "stale" / "unclaimed" — never "yours".
+  claimState: ClaimState;
 }
 
 export interface AwarenessResult {
@@ -1180,6 +1224,7 @@ export function awareness(
       : null,
     gitBranch: t.gitBranch,
     startedAt: t.startedAt,
+    claimState: t.claimState,
   }));
   return { label: labelName, inFlight, total: inFlight.length };
 }

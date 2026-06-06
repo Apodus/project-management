@@ -903,6 +903,15 @@
               "claimed_by_other"
             ]
           },
+          "claimState": {
+            "type": "string",
+            "enum": [
+              "unclaimed",
+              "live",
+              "stale",
+              "yours"
+            ]
+          },
           "resolvedBy": {
             "type": "string",
             "nullable": true
@@ -927,6 +936,7 @@
           "createdBy",
           "claimedBy",
           "claimStatus",
+          "claimState",
           "resolvedBy",
           "resolvedAt",
           "createdAt",
@@ -1392,6 +1402,15 @@
               "claimed_by_other"
             ]
           },
+          "claimState": {
+            "type": "string",
+            "enum": [
+              "unclaimed",
+              "live",
+              "stale",
+              "yours"
+            ]
+          },
           "name": {
             "type": "string"
           },
@@ -1456,6 +1475,7 @@
           "milestoneId",
           "assigneeId",
           "claimStatus",
+          "claimState",
           "name",
           "description",
           "status",
@@ -2046,6 +2066,15 @@
               "claimed_by_you",
               "claimed_by_other"
             ]
+          },
+          "claimState": {
+            "type": "string",
+            "enum": [
+              "unclaimed",
+              "live",
+              "stale",
+              "yours"
+            ]
           }
         },
         "required": [
@@ -2076,7 +2105,8 @@
           "assigneeType",
           "reporterName",
           "reporterType",
-          "claimStatus"
+          "claimStatus",
+          "claimState"
         ]
       },
       "CreateTask": {
@@ -2580,6 +2610,15 @@
                 "startedAt": {
                   "type": "string",
                   "nullable": true
+                },
+                "claimState": {
+                  "type": "string",
+                  "enum": [
+                    "unclaimed",
+                    "live",
+                    "stale",
+                    "yours"
+                  ]
                 }
               },
               "required": [
@@ -2587,7 +2626,8 @@
                 "title",
                 "assignee",
                 "gitBranch",
-                "startedAt"
+                "startedAt",
+                "claimState"
               ]
             }
           },

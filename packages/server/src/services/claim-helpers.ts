@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type {
   AuditLogView,
+  ClaimState,
   ClaimStatus,
   LeaseEntityType,
   UserType,
@@ -13,7 +14,7 @@ import {
   emitAuditRecorded,
 } from "./audit.service.js";
 import { getById as getUserById } from "./user.service.js";
-import { acquireLease, renewLease } from "./claim-lease.service.js";
+import { acquireLease, deriveLiveness, renewLease } from "./claim-lease.service.js";
 
 // Re-export so callers don't need an additional import for the event name set.
 export { EVENT_NAMES } from "../events/event-bus.js";
@@ -36,6 +37,37 @@ export function deriveClaimStatus(
   if (!claimedBy) return "unclaimed";
   if (caller && claimedBy === caller.id) return "claimed_by_you";
   return "claimed_by_other";
+}
+
+/**
+ * Compute the identity-masked claim_state enum (C3.P1) — the liveness view of a
+ * claim relative to a caller, folding in the C2 lease via deriveLiveness:
+ *
+ *   - no holder                       → "unclaimed"
+ *   - caller IS the holder            → "yours"  (BEFORE liveness — a self-stale
+ *                                        lease still reads "yours" to the holder)
+ *   - held by another, lease stale    → "stale"
+ *   - held by another, lease live OR
+ *     ABSENT (null) OR unparseable    → "live"   (fail-safe-to-live: a claimed
+ *                                        entity with no lease row — the common
+ *                                        case in default shadow mode — reads
+ *                                        live, never stale)
+ *
+ * Returns the enum only — never the holder id (identity-masked, like
+ * deriveClaimStatus). The lease is read by the caller (get path) or pre-fetched
+ * (list path) and passed in; a null lease is the fail-safe-to-live case.
+ */
+export function deriveClaimState(
+  holderId: string | null | undefined,
+  lease: { expiresAt: string | null } | null,
+  now: Date,
+  caller?: { id: string } | null,
+): ClaimState {
+  if (!holderId) return "unclaimed";
+  if (caller && holderId === caller.id) return "yours";
+  return deriveLiveness(now, lease?.expiresAt ?? null) === "stale"
+    ? "stale"
+    : "live";
 }
 
 /**

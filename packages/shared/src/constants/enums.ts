@@ -17,6 +17,17 @@ export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 export const CLAIM_STATUSES = ["unclaimed", "claimed_by_you", "claimed_by_other"] as const;
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
+// Campaign C3 (liveness surfacing §P1) — the identity-masked liveness view of a
+// claim, derived on read from the C2 claim-lease (deriveLiveness) + the caller:
+//   unclaimed — no holder
+//   yours     — the caller holds it (regardless of lease liveness; self-stale → yours)
+//   live      — held by another, lease live (or absent → fail-safe-to-live)
+//   stale     — held by another, lease lapsed past TTL+grace
+// Sits alongside CLAIM_STATUSES (which is holder-vs-caller only); CLAIM_STATES
+// additionally folds in lease liveness for non-self holders.
+export const CLAIM_STATES = ["unclaimed", "live", "stale", "yours"] as const;
+export type ClaimState = (typeof CLAIM_STATES)[number];
+
 export const EPIC_STATUSES = ["draft", "active", "completed", "cancelled"] as const;
 export type EpicStatus = (typeof EPIC_STATUSES)[number];
 

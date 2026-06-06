@@ -1420,6 +1420,8 @@ describe("Proposals API", () => {
       const body = await res.json();
       expect(body.data.claimedBy).toBeNull();
       expect(body.data.claimStatus).toBe("unclaimed");
+      // C3.P1: claim_state alongside claim_status.
+      expect(body.data.claimState).toBe("unclaimed");
     });
 
     it("agent A claims an unclaimed proposal", async () => {
@@ -1439,7 +1441,10 @@ describe("Proposals API", () => {
       const getRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`, {
         token: agentA.token,
       });
-      expect((await getRes.json()).data.claimStatus).toBe("claimed_by_you");
+      const claimedBody = (await getRes.json()).data;
+      expect(claimedBody.claimStatus).toBe("claimed_by_you");
+      // C3.P1: the holder sees claimState "yours".
+      expect(claimedBody.claimState).toBe("yours");
     });
 
     it("agent B sees claimed_by_other when agent A holds the claim", async () => {
@@ -1467,7 +1472,10 @@ describe("Proposals API", () => {
       const getRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${proposal.id}`, {
         token: agentB.token,
       });
-      expect((await getRes.json()).data.claimStatus).toBe("claimed_by_other");
+      const otherBody = (await getRes.json()).data;
+      expect(otherBody.claimStatus).toBe("claimed_by_other");
+      // C3.P1: another caller sees claimState "live" (held, no lease → fail-safe).
+      expect(otherBody.claimState).toBe("live");
     });
 
     it("idempotent: claiming twice returns already_claimed_by_you", async () => {

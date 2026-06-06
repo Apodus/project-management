@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { CLAIM_STATUSES, EPIC_STATUSES, PRIORITIES } from "@pm/shared";
+import { CLAIM_STATUSES, CLAIM_STATES, EPIC_STATUSES, PRIORITIES } from "@pm/shared";
 import type { UserType } from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import * as epicService from "../services/epic.service.js";
@@ -20,6 +20,7 @@ const epicSchema = z
     milestoneId: z.string().nullable(),
     assigneeId: z.string().nullable(),
     claimStatus: z.enum(CLAIM_STATUSES),
+    claimState: z.enum(CLAIM_STATES),
     name: z.string(),
     description: z.string().nullable(),
     status: z.string(),

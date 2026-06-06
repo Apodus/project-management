@@ -167,6 +167,58 @@ describe("claim-lease service", () => {
     expect(svc.deriveLiveness(new Date(), "not-a-date", grace)).toBe("live");
   });
 
+  // ── 3b. readLeasesFor batch read (C3.P1) ─────────────────────────
+  it("readLeasesFor returns a Map of only present leases over a mixed set", () => {
+    const project = createTestProject(testApp.db);
+    const a = createTestAiAgent(testApp.db);
+    const withLive = createTestTask(testApp.db, { projectId: project.id });
+    const withLapsed = createTestTask(testApp.db, { projectId: project.id });
+    const noLease = createTestTask(testApp.db, { projectId: project.id });
+
+    const t0 = new Date("2026-06-06T10:00:00.000Z");
+    // A live lease (long TTL) and a lapsed lease (already expired) — the helper
+    // returns BOTH rows; readLeasesFor itself doesn't filter on liveness.
+    svc.acquireLease("task", withLive.id, { id: a.user.id }, { now: t0 });
+    svc.acquireLease(
+      "task",
+      withLapsed.id,
+      { id: a.user.id },
+      { now: t0, ttlMs: 1000 },
+    );
+
+    const map = svc.readLeasesFor("task", [
+      withLive.id,
+      withLapsed.id,
+      noLease.id,
+    ]);
+
+    expect(map.size).toBe(2);
+    expect(map.has(withLive.id)).toBe(true);
+    expect(map.has(withLapsed.id)).toBe(true);
+    expect(map.has(noLease.id)).toBe(false);
+    expect(map.get(withLive.id)?.holderId).toBe(a.user.id);
+  });
+
+  it("readLeasesFor over an empty id set returns an empty Map (no throw)", () => {
+    expect(svc.readLeasesFor("task", []).size).toBe(0);
+  });
+
+  it("readLeasesFor scopes by entityType", () => {
+    const project = createTestProject(testApp.db);
+    const a = createTestAiAgent(testApp.db);
+    const task = createTestTask(testApp.db, { projectId: project.id });
+    const epic = createTestEpic(testApp.db, { projectId: project.id });
+
+    svc.acquireLease("task", task.id, { id: a.user.id });
+    svc.acquireLease("epic", epic.id, { id: a.user.id });
+
+    // Querying tasks with an epic id mixed in only returns the task lease.
+    const map = svc.readLeasesFor("task", [task.id, epic.id]);
+    expect(map.size).toBe(1);
+    expect(map.has(task.id)).toBe(true);
+    expect(map.has(epic.id)).toBe(false);
+  });
+
   // ── 4. sweep mode `on` frees a stale task lease ──────────────────
   it("sweep mode on reclaims a stale task lease (entity cleared, lease gone, audit + event)", () => {
     const project = createTestProject(testApp.db);

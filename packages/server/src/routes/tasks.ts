@@ -2,6 +2,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   CLAIM_RESULT_STATUSES,
   CLAIM_STATUSES,
+  CLAIM_STATES,
   TASK_STATUSES,
   PRIORITIES,
   TASK_TYPES,
@@ -47,6 +48,7 @@ const taskSchema = z
     reporterName: z.string().nullable(),
     reporterType: z.string().nullable(),
     claimStatus: z.enum(CLAIM_STATUSES),
+    claimState: z.enum(CLAIM_STATES),
   })
   .openapi("Task");
 
@@ -87,6 +89,7 @@ const awarenessInFlightSchema = z.object({
   assignee: awarenessAssigneeSchema.nullable(),
   gitBranch: z.string().nullable(),
   startedAt: z.string().nullable(),
+  claimState: z.enum(CLAIM_STATES),
 });
 
 const awarenessSchema = z

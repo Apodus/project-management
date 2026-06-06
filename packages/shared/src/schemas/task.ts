@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TASK_STATUSES, PRIORITIES, TASK_TYPES, EFFORT_SIZES } from "../constants/enums.js";
+import { TASK_STATUSES, PRIORITIES, TASK_TYPES, EFFORT_SIZES, CLAIM_STATES } from "../constants/enums.js";
 import { ulidSchema, timestampSchema, optionalText } from "./common.js";
 
 export const taskContextSchema = z
@@ -32,6 +32,7 @@ export const selectTaskSchema = z.object({
   sort_order: z.number().int(),
   context: taskContextSchema,
   git_branch: z.string().nullable().optional(),
+  claim_state: z.enum(CLAIM_STATES),
   created_at: timestampSchema,
   updated_at: timestampSchema,
   started_at: timestampSchema.nullable().optional(),
@@ -40,6 +41,7 @@ export const selectTaskSchema = z.object({
 
 export const insertTaskSchema = selectTaskSchema.omit({
   id: true,
+  claim_state: true,
   created_at: true,
   updated_at: true,
 });

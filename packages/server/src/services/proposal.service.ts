@@ -2,6 +2,7 @@ import { eq, and, isNull, or } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import {
   PROPOSAL_TRANSITION_MAP,
+  type ClaimState,
   type ClaimStatus,
   type ClaimResult,
   type ProposalStatus,
@@ -13,6 +14,7 @@ import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 import {
   assertClaimOk as assertClaimOkRaw,
   deriveClaimStatus,
+  deriveClaimState,
   forceClaim as forceClaimShared,
   type Actor as ClaimActor,
   type ClaimFilter as ClaimFilterShared,
@@ -21,7 +23,10 @@ import {
 import {
   acquireLease,
   deleteLease,
+  readLease,
+  readLeasesFor,
   sweepStaleClaims,
+  type ClaimLeaseRow,
 } from "./claim-lease.service.js";
 
 export { deriveClaimStatus } from "./claim-helpers.js";
@@ -68,15 +73,28 @@ export type ClaimFilter = ClaimFilterShared;
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "rejected"]);
 
 /**
- * Decorate a proposal row with claim_status derived from the caller.
+ * Decorate a proposal row with claim_status AND claim_state derived from the
+ * caller. Proposals use `claimedBy` as the claim-holder field.
+ *
+ * `claimState` (C3.P1) folds in the C2 lease liveness; `lease`/`now` are optional
+ * so existing `(row, caller)` call sites keep working (absent → fresh `now` + null
+ * lease → fail-safe-to-live). The `claimStatus` value is unchanged (additive).
  */
 export function withClaimStatus<T extends { claimedBy?: string | null }>(
   row: T,
   caller?: { id: string } | null,
-): T & { claimStatus: ClaimStatus } {
+  lease?: ClaimLeaseRow | null,
+  now?: Date,
+): T & { claimStatus: ClaimStatus; claimState: ClaimState } {
   return {
     ...row,
     claimStatus: deriveClaimStatus(row.claimedBy ?? null, caller),
+    claimState: deriveClaimState(
+      row.claimedBy ?? null,
+      lease ?? null,
+      now ?? new Date(),
+      caller,
+    ),
   };
 }
 
@@ -135,7 +153,15 @@ export function list(
     .where(and(...conditions))
     .all();
 
-  return rows.map((row) => withClaimStatus(row, caller));
+  const leases = readLeasesFor(
+    "proposal",
+    rows.map((r) => r.id),
+  );
+  const now = new Date();
+
+  return rows.map((row) =>
+    withClaimStatus(row, caller, leases.get(row.id) ?? null, now),
+  );
 }
 
 /**
@@ -157,7 +183,7 @@ export function getById(id: string, caller?: { id: string } | null) {
   const linkedTasks = db.select().from(tasks).where(eq(tasks.proposalId, id)).all();
 
   return {
-    ...withClaimStatus(proposal, caller),
+    ...withClaimStatus(proposal, caller, readLease("proposal", proposal.id), new Date()),
     comments: proposalComments,
     workItems: {
       epics: linkedEpics,
