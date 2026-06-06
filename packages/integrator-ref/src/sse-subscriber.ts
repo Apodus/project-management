@@ -53,6 +53,9 @@ const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
 // Event names that should wake the integration loop.
 const WAKE_EVENTS = new Set([
   "merge.request.queued",
+  // A re-queue (integrating → queued) puts work back on the lane — wake so a
+  // parked loop re-polls immediately instead of waiting out the poll tick.
+  "merge.request.requeued",
   "merge.request.abandoned",
 ]);
 

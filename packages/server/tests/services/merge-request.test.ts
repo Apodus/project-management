@@ -819,7 +819,7 @@ describe("merge-request service", () => {
 
   // ─── resetToQueued ──────────────────────────────────────────────
   describe("resetToQueued", () => {
-    it("integrating → queued, clears pickedUpAt, re-emits MERGE_REQUEST_QUEUED with reason", () => {
+    it("integrating → queued, clears pickedUpAt, emits MERGE_REQUEST_REQUEUED with reason (NOT the initial-enqueue QUEUED)", () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
@@ -831,13 +831,50 @@ describe("merge-request service", () => {
       };
       svc.transitionToIntegrating(r.id, actor);
       const listener = vi.fn();
-      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_QUEUED, listener);
+      const queuedListener = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_REQUEUED, listener);
+      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_QUEUED, queuedListener);
 
       const out = svc.resetToQueued(r.id, actor, "push race");
       expect(out.status).toBe("queued");
       expect(out.pickedUpAt).toBeNull();
       expect(listener).toHaveBeenCalledTimes(1);
       expect(listener.mock.calls[0][0].entity.reason).toBe("push race");
+      // A re-queue is NOT a fresh enqueue — the initial-enqueue event must not fire.
+      expect(queuedListener).not.toHaveBeenCalled();
+    });
+
+    it("writes a durable `requeue` audit row (integrating→queued) carrying the reason", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const actor = {
+        id: integrator.user.id,
+        role: "member",
+        type: "ai_agent",
+      };
+      const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
+      svc.transitionToIntegrating(r.id, actor);
+
+      const auditListener = vi.fn();
+      getEventBus().on(EVENT_NAMES.AUDIT_RECORDED, auditListener);
+
+      svc.resetToQueued(r.id, actor, "main drifted at land; re-verify");
+
+      const rows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, r.id))
+        .all();
+      const requeue = rows.find((e) => e.action === "requeue");
+      expect(requeue).toBeDefined();
+      expect(requeue?.targetType).toBe("merge_request");
+      expect(requeue?.actorId).toBe(integrator.user.id);
+      expect(requeue?.reason).toBe("main drifted at land; re-verify");
+      expect(requeue?.metadataBefore).toEqual({ status: "integrating" });
+      expect(requeue?.metadataAfter).toEqual({ status: "queued" });
+      // audit.recorded SSE fires after commit so the admin log refreshes live.
+      expect(auditListener).toHaveBeenCalledTimes(1);
     });
 
     it("queued → 409 INVALID_TRANSITION (no idempotent case)", () => {
@@ -1290,9 +1327,9 @@ describe("merge-request service", () => {
       const a = attemptSvc.startAttempt(r.id, { baseSha: "b" }, actor);
 
       const attemptListener = vi.fn();
-      const queuedListener = vi.fn();
+      const requeuedListener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_ATTEMPT_COMPLETED, attemptListener);
-      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_QUEUED, queuedListener);
+      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_REQUEUED, requeuedListener);
 
       const out = svc.resetToQueued(r.id, actor, "push race");
 
@@ -1307,12 +1344,12 @@ describe("merge-request service", () => {
       expect(row?.status).toBe("cancelled");
 
       expect(attemptListener).toHaveBeenCalledTimes(1);
-      expect(queuedListener).toHaveBeenCalledTimes(1);
+      expect(requeuedListener).toHaveBeenCalledTimes(1);
       expect(attemptListener.mock.calls[0][0].entity.reason).toBe("push race");
-      expect(queuedListener.mock.calls[0][0].entity.reason).toBe("push race");
+      expect(requeuedListener.mock.calls[0][0].entity.reason).toBe("push race");
     });
 
-    it("no open attempts: still re-emits MERGE_REQUEST_QUEUED, no attempt events", () => {
+    it("no open attempts: still emits MERGE_REQUEST_REQUEUED, no attempt events", () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const agent = createTestAiAgent(testApp.db);
@@ -1321,13 +1358,13 @@ describe("merge-request service", () => {
       svc.transitionToIntegrating(r.id, actor);
 
       const attemptListener = vi.fn();
-      const queuedListener = vi.fn();
+      const requeuedListener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_ATTEMPT_COMPLETED, attemptListener);
-      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_QUEUED, queuedListener);
+      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_REQUEUED, requeuedListener);
 
       svc.resetToQueued(r.id, actor, "no attempt yet");
       expect(attemptListener).not.toHaveBeenCalled();
-      expect(queuedListener).toHaveBeenCalledTimes(1);
+      expect(requeuedListener).toHaveBeenCalledTimes(1);
     });
   });
 });

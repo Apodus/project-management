@@ -270,6 +270,7 @@ GET /api/v1/events?project_id=<projectId>
 Relevant events:
 
 - `merge.request.queued` / `.integrating` / `.landed` / `.rejected` / `.abandoned`
+- `merge.request.requeued` — the integrator put an `integrating` request **back** to `queued` (post-verify land-time main drift, a push race, a speculative-suffix invalidation, or crash recovery). **Distinct from `.queued`** (the worker's initial enqueue) so a re-queue is legible instead of looking like a fresh submit or a silent "never picked up". The reason rides the frame; the same reason is also recorded durably as a `requeue` audit row (visible in the per-request timeline and the admin audit log). A re-queue is **not** a rejection — no `merge_rejection` comment, no incident — it simply re-competes on the next pass.
 - `merge.attempt.started` / `.completed`
 - **Batch markers (Phase 7.2):** `merge.batch.started` / `.member_landed` / `.member_invalidated` / `.completed` (see §13).
 - **Group + incident events (Phase 7.3):** `merge.group.started` / `.member_landed` / `.landed` / `.rejected` and `merge.incident.opened` / `.auto_resolved` / `.human_resolved` (see §14). Unlike the relayed batch markers, these are **PM-emitted** (the group/incident services write the row, then emit). Group/incident frames additionally carry `group_id` / `incident_id` / `orphaned_sha` when present.

@@ -21,6 +21,7 @@ describe("AUDIT_ACTIONS", () => {
       "force_cancel",
       "land",
       "reject",
+      "requeue",
       "cancel",
       "force_claim",
       "claim_reclaimed",
@@ -29,6 +30,10 @@ describe("AUDIT_ACTIONS", () => {
 
   it("includes force_claim", () => {
     expect(AUDIT_ACTIONS).toContain("force_claim");
+  });
+
+  it("includes requeue (integrator integrating→queued re-queue)", () => {
+    expect(AUDIT_ACTIONS).toContain("requeue");
   });
 
   it("includes force_cancel (queued-state break-glass)", () => {

@@ -59,6 +59,12 @@ export const EVENT_NAMES = {
 
   // Merge request events (Phase 7.1 Stage 2 — request lifecycle)
   MERGE_REQUEST_QUEUED: "merge.request.queued",
+  // A re-queue (integrating → queued) emitted by resetToQueued — distinct from
+  // the worker's initial enqueue (MERGE_REQUEST_QUEUED) so a post-verify drift /
+  // push-race / suffix-invalidation / crash-recovery re-queue is legible on the
+  // live stream instead of masquerading as a fresh submit. Carries `reason`.
+  // onAll auto-forwards it to the SSE stream; action becomes "request.requeued".
+  MERGE_REQUEST_REQUEUED: "merge.request.requeued",
   MERGE_REQUEST_INTEGRATING: "merge.request.integrating",
   MERGE_REQUEST_LANDED: "merge.request.landed",
   MERGE_REQUEST_REJECTED: "merge.request.rejected",

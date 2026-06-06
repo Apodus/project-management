@@ -166,7 +166,14 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
     try {
       await pmClient.releaseLock(projectId, resource, opts);
     } catch (err) {
-      logger.debug({ err: errMessage(err) }, "releaseLock failed (non-fatal)");
+      // A failed release leaves the lane lock held server-side with a dead
+      // holder → the next pass sees `lock_unavailable` and queued work stalls
+      // until the staleness sweep or a force-release. WARN so it shows up in the
+      // operator's logs as the root cause of a "needs a re-kick" stall.
+      logger.warn(
+        { err: errMessage(err), resource },
+        "releaseLock FAILED — lane lock may be stuck held; queued work will not be re-picked until the staleness sweep or a force-release",
+      );
     }
   };
 

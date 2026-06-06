@@ -1105,7 +1105,16 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     try {
       await pmClient.releaseLock(projectId, resource, opts);
     } catch (err) {
-      logger.debug({ err: errMessage(err) }, "releaseLock failed (non-fatal)");
+      // A failed release is NOT cosmetic: the lane lock stays held server-side
+      // with a now-idle/dead holder, so the next `runBatchOnce` sees the lane
+      // occupied → `lock_unavailable` → backs off → NEVER re-picks queued work
+      // until the lock's staleness sweep or a manual force-release. That is the
+      // classic "integrator needs a re-kick" stall (the live game_one report).
+      // WARN (not debug) so it surfaces in the operator's logs as the cause.
+      logger.warn(
+        { err: errMessage(err), resource },
+        "releaseLock FAILED — lane lock may be stuck held; queued work will not be re-picked until the staleness sweep or a force-release",
+      );
     }
   };
 

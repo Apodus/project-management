@@ -1056,6 +1056,7 @@ export interface paths {
                     "application/json": {
                         poolName: string;
                         poolSecret: string;
+                        workerKey?: string;
                     };
                 };
             };
@@ -1076,6 +1077,7 @@ export interface paths {
                                     type: string;
                                 };
                                 token: string;
+                                bindHandle?: string;
                             };
                         };
                     };
@@ -11726,7 +11728,7 @@ export interface paths {
             parameters: {
                 query?: {
                     userId?: string;
-                    action?: "pause" | "resume" | "force_release_lock" | "force_land" | "force_reject" | "force_cancel" | "land" | "reject" | "cancel" | "force_claim";
+                    action?: "pause" | "resume" | "force_release_lock" | "force_land" | "force_reject" | "force_cancel" | "land" | "reject" | "requeue" | "cancel" | "force_claim" | "claim_reclaimed";
                     targetType?: "merge_request" | "merge_group" | "merge_lock" | "train" | "task" | "epic" | "proposal";
                     targetId?: string;
                     from?: string;

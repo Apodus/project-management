@@ -210,6 +210,10 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       // Merge train — lifecycle (queue / in-flight composition changes)
       "merge.request.landed",
       "merge.request.rejected",
+      // A re-queue (integrating → queued: land-time drift / push race / suffix
+      // invalidation / crash recovery) moves the in-flight composition back to
+      // the queue — refresh the train view so the request doesn't appear stuck.
+      "merge.request.requeued",
       "merge.batch.formed",
       "merge.batch.landed",
       "merge.batch.rejected",

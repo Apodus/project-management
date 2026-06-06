@@ -1066,8 +1066,17 @@ export function resetToQueued(id: string, actor: Actor, reason: string): MergeRe
   const db = getDb();
   const now = new Date().toISOString();
   let cancelledAttempts: MergeAttemptView[] = [];
+  // A re-queue writes one durable, reason-carrying audit row in the SAME txn as
+  // the status flip (the §1.4 atomicity invariant). Without this the drift /
+  // push-race reason lived ONLY on the transient SSE frame and was lost — a
+  // re-queue showed in the timeline as a reasonless cancelled attempt with no
+  // record of WHY, indistinguishable from "never picked up" (the live game_one
+  // report). The audit row surfaces in the per-request timeline (kind `audit`)
+  // and the admin audit log. Captured here, emitted after commit.
+  let auditId: string | null = null;
+  let auditView: AuditLogView | null = null;
 
-  db.transaction(() => {
+  db.transaction((tx) => {
     // Finding 1: cancelOpenAttempts is write-only; no events inside tx.
     const result = cancelOpenAttempts(row.id);
     cancelledAttempts = result.cancelledAttempts;
@@ -1083,6 +1092,32 @@ export function resetToQueued(id: string, actor: Actor, reason: string): MergeRe
       })
       .where(eq(mergeRequests.id, row.id))
       .run();
+
+    const before = { status: "integrating" };
+    const after = { status: "queued" };
+    auditId = recordAudit(tx, {
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "requeue",
+      targetType: "merge_request",
+      targetId: row.id,
+      reason,
+      before,
+      after,
+      now,
+    });
+    auditView = {
+      id: auditId,
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "requeue",
+      targetType: "merge_request",
+      targetId: row.id,
+      reason,
+      metadataBefore: before,
+      metadataAfter: after,
+      createdAt: now,
+    };
   });
 
   const updated = readRequestOrThrow(row.id);
@@ -1095,7 +1130,14 @@ export function resetToQueued(id: string, actor: Actor, reason: string): MergeRe
       reason,
     });
   }
-  emit(EVENT_NAMES.MERGE_REQUEST_QUEUED, updated, actor.id, { reason });
+  // Distinct from the worker's initial-enqueue MERGE_REQUEST_QUEUED (submit):
+  // a re-queue rides MERGE_REQUEST_REQUEUED so operators can tell "the train put
+  // this back" apart from "a worker just submitted this". `reason` rides the
+  // frame for the live banner.
+  emit(EVENT_NAMES.MERGE_REQUEST_REQUEUED, updated, actor.id, { reason });
+  if (auditId !== null && auditView !== null) {
+    emitAuditRecorded(auditId, row.projectId, actor.id, auditView);
+  }
 
   return toView(updated);
 }

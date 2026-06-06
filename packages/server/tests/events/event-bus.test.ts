@@ -368,6 +368,11 @@ describe("Event Bus", () => {
       expect(EVENT_NAMES.MERGE_REQUEST_INTEGRATING).toBe("merge.request.integrating");
     });
 
+    it("MERGE_REQUEST_REQUEUED = 'merge.request.requeued' (distinct from initial enqueue)", () => {
+      expect(EVENT_NAMES.MERGE_REQUEST_REQUEUED).toBe("merge.request.requeued");
+      expect(EVENT_NAMES.MERGE_REQUEST_REQUEUED).not.toBe(EVENT_NAMES.MERGE_REQUEST_QUEUED);
+    });
+
     it("MERGE_REQUEST_LANDED = 'merge.request.landed'", () => {
       expect(EVENT_NAMES.MERGE_REQUEST_LANDED).toBe("merge.request.landed");
     });

@@ -19,6 +19,13 @@ export const AUDIT_ACTIONS = [
   // ── Natural train actions (ai_agent integrator actions, §2.5) ──
   "land",
   "reject",
+  // requeue: the integrator put an `integrating` request back to `queued`
+  // (post-verify land-time main drift, a push race, speculative-suffix
+  // invalidation, or crash recovery). Distinct from the worker's initial
+  // enqueue — this is the durable, reason-carrying record of WHY a request
+  // re-competes, so a re-queue is legible in the timeline + audit log instead
+  // of looking like a fresh submission or a silent "never picked up".
+  "requeue",
   // cancel: self-service abandon of a queued|integrating request by ANY
   // authenticated user (collaborative env — no ownership gate). The
   // queued path is non-audited (back-compat); the integrating path writes
