@@ -48,6 +48,7 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.TASK_CLAIM_FORCED:
     case EVENT_NAMES.EPIC_CLAIM_FORCED:
     case EVENT_NAMES.PROPOSAL_CLAIM_FORCED:
+    case EVENT_NAMES.CLAIM_LEASE_RECLAIMED:
       return "assigned";
 
     // Commented events

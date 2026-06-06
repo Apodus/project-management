@@ -45,6 +45,11 @@ export const EVENT_NAMES = {
   EPIC_CLAIM_FORCED: "epic.claim_forced",
   PROPOSAL_CLAIM_FORCED: "proposal.claim_forced",
 
+  // Claim-lease reclaim event (Phase C2 — emitted by claim-lease.service after
+  // a stale claim is reclaimed in mode `on`). onAll auto-forwards it to the SSE
+  // stream; action maps to "assigned" (see events/listeners.ts).
+  CLAIM_LEASE_RECLAIMED: "claim.lease.reclaimed",
+
   // Merge lock events
   MERGE_LOCK_ACQUIRED: "merge.lock.acquired",
   MERGE_LOCK_QUEUED: "merge.lock.queued",

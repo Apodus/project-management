@@ -558,4 +558,199 @@ describe("claim-lease service", () => {
         .all(),
     ).toHaveLength(2);
   });
+
+  // ── 11. headline: stale NOT-STARTED epic reclaim (mode on) ───────
+  //
+  // The campaign C2 headline: reclaim is status-agnostic. An epic that was
+  // claimed but never moved out of its initial `draft` status (no status
+  // transition) is still freed when its lease goes stale — this is the gap the
+  // old tasks-only, in_progress-only, 4h-threshold reclaimStaleTasks could not
+  // reach. Asserts: reclaimed length 1, assigneeId null, lease gone, exactly
+  // one claim_reclaimed audit row (targetType epic, before/after honest), and
+  // the claim.lease.reclaimed listener fired exactly once.
+  it("reclaims a stale not-started (draft) epic and fires claim.lease.reclaimed once", () => {
+    const project = createTestProject(testApp.db);
+    const a = createTestAiAgent(testApp.db);
+
+    // A freshly-created epic stays in its initial `draft` status — no status
+    // transition is performed.
+    const epic = createTestEpic(testApp.db, { projectId: project.id });
+    expect(epic.status).toBe("draft");
+    testApp.db
+      .update(epics)
+      .set({ assigneeId: a.user.id })
+      .where(eq(epics.id, epic.id))
+      .run();
+
+    const t0 = new Date("2026-06-06T10:00:00.000Z");
+    svc.acquireLease("epic", epic.id, { id: a.user.id }, { now: t0, ttlMs: 1000 });
+
+    const reclaimedListener = vi.fn();
+    getEventBus().on(EVENT_NAMES.CLAIM_LEASE_RECLAIMED, reclaimedListener);
+
+    // Well past expiry + grace.
+    const now = new Date(t0.getTime() + 1000 + 5000 + 1);
+    const result = svc.sweepStaleClaims({
+      entityType: "epic",
+      entityId: epic.id,
+      mode: "on",
+      graceMs: 5000,
+      now,
+    });
+
+    expect(result.reclaimed).toHaveLength(1);
+    expect(result.reclaimed[0]).toMatchObject({
+      entityType: "epic",
+      entityId: epic.id,
+      holderId: a.user.id,
+    });
+
+    // Status is irrelevant to the reclaim — still draft, now unassigned.
+    const fresh = testApp.db.select().from(epics).where(eq(epics.id, epic.id)).get();
+    expect(fresh!.status).toBe("draft");
+    expect(fresh!.assigneeId).toBeNull();
+
+    // Lease gone.
+    expect(leaseRow("epic", epic.id)).toBeUndefined();
+
+    // Exactly one honest claim_reclaimed audit row.
+    const audits = auditRows(epic.id);
+    expect(audits).toHaveLength(1);
+    expect(audits[0].action).toBe("claim_reclaimed");
+    expect(audits[0].targetType).toBe("epic");
+    expect(audits[0].metadataBefore).toEqual({ assignee_id: a.user.id });
+    expect(audits[0].metadataAfter).toEqual({ assignee_id: null });
+
+    // The registered SSE event name fired exactly once.
+    expect(reclaimedListener).toHaveBeenCalledTimes(1);
+  });
+
+  // ── 12. headline parity: stale not-started proposal reclaim ──────
+  it("reclaims a stale not-started (open) proposal and fires claim.lease.reclaimed once", () => {
+    const project = createTestProject(testApp.db);
+    const a = createTestAiAgent(testApp.db);
+
+    // A freshly-created proposal stays `open` — no transition.
+    const proposal = createTestProposal(testApp.db, { projectId: project.id });
+    expect(proposal.status).toBe("open");
+    testApp.db
+      .update(proposals)
+      .set({ claimedBy: a.user.id })
+      .where(eq(proposals.id, proposal.id))
+      .run();
+
+    const t0 = new Date("2026-06-06T10:00:00.000Z");
+    svc.acquireLease("proposal", proposal.id, { id: a.user.id }, {
+      now: t0,
+      ttlMs: 1000,
+    });
+
+    const reclaimedListener = vi.fn();
+    getEventBus().on(EVENT_NAMES.CLAIM_LEASE_RECLAIMED, reclaimedListener);
+
+    const now = new Date(t0.getTime() + 1000 + 5000 + 1);
+    const result = svc.sweepStaleClaims({
+      entityType: "proposal",
+      entityId: proposal.id,
+      mode: "on",
+      graceMs: 5000,
+      now,
+    });
+
+    expect(result.reclaimed).toHaveLength(1);
+    expect(result.reclaimed[0]).toMatchObject({
+      entityType: "proposal",
+      entityId: proposal.id,
+      holderId: a.user.id,
+    });
+
+    // Status untouched (still open), holder cleared via claimed_by.
+    const fresh = testApp.db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.id, proposal.id))
+      .get();
+    expect(fresh!.status).toBe("open");
+    expect(fresh!.claimedBy).toBeNull();
+
+    expect(leaseRow("proposal", proposal.id)).toBeUndefined();
+
+    const audits = auditRows(proposal.id);
+    expect(audits).toHaveLength(1);
+    expect(audits[0].action).toBe("claim_reclaimed");
+    expect(audits[0].targetType).toBe("proposal");
+    expect(audits[0].metadataBefore).toEqual({ claimed_by: a.user.id });
+    expect(audits[0].metadataAfter).toEqual({ claimed_by: null });
+
+    expect(reclaimedListener).toHaveBeenCalledTimes(1);
+  });
+
+  // ── 13. live epic + proposal leases are NEVER freed ──────────────
+  it("sweep on never frees a live epic/proposal lease (future expiry AND within-grace)", () => {
+    const project = createTestProject(testApp.db);
+    const a = createTestAiAgent(testApp.db);
+    const t0 = new Date("2026-06-06T10:00:00.000Z");
+
+    const reclaimedListener = vi.fn();
+    const auditListener = vi.fn();
+    getEventBus().on(EVENT_NAMES.CLAIM_LEASE_RECLAIMED, reclaimedListener);
+    getEventBus().on(EVENT_NAMES.AUDIT_RECORDED, auditListener);
+
+    // (a) Epic with future expiry — clearly live.
+    const liveEpic = createTestEpic(testApp.db, { projectId: project.id });
+    testApp.db
+      .update(epics)
+      .set({ assigneeId: a.user.id })
+      .where(eq(epics.id, liveEpic.id))
+      .run();
+    svc.acquireLease("epic", liveEpic.id, { id: a.user.id }, { now: t0, ttlMs: 60_000 });
+    expect(
+      svc.sweepStaleClaims({
+        entityType: "epic",
+        entityId: liveEpic.id,
+        mode: "on",
+        graceMs: 5000,
+        now: new Date(t0.getTime() + 30_000),
+      }).reclaimed,
+    ).toHaveLength(0);
+
+    // (b) Proposal expired but within grace — live by the grace rule.
+    const graceProposal = createTestProposal(testApp.db, { projectId: project.id });
+    testApp.db
+      .update(proposals)
+      .set({ claimedBy: a.user.id })
+      .where(eq(proposals.id, graceProposal.id))
+      .run();
+    svc.acquireLease("proposal", graceProposal.id, { id: a.user.id }, {
+      now: t0,
+      ttlMs: 1000,
+    });
+    expect(
+      svc.sweepStaleClaims({
+        entityType: "proposal",
+        entityId: graceProposal.id,
+        mode: "on",
+        graceMs: 60_000,
+        // Past expiry (t0+1000) but within +60s grace.
+        now: new Date(t0.getTime() + 1000 + 10_000),
+      }).reclaimed,
+    ).toHaveLength(0);
+
+    // Holders + leases intact; nothing audited, nothing emitted.
+    expect(
+      testApp.db.select().from(epics).where(eq(epics.id, liveEpic.id)).get()!
+        .assigneeId,
+    ).toBe(a.user.id);
+    expect(
+      testApp.db
+        .select()
+        .from(proposals)
+        .where(eq(proposals.id, graceProposal.id))
+        .get()!.claimedBy,
+    ).toBe(a.user.id);
+    expect(leaseRow("epic", liveEpic.id)).toBeDefined();
+    expect(leaseRow("proposal", graceProposal.id)).toBeDefined();
+    expect(reclaimedListener).not.toHaveBeenCalled();
+    expect(auditListener).not.toHaveBeenCalled();
+  });
 });

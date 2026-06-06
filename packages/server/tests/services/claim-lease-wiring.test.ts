@@ -15,12 +15,13 @@ import {
   type TestApp,
   createTestApp,
 } from "../utils.js";
-import { claimLeases, tasks } from "../../src/db/index.js";
+import { claimLeases, epics, tasks } from "../../src/db/index.js";
 import { getEventBus } from "../../src/events/event-bus.js";
 import type { AuthUser } from "../../src/types.js";
 import * as taskSvc from "../../src/services/task.service.js";
 import * as epicSvc from "../../src/services/epic.service.js";
 import * as proposalSvc from "../../src/services/proposal.service.js";
+import * as claimLeaseSvc from "../../src/services/claim-lease.service.js";
 
 // ──────────────────────────────────────────────────────────────────
 // Campaign C2 (claim-lease §P3): the lease wired into the claim
@@ -448,5 +449,46 @@ describe("claim-lease wiring (P3)", () => {
     const lease = leaseRow("task", task.id);
     expect(lease).toBeDefined();
     expect(lease!.holderId).toBe(b.user.id);
+  });
+
+  // ── 13. Headline through the real claim path: a claimed (not started)
+  //        epic whose lease lapses is freed by an explicit mode `on` sweep ──
+  it("an epic claimed via epicSvc.claim (no status change) is freed by a mode-on sweep after expiry", () => {
+    const t0 = new Date("2026-06-06T10:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(t0);
+
+    const project = createTestProject(testApp.db);
+    const a = createTestAiAgent(testApp.db);
+
+    // Claim acquires the lease through the real path; the epic never leaves its
+    // initial status (no transition is performed).
+    const epic = createTestEpic(testApp.db, { projectId: project.id });
+    expect(epicSvc.claim(epic.id, aiActor(a.user.id)).ok).toBe(true);
+    expect(leaseRow("epic", epic.id)!.holderId).toBe(a.user.id);
+    const claimedEpic = testApp.db
+      .select()
+      .from(epics)
+      .where(eq(epics.id, epic.id))
+      .get()!;
+    expect(claimedEpic.assigneeId).toBe(a.user.id);
+
+    // Lapse past TTL + grace, then run the sweep in mode `on` explicitly.
+    const later = new Date(
+      t0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000,
+    );
+    const result = claimLeaseSvc.sweepStaleClaims({
+      entityType: "epic",
+      entityId: epic.id,
+      mode: "on",
+      now: later,
+    });
+
+    expect(result.reclaimed).toHaveLength(1);
+    expect(leaseRow("epic", epic.id)).toBeUndefined();
+    expect(
+      testApp.db.select().from(epics).where(eq(epics.id, epic.id)).get()!
+        .assigneeId,
+    ).toBeNull();
   });
 });

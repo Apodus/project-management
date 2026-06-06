@@ -1,7 +1,6 @@
 import { and, asc, eq, lt } from "drizzle-orm";
 import {
   createId,
-  CLAIM_LEASE_RECLAIMED_EVENT,
   LEASE_MODE_DEFAULT,
   LEASE_TTL_MS_DEFAULT,
   LEASE_GRACE_MS_DEFAULT,
@@ -21,7 +20,7 @@ import {
   record as recordAudit,
   emitAuditRecorded,
 } from "./audit.service.js";
-import { getEventBus } from "../events/event-bus.js";
+import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 
 // ─── Config ───────────────────────────────────────────────────────
 //
@@ -495,7 +494,7 @@ function reclaimOne(
     .from(cfg.table)
     .where(eq(cfg.table.id, entityId))
     .get() as EntityRow;
-  getEventBus().emit(CLAIM_LEASE_RECLAIMED_EVENT as never, {
+  getEventBus().emit(EVENT_NAMES.CLAIM_LEASE_RECLAIMED, {
     entity: updated,
     entityType: cfg.auditTargetType,
     entityId,

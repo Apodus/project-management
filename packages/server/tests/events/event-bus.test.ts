@@ -7,9 +7,13 @@ import {
   type EventPayload,
   type EventName,
 } from "../../src/events/event-bus.js";
-import { registerActivityLogListener } from "../../src/events/listeners.js";
+import { eq, and } from "drizzle-orm";
+import { activityLog, auditLog, epics } from "../../src/db/index.js";
+import * as claimLeaseSvc from "../../src/services/claim-lease.service.js";
 import {
   createTestApp,
+  createTestAiAgent,
+  createTestEpic,
   createTestProject,
   createTestUser,
   authRequest,
@@ -398,6 +402,136 @@ describe("Event Bus", () => {
       for (const name of expected) {
         expect(values).toContain(name);
       }
+    });
+  });
+
+  // ─── Campaign C2: claim.lease.reclaimed registration + record model ───
+  //
+  // P4 registers the claim-lease reclaim event so onAll auto-forwards it to
+  // the SSE stream and the activity_log listener maps it to "assigned". These
+  // tests pin the name/value, prove the onAll forward end-to-end through the
+  // real claim-lease.service emit site, and confirm the established two-table
+  // record model (one activity_log "assigned" feed row + one audit_log
+  // claim_reclaimed ledger row per reclaim).
+
+  describe("Campaign C2 claim.lease.reclaimed registration", () => {
+    it("CLAIM_LEASE_RECLAIMED = 'claim.lease.reclaimed'", () => {
+      expect(EVENT_NAMES.CLAIM_LEASE_RECLAIMED).toBe("claim.lease.reclaimed");
+    });
+
+    it("'claim.lease.reclaimed' is present in EVENT_NAMES values", () => {
+      const values = Object.values(EVENT_NAMES) as string[];
+      expect(values).toContain("claim.lease.reclaimed");
+    });
+  });
+
+  describe("Campaign C2 claim.lease.reclaimed onAll + record model", () => {
+    let testApp: TestApp;
+
+    beforeEach(() => {
+      testApp = createTestApp();
+    });
+
+    afterEach(() => {
+      testApp.cleanup();
+    });
+
+    it("onAll forwards a mode-on reclaim as one 'claim.lease.reclaimed' event with the expected payload", () => {
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const epic = createTestEpic(testApp.db, { projectId: project.id });
+      testApp.db
+        .update(epics)
+        .set({ assigneeId: a.user.id })
+        .where(eq(epics.id, epic.id))
+        .run();
+
+      const t0 = new Date("2026-06-06T10:00:00.000Z");
+      claimLeaseSvc.acquireLease("epic", epic.id, { id: a.user.id }, {
+        now: t0,
+        ttlMs: 1000,
+      });
+
+      // Capture every event the onAll fan-out delivers.
+      const captured: Array<{ event: EventName; payload: EventPayload }> = [];
+      const unsubscribe = getEventBus().onAll((event, payload) => {
+        captured.push({ event, payload });
+      });
+
+      claimLeaseSvc.sweepStaleClaims({
+        entityType: "epic",
+        entityId: epic.id,
+        mode: "on",
+        graceMs: 0,
+        now: new Date(t0.getTime() + 1_000_000),
+      });
+      unsubscribe();
+
+      const reclaimEvents = captured.filter(
+        (c) => c.event === EVENT_NAMES.CLAIM_LEASE_RECLAIMED,
+      );
+      expect(reclaimEvents).toHaveLength(1);
+      const { payload } = reclaimEvents[0];
+      expect(payload.entityType).toBe("epic");
+      expect(payload.entityId).toBe(epic.id);
+      expect(payload.projectId).toBe(project.id);
+      expect(payload.changes).toEqual({
+        assignee_id: { from: a.user.id, to: null },
+      });
+    });
+
+    it("a mode-on reclaim writes one activity_log 'assigned' row AND one audit_log claim_reclaimed row for the same target", () => {
+      // createTestApp() → createApp() already wires the activity_log listener
+      // via initializeEventListeners(), so onAll fan-out reaches it (calling
+      // registerActivityLogListener() again here would double-register → 2 rows).
+
+      const project = createTestProject(testApp.db);
+      const a = createTestAiAgent(testApp.db);
+      const epic = createTestEpic(testApp.db, { projectId: project.id });
+      testApp.db
+        .update(epics)
+        .set({ assigneeId: a.user.id })
+        .where(eq(epics.id, epic.id))
+        .run();
+
+      const t0 = new Date("2026-06-06T10:00:00.000Z");
+      claimLeaseSvc.acquireLease("epic", epic.id, { id: a.user.id }, {
+        now: t0,
+        ttlMs: 1000,
+      });
+
+      const result = claimLeaseSvc.sweepStaleClaims({
+        entityType: "epic",
+        entityId: epic.id,
+        mode: "on",
+        graceMs: 0,
+        now: new Date(t0.getTime() + 1_000_000),
+      });
+      expect(result.reclaimed).toHaveLength(1);
+
+      // Feed row: exactly one activity_log "assigned" entry for the epic.
+      const activityRows = testApp.db
+        .select()
+        .from(activityLog)
+        .where(
+          and(
+            eq(activityLog.entityType, "epic"),
+            eq(activityLog.entityId, epic.id),
+          ),
+        )
+        .all();
+      expect(activityRows).toHaveLength(1);
+      expect(activityRows[0].action).toBe("assigned");
+
+      // Ledger row: exactly one audit_log claim_reclaimed entry for the epic.
+      const auditRows = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.targetId, epic.id))
+        .all();
+      expect(auditRows).toHaveLength(1);
+      expect(auditRows[0].action).toBe("claim_reclaimed");
+      expect(auditRows[0].targetType).toBe("epic");
     });
   });
 });
