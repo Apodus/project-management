@@ -78,6 +78,7 @@ All three are **false-positive-prone**: a crashed agent's task stays `in_progres
 - **Cost of not doing it:** the core problem remains unsolved — claims hang forever, double-pickup stays possible, the human keeps manually surveying 0/n epics to guess what's dead.
 
 ### C3 — Liveness everywhere a decision is made (agent + operator)
+- **Status: shipped (2026-06-06).** See `docs/design/phase-c3-liveness-surfacing.md`.
 - **Goal:** Replace the dangerous proxies with a first-class **claim_state** (`unclaimed | live | stale | yours`) surfaced on every read used to decide pickup; make pickup tools act on it; and give the human director stale-claim visibility, alerts, and a clean handoff — so nobody hand-surveys 0/n epics again.
 - **Tier:** A (the user-visible win — "without a shadow of a doubt"). Hard-depends on C2.
 - **Why this order:** `claim_state` derives from C2's lease; the alert consumes C2's sweep event; handoff composes the shipped `forceClaim`.
