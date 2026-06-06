@@ -1,0 +1,31 @@
+{
+  "roadmap": "roadmaps/phase-7.6.1-resolver-in-session-loop.md",
+  "branch": "campaign-resolver-in-session-loop",
+  "status": "COMPLETE",
+  "completed_steps": ["P1", "P2", "P3", "P4", "P5"],
+  "current_step": null,
+  "commits": {
+    "design+roadmap": "550ff07",
+    "P1": "b21e609",
+    "P2": "8038e6d",
+    "P3": "4aca266",
+    "P4": "501b287",
+    "P5": "c6b7398"
+  },
+  "final_suite": "whole monorepo green: typecheck 6/6, lint 0 errors, build 5/5, test 10/10 tasks (shared 419, mcp 119, web 364, server 1248, integrator 288 pass/1 skip)",
+  "steps": {
+    "P1": { "title": "Prompt + config", "status": "complete", "commit": "b21e609" },
+    "P2": { "title": "Runner status protocol", "status": "complete", "commit": "8038e6d" },
+    "P3": { "title": "Pool drops its verify gate", "status": "complete", "commit": "4aca266" },
+    "P4": { "title": "Reclaim sweep", "status": "complete", "commit": "501b287" },
+    "P5": { "title": "Seal (e2e + metrics + docs)", "status": "complete", "commit": "c6b7398" }
+  },
+  "execution_mode": "sequential (shared slow integrator suite + single working tree)",
+  "open_issues": [],
+  "follow_ups": [
+    "Branch NOT merged to main / not pushed — awaiting user.",
+    "After merge: re-distribute to game_one (node scripts/distribute.mjs) so the new in-session-loop resolver bundle reaches them; their daemon picks it up on next restart via run_daemon.bat.",
+    "reclaimed_count counts sweep-ESCALATED rows only (session_died_or_timeout); sweep-RECONCILED rows are uncountable without a schema marker (deferred, no migration).",
+    "mean_session_sec is the seconds view of the existing mean_wall_clock_ms (additive, per design §8)."
+  ]
+}

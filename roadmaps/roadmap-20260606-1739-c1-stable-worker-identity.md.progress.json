@@ -1,0 +1,18 @@
+{
+  "campaign": "C1 — Stable Worker Identity",
+  "roadmap": "roadmaps/roadmap-20260606-1739-c1-stable-worker-identity.md",
+  "vision": "roadmaps/vision-20260606-claim-liveness-heartbeat.md",
+  "branch": "campaign-claim-liveness-c1-c3",
+  "base": "main @ aae1bbd (C2 shipped)",
+  "started_at": "2026-06-06T17:39:00Z",
+  "design_decision": "Worker-key shape: server-issued durable bind_handle + client worker_key as lookup, stored on agent_claims (+worker_key/worker_key_pool_id/bind_handle cols, partial unique index). Keyed-bound agents excluded from free pool expiry-independently (verifier fix).",
+  "phases": [
+    { "id": "P1", "title": "server-side stable worker binding", "status": "complete", "commit": "a065f0e", "outcome": "claimAgent(pool,secret,workerKey?) — keyed binding reuses same users row + fresh token; migration 0022; identity-sharing hole closed (free-agent select excludes worker_key IS NOT NULL regardless of expiry). server 1296, full 10/10." },
+    { "id": "P2", "title": "MCP client persists + presents worker key (reconnect re-binds same identity)", "status": "complete", "commit": "db5a3ce", "outcome": "api-client claimAgent(pool,secret,workerKey?) + index.ts reads PM_WORKER_KEY; cleanup SKIPS releaseAgent when keyed (verifier fix — else release deletes the binding and respawn first-binds a new identity); bindHandle ignored; docs. mcp-server 126/126, typecheck 6/6, build 5/5. Keyless byte-identical." },
+    { "id": "P3", "title": "seal — shared-host distinctness + back-compat + force-claim + docs + full suite", "status": "pending" }
+  ],
+  "open_issues": [
+    "BLOCKER (external): the working tree carries ~13 uncommitted files implementing a parallel 'requeue' merge-request feature (audit action requeue + integrator-ref batch/loop/sse + server merge-request.service/event-bus + web). Not from this campaign (tree was clean at branch). It breaks full pnpm test (audit.test.ts exhaustive AUDIT_ACTIONS assertion has no 'requeue' case). C1 work is green in isolation. Surfaced to user 2026-06-06 — awaiting decision on reconciling the parallel WIP before C1-P3 seal + C3 (which also touch server/web/event-bus and could entangle)."
+  ],
+  "next_campaign": "C3 — liveness surfacing (claim_state in reads + pick-next + badges + alerts/handoff), on the same branch after C1."
+}
