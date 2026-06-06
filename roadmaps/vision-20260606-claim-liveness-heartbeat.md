@@ -60,6 +60,7 @@ All three are **false-positive-prone**: a crashed agent's task stays `in_progres
 - **Cost of not doing it:** every reconnect during long work keeps stranding claims and locking items behind `CLAIM_DENIED`; C2's auto-reclaim cannot be turned on safely (it will false-reclaim reconnected-but-live work); force-claim stays a routine chore instead of rare break-glass.
 
 ### C2 — The claim lease engine (foundation)
+- **Status: shipped (2026-06-06, shadow/long-grace).** See `docs/design/phase-c2-claim-lease-engine.md`.
 - **Goal:** Make a claim a **lease**: it lives only while the holder is provably alive, renews **automatically from real activity**, and is swept back to *available* when it goes stale — uniformly for tasks, epics, and proposals, at **any** status including not-started.
 - **Tier:** S (the spine — the signal everything else consumes).
 - **Why this order:** C3 has nothing to surface until the live/stale signal exists. It generalizes the proven merge-lock lease pattern already running in production on the train.

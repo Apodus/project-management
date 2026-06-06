@@ -286,6 +286,24 @@ dangling-`resolving` gap. Metrics add **`mean_session_sec`** (seconds view of `m
 spec: `docs/design/phase-7.6.1-resolver-in-session-loop.md`; operator guide:
 `docs/integrator-deployment.md` §18.7.
 
+**Claim lease engine (Campaign C2).** A claim is a **lease**, not a permanent grab: a single row per
+`(entity_type, entity_id)` in `claim_leases` tracks the holder + a TTL-derived `expiresAt`
+(the entity's `assigneeId`/`claimedBy` stays the human-facing holder pointer; the lease is the
+liveness layer beside it). **Renew-on-action**: every claimed write flows through the liveness-aware
+`assertClaimOk`, which renews the holder's own lease forward — so a holder is **never 409'd for its own
+stale lease** (self-stale → renew), and only a *different* agent is gated. Reclaim is an
+**opportunistic on-read sweep** (merge-lock parity — piggybacked on claim/pick, no scheduler / no
+background thread): lapsed leases (`now > expiresAt + grace`) are detected and, in mode `on`, the
+holder is cleared atomically with exactly one `claim_reclaimed` audit row + one `claim.lease.reclaimed`
+SSE event per reclaim. The engine is governed by `PM_LEASE_MODE` (`off`/`shadow`/`on`, default
+**`shadow`**) + `PM_LEASE_TTL_SEC` (default 1800) + `PM_LEASE_GRACE_SEC` (default 86400): **off** =
+inert (pre-C2), **shadow** = detect-only (the safe-rollout rung — observe lapses, never reclaim),
+**on** = the lease governs (reclaim active). The discipline is **shadow → observe → on**, and **`on`
+is C1-gated** — stable worker identity is the precondition (an agent whose id churns per session would
+be wrongly reclaimed). Everything is **fail-safe-to-live**: a null/unparseable `expiresAt`, a
+misconfigured knob, or a vanished entity is never aggressively reclaimed. Ships in `shadow` with a long
+(24h) grace. Full spec: `docs/design/phase-c2-claim-lease-engine.md`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:
@@ -343,6 +361,9 @@ The MCP server exposes tools for:
 | `PM_SESSION_SECRET` | (generated)             | Session signing secret                  |
 | `PM_LOG_LEVEL`      | `info`                  | Logging verbosity                       |
 | `PM_WEB_DIST_PATH`  | (auto-resolved)         | Override path to web dist directory     |
+| `PM_LEASE_MODE`     | `shadow`                | Claim lease engine: `off`/`shadow`/`on` (`on` is C1-gated) |
+| `PM_LEASE_TTL_SEC`  | `1800`                  | Claim lease TTL (seconds) before a lease lapses |
+| `PM_LEASE_GRACE_SEC`| `86400`                 | Reclaim grace (seconds) beyond TTL before sweep |
 | `PM_API_URL`        | `http://localhost:3000` | MCP server: API base URL                |
 | `PM_API_TOKEN`      | (none)                  | MCP server: API authentication token    |
 

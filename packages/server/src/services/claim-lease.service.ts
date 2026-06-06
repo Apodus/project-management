@@ -1,6 +1,7 @@
 import { and, asc, eq, lt } from "drizzle-orm";
 import {
   createId,
+  LEASE_MODES,
   LEASE_MODE_DEFAULT,
   LEASE_TTL_MS_DEFAULT,
   LEASE_GRACE_MS_DEFAULT,
@@ -31,12 +32,41 @@ import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 // entity mutation it performs is clearing a holder during a mode `on` reclaim
 // (and even that mirrors the existing forceClaim txn shape EXACTLY).
 //
-// Defaults read from @pm/shared so the production posture (shadow mode, 30m
-// TTL, 24h grace) lives in one canonical place. Every public fn accepts an
-// `opts` override so tests can exercise off/shadow/on + clock deterministically.
-const LEASE_MODE: LeaseMode = LEASE_MODE_DEFAULT;
-const LEASE_TTL_MS = LEASE_TTL_MS_DEFAULT;
-const LEASE_GRACE_MS = LEASE_GRACE_MS_DEFAULT;
+// The consts read PM_LEASE_MODE / PM_LEASE_TTL_SEC / PM_LEASE_GRACE_SEC, with
+// the @pm/shared defaults as fallback so the production posture (shadow mode,
+// 30m TTL, 24h grace) is unchanged when the env is unset. Every public fn also
+// accepts an `opts` override so tests can exercise off/shadow/on + clock
+// deterministically.
+//
+// Parse a `PM_LEASE_*_SEC` env value (seconds) into ms. An unset, non-numeric,
+// or non-positive value falls back to `defaultMs` (warn-and-continue posture:
+// a misconfigured knob never weakens the safe default).
+function parsePositiveSec(raw: string | undefined, defaultMs: number): number {
+  if (raw == null) return defaultMs;
+  const sec = Number.parseInt(raw, 10);
+  return Number.isNaN(sec) || sec <= 0 ? defaultMs : sec * 1000;
+}
+
+function resolveLeaseMode(): LeaseMode {
+  const raw = process.env.PM_LEASE_MODE;
+  if (raw == null) return LEASE_MODE_DEFAULT;
+  if ((LEASE_MODES as readonly string[]).includes(raw)) return raw as LeaseMode;
+  console.warn(
+    `WARNING: PM_LEASE_MODE="${raw}" is not one of ${LEASE_MODES.join("/")}. ` +
+      `Falling back to "${LEASE_MODE_DEFAULT}".`,
+  );
+  return LEASE_MODE_DEFAULT;
+}
+
+const LEASE_MODE: LeaseMode = resolveLeaseMode();
+const LEASE_TTL_MS = parsePositiveSec(
+  process.env.PM_LEASE_TTL_SEC,
+  LEASE_TTL_MS_DEFAULT,
+);
+const LEASE_GRACE_MS = parsePositiveSec(
+  process.env.PM_LEASE_GRACE_SEC,
+  LEASE_GRACE_MS_DEFAULT,
+);
 
 // ─── Types ────────────────────────────────────────────────────────
 

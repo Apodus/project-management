@@ -1,0 +1,20 @@
+{
+  "campaign": "C2 — The Claim Lease Engine",
+  "roadmap": "roadmaps/roadmap-20260606-1413-c2-claim-lease-engine.md",
+  "vision": "roadmaps/vision-20260606-claim-liveness-heartbeat.md",
+  "branch": "campaign-claim-lease-engine",
+  "started_at": "2026-06-06T14:13:00Z",
+  "phases": [
+    { "id": "P1", "title": "claim_leases schema + shared types + migration", "status": "complete", "commit": "e437c28", "outcome": "claim_leases table + LEASE_MODES/LEASE_*_DEFAULT/claim_reclaimed audit action/claim.lease.reclaimed event + migration 0021; shared 433, server 1255, typecheck 6/6, lint 0. No behavior change." },
+    { "id": "P2", "title": "claim-lease.service lifecycle + opportunistic sweep", "status": "complete", "commit": "bf80508", "outcome": "claim-lease.service.ts (readLease/deriveLiveness/acquireLease/renewLease/sweepStaleClaims; off/shadow/on; reclaim txn mirrors forceClaim w/ audit+SSE+atomic abort guard). 11/11 new, server 1266. Pure addition, shadow default." },
+    { "id": "P3", "title": "renew-on-action + self-stale rule in assertClaimOk; lease creation on claim/start/pick", "status": "complete", "commit": "6d37c9b", "outcome": "assertClaimOk liveness-aware (single seam via 3 wrappers): holder renews/creates lease never 409; non-holder 409 unchanged; human no lease. Lease create on claim/start/pick(+idempotent), teardown on release/terminal/archive, transfer on force-claim, sync on assignee PATCH. Shadow sweep wired (no-op). +deleteLease primitive. 12/12 new, server 1278." },
+    { "id": "P4", "title": "reclaim completeness (epics+proposals+not-started) + remove dead code + audit/SSE finalize", "status": "complete", "commit": "b138687", "outcome": "Registered claim.lease.reclaimed in EVENT_NAMES (streams via onAll) + mapped to activity 'assigned'; dropped as-never cast; removed dead cleanExpiredClaims/reclaimStaleTasks (zero callers). Proved not-started-epic + proposal reclaim (audit ledger + activity feed). server 1286, shared 433." },
+    { "id": "P5", "title": "seal — config surfacing (default shadow) + e2e + docs + full suite green", "status": "complete", "outcome": "Env-configurable lease mode/TTL/grace (PM_LEASE_MODE/PM_LEASE_TTL_SEC/PM_LEASE_GRACE_SEC, default shadow/30m/24h, flip is config-only). Full-lifecycle e2e test. CLAUDE.md note + docs/design/phase-c2-claim-lease-engine.md. Full suite 10/10 turbo (server 1287, shared 433, integrator 293/1skip), typecheck 6/6, lint 6/6, build 5/5." }
+  ],
+  "campaign_status": "SHIPPED 2026-06-06 — all phases P1-P5 green; ships in shadow/long-grace; auto-reclaim 'on' is C1-gated.",
+  "open_issues": [
+    "db:generate is broken repo-wide (meta/0005 & 0006 snapshot id collision); migrations 0007+ are hand-authored. Any future migration phase must hand-author in drizzle format (mirror 0017_merge_resolutions.sql). C2 has no further schema phases."
+  ],
+  "dag_drift": [],
+  "notes": "Single-campaign drive of C2 from the vision arc (user named C2). Ships in shadow/long-grace; turning auto-reclaim 'on' is C1-gated, out of scope."
+}
