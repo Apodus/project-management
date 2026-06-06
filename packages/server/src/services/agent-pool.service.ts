@@ -56,6 +56,12 @@ export interface ClaimResult {
     type: string;
   };
   token: string;
+  /**
+   * Opaque per-binding correlation token, present only for keyed claims
+   * (when a workerKey was supplied). Stable across reconnects for the same
+   * (pool, workerKey) tuple — the client can use it to assert continuity.
+   */
+  bindHandle?: string;
 }
 
 // ─── Pool CRUD ──────────────────────────────────────────────────────
@@ -214,7 +220,7 @@ export function listPools(): PoolSummary[] {
          p.id, p.name, p.description, p.created_at, p.updated_at, p.created_by,
          COUNT(u.id) AS agent_count,
          COUNT(CASE WHEN ac.id IS NOT NULL AND ac.expires_at >= ? THEN 1 END) AS claimed_count,
-         COUNT(CASE WHEN u.is_active = 1 AND (ac.id IS NULL OR ac.expires_at < ?) THEN 1 END) AS available_count
+         COUNT(CASE WHEN u.is_active = 1 AND ac.worker_key IS NULL AND (ac.id IS NULL OR ac.expires_at < ?) THEN 1 END) AS available_count
        FROM agent_pools p
        LEFT JOIN users u ON u.pool_id = p.id AND u.type = 'ai_agent'
        LEFT JOIN agent_claims ac ON ac.user_id = u.id
@@ -339,9 +345,55 @@ async function ensureDefaultPoolFromEnv(): Promise<void> {
 }
 
 /**
- * Claim an available AI agent from a named pool.
+ * Candidate predicate (shared by the keyless and keyed-first-bind paths):
+ * a free AI agent in THIS pool. Two exclusions:
+ *   1. no live (non-expired) claim of ANY kind, and
+ *   2. no keyed binding at all (expiry-INDEPENDENT) — a keyed-bound agent is
+ *      reserved for its worker forever, so it must never be grabbed by a
+ *      keyless claim or by a DIFFERENT key's first-bind, even after its TTL
+ *      lapses. This is the structural guarantee against identity-sharing
+ *      (VERIFIER CORRECTION 1). Keyless rows have worker_key NULL, so the
+ *      second exclusion is a no-op for them and keyless behavior for keyless
+ *      rows is byte-identical to the pre-C1 implementation.
  */
-export async function claimAgent(poolName: string, poolSecret: string): Promise<ClaimResult | null> {
+const FREE_AGENT_SQL = `SELECT u.id, u.username, u.display_name, u.role, u.type
+   FROM users u
+   WHERE u.type = 'ai_agent'
+     AND u.pool_id = ?
+     AND u.is_active = 1
+     AND u.id NOT IN (
+       SELECT ac.user_id FROM agent_claims ac WHERE ac.expires_at >= ?
+     )
+     AND u.id NOT IN (
+       SELECT ac.user_id FROM agent_claims ac WHERE ac.worker_key IS NOT NULL
+     )
+   ORDER BY u.username ASC
+   LIMIT 1`;
+
+interface AgentCandidate {
+  id: string;
+  username: string;
+  display_name: string;
+  role: string;
+  type: string;
+}
+
+/**
+ * Claim an available AI agent from a named pool.
+ *
+ * Two modes:
+ *   - **Keyless** (no `workerKey`): grab any free agent + mint a fresh token.
+ *     Byte-identical to the pre-C1 behavior (modulo the additive exclusion of
+ *     keyed-bound agents, which can never apply to a keyless-only deployment).
+ *   - **Keyed** (`workerKey` present): resolve `(pool, workerKey)` to the SAME
+ *     users row across reconnects. First call binds a free agent; subsequent
+ *     calls refresh that same binding. Returns a stable `bindHandle`.
+ */
+export async function claimAgent(
+  poolName: string,
+  poolSecret: string,
+  workerKey?: string,
+): Promise<ClaimResult | null> {
   // Backward compat: auto-create default pool from env var
   await ensureDefaultPoolFromEnv();
 
@@ -357,7 +409,8 @@ export async function claimAgent(poolName: string, poolSecret: string): Promise<
     throw new AppError(503, "POOL_NOT_CONFIGURED", "Pool secret is not configured");
   }
 
-  // Validate secret
+  // Validate secret FIRST, before ANY key handling (security: a wrong secret
+  // must never create or mutate a binding row).
   const valid = await bcrypt.compare(poolSecret, pool.secretHash);
   if (!valid) {
     throw new AppError(401, "INVALID_POOL_SECRET", "Invalid pool secret");
@@ -367,66 +420,143 @@ export async function claimAgent(poolName: string, poolSecret: string): Promise<
   const now = new Date().toISOString();
   const expiresAt = new Date(Date.now() + CLAIM_TTL_MS).toISOString();
 
-  // Use a transaction to atomically find and claim an agent
-  const claimedUserId = rawDb.transaction(() => {
-    // Clean expired claims first
-    rawDb
-      .prepare(`DELETE FROM agent_claims WHERE expires_at < ?`)
-      .run(now);
+  // ─── Keyless path (legacy / no stable identity) ────────────────────
+  if (workerKey == null) {
+    const claimedUserId = rawDb.transaction(() => {
+      // Clean expired keyless claims first. NEVER reap keyed bindings — a
+      // keyed binding outlives its TTL by design (it is reserved for its
+      // worker across reconnects); only the keyed path itself refreshes or
+      // tears one down.
+      rawDb
+        .prepare(`DELETE FROM agent_claims WHERE expires_at < ? AND worker_key IS NULL`)
+        .run(now);
 
-    // Find first active AI agent in THIS pool with no active claim
-    const candidate = rawDb
-      .prepare(
-        `SELECT u.id, u.username, u.display_name, u.role, u.type
-         FROM users u
-         WHERE u.type = 'ai_agent'
-           AND u.pool_id = ?
-           AND u.is_active = 1
-           AND u.id NOT IN (
-             SELECT ac.user_id FROM agent_claims ac
-             WHERE ac.expires_at >= ?
-           )
-         ORDER BY u.username ASC
-         LIMIT 1`,
-      )
-      .get(pool.id, now) as
-      | { id: string; username: string; display_name: string; role: string; type: string }
-      | undefined;
+      const candidate = rawDb.prepare(FREE_AGENT_SQL).get(pool.id, now) as
+        | AgentCandidate
+        | undefined;
 
-    if (!candidate) {
+      if (!candidate) {
+        return null;
+      }
+
+      const claimId = createId();
+      rawDb
+        .prepare(
+          `INSERT INTO agent_claims (id, user_id, claimed_at, expires_at, heartbeat_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(claimId, candidate.id, now, expiresAt, now);
+
+      return candidate.id;
+    })();
+
+    if (!claimedUserId) {
       return null;
     }
 
-    // Create the claim record
-    const claimId = createId();
-    rawDb
-      .prepare(
-        `INSERT INTO agent_claims (id, user_id, claimed_at, expires_at, heartbeat_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(claimId, candidate.id, now, expiresAt, now);
+    return buildClaimResult(db, claimedUserId, await authService.createApiToken(claimedUserId));
+  }
 
-    return candidate.id;
-  })();
+  // ─── Keyed path (stable worker identity) ───────────────────────────
+  // Resolve (pool, workerKey) to a single users row. The whole resolution is
+  // a closure so it can be retried as a rebind if a concurrent first-bind
+  // wins the unique-index race.
+  const resolveKeyed = (): { userId: string; bindHandle: string } | null => {
+    return rawDb.transaction(() => {
+      // 1. Look up the binding IGNORING expiry — a keyed binding persists
+      //    across TTL lapses.
+      const binding = rawDb
+        .prepare(
+          `SELECT id, user_id, bind_handle FROM agent_claims
+           WHERE worker_key_pool_id = ? AND worker_key = ?`,
+        )
+        .get(pool.id, workerKey) as
+        | { id: string; user_id: string; bind_handle: string | null }
+        | undefined;
 
-  if (!claimedUserId) {
+      if (binding) {
+        // 2. Rebind: the bound user must still be a valid agent in THIS pool.
+        const boundUser = rawDb
+          .prepare(
+            `SELECT id FROM users
+             WHERE id = ? AND type = 'ai_agent' AND is_active = 1 AND pool_id = ?`,
+          )
+          .get(binding.user_id, pool.id) as { id: string } | undefined;
+
+        if (!boundUser) {
+          // Stale binding (agent removed / deactivated / re-pooled). Drop it
+          // and fall through to a fresh first-bind below.
+          rawDb.prepare(`DELETE FROM agent_claims WHERE id = ?`).run(binding.id);
+        } else {
+          // Refresh the SAME row in place — same user_id + same bind_handle.
+          rawDb
+            .prepare(
+              `UPDATE agent_claims SET claimed_at = ?, expires_at = ?, heartbeat_at = ? WHERE id = ?`,
+            )
+            .run(now, expiresAt, now, binding.id);
+          return { userId: binding.user_id, bindHandle: binding.bind_handle ?? "" };
+        }
+      }
+
+      // 3. First bind: grab a free agent (same predicate as keyless, INCLUDING
+      //    the worker_key-bound exclusion) and create the binding row.
+      const candidate = rawDb.prepare(FREE_AGENT_SQL).get(pool.id, now) as
+        | AgentCandidate
+        | undefined;
+
+      if (!candidate) {
+        return null;
+      }
+
+      const claimId = createId();
+      const bindHandle = authService.generateToken();
+      rawDb
+        .prepare(
+          `INSERT INTO agent_claims
+             (id, user_id, claimed_at, expires_at, heartbeat_at, worker_key, worker_key_pool_id, bind_handle)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(claimId, candidate.id, now, expiresAt, now, workerKey, pool.id, bindHandle);
+
+      return { userId: candidate.id, bindHandle };
+    })();
+  };
+
+  let resolved: { userId: string; bindHandle: string } | null;
+  try {
+    resolved = resolveKeyed();
+  } catch (err: unknown) {
+    // Concurrent first-bind won the unique index (idx_agent_claims_worker).
+    // Retry once as a rebind — the binding row now exists.
+    if (isUniqueConstraintError(err)) {
+      resolved = resolveKeyed();
+    } else {
+      throw err;
+    }
+  }
+
+  if (!resolved) {
     return null;
   }
 
-  // Generate a fresh API token for the claimed user (outside transaction since it's async)
-  const token = await authService.createApiToken(claimedUserId);
+  const token = await authService.createApiToken(resolved.userId);
+  return buildClaimResult(db, resolved.userId, token, resolved.bindHandle);
+}
 
-  // Fetch the user record
-  const user = db
-    .select()
-    .from(users)
-    .where(eq(users.id, claimedUserId))
-    .get();
-
+/**
+ * Build the ClaimResult envelope from a resolved user id + token.
+ * Returns null if the user vanished between resolution and fetch.
+ */
+function buildClaimResult(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  token: string,
+  bindHandle?: string,
+): ClaimResult | null {
+  const user = db.select().from(users).where(eq(users.id, userId)).get();
   if (!user) {
     return null;
   }
-
   return {
     user: {
       id: user.id,
@@ -436,7 +566,22 @@ export async function claimAgent(poolName: string, poolSecret: string): Promise<
       type: user.type,
     },
     token,
+    ...(bindHandle !== undefined ? { bindHandle } : {}),
   };
+}
+
+/** Detect a SQLite unique-constraint violation (better-sqlite3 error shape). */
+function isUniqueConstraintError(err: unknown): boolean {
+  const code =
+    typeof err === "object" && err !== null && "code" in err
+      ? (err as { code?: unknown }).code
+      : undefined;
+  const message = err instanceof Error ? err.message : undefined;
+  return (
+    code === "SQLITE_CONSTRAINT_UNIQUE" ||
+    code === "SQLITE_CONSTRAINT" ||
+    (typeof message === "string" && message.includes("UNIQUE constraint failed"))
+  );
 }
 
 /**

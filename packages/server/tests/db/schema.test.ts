@@ -109,6 +109,15 @@ describe("Database schema", () => {
       const names = (cols as any[]).map((c: any) => c.name);
       expect(names).toContain("resolved_from");
     });
+
+    it("migration 0022: agent_claims has the additive worker-binding columns", () => {
+      const db = setupDb();
+      const cols = db.all<{ name: string }>(sql`PRAGMA table_info(agent_claims)`);
+      const names = (cols as any[]).map((c: any) => c.name);
+      expect(names).toContain("worker_key");
+      expect(names).toContain("worker_key_pool_id");
+      expect(names).toContain("bind_handle");
+    });
   });
 
   // ── Index existence ──────────────────────────────────────────────
@@ -159,6 +168,7 @@ describe("Database schema", () => {
         "idx_claim_leases_entity",
         "idx_claim_leases_type_expires",
         "idx_claim_leases_holder",
+        "idx_agent_claims_worker",
       ].sort();
 
       for (const idx of expected) {

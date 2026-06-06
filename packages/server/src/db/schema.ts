@@ -173,16 +173,40 @@ export const epicDependencies = sqliteTable(
 );
 
 // ─── agent_claims ─────────────────────────────────────────────────
-export const agentClaims = sqliteTable("agent_claims", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id),
-  claimedAt: text("claimed_at").notNull(),
-  expiresAt: text("expires_at").notNull(),
-  heartbeatAt: text("heartbeat_at").notNull(),
-  poolSecretHash: text("pool_secret_hash"),
-});
+export const agentClaims = sqliteTable(
+  "agent_claims",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    claimedAt: text("claimed_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    heartbeatAt: text("heartbeat_at").notNull(),
+    poolSecretHash: text("pool_secret_hash"),
+    // ─── Stable worker identity (C1) ─────────────────────────────────
+    // A keyed binding ties a stable (pool, workerKey) tuple to a single
+    // users row across reconnects, killing the reconnect→new-identity bug.
+    // All three are NULL for legacy keyless claims (byte-identical 7.x).
+    // workerKeyPoolId mirrors the owning pool so the partial unique index
+    // scopes keys per-pool (the same workerKey in two pools is distinct).
+    // bindHandle is an opaque per-binding correlation token handed to the
+    // client so it can prove continuity of the same binding.
+    workerKey: text("worker_key"),
+    workerKeyPoolId: text("worker_key_pool_id"),
+    bindHandle: text("bind_handle"),
+  },
+  (table) => [
+    // Partial unique index: at most one binding per (pool, workerKey).
+    // The migration is the runtime source of truth (db:generate is unused);
+    // this declaration keeps the drizzle schema legible and the index name
+    // discoverable. The `.where()` predicate restricts uniqueness to keyed
+    // rows so keyless claims (worker_key NULL) are unconstrained.
+    uniqueIndex("idx_agent_claims_worker")
+      .on(table.workerKeyPoolId, table.workerKey)
+      .where(sql`worker_key IS NOT NULL`),
+  ],
+);
 
 // ─── tasks ─────────────────────────────────────────────────────────
 export const tasks = sqliteTable(

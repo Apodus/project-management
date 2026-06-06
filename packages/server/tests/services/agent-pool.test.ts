@@ -9,7 +9,8 @@ import {
   authRequest,
   type TestApp,
 } from "../utils.js";
-import { agentClaims, agentPools, users } from "../../src/db/index.js";
+import { agentClaims, agentPools, claimLeases, tasks, users } from "../../src/db/index.js";
+import { createId } from "@pm/shared";
 import { eq } from "drizzle-orm";
 
 const TEST_POOL_SECRET = "test-pool-secret-12345";
@@ -539,6 +540,220 @@ describe("Agent Pool", () => {
       const detailRes = await authRequest(testApp.app, "GET", `/api/v1/auth/agent-pools/${pool.id}`);
       const detail = await detailRes.json();
       expect(detail.data.agents.length).toBe(2);
+    });
+  });
+
+  // ── Stable worker binding (C1) ───────────────────────────────────
+
+  describe("Stable worker binding", () => {
+    async function claim(
+      poolName: string,
+      poolSecret: string,
+      workerKey?: string,
+    ): Promise<{ status: number; body: any }> {
+      const res = await testApp.app.request("/api/v1/auth/agent-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          poolName,
+          poolSecret,
+          ...(workerKey ? { workerKey } : {}),
+        }),
+      });
+      const body = res.status === 200 ? await res.json() : await res.json().catch(() => ({}));
+      return { status: res.status, body };
+    }
+
+    it("resolves the same (pool, key) to the same userId across binds, with a stable bindHandle", async () => {
+      const pool = await createPoolViaAPI("bind-stable", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 3);
+
+      const r1 = await claim("bind-stable", TEST_POOL_SECRET, "worker-1");
+      const r2 = await claim("bind-stable", TEST_POOL_SECRET, "worker-1");
+      const r3 = await claim("bind-stable", TEST_POOL_SECRET, "worker-1");
+
+      expect(r1.status).toBe(200);
+      expect(r2.status).toBe(200);
+      expect(r3.status).toBe(200);
+
+      const id = r1.body.data.user.id;
+      expect(r2.body.data.user.id).toBe(id);
+      expect(r3.body.data.user.id).toBe(id);
+
+      expect(r1.body.data.bindHandle).toBeTruthy();
+      expect(r2.body.data.bindHandle).toBe(r1.body.data.bindHandle);
+      expect(r3.body.data.bindHandle).toBe(r1.body.data.bindHandle);
+
+      // Exactly one binding row for this user.
+      const rows = testApp.db
+        .select()
+        .from(agentClaims)
+        .where(eq(agentClaims.userId, id))
+        .all();
+      expect(rows.length).toBe(1);
+      expect(rows[0].workerKey).toBe("worker-1");
+      expect(rows[0].workerKeyPoolId).toBe(pool.id);
+    });
+
+    it("resolves distinct keys to distinct userIds", async () => {
+      const pool = await createPoolViaAPI("bind-distinct", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 3);
+
+      const a = await claim("bind-distinct", TEST_POOL_SECRET, "key-a");
+      const b = await claim("bind-distinct", TEST_POOL_SECRET, "key-b");
+
+      expect(a.status).toBe(200);
+      expect(b.status).toBe(200);
+      expect(a.body.data.user.id).not.toBe(b.body.data.user.id);
+    });
+
+    it("preserves in-flight work (task assignee + lease holder) across a rebind", async () => {
+      const pool = await createPoolViaAPI("bind-inflight", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 3);
+
+      const first = await claim("bind-inflight", TEST_POOL_SECRET, "worker-x");
+      expect(first.status).toBe(200);
+      const userId = first.body.data.user.id;
+
+      // Assign a task to U + open a claim_leases row held by U.
+      const project = createTestProject(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        assigneeId: userId,
+        status: "in_progress",
+      });
+      const ts = new Date().toISOString();
+      const leaseId = createId();
+      testApp.db
+        .insert(claimLeases)
+        .values({
+          id: leaseId,
+          entityType: "task",
+          entityId: task.id,
+          holderId: userId,
+          claimedAt: ts,
+          heartbeatAt: ts,
+          expiresAt: ts,
+          lastActivityAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      // Reconnect with the SAME key.
+      const second = await claim("bind-inflight", TEST_POOL_SECRET, "worker-x");
+      expect(second.status).toBe(200);
+      expect(second.body.data.user.id).toBe(userId);
+
+      // The assignee and lease holder must still be U — nothing stranded.
+      const taskRow = testApp.db.select().from(tasks).where(eq(tasks.id, task.id)).get();
+      expect(taskRow?.assigneeId).toBe(userId);
+      const leaseRow = testApp.db.select().from(claimLeases).where(eq(claimLeases.id, leaseId)).get();
+      expect(leaseRow?.holderId).toBe(userId);
+
+      // Exactly one agent_claims row for U.
+      const rows = testApp.db
+        .select()
+        .from(agentClaims)
+        .where(eq(agentClaims.userId, userId))
+        .all();
+      expect(rows.length).toBe(1);
+    });
+
+    it("rejects a wrong secret + key with 401 and creates no binding row", async () => {
+      const pool = await createPoolViaAPI("bind-authz", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 2);
+
+      const res = await claim("bind-authz", "wrong-secret", "worker-evil");
+      expect(res.status).toBe(401);
+
+      const rows = testApp.db
+        .select()
+        .from(agentClaims)
+        .where(eq(agentClaims.workerKeyPoolId, pool.id))
+        .all();
+      expect(rows.length).toBe(0);
+    });
+
+    it("isolates the same key across different pools (distinct userIds)", async () => {
+      const poolA = await createPoolViaAPI("bind-iso-a", "secret-a-12345");
+      const poolB = await createPoolViaAPI("bind-iso-b", "secret-b-12345");
+      await createPoolAgentsViaAPI(poolA.id, 2);
+      await createPoolAgentsViaAPI(poolB.id, 2);
+
+      const a = await claim("bind-iso-a", "secret-a-12345", "shared-key");
+      const b = await claim("bind-iso-b", "secret-b-12345", "shared-key");
+
+      expect(a.status).toBe(200);
+      expect(b.status).toBe(200);
+      expect(a.body.data.user.id).not.toBe(b.body.data.user.id);
+    });
+
+    it("[correction 1] a keyed-bound agent is NOT grabbable by a keyless claim, even after its claim TTL expires", async () => {
+      const pool = await createPoolViaAPI("bind-noshare-keyless", TEST_POOL_SECRET);
+      // 2 agents total: one will be keyed-bound, one stays free.
+      await createPoolAgentsViaAPI(pool.id, 2);
+
+      const bound = await claim("bind-noshare-keyless", TEST_POOL_SECRET, "worker-bound");
+      expect(bound.status).toBe(200);
+      const boundId = bound.body.data.user.id;
+
+      // Force the keyed binding's claim to be far in the past.
+      const past = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+      testApp.db
+        .update(agentClaims)
+        .set({ expiresAt: past, heartbeatAt: past, claimedAt: past })
+        .where(eq(agentClaims.userId, boundId))
+        .run();
+
+      // A keyless claim must NOT return the keyed-bound agent.
+      const keyless1 = await claim("bind-noshare-keyless", TEST_POOL_SECRET);
+      expect(keyless1.status).toBe(200);
+      expect(keyless1.body.data.user.id).not.toBe(boundId);
+
+      // The pool's only other free agent is now taken → next keyless = 503,
+      // proving the expired-but-keyed agent was never offered.
+      const keyless2 = await claim("bind-noshare-keyless", TEST_POOL_SECRET);
+      expect(keyless2.status).toBe(503);
+    });
+
+    it("[correction 1] a keyed-bound agent is NOT grabbable by another key's first-bind, even after expiry", async () => {
+      const pool = await createPoolViaAPI("bind-noshare-keyed", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 2);
+
+      const bound = await claim("bind-noshare-keyed", TEST_POOL_SECRET, "worker-1");
+      expect(bound.status).toBe(200);
+      const boundId = bound.body.data.user.id;
+
+      const past = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+      testApp.db
+        .update(agentClaims)
+        .set({ expiresAt: past, heartbeatAt: past, claimedAt: past })
+        .where(eq(agentClaims.userId, boundId))
+        .run();
+
+      // A DIFFERENT key's first-bind must take the other free agent, not U.
+      const other = await claim("bind-noshare-keyed", TEST_POOL_SECRET, "worker-2");
+      expect(other.status).toBe(200);
+      expect(other.body.data.user.id).not.toBe(boundId);
+
+      // No remaining free agent → a third key's first-bind = 503.
+      const third = await claim("bind-noshare-keyed", TEST_POOL_SECRET, "worker-3");
+      expect(third.status).toBe(503);
+    });
+
+    it("does not over-report available_count when an agent is keyed-bound", async () => {
+      const pool = await createPoolViaAPI("bind-count", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 3);
+
+      await claim("bind-count", TEST_POOL_SECRET, "worker-1");
+
+      const res = await authRequest(testApp.app, "GET", "/api/v1/auth/agent-pools");
+      const body = await res.json();
+      const found = body.data.find((p: any) => p.id === pool.id);
+      expect(found.agentCount).toBe(3);
+      expect(found.claimedCount).toBe(1);
+      expect(found.availableCount).toBe(2);
     });
   });
 

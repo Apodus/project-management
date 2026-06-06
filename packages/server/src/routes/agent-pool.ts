@@ -31,6 +31,7 @@ const claimResponseSchema = z.object({
       type: z.string(),
     }),
     token: z.string(),
+    bindHandle: z.string().optional(),
   }),
 });
 
@@ -93,6 +94,10 @@ const agentListSchema = z.object({
 const claimBody = z.object({
   poolName: z.string().min(1, "Pool name is required"),
   poolSecret: z.string().min(1, "Pool secret is required"),
+  // Optional stable worker identity. When supplied, (poolName, workerKey)
+  // resolves to the SAME users row across reconnects. Omitted ⇒ legacy
+  // keyless behavior (grab any free agent).
+  workerKey: z.string().min(1).optional(),
 });
 
 const createPoolBody = z.object({
@@ -627,9 +632,9 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
 
   // POST /api/v1/auth/agent-claim — PUBLIC (authenticated by pool secret)
   router.openapi(agentClaimRoute, async (c) => {
-    const { poolName, poolSecret } = c.req.valid("json");
+    const { poolName, poolSecret, workerKey } = c.req.valid("json");
 
-    const result = await agentPoolService.claimAgent(poolName, poolSecret);
+    const result = await agentPoolService.claimAgent(poolName, poolSecret, workerKey);
 
     if (!result) {
       return c.json(
