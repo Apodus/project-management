@@ -59,6 +59,16 @@ function resolveLeaseMode(): LeaseMode {
 }
 
 const LEASE_MODE: LeaseMode = resolveLeaseMode();
+
+/**
+ * The single, authoritative read of the active lease mode (resolved once at
+ * module load from PM_LEASE_MODE). Callers OUTSIDE this module — notably
+ * pickNextTask (C3.P3) — MUST read the mode through this getter and never
+ * re-parse the env, so there is exactly one mode source of truth.
+ */
+export function resolveActiveLeaseMode(): LeaseMode {
+  return LEASE_MODE;
+}
 const LEASE_TTL_MS = parsePositiveSec(
   process.env.PM_LEASE_TTL_SEC,
   LEASE_TTL_MS_DEFAULT,

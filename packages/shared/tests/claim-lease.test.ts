@@ -4,6 +4,7 @@ import {
   LEASE_MODE_DEFAULT,
   LEASE_TTL_MS_DEFAULT,
   LEASE_GRACE_MS_DEFAULT,
+  LEASE_PICK_MARGIN_MS_DEFAULT,
   LEASE_ENTITY_TYPES,
   LEASE_LIVENESS,
   CLAIM_LEASE_RECLAIMED_EVENT,
@@ -34,6 +35,10 @@ describe("lease timing defaults", () => {
 
   it("grace is at least the TTL (long grace while in shadow)", () => {
     expect(LEASE_GRACE_MS_DEFAULT).toBeGreaterThanOrEqual(LEASE_TTL_MS_DEFAULT);
+  });
+
+  it("the pick margin is positive (stricter-than-sweep pick takeover threshold)", () => {
+    expect(LEASE_PICK_MARGIN_MS_DEFAULT).toBeGreaterThan(0);
   });
 });
 

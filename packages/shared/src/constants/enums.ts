@@ -115,6 +115,12 @@ export const LEASE_TTL_MS_DEFAULT = 30 * 60 * 1000;
 // want to observe lapses without aggressively reclaiming while the engine
 // is not yet the source of truth.
 export const LEASE_GRACE_MS_DEFAULT = 24 * 60 * 60 * 1000;
+// A stricter-than-sweep margin (60s) ADDED to the grace when pick-next decides
+// whether to reclaim-then-claim a stale-claimed task (C3.P3, mode `on` only).
+// A pick is a hostile takeover of another holder's work, so it demands a lease
+// be lapsed by an extra margin beyond the plain reclaim grace — a just-lapsed
+// lease (its holder possibly mid-action) is never grabbed out from under them.
+export const LEASE_PICK_MARGIN_MS_DEFAULT = 60 * 1000;
 
 export const GIT_REF_TYPES = ["branch", "commit", "pull_request", "landed_sha"] as const;
 export type GitRefType = (typeof GIT_REF_TYPES)[number];

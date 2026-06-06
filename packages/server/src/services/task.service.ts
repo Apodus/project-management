@@ -12,8 +12,15 @@ import {
   type SQL,
   type SQLWrapper,
 } from "drizzle-orm";
-import { createId, isValidTaskTransition, getValidTaskTargets, findTaskTransitionPath } from "@pm/shared";
-import type { ClaimResult, ClaimState, ClaimStatus, TaskStatus, UserType } from "@pm/shared";
+import {
+  createId,
+  isValidTaskTransition,
+  getValidTaskTargets,
+  findTaskTransitionPath,
+  LEASE_GRACE_MS_DEFAULT,
+  LEASE_PICK_MARGIN_MS_DEFAULT,
+} from "@pm/shared";
+import type { ClaimResult, ClaimState, ClaimStatus, LeaseMode, TaskStatus, UserType } from "@pm/shared";
 import {
   getDb,
   getRawDb,
@@ -42,8 +49,10 @@ import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 import {
   acquireLease,
   deleteLease,
+  deriveLiveness,
   readLease,
   readLeasesFor,
+  resolveActiveLeaseMode,
   sweepStaleClaims,
   type ClaimLeaseRow,
 } from "./claim-lease.service.js";
@@ -860,12 +869,42 @@ export interface PickNextOptions {
 }
 
 /**
+ * Test/internal-only override knobs for pickNextTask (C3.P3). These are
+ * DELIBERATELY a SEPARATE parameter from the route-facing PickNextOptions so
+ * they are structurally UNREACHABLE from wire input (a route/MCP handler builds
+ * PickNextOptions from an explicit field allowlist and never passes a second
+ * arg). They let tests pin the lease mode, clock, and grace deterministically.
+ *
+ *  - mode    → force the lease mode (shadow/on/off) instead of the resolved one.
+ *  - now     → pin the clock (fake timers).
+ *  - graceMs → override the reclaim grace BEFORE the pick margin is added.
+ */
+export interface PickNextInternalOptions {
+  mode?: LeaseMode;
+  now?: Date;
+  graceMs?: number;
+}
+
+/**
  * Find and atomically claim the highest-priority ready task.
  *
  * For AI agents, checks autonomy guardrails (can_self_assign, max_concurrent_tasks).
  * Returns the claimed task, or null if nothing is available.
+ *
+ * Liveness (C3.P3): the pick runs in two phases. Phase A is today's behavior —
+ * prefer fresh, unassigned `ready` work (atomic claim). Phase B fires ONLY when
+ * the lease mode is `on` AND Phase A found nothing: it reclaims-then-claims a
+ * `ready` task whose holder's lease has lapsed past TTL + grace + pick-margin.
+ * In the default `shadow` mode Phase B never runs ⇒ ZERO behavior change.
+ *
+ * `internalOpts` is a SEPARATE, internal-only override surface (see
+ * PickNextInternalOptions) — wire callers MUST NOT thread it through.
  */
-export function pickNextTask(actor: AuthUser, options?: PickNextOptions): ReturnType<typeof getById> | null {
+export function pickNextTask(
+  actor: AuthUser,
+  options?: PickNextOptions,
+  internalOpts?: PickNextInternalOptions,
+): ReturnType<typeof getById> | null {
   const db = getDb();
   const rawDb = getRawDb();
 
@@ -905,15 +944,24 @@ export function pickNextTask(actor: AuthUser, options?: PickNextOptions): Return
     }
   }
 
-  // Build SQL conditions for finding candidates
-  const conditions: string[] = [
-    `t.status = 'ready'`,
-    `t.assignee_id IS NULL`,
-  ];
-  const params: unknown[] = [];
+  // C3.P3 liveness inputs. The mode is read through the SINGLE authoritative
+  // getter (never a re-parse of the env); tests pin it via internalOpts. The
+  // pick grace is STRICTER than the plain reclaim grace — a pick is a takeover
+  // of another holder's work, so a just-lapsed lease (its holder possibly
+  // mid-action) is never grabbed: grace + LEASE_PICK_MARGIN_MS_DEFAULT.
+  const mode = internalOpts?.mode ?? resolveActiveLeaseMode();
+  const nowDate = internalOpts?.now ?? new Date();
+  const pickGraceMs =
+    (internalOpts?.graceMs ?? LEASE_GRACE_MS_DEFAULT) +
+    LEASE_PICK_MARGIN_MS_DEFAULT;
+
+  // Shared candidate FILTERS (everything except the assignee predicate, which
+  // differs per phase). Reused by Phase A (unassigned) and Phase B (stale-held).
+  const filterConditions: string[] = [];
+  const filterParams: unknown[] = [];
 
   // Not blocked: no unresolved blocking dependencies
-  conditions.push(`t.id NOT IN (
+  filterConditions.push(`t.id NOT IN (
     SELECT td.task_id FROM task_dependencies td
     INNER JOIN tasks t2 ON t2.id = td.depends_on_task_id
     WHERE td.dependency_type = 'blocks' AND t2.status != 'done'
@@ -921,21 +969,21 @@ export function pickNextTask(actor: AuthUser, options?: PickNextOptions): Return
 
   // Optional projectId filter
   if (options?.projectId) {
-    conditions.push(`t.project_id = ?`);
-    params.push(options.projectId);
+    filterConditions.push(`t.project_id = ?`);
+    filterParams.push(options.projectId);
   }
 
   // Optional epicId filter
   if (options?.epicId) {
-    conditions.push(`t.epic_id = ?`);
-    params.push(options.epicId);
+    filterConditions.push(`t.epic_id = ?`);
+    filterParams.push(options.epicId);
   }
 
   // Optional taskTypes filter
   if (options?.taskTypes && options.taskTypes.length > 0) {
     const placeholders = options.taskTypes.map(() => "?").join(", ");
-    conditions.push(`t.type IN (${placeholders})`);
-    params.push(...options.taskTypes);
+    filterConditions.push(`t.type IN (${placeholders})`);
+    filterParams.push(...options.taskTypes);
   }
 
   // Optional maxEffort filter
@@ -950,72 +998,159 @@ export function pickNextTask(actor: AuthUser, options?: PickNextOptions): Return
           effortConditions.push(`t.estimated_effort = '${effort}'`);
         }
       }
-      conditions.push(`(${effortConditions.join(" OR ")})`);
+      filterConditions.push(`(${effortConditions.join(" OR ")})`);
     }
   }
 
-  const whereClause = conditions.join(" AND ");
+  const PRIORITY_ORDER_SQL = `
+    CASE t.priority
+      WHEN 'critical' THEN 0
+      WHEN 'high' THEN 1
+      WHEN 'medium' THEN 2
+      WHEN 'low' THEN 3
+      ELSE 4
+    END ASC,
+    t.created_at ASC`;
 
   // Opportunistic stale-claim sweep before we pick: in production this is a
   // shadow no-op (observe-only), but it's the wiring point where the reclaim
   // sweep would free lapsed claims so they re-enter the available pool. Return
-  // discarded — pick is unaffected by the observation.
+  // discarded — pick is unaffected by the observation. (CAUTION 1: left
+  // byte-identical — NOT threaded with pickGraceMs/mode; stays the shadow no-op.)
   sweepStaleClaims({ entityType: "task" });
 
-  // Use a transaction to atomically find and claim
-  const now = new Date().toISOString();
+  const now = nowDate.toISOString();
 
-  const txn = rawDb.transaction(() => {
-    // Find the highest priority ready task
+  // Shared atomic-claim closure: the EXACT existing claim UPDATE (guarded by
+  // status='ready' AND assignee_id IS NULL + changes===0). Used by both phases.
+  // Runs in its own txn; returns the claimed id or null on a lost race.
+  const claimAtomically = (candidate: {
+    id: string;
+    project_id: string;
+  }): string | null => {
+    const txn = rawDb.transaction(() => {
+      // For AI agents without a projectId filter, check guardrails per-candidate
+      if (actor.type === "ai_agent" && !options?.projectId) {
+        autonomyService.checkGuardrail(
+          actor,
+          "self_assign",
+          candidate.project_id,
+        );
+      }
+
+      const updateSql = `
+        UPDATE tasks
+        SET status = 'in_progress',
+            assignee_id = ?,
+            started_at = COALESCE(started_at, ?),
+            updated_at = ?
+        WHERE id = ?
+          AND status = 'ready'
+          AND assignee_id IS NULL
+      `;
+
+      const result = rawDb
+        .prepare(updateSql)
+        .run(actor.id, now, now, candidate.id);
+
+      if (result.changes === 0) {
+        // Another caller claimed it between our SELECT and UPDATE
+        return null;
+      }
+
+      return candidate.id;
+    });
+
+    return txn();
+  };
+
+  // ── Phase A (ALL modes): prefer fresh, UNASSIGNED ready work ──────────────
+  // Today's exact candidate select + atomic claim. If something here lands the
+  // behavior is byte-identical to pre-C3.P3 (preserves precedence: fresh
+  // unassigned work beats reclaiming a stale-held task).
+  let claimedId: string | null = null;
+  {
+    const whereClause = ["t.status = 'ready'", "t.assignee_id IS NULL", ...filterConditions].join(
+      " AND ",
+    );
     const candidateSql = `
       SELECT t.id, t.project_id FROM tasks t
       WHERE ${whereClause}
-      ORDER BY
-        CASE t.priority
-          WHEN 'critical' THEN 0
-          WHEN 'high' THEN 1
-          WHEN 'medium' THEN 2
-          WHEN 'low' THEN 3
-          ELSE 4
-        END ASC,
-        t.created_at ASC
+      ORDER BY${PRIORITY_ORDER_SQL}
       LIMIT 1
     `;
-
-    const candidate = rawDb.prepare(candidateSql).get(...params) as { id: string; project_id: string } | undefined;
-
-    if (!candidate) {
-      return null;
+    const candidate = rawDb.prepare(candidateSql).get(...filterParams) as
+      | { id: string; project_id: string }
+      | undefined;
+    if (candidate) {
+      claimedId = claimAtomically(candidate);
     }
+  }
 
-    // For AI agents without a projectId filter, check guardrails per-candidate
-    if (actor.type === "ai_agent" && !options?.projectId) {
-      autonomyService.checkGuardrail(actor, "self_assign", candidate.project_id);
-    }
-
-    // Atomically claim the task
-    const updateSql = `
-      UPDATE tasks
-      SET status = 'in_progress',
-          assignee_id = ?,
-          started_at = COALESCE(started_at, ?),
-          updated_at = ?
-      WHERE id = ?
-        AND status = 'ready'
-        AND assignee_id IS NULL
+  // ── Phase B (mode `on` ONLY, and only if Phase A found nothing): ──────────
+  // reclaim-then-claim a STALE-CLAIMED ready task. Select ready tasks that ARE
+  // assigned, join the lapsed lease (expires_at < now - pickGraceMs), re-check
+  // liveness in JS (never stomp a live lease), reclaim the ONE entity (clears
+  // the holder + tears down the lease + 1 audit + 1 SSE), then run the EXACT
+  // atomic claim. A healed/raced candidate is skipped to the next.
+  if (!claimedId && mode === "on") {
+    const staleThreshold = new Date(
+      nowDate.getTime() - pickGraceMs,
+    ).toISOString();
+    const whereClause = [
+      "t.status = 'ready'",
+      "t.assignee_id IS NOT NULL",
+      "cl.expires_at < ?",
+      ...filterConditions,
+    ].join(" AND ");
+    // The lease threshold param leads (its `?` is the first placeholder in the
+    // JOIN/WHERE order), then the shared filter params — PARAMETERIZED, never
+    // interpolated.
+    const candidateSql = `
+      SELECT t.id, t.project_id, cl.expires_at FROM tasks t
+      INNER JOIN claim_leases cl
+        ON cl.entity_type = 'task' AND cl.entity_id = t.id
+      WHERE ${whereClause}
+      ORDER BY${PRIORITY_ORDER_SQL}
+      LIMIT 10
     `;
+    const candidates = rawDb
+      .prepare(candidateSql)
+      .all(staleThreshold, ...filterParams) as {
+      id: string;
+      project_id: string;
+      expires_at: string;
+    }[];
 
-    const result = rawDb.prepare(updateSql).run(actor.id, now, now, candidate.id);
+    for (const candidate of candidates) {
+      // JS re-check at the strict pick boundary — skip a still-live lease so we
+      // never stomp a holder mid-action.
+      if (deriveLiveness(nowDate, candidate.expires_at, pickGraceMs) !== "stale") {
+        continue;
+      }
 
-    if (result.changes === 0) {
-      // Another caller claimed it between our SELECT and UPDATE
-      return null;
+      // Reclaim exactly this one entity (OUTSIDE the raw txn — same as the
+      // line above this block's sweep call). A reclaim that lands clears the
+      // holder + deletes the lease + writes 1 audit + emits 1 SSE.
+      const swept = sweepStaleClaims({
+        entityType: "task",
+        entityId: candidate.id,
+        mode: "on",
+        graceMs: pickGraceMs,
+        now: nowDate,
+        actorId: actor.id,
+      });
+      if (swept.reclaimed.length !== 1) {
+        // The candidate was healed (renew) or raced (another reclaim) — move on.
+        continue;
+      }
+
+      // The task is now unassigned; run the EXACT atomic claim. If another
+      // picker grabbed the now-unassigned task first, changes===0 → next.
+      claimedId = claimAtomically(candidate);
+      if (claimedId) break;
     }
-
-    return candidate.id;
-  });
-
-  const claimedId = txn();
+  }
 
   if (!claimedId) {
     return null;
