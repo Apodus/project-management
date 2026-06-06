@@ -30,14 +30,23 @@ import { formatRelativeTime, formatStatus, getStatusColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Proposal } from "@/lib/api";
 
-const PROPOSAL_STATUSES = [
+// Non-terminal statuses, in the order a human reads them top-to-bottom on the
+// Active tab. Each renders as its own titled section.
+const ACTIVE_STATUSES = [
   "open",
   "discussing",
   "accepted",
   "in_progress",
-  "completed",
-  "rejected",
 ] as const;
+
+// Terminal statuses get their own tab each, kept out of the Active view.
+const TERMINAL_STATUSES = ["completed", "rejected"] as const;
+
+// Newest first — keeps each section's ordering consistent with the relative
+// timestamp shown on the card.
+function byCreatedDesc(a: Proposal, b: Proposal) {
+  return b.createdAt.localeCompare(a.createdAt);
+}
 
 function ProposalCard({
   proposal,
@@ -100,6 +109,55 @@ function ProposalSkeleton() {
   );
 }
 
+function ProposalGrid({
+  proposals,
+  onProposalClick,
+}: {
+  proposals: Proposal[];
+  onProposalClick: (id: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {proposals.map((proposal) => (
+        <ProposalCard
+          key={proposal.id}
+          proposal={proposal}
+          onClick={() => onProposalClick(proposal.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+// A titled box for one active status — its colored label, a count, and the
+// proposals in that state. Rendered only when it has at least one proposal.
+function ProposalSection({
+  status,
+  proposals,
+  onProposalClick,
+}: {
+  status: string;
+  proposals: Proposal[];
+  onProposalClick: (id: string) => void;
+}) {
+  return (
+    <section className="rounded-lg border bg-muted/30 p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <Badge
+          variant="secondary"
+          className={cn("text-[11px]", getStatusColor(status))}
+        >
+          {formatStatus(status)}
+        </Badge>
+        <span className="text-xs text-muted-foreground/70">
+          {proposals.length}
+        </span>
+      </div>
+      <ProposalGrid proposals={proposals} onProposalClick={onProposalClick} />
+    </section>
+  );
+}
+
 export function ProposalListPage() {
   const { projectId } = useParams({ strict: false });
   const navigate = useNavigate();
@@ -122,22 +180,37 @@ export function ProposalListPage() {
   const { data: allProposals, isLoading, error, refetch } = useProposals(projectId);
   const createProposal = useCreateProposal();
 
-  const [activeTab, setActiveTab] = useState<string>("open");
+  const [activeTab, setActiveTab] = useState<string>("active");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
-  // Compute per-status counts and filtered list
-  const statusCounts = PROPOSAL_STATUSES.reduce(
+  // Group active proposals by status (each becomes a titled section), and pull
+  // the terminal lists for their dedicated tabs. All sorted newest-first.
+  const activeByStatus = ACTIVE_STATUSES.reduce(
     (acc, status) => {
-      acc[status] = allProposals?.filter((p) => p.status === status).length ?? 0;
+      acc[status] = (allProposals?.filter((p) => p.status === status) ?? []).sort(
+        byCreatedDesc,
+      );
       return acc;
     },
-    {} as Record<string, number>,
+    {} as Record<string, Proposal[]>,
   );
 
-  const filteredProposals =
-    allProposals?.filter((p) => p.status === activeTab) ?? [];
+  const terminalByStatus = TERMINAL_STATUSES.reduce(
+    (acc, status) => {
+      acc[status] = (allProposals?.filter((p) => p.status === status) ?? []).sort(
+        byCreatedDesc,
+      );
+      return acc;
+    },
+    {} as Record<string, Proposal[]>,
+  );
+
+  const activeCount = ACTIVE_STATUSES.reduce(
+    (sum, status) => sum + activeByStatus[status].length,
+    0,
+  );
 
   function handleProposalClick(proposalId: string) {
     navigate({ to: "/proposals/$proposalId", params: { proposalId } });
@@ -269,10 +342,23 @@ export function ProposalListPage() {
         </Card>
       )}
 
-      {/* Status tabs */}
+      {/* Active / terminal tabs. The Active tab stacks one titled section per
+          non-terminal status; Completed and Rejected get their own tabs so the
+          active workflow stays uncluttered. */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList variant="line">
-          {PROPOSAL_STATUSES.map((status) => (
+          <TabsTrigger value="active">
+            Active
+            {!isLoading && (
+              <Badge
+                variant="secondary"
+                className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]"
+              >
+                {activeCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+          {TERMINAL_STATUSES.map((status) => (
             <TabsTrigger key={status} value={status}>
               {formatStatus(status)}
               {!isLoading && (
@@ -280,16 +366,60 @@ export function ProposalListPage() {
                   variant="secondary"
                   className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]"
                 >
-                  {statusCounts[status]}
+                  {terminalByStatus[status].length}
                 </Badge>
               )}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        {PROPOSAL_STATUSES.map((status) => (
+        {/* Active: grouped sections */}
+        <TabsContent value="active">
+          {isLoading && (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <ProposalSkeleton key={i} />
+              ))}
+            </div>
+          )}
+
+          {!isLoading && activeCount === 0 && (
+            <div className="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
+              <MessageSquare className="mb-3 size-10 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">
+                No active proposals
+              </p>
+              <Button
+                className="mt-3"
+                size="sm"
+                variant="outline"
+                onClick={() => setDialogOpen(true)}
+              >
+                <Plus className="size-4" />
+                Create one
+              </Button>
+            </div>
+          )}
+
+          {!isLoading && activeCount > 0 && (
+            <div className="mt-4 space-y-4">
+              {ACTIVE_STATUSES.filter(
+                (status) => activeByStatus[status].length > 0,
+              ).map((status) => (
+                <ProposalSection
+                  key={status}
+                  status={status}
+                  proposals={activeByStatus[status]}
+                  onProposalClick={handleProposalClick}
+                />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Terminal: a flat grid per tab */}
+        {TERMINAL_STATUSES.map((status) => (
           <TabsContent key={status} value={status}>
-            {/* Loading */}
             {isLoading && (
               <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -298,37 +428,21 @@ export function ProposalListPage() {
               </div>
             )}
 
-            {/* Empty state */}
-            {!isLoading && filteredProposals.length === 0 && (
+            {!isLoading && terminalByStatus[status].length === 0 && (
               <div className="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
                 <MessageSquare className="mb-3 size-10 text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">
                   No {formatStatus(status).toLowerCase()} proposals
                 </p>
-                {status === "open" && (
-                  <Button
-                    className="mt-3"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDialogOpen(true)}
-                  >
-                    <Plus className="size-4" />
-                    Create one
-                  </Button>
-                )}
               </div>
             )}
 
-            {/* Proposal cards */}
-            {!isLoading && filteredProposals.length > 0 && (
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredProposals.map((proposal) => (
-                  <ProposalCard
-                    key={proposal.id}
-                    proposal={proposal}
-                    onClick={() => handleProposalClick(proposal.id)}
-                  />
-                ))}
+            {!isLoading && terminalByStatus[status].length > 0 && (
+              <div className="mt-4">
+                <ProposalGrid
+                  proposals={terminalByStatus[status]}
+                  onProposalClick={handleProposalClick}
+                />
               </div>
             )}
           </TabsContent>
