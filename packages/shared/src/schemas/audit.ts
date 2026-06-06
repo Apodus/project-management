@@ -27,6 +27,9 @@ export const AUDIT_ACTIONS = [
   "cancel",
   // ── Force-claim (reason-required claim takeover) ──
   "force_claim",
+  // ── Claim lease (C2) ──
+  // A lapsed claim lease was reclaimed by the sweep (reconcile-or-escalate).
+  "claim_reclaimed",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

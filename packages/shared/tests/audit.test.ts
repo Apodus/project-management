@@ -23,6 +23,7 @@ describe("AUDIT_ACTIONS", () => {
       "reject",
       "cancel",
       "force_claim",
+      "claim_reclaimed",
     ]);
   });
 

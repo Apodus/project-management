@@ -944,3 +944,54 @@ export const mergeResolutions = sqliteTable(
     index("idx_merge_resolutions_origin").on(table.originRequestId),
   ],
 );
+
+// ─── claim_leases ──────────────────────────────────────────────────
+// Campaign C2 (§P1): the PM-owned liveness lease for an entity claim
+// (task | epic | proposal). A claim is no longer a static `claimedBy`
+// flag that strands forever when its holder dies — it is a TTL lease
+// that a live holder refreshes by heartbeat and a reclaim sweep can
+// reconcile-or-escalate when it lapses. One ACTIVE lease per entity (the
+// unique (entityType, entityId) index). The holder is a user (ON DELETE
+// SET NULL so a deleted holder leaves the lease orphaned-but-reclaimable
+// rather than cascade-deleting the record). sessionId is the optional
+// per-session correlation handle the holder supplies.
+//
+// NOTE: P1 adds the TABLE ONLY. No service reads or writes it yet, and
+// there is intentionally no runtime behavior change — the lease engine
+// (read/heartbeat/reclaim) lands in later phases behind LEASE_MODES
+// (default "shadow"). No projectId column: the P4 audit write sources
+// projectId from the entity row (the forceClaim precedent).
+export const claimLeases = sqliteTable(
+  "claim_leases",
+  {
+    id: text("id").primaryKey(),
+    // The claimed entity: "task" | "epic" | "proposal" (LEASE_ENTITY_TYPES
+    // in @pm/shared). Plain text validated against the enum — heterogeneous
+    // targets, so NOT an FK.
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    // The lease holder. ON DELETE SET NULL — a deleted user leaves the lease
+    // orphaned-but-reclaimable, never cascade-deletes the record.
+    holderId: text("holder_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // The lease lifecycle timestamps (ISO strings, house convention).
+    claimedAt: text("claimed_at").notNull(),
+    heartbeatAt: text("heartbeat_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    lastActivityAt: text("last_activity_at").notNull(),
+    // Optional per-session correlation handle supplied by the holder.
+    sessionId: text("session_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    // One ACTIVE lease per entity — the uniqueness guarantee + the
+    // claim-lookup hot path.
+    uniqueIndex("idx_claim_leases_entity").on(table.entityType, table.entityId),
+    // The reclaim sweep's hot path: lapsed leases of a given type, by expiry.
+    index("idx_claim_leases_type_expires").on(table.entityType, table.expiresAt),
+    // The "everything this holder holds" view.
+    index("idx_claim_leases_holder").on(table.holderId),
+  ],
+);

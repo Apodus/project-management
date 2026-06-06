@@ -84,6 +84,27 @@ export type CacheMode = (typeof CACHE_MODES)[number];
 export const VERIFY_RESULTS = ["pass", "fail"] as const;
 export type VerifyResultValue = (typeof VERIFY_RESULTS)[number];
 
+// Campaign C2 (claim-lease §P1) — how the claim-lease engine is applied,
+// mirroring the 7.5 CACHE_MODES kill-switch ladder:
+//   off    — inert; the legacy static `claimedBy` flag is the sole truth
+//   shadow — leases are written + read alongside the legacy flag, but the
+//            legacy flag still governs (the detector / safe rollout rung)
+//   on     — the lease is the source of truth (reclaim sweep active)
+// Default "shadow": the campaign ships in shadow so the engine is observed
+// before it governs.
+export const LEASE_MODES = ["off", "shadow", "on"] as const;
+export type LeaseMode = (typeof LEASE_MODES)[number];
+export const LEASE_MODE_DEFAULT: LeaseMode = "shadow";
+
+// The lease TTL: a holder must heartbeat within this window or the lease
+// lapses and becomes reclaimable. 30 minutes.
+export const LEASE_TTL_MS_DEFAULT = 30 * 60 * 1000;
+// The reclaim grace beyond expiry before a lapsed lease is actually swept.
+// Deliberately LONG (24h) because the campaign ships in shadow mode — we
+// want to observe lapses without aggressively reclaiming while the engine
+// is not yet the source of truth.
+export const LEASE_GRACE_MS_DEFAULT = 24 * 60 * 60 * 1000;
+
 export const GIT_REF_TYPES = ["branch", "commit", "pull_request", "landed_sha"] as const;
 export type GitRefType = (typeof GIT_REF_TYPES)[number];
 
