@@ -89,6 +89,7 @@ describe("epicGraphSchema", () => {
     updated_at: VALID_TIMESTAMP,
     taskSummary: { total: 3, done: 1, byStatus: { backlog: 2, done: 1 } },
     health: "on_track" as const,
+    claimState: "unclaimed" as const,
     activity_recency: VALID_TIMESTAMP,
     time_window: { start: VALID_TIMESTAMP, end: null },
   };

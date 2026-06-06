@@ -58,6 +58,7 @@ function sameEpicNodeData(a: EpicNodeData, b: EpicNodeData): boolean {
     a.total === b.total &&
     a.progressPct === b.progressPct &&
     a.health === b.health &&
+    a.claimState === b.claimState &&
     a.byStatus === b.byStatus &&
     a.dimmed === b.dimmed &&
     a.inCycle === b.inCycle &&
@@ -379,6 +380,7 @@ export function EpicRoadmapCanvas({
         total,
         progressPct: total > 0 ? Math.round((done / total) * 100) : 0,
         health: n.health,
+        claimState: n.claimState,
         byStatus: n.taskSummary.byStatus,
         dimmed: chain ? !chain.nodeIds.has(n.id) : false,
         inCycle: cycleIds.has(n.id),

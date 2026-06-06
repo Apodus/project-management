@@ -123,6 +123,7 @@ function oneNodeGraph(): EpicGraph {
         taskSummary: { total: 4, done: 1, byStatus: {} },
         health: "on_track",
         activity_recency: "2026-01-02T00:00:00.000Z",
+        claimState: "live",
         time_window: { start: "2026-01-01T00:00:00.000Z", end: null },
       },
     ],
@@ -150,6 +151,7 @@ function activeAndPastGraph(): EpicGraph {
         taskSummary: { total: 4, done: 1, byStatus: {} },
         health: "on_track",
         activity_recency: "2026-06-01T00:00:00.000Z",
+        claimState: "live",
         time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
       },
       {
@@ -164,6 +166,7 @@ function activeAndPastGraph(): EpicGraph {
         taskSummary: { total: 3, done: 3, byStatus: {} },
         health: "done",
         activity_recency: old,
+        claimState: "live",
         time_window: { start: "2025-01-01T00:00:00.000Z", end: old },
       },
     ],
@@ -189,6 +192,7 @@ function futureGraph(): EpicGraph {
         taskSummary: { total: 4, done: 1, byStatus: {} },
         health: "on_track",
         activity_recency: "2026-06-01T00:00:00.000Z",
+        claimState: "live",
         time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
       },
       {
@@ -203,6 +207,7 @@ function futureGraph(): EpicGraph {
         taskSummary: { total: 3, done: 0, byStatus: {} },
         health: "not_started",
         activity_recency: "2026-06-01T00:00:00.000Z",
+        claimState: "live",
         time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
       },
     ],
@@ -229,6 +234,7 @@ function categorizedGraph(): EpicGraph {
         taskSummary: { total: 4, done: 1, byStatus: {} },
         health: "on_track",
         activity_recency: "2026-06-01T00:00:00.000Z",
+        claimState: "live",
         time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
       },
       {
@@ -244,6 +250,7 @@ function categorizedGraph(): EpicGraph {
         taskSummary: { total: 4, done: 1, byStatus: {} },
         health: "on_track",
         activity_recency: "2026-06-01T00:00:00.000Z",
+        claimState: "live",
         time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
       },
     ],
@@ -267,6 +274,7 @@ function cycleGraph(): EpicGraph {
     taskSummary: { total: 4, done: 1, byStatus: {} },
     health: "on_track" as const,
     activity_recency: "2026-06-01T00:00:00.000Z",
+    claimState: "live" as const,
     time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
   });
   return {
@@ -298,6 +306,7 @@ function frontierGraph(): EpicGraph {
     taskSummary: { total: 4, done: health === "done" ? 4 : 1, byStatus: {} },
     health,
     activity_recency: "2026-06-01T00:00:00.000Z",
+    claimState: "live" as const,
     time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
   });
   return {
@@ -333,6 +342,7 @@ function gatedGraph(): EpicGraph {
     taskSummary: { total: 4, done: 1, byStatus: {} },
     health: "on_track" as const,
     activity_recency: "2026-06-01T00:00:00.000Z",
+    claimState: "live" as const,
     time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
   });
   return {
@@ -360,6 +370,7 @@ function longEdgeGraph(): EpicGraph {
     taskSummary: { total: 4, done: 1, byStatus: {} },
     health: "on_track" as const,
     activity_recency: "2026-06-01T00:00:00.000Z",
+    claimState: "live" as const,
     time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
   });
   return {
@@ -390,6 +401,7 @@ function redundantDepsGraph(): EpicGraph {
     taskSummary: { total: 4, done: 1, byStatus: {} },
     health: "on_track" as const,
     activity_recency: "2026-06-01T00:00:00.000Z",
+    claimState: "live" as const,
     time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
   });
   return {
@@ -418,6 +430,7 @@ function isolatedGraph(): EpicGraph {
     taskSummary: { total: 4, done: 1, byStatus: {} },
     health: "on_track" as const,
     activity_recency: "2026-06-01T00:00:00.000Z",
+    claimState: "live" as const,
     time_window: { start: "2026-05-01T00:00:00.000Z", end: null },
   });
   return {

@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ClaimStateBadge } from "@/components/claim-state-badge";
 import { useProject } from "@/hooks/use-projects";
 import { useEpics } from "@/hooks/use-epics";
 import { useUsers } from "@/hooks/use-users";
@@ -88,6 +89,10 @@ function EpicCard({
           ) : (
             <span className="italic text-muted-foreground/60">Unclaimed</span>
           )}
+          <ClaimStateBadge
+            state={epic.claimState}
+            className="ml-auto text-[10px] px-1.5 py-0"
+          />
         </div>
 
         {/* Progress bar */}

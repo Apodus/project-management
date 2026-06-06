@@ -15,6 +15,7 @@ function makeNode(id: string): EpicGraphNode {
     updated_at: "2026-01-01",
     taskSummary: { total: 0, done: 0, byStatus: {} },
     health: "on_track",
+    claimState: "unclaimed",
     activity_recency: "2026-01-01",
     time_window: { start: "2026-01-01", end: null },
   };

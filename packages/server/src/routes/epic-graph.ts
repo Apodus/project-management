@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { DEPENDENCY_TYPES, EPIC_HEALTHS } from "@pm/shared";
+import { DEPENDENCY_TYPES, EPIC_HEALTHS, CLAIM_STATES } from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import * as epicGraphService from "../services/epic-graph.service.js";
 
@@ -28,6 +28,8 @@ const epicGraphNodeSchema = z
     created_at: z.string(),
     updated_at: z.string(),
     taskSummary: epicGraphTaskSummarySchema,
+    // C3.P4: claim liveness (mirrors @pm/shared epicGraphNodeSchema).
+    claimState: z.enum(CLAIM_STATES),
     // P4 enrichment — required (mirrors @pm/shared epicGraphNodeSchema).
     health: z.enum(EPIC_HEALTHS),
     activity_recency: z.string(),

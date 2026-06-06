@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEPENDENCY_TYPES, EPIC_HEALTHS } from "../constants/enums.js";
+import { DEPENDENCY_TYPES, EPIC_HEALTHS, CLAIM_STATES } from "../constants/enums.js";
 import { ulidSchema, timestampSchema } from "./common.js";
 
 // Edge provenance: `derived` = rolled up from the task graph (P2);
@@ -23,6 +23,9 @@ export const epicGraphNodeSchema = z.object({
   created_at: timestampSchema,
   updated_at: timestampSchema,
   taskSummary: epicTaskSummarySchema,
+  // C3.P4: claim liveness folded onto the node so the roadmap canvas can
+  // surface stale/live/yours/unclaimed at a glance (sourced from epicService.list).
+  claimState: z.enum(CLAIM_STATES),
   // P4 enrichment — finalized & REQUIRED. getGraph always emits all three:
   //   health           — EPIC_HEALTHS enum (done > blocked > at_risk > not_started > on_track)
   //   activity_recency — max(task.updated_at), falling back to epic.updated_at (NOT NULL ⇒ always present)

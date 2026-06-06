@@ -12108,6 +12108,8 @@ export interface components {
             claimedBy: string | null;
             /** @enum {string} */
             claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
+            /** @enum {string} */
+            claimState: "unclaimed" | "live" | "stale" | "yours";
             resolvedBy: string | null;
             resolvedAt: string | null;
             createdAt: string;
@@ -12221,6 +12223,8 @@ export interface components {
             assigneeId: string | null;
             /** @enum {string} */
             claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
+            /** @enum {string} */
+            claimState: "unclaimed" | "live" | "stale" | "yours";
             name: string;
             description: string | null;
             status: string;
@@ -12298,6 +12302,8 @@ export interface components {
                     [key: string]: number;
                 };
             };
+            /** @enum {string} */
+            claimState: "unclaimed" | "live" | "stale" | "yours";
             /** @enum {string} */
             health: "not_started" | "on_track" | "at_risk" | "blocked" | "done";
             activity_recency: string;
@@ -12382,6 +12388,8 @@ export interface components {
             reporterType: string | null;
             /** @enum {string} */
             claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
+            /** @enum {string} */
+            claimState: "unclaimed" | "live" | "stale" | "yours";
         };
         CreateTask: {
             title: string;
@@ -12497,6 +12505,8 @@ export interface components {
                 } | null;
                 gitBranch: string | null;
                 startedAt: string | null;
+                /** @enum {string} */
+                claimState: "unclaimed" | "live" | "stale" | "yours";
             }[];
             total: number;
         };

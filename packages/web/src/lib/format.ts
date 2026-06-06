@@ -168,6 +168,27 @@ export function getHealthColor(
 }
 
 /**
+ * Map a claim liveness state to a soft-tint badge class (mirrors getStatusColor).
+ *
+ * `stale` is the dominant affordance (amber — a claim whose lease has lapsed and
+ * likely needs reclaiming). `live` is deliberately SUBTLE/muted so it never
+ * competes with stale at a glance. `yours` is an accent (blue). `unclaimed`
+ * is unused — the badge renders nothing for it.
+ */
+export function getClaimStateStyle(state: string): string {
+  switch (state) {
+    case "stale":
+      return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
+    case "live":
+      return "bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400";
+    case "yours":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300";
+    default:
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900/40 dark:text-gray-300";
+  }
+}
+
+/**
  * Map a priority to a color class string for badges.
  */
 export function getPriorityColor(priority: string): string {

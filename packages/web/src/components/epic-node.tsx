@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { getHealthColor } from "@/lib/format";
 import { parseEpicLabel } from "@/lib/epic-label";
+import { ClaimStateBadge } from "@/components/claim-state-badge";
 import { cn } from "@/lib/utils";
 import type { Lifecycle } from "@/lib/epic-lifecycle";
 import type { EpicGraphNode } from "@/lib/api";
@@ -25,6 +26,7 @@ export interface EpicNodeData {
   total: number;
   progressPct: number;
   health: EpicGraphNode["health"];
+  claimState: EpicGraphNode["claimState"];
   byStatus: Record<string, number>;
   dimmed?: boolean;
   inCycle?: boolean;
@@ -44,6 +46,7 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
     total,
     progressPct,
     health,
+    claimState,
     byStatus,
     dimmed,
     inCycle,
@@ -135,6 +138,13 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
         )}
         style={{ width: `${progressPct}%` }}
       />
+
+      {/* Claim liveness — top-right overlay so a stale lease pops on the DAG at a
+          glance without reflowing the tag/topic/progress layout. `live` is muted,
+          `unclaimed` renders nothing (badge returns null). */}
+      <div className="absolute right-1 top-1 z-20">
+        <ClaimStateBadge state={claimState} className="text-[9px] px-1 py-0" />
+      </div>
 
       {/* Content sits above the fill. */}
       <div className="relative z-10 px-3 py-2">

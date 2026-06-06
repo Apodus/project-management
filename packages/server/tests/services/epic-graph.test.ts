@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { createId, epicGraphSchema, EPIC_HEALTHS } from "@pm/shared";
+import { createId, epicGraphSchema, EPIC_HEALTHS, CLAIM_STATES } from "@pm/shared";
 import {
   createTestApp,
   createTestEpic,
@@ -107,6 +107,18 @@ describe("epic-graph.service getGraph", () => {
       backlog: 1,
       in_progress: 1,
     });
+  });
+
+  it("carries claimState on nodes (C3.P4 — threaded from the completion source)", () => {
+    const project = createTestProject(ctx.db);
+    const epicA = createTestEpic(ctx.db, { projectId: project.id });
+
+    const graph = epicGraphService.getGraph(project.id);
+    const node = graph.nodes.find((n) => n.id === epicA.id)!;
+
+    // No assignee + no caller → fail-safe-to-unclaimed (see withClaimStatus).
+    expect(CLAIM_STATES).toContain(node.claimState);
+    expect(node.claimState).toBe("unclaimed");
   });
 
   it("excludes relates_to deps from derived edges", () => {

@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ClaimStateBadge } from "@/components/claim-state-badge";
 import { useProject } from "@/hooks/use-projects";
 import { useTasks, useTransitionTask } from "@/hooks/use-tasks";
 import { useEpics } from "@/hooks/use-epics";
@@ -193,6 +194,10 @@ function TaskCard({
         >
           {formatStatus(task.type)}
         </Badge>
+        <ClaimStateBadge
+          state={task.claimState}
+          className="text-[10px] px-1.5 py-0"
+        />
       </div>
 
       {/* Bottom row: assignee */}

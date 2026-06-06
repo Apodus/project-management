@@ -24,6 +24,7 @@ function baseData(overrides: Partial<EpicNodeData> = {}): EpicNodeData {
     total: 5,
     progressPct: 60,
     health: "on_track",
+    claimState: "unclaimed",
     byStatus: { done: 3, in_progress: 2 },
     ...overrides,
   };

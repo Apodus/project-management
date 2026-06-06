@@ -63,6 +63,7 @@ export function getGraph(projectId: string, caller?: { id: string } | null) {
     created_at: e.createdAt,
     updated_at: e.updatedAt,
     taskSummary: e.taskSummary,
+    claimState: e.claimState,
   }));
 
   const db = getDb();

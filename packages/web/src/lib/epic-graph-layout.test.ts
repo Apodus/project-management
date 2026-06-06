@@ -19,6 +19,7 @@ function makeNode(
     updated_at: window.end ?? window.start,
     taskSummary: { total: 0, done: 0, byStatus: {} },
     health: "on_track",
+    claimState: "unclaimed",
     activity_recency: window.end ?? window.start,
     time_window: { start: window.start, end: window.end ?? null },
   };

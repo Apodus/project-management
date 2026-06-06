@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ClaimStateBadge } from "@/components/claim-state-badge";
 import {
   Table,
   TableBody,
@@ -177,11 +178,14 @@ function EpicTaskRow({
         </Badge>
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
-        {task.assigneeId ? (
-          assigneeName ?? "Unknown User"
-        ) : (
-          <span className="italic text-muted-foreground/50">Unassigned</span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {task.assigneeId ? (
+            assigneeName ?? "Unknown User"
+          ) : (
+            <span className="italic text-muted-foreground/50">Unassigned</span>
+          )}
+          <ClaimStateBadge state={task.claimState} />
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -619,6 +623,7 @@ export function EpicDetailPage() {
                 <span className="text-sm">
                   {usersById.get(epic.assigneeId) ?? epic.assigneeId}
                 </span>
+                <ClaimStateBadge state={epic.claimState} />
                 {(currentUser?.id === epic.assigneeId ||
                   currentUser?.role === "admin") && (
                   <Button

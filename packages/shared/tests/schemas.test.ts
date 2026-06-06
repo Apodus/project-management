@@ -689,6 +689,7 @@ describe("epicGraphNodeSchema (epic categories)", () => {
     updated_at: VALID_TIMESTAMP,
     taskSummary: { total: 0, done: 0, byStatus: {} },
     health: "not_started" as const,
+    claimState: "unclaimed" as const,
     activity_recency: VALID_TIMESTAMP,
     time_window: { start: VALID_TIMESTAMP, end: null },
   };
