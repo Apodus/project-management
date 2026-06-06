@@ -38,6 +38,11 @@ import {
   type ForceClaimResult,
 } from "./claim-helpers.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
+import {
+  acquireLease,
+  deleteLease,
+  sweepStaleClaims,
+} from "./claim-lease.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -248,10 +253,10 @@ export function withClaimStatus<T extends { assigneeId?: string | null }>(
 }
 
 export function assertTaskClaimOk(
-  task: { assigneeId?: string | null },
+  task: { id: string; assigneeId?: string | null },
   actor: Actor,
 ): void {
-  assertClaimOkRaw(task.assigneeId ?? null, actor, "task");
+  assertClaimOkRaw(task.assigneeId ?? null, actor, "task", "task", task.id);
 }
 
 /**
@@ -607,6 +612,17 @@ export function update(id: string, data: UpdateTaskInput, actor?: AuthUser) {
     changes,
   });
 
+  // FOLD-IN: keep the lease in sync with a direct assignee PATCH so no orphan
+  // lease survives a reassign/unassign. Unassigned → delete; reassigned to a
+  // different holder → acquire to the new holder (acquire = create-or-overwrite).
+  if (isAssignment) {
+    if (data.assigneeId == null) {
+      deleteLease("task", id);
+    } else {
+      acquireLease("task", id, { id: data.assigneeId });
+    }
+  }
+
   return result;
 }
 
@@ -622,6 +638,10 @@ export function archive(id: string, actor?: AuthUser) {
     .set({ status: "cancelled", updatedAt: now })
     .where(eq(tasks.id, id))
     .run();
+
+  // cancelled is terminal — tear down the lease (fixes the R4 leak where an
+  // archived-while-claimed task left a dangling lease).
+  deleteLease("task", id);
 
   const result = getById(id, actor ? { id: actor.id } : null);
 
@@ -739,6 +759,18 @@ export function transition(
     }
 
     db.update(tasks).set(values).where(eq(tasks.id, taskId)).run();
+  }
+
+  // Lease lifecycle follows the status transition: starting work (the path
+  // includes in_progress, which also stamps assigneeId = actor.id) acquires the
+  // lease for the actor; reaching a terminal status (done/cancelled) tears it
+  // down. A path that both starts and completes (e.g. ready→done) ends terminal,
+  // so the delete wins — correct.
+  if (path.includes("in_progress")) {
+    acquireLease("task", taskId, { id: actor.id });
+  }
+  if (CLAIM_TERMINAL_STATUSES.has(path[path.length - 1])) {
+    deleteLease("task", taskId);
   }
 
   const result = getById(taskId, { id: actor.id });
@@ -884,6 +916,12 @@ export function pickNextTask(actor: AuthUser, options?: PickNextOptions): Return
 
   const whereClause = conditions.join(" AND ");
 
+  // Opportunistic stale-claim sweep before we pick: in production this is a
+  // shadow no-op (observe-only), but it's the wiring point where the reclaim
+  // sweep would free lapsed claims so they re-enter the available pool. Return
+  // discarded — pick is unaffected by the observation.
+  sweepStaleClaims({ entityType: "task" });
+
   // Use a transaction to atomically find and claim
   const now = new Date().toISOString();
 
@@ -943,6 +981,10 @@ export function pickNextTask(actor: AuthUser, options?: PickNextOptions): Return
     return null;
   }
 
+  // Post-commit (OUTSIDE the txn): establish the lease for the freshly claimed
+  // task. pick = atomic claim-and-start, so the picker holds the lease.
+  acquireLease("task", claimedId, { id: actor.id });
+
   const claimedTask = getById(claimedId, { id: actor.id });
 
   // Log activity via event bus (after transaction committed)
@@ -975,11 +1017,20 @@ export function claim(id: string, actor: Actor): ClaimResult {
     throw new AppError(404, "NOT_FOUND", `Task not found: ${id}`);
   }
 
+  // Opportunistic single-entity sweep before the claim attempt (shadow no-op in
+  // production; the wiring point where a lapsed lease on THIS task would be
+  // reclaimed first). Discard the result — claim decides on the entity row.
+  sweepStaleClaims({ entityType: "task", entityId: id });
+
   if (CLAIM_TERMINAL_STATUSES.has(task.status)) {
     return { ok: false, status: "closed" };
   }
 
   if (task.assigneeId === actor.id) {
+    // Idempotent re-claim: establish the lease for a legacy holder whose claim
+    // predates the lease engine (or whose lease lapsed) so the activity ledger
+    // is re-armed even on the no-op path.
+    acquireLease("task", id, { id: actor.id });
     return { ok: true, status: "already_claimed_by_you" };
   }
 
@@ -999,6 +1050,9 @@ export function claim(id: string, actor: Actor): ClaimResult {
   }
 
   const fresh = db.select().from(tasks).where(eq(tasks.id, id)).get()!;
+
+  // Establish the lease for the new holder.
+  acquireLease("task", id, { id: actor.id });
 
   getEventBus().emit(EVENT_NAMES.TASK_CLAIMED, {
     entity: fresh,
@@ -1039,6 +1093,9 @@ export function release(id: string, actor: Actor): ClaimResult {
     .set({ assigneeId: null, updatedAt: now })
     .where(eq(tasks.id, id))
     .run();
+
+  // The holder is gone — tear down the lease.
+  deleteLease("task", id);
 
   const fresh = db.select().from(tasks).where(eq(tasks.id, id)).get()!;
 

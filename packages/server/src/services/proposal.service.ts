@@ -18,6 +18,11 @@ import {
   type ClaimFilter as ClaimFilterShared,
   type ForceClaimResult,
 } from "./claim-helpers.js";
+import {
+  acquireLease,
+  deleteLease,
+  sweepStaleClaims,
+} from "./claim-lease.service.js";
 
 export { deriveClaimStatus } from "./claim-helpers.js";
 
@@ -80,8 +85,17 @@ export function withClaimStatus<T extends { claimedBy?: string | null }>(
  * Humans always pass. AI agents must hold the claim — unclaimed proposals also
  * reject AI-agent writes (they must call `claim()` first).
  */
-export function assertClaimOk(proposal: { claimedBy?: string | null }, actor: Actor): void {
-  assertClaimOkRaw(proposal.claimedBy ?? null, actor, "proposal");
+export function assertClaimOk(
+  proposal: { id: string; claimedBy?: string | null },
+  actor: Actor,
+): void {
+  assertClaimOkRaw(
+    proposal.claimedBy ?? null,
+    actor,
+    "proposal",
+    "proposal",
+    proposal.id,
+  );
 }
 
 // ─── Service functions ────────────────────────────────────────────
@@ -231,11 +245,16 @@ export function claim(id: string, actor: Actor): ClaimResult {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${id}`);
   }
 
+  // Opportunistic single-entity sweep (shadow no-op in production).
+  sweepStaleClaims({ entityType: "proposal", entityId: id });
+
   if (TERMINAL_STATUSES.has(proposal.status)) {
     return { ok: false, status: "closed" };
   }
 
   if (proposal.claimedBy === actor.id) {
+    // Idempotent re-claim re-arms the lease for a legacy/lapsed holder.
+    acquireLease("proposal", id, { id: actor.id });
     return { ok: true, status: "already_claimed_by_you" };
   }
 
@@ -256,6 +275,9 @@ export function claim(id: string, actor: Actor): ClaimResult {
   }
 
   const fresh = db.select().from(proposals).where(eq(proposals.id, id)).get()!;
+
+  // Establish the lease for the new holder.
+  acquireLease("proposal", id, { id: actor.id });
 
   getEventBus().emit(EVENT_NAMES.PROPOSAL_CLAIMED, {
     entity: fresh,
@@ -292,6 +314,9 @@ export function release(id: string, actor: Actor): ClaimResult {
   const now = new Date().toISOString();
   const previousClaimant = proposal.claimedBy;
   db.update(proposals).set({ claimedBy: null, updatedAt: now }).where(eq(proposals.id, id)).run();
+
+  // The holder is gone — tear down the lease.
+  deleteLease("proposal", id);
 
   const fresh = db.select().from(proposals).where(eq(proposals.id, id)).get()!;
 
@@ -379,11 +404,18 @@ export function transition(id: string, toStatus: ProposalStatus, actor: Actor) {
     values.resolvedAt = now;
   }
 
-  if (TERMINAL_STATUSES.has(toStatus)) {
+  const goesTerminal = TERMINAL_STATUSES.has(toStatus);
+  if (goesTerminal) {
     values.claimedBy = null;
   }
 
   db.update(proposals).set(values).where(eq(proposals.id, id)).run();
+
+  // Terminal status (completed/rejected) clears the holder above — tear down
+  // the lease to match.
+  if (goesTerminal) {
+    deleteLease("proposal", id);
+  }
 
   const result = db.select().from(proposals).where(eq(proposals.id, id)).get()!;
 

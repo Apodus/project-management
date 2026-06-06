@@ -1,5 +1,10 @@
 import { eq } from "drizzle-orm";
-import type { AuditLogView, ClaimStatus, UserType } from "@pm/shared";
+import type {
+  AuditLogView,
+  ClaimStatus,
+  LeaseEntityType,
+  UserType,
+} from "@pm/shared";
 import { AppError } from "../types.js";
 import { getDb } from "../db/index.js";
 import { getEventBus, type EventName } from "../events/event-bus.js";
@@ -8,6 +13,7 @@ import {
   emitAuditRecorded,
 } from "./audit.service.js";
 import { getById as getUserById } from "./user.service.js";
+import { acquireLease, renewLease } from "./claim-lease.service.js";
 
 // Re-export so callers don't need an additional import for the event name set.
 export { EVENT_NAMES } from "../events/event-bus.js";
@@ -33,17 +39,37 @@ export function deriveClaimStatus(
 }
 
 /**
- * Enforce that an AI agent holds the claim on an entity before writing.
- * Humans always pass. AI agents must hold the claim — unclaimed entities also
- * reject AI-agent writes (the agent must call claim first).
+ * Enforce that an AI agent holds the claim on an entity before writing — and,
+ * for the holder, treat every write as a heartbeat (the SINGLE liveness seam).
+ *
+ * Humans always pass and create no lease (they hold no claim-lease). An AI
+ * agent that holds the claim passes AND renews its lease (a write IS activity);
+ * if the lease is absent — a legacy/pre-lease holder, or one whose lease lapsed
+ * and was reclaimed/never-created — the holder's own write self-heals it via
+ * acquire (create-if-missing). The non-holder still hits the 409, with NO lease
+ * side effect (a rejected agent never touches the lease).
+ *
+ * Note: this deliberately does NOT consult lease liveness to GATE the write.
+ * The holder's identity (claimedBy === actor.id) is the authz; the lease is the
+ * activity ledger the sweep reclaims against. A holder writing past its TTL is
+ * not denied — it heals its own lease forward.
  */
 export function assertClaimOk(
   claimedBy: string | null | undefined,
   actor: Actor,
   entityName: string,
+  entityType: LeaseEntityType,
+  entityId: string,
 ): void {
   if (actor.type === "human") return;
-  if (claimedBy === actor.id) return;
+  if (claimedBy === actor.id) {
+    // The holder is writing — renew (heartbeat). A null return means no lease
+    // exists for this holder (legacy holder, or lapsed-and-reclaimed) — acquire
+    // to (re)establish it so the activity is recorded going forward.
+    const renewed = renewLease(entityType, entityId, { id: actor.id });
+    if (renewed === null) acquireLease(entityType, entityId, { id: actor.id });
+    return;
+  }
   throw new AppError(
     409,
     "CLAIM_DENIED",
@@ -240,6 +266,12 @@ export function forceClaim(
   if (auditId !== null && auditView !== null) {
     emitAuditRecorded(auditId, projectId, actor.id, auditView);
   }
+
+  // Transfer the lease to the new holder (acquire = create-or-overwrite), so
+  // the displaced holder's lease never lingers and the takeover is recorded as
+  // the new holder's activity. cfg.entityType is "task"|"epic"|"proposal" —
+  // exactly LeaseEntityType.
+  acquireLease(cfg.entityType, id, { id: target });
 
   return {
     ok: true,

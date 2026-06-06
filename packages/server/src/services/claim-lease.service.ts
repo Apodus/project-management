@@ -271,6 +271,26 @@ export function renewLease(
   return readLease(entityType, entityId);
 }
 
+/**
+ * Delete — tear down the lease for (entityType, entityId). Idempotent: a
+ * missing lease is a no-op. The teardown primitive for release/terminal/
+ * unassign paths (P3), where the holder is going away so the lease must too.
+ */
+export function deleteLease(
+  entityType: LeaseEntityType,
+  entityId: string,
+): void {
+  getDb()
+    .delete(claimLeases)
+    .where(
+      and(
+        eq(claimLeases.entityType, entityType),
+        eq(claimLeases.entityId, entityId),
+      ),
+    )
+    .run();
+}
+
 // ─── Stale-claim sweep ────────────────────────────────────────────
 
 export interface SweepObservation {

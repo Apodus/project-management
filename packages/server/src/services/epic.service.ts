@@ -13,6 +13,11 @@ import {
   type ClaimFilter,
   type ForceClaimResult,
 } from "./claim-helpers.js";
+import {
+  acquireLease,
+  deleteLease,
+  sweepStaleClaims,
+} from "./claim-lease.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -67,10 +72,10 @@ function withClaimStatus<T extends { assigneeId?: string | null }>(
 }
 
 function assertEpicClaimOk(
-  epic: { assigneeId?: string | null },
+  epic: { id: string; assigneeId?: string | null },
   actor: Actor,
 ): void {
-  assertClaimOkRaw(epic.assigneeId ?? null, actor, "epic");
+  assertClaimOkRaw(epic.assigneeId ?? null, actor, "epic", "epic", epic.id);
 }
 
 // ─── Service functions ────────────────────────────────────────────
@@ -290,11 +295,20 @@ export function update(
   if (data.category !== undefined) values.category = data.category;
   if (data.sortOrder !== undefined) values.sortOrder = data.sortOrder;
 
-  if (data.status !== undefined && TERMINAL_STATUSES.has(data.status)) {
+  const goesTerminal =
+    data.status !== undefined && TERMINAL_STATUSES.has(data.status);
+  if (goesTerminal) {
     values.assigneeId = null;
   }
 
   db.update(epics).set(values).where(eq(epics.id, id)).run();
+
+  // Terminal status clears the holder (above) — tear down the lease to match.
+  // (UpdateEpicInput carries no assigneeId field, so there is no direct
+  // assignee-PATCH fold-in to mirror here, unlike tasks.)
+  if (goesTerminal) {
+    deleteLease("epic", id);
+  }
 
   const result = getById(id, actor);
 
@@ -323,11 +337,16 @@ export function claim(id: string, actor: Actor): ClaimResult {
     throw new AppError(404, "NOT_FOUND", `Epic not found: ${id}`);
   }
 
+  // Opportunistic single-entity sweep (shadow no-op in production).
+  sweepStaleClaims({ entityType: "epic", entityId: id });
+
   if (TERMINAL_STATUSES.has(epic.status)) {
     return { ok: false, status: "closed" };
   }
 
   if (epic.assigneeId === actor.id) {
+    // Idempotent re-claim re-arms the lease for a legacy/lapsed holder.
+    acquireLease("epic", id, { id: actor.id });
     return { ok: true, status: "already_claimed_by_you" };
   }
 
@@ -347,6 +366,9 @@ export function claim(id: string, actor: Actor): ClaimResult {
   }
 
   const fresh = db.select().from(epics).where(eq(epics.id, id)).get()!;
+
+  // Establish the lease for the new holder.
+  acquireLease("epic", id, { id: actor.id });
 
   getEventBus().emit(EVENT_NAMES.EPIC_CLAIMED, {
     entity: fresh,
@@ -386,6 +408,9 @@ export function release(id: string, actor: Actor): ClaimResult {
     .set({ assigneeId: null, updatedAt: now })
     .where(eq(epics.id, id))
     .run();
+
+  // The holder is gone — tear down the lease.
+  deleteLease("epic", id);
 
   const fresh = db.select().from(epics).where(eq(epics.id, id)).get()!;
 
@@ -436,6 +461,9 @@ export function archive(id: string, actor?: Actor) {
     .set({ status: "cancelled", assigneeId: null, updatedAt: now })
     .where(eq(epics.id, id))
     .run();
+
+  // cancelled is terminal and the holder was cleared above — tear down the lease.
+  deleteLease("epic", id);
 
   const result = getById(id, actor);
 
