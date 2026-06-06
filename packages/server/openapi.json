@@ -6339,6 +6339,22 @@
           "members"
         ]
       },
+      "ClaimsHealth": {
+        "type": "object",
+        "properties": {
+          "stale_count": {
+            "type": "number"
+          },
+          "oldest_stale_age_ms": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "stale_count",
+          "oldest_stale_age_ms"
+        ]
+      },
       "VerifyCacheList": {
         "type": "object",
         "properties": {
@@ -25121,6 +25137,107 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/TrainInFlight"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/claims-health": {
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Read the stale-claim health for a project",
+        "description": "Returns the project's stale-claim aggregate (Campaign C3 §P5a): the number of work items claimed but inactive past the lease TTL+grace, plus the elapsed time since the oldest stale claim lapsed. Computing this fires the edge-triggered `claim.stale_alert` once per stale episode (in-app SSE banner + Discord), mirroring train.stuck — so the dashboard's always-open poll keeps the alert live. IDENTITY-MASKED: no holder id is surfaced. Any authenticated user (read-only observability).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The stale-claim health aggregate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClaimsHealth"
                     }
                   },
                   "required": [

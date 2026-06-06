@@ -162,6 +162,13 @@
       "when": 1781654400000,
       "tag": "0022_agent_claim_worker_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1781740800000,
+      "tag": "0023_claims_alert_state",
+      "breakpoints": true
     }
   ]
 }

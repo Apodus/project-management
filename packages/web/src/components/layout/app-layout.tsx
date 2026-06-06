@@ -10,6 +10,7 @@ import {
   useKeyboardShortcuts,
 } from "@/components/keyboard-shortcuts-dialog";
 import { useSSE } from "@/hooks/use-sse";
+import { useClaimsHealth } from "@/hooks/use-train";
 import { useFaviconBadge } from "@/hooks/use-favicon-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -25,6 +26,11 @@ export function AppLayout() {
 
   // Establish SSE connection for real-time updates, scoped to current project
   useSSE(currentProjectId, currentUser?.id);
+
+  // Poll stale-claim health (Campaign C3 §P5a) from the always-open layout: the
+  // read is the detection trigger — it fires the edge-triggered claim.stale_alert
+  // (SSE banner + Discord) once per stale episode. Guarded on a current project.
+  useClaimsHealth(currentProjectId ?? undefined);
 
   // Favicon badge + document title reflect unread event count
   useFaviconBadge();

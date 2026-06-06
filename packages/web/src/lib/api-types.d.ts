@@ -11327,6 +11327,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/claims-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the stale-claim health for a project
+         * @description Returns the project's stale-claim aggregate (Campaign C3 §P5a): the number of work items claimed but inactive past the lease TTL+grace, plus the elapsed time since the oldest stale claim lapsed. Computing this fires the edge-triggered `claim.stale_alert` once per stale episode (in-app SSE banner + Discord), mirroring train.stuck — so the dashboard's always-open poll keeps the alert live. IDENTITY-MASKED: no holder id is surfaced. Any authenticated user (read-only observability).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The stale-claim health aggregate */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["ClaimsHealth"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/verify-cache": {
         parameters: {
             query?: never;
@@ -13426,6 +13497,10 @@ export interface components {
                     started_at: string | null;
                 } | null;
             }[];
+        };
+        ClaimsHealth: {
+            stale_count: number;
+            oldest_stale_age_ms: number | null;
         };
         VerifyCacheList: {
             data: components["schemas"]["VerifyCacheRow"][];

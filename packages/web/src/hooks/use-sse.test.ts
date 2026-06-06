@@ -35,4 +35,12 @@ describe("getInvalidationKeys — merge-train wiring", () => {
   it("leaves unrelated event prefixes untouched", () => {
     expect(getInvalidationKeys("unknown.thing")).toEqual([]);
   });
+
+  // Campaign C3 §P5a — the stale-claim alert is a toast-only banner event (no
+  // cache invalidation: the always-open useClaimsHealth poll owns the refresh,
+  // the SSE frame just surfaces the banner). The "claim" prefix has no
+  // invalidation map entry, so it correctly returns no keys.
+  it("does not invalidate caches on claim.stale_alert (toast-only banner)", () => {
+    expect(getInvalidationKeys("claim.stale_alert")).toEqual([]);
+  });
 });

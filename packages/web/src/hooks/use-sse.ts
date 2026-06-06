@@ -81,6 +81,14 @@ function maybeShowToast(eventType: string, payload: SSEPayload): void {
     });
     return;
   }
+  // Stale-claim alert (Campaign C3 §P5a). Identity-masked — no holder id.
+  if (eventType === "claim.stale_alert") {
+    toast.warning("Stale claims", {
+      description:
+        "Some work items are claimed but inactive past grace. Review or hand off.",
+    });
+    return;
+  }
 
   const titleLabel = payload.entity_title
     ? `'${payload.entity_title}'`
@@ -226,6 +234,8 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       "train.stuck",
       "train.abandon_rate_high",
       "train.integration_stalled",
+      // Stale-claim alert (Campaign C3 §P5a) — claimed-but-inactive work items.
+      "claim.stale_alert",
       // Break-glass audit — an R1-override was recorded → refresh the audit log.
       "audit.recorded",
     ];

@@ -1019,3 +1019,34 @@ export const claimLeases = sqliteTable(
     index("idx_claim_leases_holder").on(table.holderId),
   ],
 );
+
+// ─── claims_alert_state ─────────────────────────────────────────────
+// Campaign C3 (§P5a): the per-project edge-trigger latch for the stale-claim
+// alert. Mirrors train_state's stuck/abandon latches EXACTLY — a single boolean
+// debounce flag set true when the stale-claim alert fires and reset to false
+// when the condition clears, so the on-read detection (claims-health.service
+// computeClaimsHealth) fires the alert exactly ONCE per stale episode and
+// re-arms when the stale claims are cleared (renewed / reassigned / reclaimed).
+//
+// One row per project (claim_leases carries NO projectId, and staleness is
+// derived per-project by resolving each lapsed lease's entity — so the latch is
+// project-scoped, not per-(project, resource) like the train lane). Lazy-created
+// on first read/write (the getOrCreateTrainState idiom). The unique index makes
+// the upsert race-safe. PM-owned, durable.
+export const claimsAlertState = sqliteTable(
+  "claims_alert_state",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    // The edge-trigger debounce flag for the on-read stale-claim alert. Set
+    // true when the alert fires and reset to false when the condition clears.
+    staleClaimsNotified: integer("stale_claims_notified", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [uniqueIndex("idx_claims_alert_state_project").on(table.projectId)],
+);

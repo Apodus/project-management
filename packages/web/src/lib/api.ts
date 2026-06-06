@@ -28,6 +28,7 @@ export type TrainMetrics = components["schemas"]["TrainMetrics"];
 export type TrainInFlight = components["schemas"]["TrainInFlight"];
 export type IntegratorHealth = components["schemas"]["IntegratorHealth"];
 export type TrainState = components["schemas"]["TrainState"];
+export type ClaimsHealth = components["schemas"]["ClaimsHealth"];
 export type MergeRequest = components["schemas"]["MergeRequest"];
 export type MergeRequestTimeline = components["schemas"]["MergeRequestTimeline"];
 export type MergeRequestTimelineEvent = components["schemas"]["MergeRequestTimelineEvent"];
@@ -856,6 +857,16 @@ export async function getTrainMetrics(projectId: string, resource?: string): Pro
   if (resource) params.set("resource", resource);
   const query = params.toString();
   return apiFetch<TrainMetrics>(`/projects/${projectId}/train/metrics${query ? `?${query}` : ""}`);
+}
+
+/**
+ * Stale-claim health for a project (Campaign C3 §P5a). Reading this fires the
+ * edge-triggered claim.stale_alert once per stale episode (SSE banner +
+ * Discord) — so the always-open app-layout poll keeps the alert live.
+ * Identity-masked: no holder id is surfaced.
+ */
+export async function getClaimsHealth(projectId: string): Promise<ClaimsHealth> {
+  return apiFetch<ClaimsHealth>(`/projects/${projectId}/claims-health`);
 }
 
 export async function getTrainInFlight(

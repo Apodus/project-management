@@ -50,6 +50,15 @@ export const EVENT_NAMES = {
   // stream; action maps to "assigned" (see events/listeners.ts).
   CLAIM_LEASE_RECLAIMED: "claim.lease.reclaimed",
 
+  // Stale-claim alert (Campaign C3 §P5a — emitted by claims-health.service
+  // computeClaimsHealth when a project has work items claimed-but-inactive past
+  // the lease TTL+grace). Edge-triggered (once per stale episode, latched on
+  // claims_alert_state), mirroring train.stuck. onAll auto-forwards it to the
+  // SSE stream (banner) AND it drives the outbound Discord listener
+  // (events/alerts-listener.ts). Identity-masked: the payload carries NO holder
+  // id — only an aggregate count + the oldest-stale age.
+  CLAIM_STALE_ALERT: "claim.stale_alert",
+
   // Merge lock events
   MERGE_LOCK_ACQUIRED: "merge.lock.acquired",
   MERGE_LOCK_QUEUED: "merge.lock.queued",

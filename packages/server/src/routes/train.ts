@@ -4,6 +4,7 @@ import { AppError } from "../types.js";
 import * as trainService from "../services/train.service.js";
 import * as metricsService from "../services/metrics.service.js";
 import type { InFlightBundle, MetricsBundle } from "../services/metrics.service.js";
+import * as claimsHealthService from "../services/claims-health.service.js";
 
 // ─── Param + query schemas ────────────────────────────────────────
 
@@ -281,8 +282,19 @@ const inFlightSchema = z
   })
   .openapi("TrainInFlight");
 
+// Claims health (Campaign C3 §P5a) — the route-local Zod-4 mirror of
+// @pm/shared claimsHealthSchema. snake_case on the wire; identity-masked
+// (no holder id).
+const claimsHealthSchema = z
+  .object({
+    stale_count: z.number(),
+    oldest_stale_age_ms: z.number().nullable(),
+  })
+  .openapi("ClaimsHealth");
+
 const metricsEnvelope = z.object({ data: metricsBundleSchema });
 const inFlightEnvelope = z.object({ data: inFlightSchema });
+const claimsHealthEnvelope = z.object({ data: claimsHealthSchema });
 
 // ─── Routes ───────────────────────────────────────────────────────
 
@@ -511,6 +523,32 @@ const getInFlightRoute = createRoute({
     200: {
       description: "The in-flight composition",
       content: { "application/json": { schema: inFlightEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const getClaimsHealthRoute = createRoute({
+  method: "get",
+  path: "/api/v1/projects/{projectId}/claims-health",
+  tags: ["Merge Train"],
+  summary: "Read the stale-claim health for a project",
+  description:
+    "Returns the project's stale-claim aggregate (Campaign C3 §P5a): the number of work items claimed but inactive past the lease TTL+grace, plus the elapsed time since the oldest stale claim lapsed. Computing this fires the edge-triggered `claim.stale_alert` once per stale episode (in-app SSE banner + Discord), mirroring train.stuck — so the dashboard's always-open poll keeps the alert live. IDENTITY-MASKED: no holder id is surfaced. Any authenticated user (read-only observability).",
+  request: {
+    params: z.object({ projectId: projectIdParam }),
+  },
+  responses: {
+    200: {
+      description: "The stale-claim health aggregate",
+      content: { "application/json": { schema: claimsHealthEnvelope } },
     },
     401: {
       description: "Authentication required",
@@ -799,6 +837,22 @@ export function createTrainRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     requireUser(c.get("currentUser") as AuthUser | null);
     const bundle = metricsService.getInFlight(projectId, resource ?? "main");
     return c.json({ data: inFlightToResponse(bundle) }, 200);
+  });
+
+  router.openapi(getClaimsHealthRoute, (c) => {
+    const { projectId } = c.req.valid("param");
+    requireUser(c.get("currentUser") as AuthUser | null);
+    // computeClaimsHealth fires the stale-claim edge once per episode (§P5a).
+    const health = claimsHealthService.computeClaimsHealth(projectId);
+    return c.json(
+      {
+        data: {
+          stale_count: health.staleCount,
+          oldest_stale_age_ms: health.oldestStaleAgeMs,
+        },
+      },
+      200,
+    );
   });
 
   return router;

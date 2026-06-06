@@ -78,6 +78,16 @@ function formatAlert(event: EventName, payload: EventPayload): string {
       const stalenessMin = Math.round(stalenessMs / 60_000);
       return `:rotating_light: Integration stalled on \`${resource}\` — request ${requestId} stuck integrating ${stalenessMin}m with no attempt progress.`;
     }
+    case EVENT_NAMES.CLAIM_STALE_ALERT: {
+      // Identity-masked (Campaign C3 §P5a): aggregate count + oldest-stale age
+      // only — never the holder id.
+      const count = Number(e.staleCount ?? 0);
+      const items = count === 1 ? "1 work item" : `${count} work items`;
+      const ageMs = e.oldestStaleAgeMs == null ? null : Number(e.oldestStaleAgeMs);
+      const oldest =
+        ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 3_600_000))}h)`;
+      return `:warning: Stale claims on project — ${items} claimed but inactive past grace${oldest}. Review or hand off.`;
+    }
     default:
       return `:warning: Train alert (${event}) on \`${resource}\`.`;
   }
@@ -136,5 +146,11 @@ export function registerWebhookAlertListener(): void {
   );
   bus.on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
     handler(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, p),
+  );
+  // Campaign C3 §P5a — the stale-claim alert rides the same outbound Discord
+  // path (explicit B2 wiring, NOT auto). Identity-masked message; the handler's
+  // settings read + format are guarded, the fetch un-awaited (NOTE 2).
+  bus.on(EVENT_NAMES.CLAIM_STALE_ALERT, (p) =>
+    handler(EVENT_NAMES.CLAIM_STALE_ALERT, p),
   );
 }

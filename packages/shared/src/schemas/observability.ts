@@ -113,6 +113,18 @@ export const metricsBundleSchema = z.object({
 });
 export type MetricsBundleView = z.infer<typeof metricsBundleSchema>;
 
+// ─── Claims health (Campaign C3 §P5a — the claims-health GET response) ─
+// The per-project stale-claim aggregate that backs the edge-triggered
+// stale-claim alert (mirroring train.stuck). staleCount = work items claimed
+// but inactive past the lease TTL+grace; oldestStaleAgeMs = elapsed time since
+// the oldest stale claim lapsed (null when no stale claims). IDENTITY-MASKED:
+// NO holder id is surfaced. snake_case on the wire (mirroring train.ts §5.6).
+export const claimsHealthSchema = z.object({
+  stale_count: z.number(),
+  oldest_stale_age_ms: z.number().nullable(),
+});
+export type ClaimsHealthView = z.infer<typeof claimsHealthSchema>;
+
 // ─── In-flight composition (§5.3 — the in-flight GET response) ────
 // The lane's `integrating` requests (members) with each one's latest attempt +
 // group_id, plus the forming/integrating group rows. The server does NOT

@@ -25,6 +25,7 @@ import {
   mergeResolutions,
   auditLog,
   trainState,
+  claimsAlertState,
 } from "../../src/db/index.js";
 import type { AppDatabase } from "../../src/db/index.js";
 
@@ -50,7 +51,7 @@ describe("Database schema", () => {
 
   // ── Table existence ──────────────────────────────────────────────
   describe("table existence", () => {
-    it("should create all 30 tables", () => {
+    it("should create all 31 tables", () => {
       const db = setupDb();
       const tableNames = db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' AND name NOT LIKE '%_fts%' ORDER BY name`,
@@ -66,6 +67,7 @@ describe("Database schema", () => {
         "audit_log",
         "automation_rules",
         "claim_leases",
+        "claims_alert_state",
         "comments",
         "epic_dependencies",
         "epics",
@@ -169,6 +171,7 @@ describe("Database schema", () => {
         "idx_claim_leases_type_expires",
         "idx_claim_leases_holder",
         "idx_agent_claims_worker",
+        "idx_claims_alert_state_project",
       ].sort();
 
       for (const idx of expected) {
@@ -1118,6 +1121,78 @@ describe("Database schema", () => {
       expect(result).toBeDefined();
       expect(result!.changedBy).toBeNull();
       expect(result!.state).toBe("paused");
+    });
+  });
+
+  // ── Claims alert state (Campaign C3 §P5a) ────────────────────────
+  describe("claims alert state", () => {
+    let db: AppDatabase;
+    let projectId: string;
+
+    beforeEach(() => {
+      db = setupDb();
+      const workspaceId = db.select().from(workspaces).all()[0].id;
+      const ts = now();
+
+      const userId = createId();
+      db.insert(users)
+        .values({
+          id: userId,
+          username: "claimsop",
+          displayName: "Claims Operator",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      projectId = createId();
+      db.insert(projects)
+        .values({
+          id: projectId,
+          workspaceId,
+          name: "Claims Project",
+          slug: "claims-project",
+          createdAt: ts,
+          updatedAt: ts,
+          createdBy: userId,
+        })
+        .run();
+    });
+
+    it("should insert a claims_alert_state row with default stale_claims_notified=false", () => {
+      const id = createId();
+      const ts = now();
+      db.insert(claimsAlertState).values({ id, projectId, createdAt: ts, updatedAt: ts }).run();
+
+      const result = db
+        .select()
+        .from(claimsAlertState)
+        .where(eq(claimsAlertState.id, id))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.projectId).toBe(projectId);
+      expect(result!.staleClaimsNotified).toBe(false);
+    });
+
+    it("should reject a duplicate project (unique index)", () => {
+      const ts = now();
+      db.insert(claimsAlertState)
+        .values({ id: createId(), projectId, createdAt: ts, updatedAt: ts })
+        .run();
+      expect(() => {
+        db.insert(claimsAlertState)
+          .values({ id: createId(), projectId, createdAt: ts, updatedAt: ts })
+          .run();
+      }).toThrow();
+    });
+
+    it("should reject a row with an invalid project_id (FK enforced)", () => {
+      const ts = now();
+      expect(() => {
+        db.insert(claimsAlertState)
+          .values({ id: createId(), projectId: "nonexistent", createdAt: ts, updatedAt: ts })
+          .run();
+      }).toThrow();
     });
   });
 

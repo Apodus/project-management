@@ -4,6 +4,7 @@ import {
   getTrainMetrics,
   getTrainInFlight,
   getIntegratorHealth,
+  getClaimsHealth,
   getTrainState,
   getMergeRequestTimeline,
   getAuditLog,
@@ -26,6 +27,8 @@ export const trainKeys = {
   health: (projectId: string, resource?: string) =>
     [...trainKeys.all, "health", projectId, { resource }] as const,
   state: (projectId: string) => [...trainKeys.all, "state", projectId] as const,
+  claimsHealth: (projectId: string) =>
+    [...trainKeys.all, "claims-health", projectId] as const,
   timeline: (requestId: string) =>
     [...trainKeys.all, "timeline", requestId] as const,
   // Lives UNDER trainKeys.all so the shipped useSSE audit.recorded / train.* /
@@ -72,6 +75,24 @@ export function useTrainHealth(
     enabled: !!projectId,
     // Poll floor so the freshness counter has fresh staleness to tick from.
     refetchInterval: 10_000,
+  });
+}
+
+/**
+ * Polls the project's stale-claim health (Campaign C3 §P5a). The READ itself is
+ * the detection trigger: the server's computeClaimsHealth fires the edge-
+ * triggered claim.stale_alert (SSE banner + Discord) once per stale episode. We
+ * mount this on the always-open app-layout (NOT a rarely-visited tab) so the
+ * edge fires whenever any project view is open. The returned data is incidental
+ * — the side effect (the on-read alert) is the point.
+ */
+export function useClaimsHealth(projectId: string | undefined) {
+  return useQuery({
+    queryKey: trainKeys.claimsHealth(projectId!),
+    queryFn: () => getClaimsHealth(projectId!),
+    enabled: !!projectId,
+    // Poll so the on-read edge keeps firing/re-arming while a project is open.
+    refetchInterval: 30_000,
   });
 }
 
