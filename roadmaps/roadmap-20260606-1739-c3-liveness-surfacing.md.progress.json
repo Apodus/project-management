@@ -1,0 +1,16 @@
+{
+  "campaign": "C3 — Liveness Everywhere a Decision Is Made",
+  "roadmap": "roadmaps/roadmap-20260606-1739-c3-liveness-surfacing.md",
+  "vision": "roadmaps/vision-20260606-claim-liveness-heartbeat.md",
+  "branch": "campaign-claim-liveness-c1-c3",
+  "base": "contains C2 (main aae1bbd) + C1 (ecdbb68)",
+  "depends_on": "C2 (lease engine) + C1 (stable identity)",
+  "phases": [
+    { "id": "P1", "title": "claim_state enum + deriveClaimState + read-surface threading", "status": "complete", "commit": "ae82e87", "outcome": "CLAIM_STATES (unclaimed|live|stale|yours) + deriveClaimState (pure, identity-masked, self-stale→yours, fail-safe-to-live) + readLeasesFor (batched, no N+1) threaded through task/epic/proposal list+get+awareness + route OpenAPI (camelCase claimState). claim_status kept (additive). full 10/10, server 1314, shared 435." },
+    { "id": "P2", "title": "MCP renders surface claim_state (identity-masked)", "status": "complete", "commit": "9d4fdda", "outcome": "claimState? added to hand-written MCP client types; claimStateLabel helper; wired into pm_list_tasks/get_task/list_epics/get_epic/get_my_work/awareness_check (enum-only, identity-masked, no relative-time since P1 exposed no timestamp). mcp 132, full 10/10." },
+    { "id": "P3", "title": "pick-next skips live / reclaim-then-claim stale + awareness live-vs-stale", "status": "in_progress" },
+    { "id": "P4", "title": "web badges for claim_state (board/roadmap/epic)", "status": "pending" },
+    { "id": "P5", "title": "stale-claim alert + handoff (release-to/request-takeover) + seal", "status": "pending" }
+  ],
+  "notes": "camelCase claimState (route/views/API/MCP) vs snake claim_state (shared select schemas/derived types only) — the shared select schemas are NOT imported in server/src. P3 changes pick-next BEHAVIOR (P1/P2 only add the read field)."
+}
