@@ -304,6 +304,23 @@ be wrongly reclaimed). Everything is **fail-safe-to-live**: a null/unparseable `
 misconfigured knob, or a vanished entity is never aggressively reclaimed. Ships in `shadow` with a long
 (24h) grace. Full spec: `docs/design/phase-c2-claim-lease-engine.md`.
 
+**Stable worker identity (Campaign C1).** A pool worker re-binds to the **same `users` row** across
+reconnect / reboot / token refresh by presenting a durable **worker key** (`PM_WORKER_KEY`) paired with
+the pool secret: the server resolves `(pool, workerKey)` to the same agent and refreshes its token
+instead of grabbing a fresh free agent and minting a new identity. Keyed bindings are recorded in
+`agent_claims` (migration 0022 adds `worker_key`/`worker_key_pool_id`) and are **reserved** — excluded
+from the free pool, so neither a keyless claim nor another key's first-bind can ever steal a keyed
+worker's slot, even after its claim TTL lapses. This kills the **reconnect-strand** bug (the documented
+Worker 1→Worker 3 incident, `project-force-claim`): an MCP reconnect no longer churns the identity, so
+in-flight claims (and their C2 leases) never strand under a dead `users` row and the new identity never
+gets a spurious `409 CLAIM_DENIED`. Stable identity is the safety precondition that **unblocks the C2
+`PM_LEASE_MODE=on` flip** (an identity that churned per session would be wrongly reclaimed) — but C1
+does **not** flip it (operator decision; the lease still ships in `shadow`). `forceClaim` is preserved
+as the break-glass for a genuine cross-worker handoff (a displaced keyed worker re-binds to the same id
+yet is still correctly gated off the taken work). **Back-compat:** keyless `claimAgent(pool, secret)`
+callers degrade to today's grab-any-free-agent behavior, and static `PM_API_TOKEN` users (already
+stable) are a no-op. Full spec: `docs/design/phase-c1-stable-worker-identity.md`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:

@@ -755,6 +755,68 @@ describe("Agent Pool", () => {
       expect(found.claimedCount).toBe(1);
       expect(found.availableCount).toBe(2);
     });
+
+    it("shared host: two distinct keys get two distinct identities, each stable across an interleaved rebind", async () => {
+      const pool = await createPoolViaAPI("bind-shared-host", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 3);
+
+      // First-bind both keys.
+      const firstA = await claim("bind-shared-host", TEST_POOL_SECRET, "host-worker-a");
+      const firstB = await claim("bind-shared-host", TEST_POOL_SECRET, "host-worker-b");
+      expect(firstA.status).toBe(200);
+      expect(firstB.status).toBe(200);
+
+      const idA = firstA.body.data.user.id;
+      const idB = firstB.body.data.user.id;
+      expect(idA).not.toBe(idB);
+
+      const handleA = firstA.body.data.bindHandle;
+      const handleB = firstB.body.data.bindHandle;
+      expect(handleA).toBeTruthy();
+      expect(handleB).toBeTruthy();
+      expect(handleA).not.toBe(handleB);
+
+      // Interleaved rebinds a, b, a, b — each key must keep returning its own
+      // original identity (A never sees idB, B never sees idA) and its own handle.
+      const rebindA1 = await claim("bind-shared-host", TEST_POOL_SECRET, "host-worker-a");
+      const rebindB1 = await claim("bind-shared-host", TEST_POOL_SECRET, "host-worker-b");
+      const rebindA2 = await claim("bind-shared-host", TEST_POOL_SECRET, "host-worker-a");
+      const rebindB2 = await claim("bind-shared-host", TEST_POOL_SECRET, "host-worker-b");
+
+      for (const r of [rebindA1, rebindB1, rebindA2, rebindB2]) {
+        expect(r.status).toBe(200);
+      }
+
+      expect(rebindA1.body.data.user.id).toBe(idA);
+      expect(rebindA2.body.data.user.id).toBe(idA);
+      expect(rebindB1.body.data.user.id).toBe(idB);
+      expect(rebindB2.body.data.user.id).toBe(idB);
+
+      // A's handle is constant across its binds; B's constant; A's != B's.
+      expect(rebindA1.body.data.bindHandle).toBe(handleA);
+      expect(rebindA2.body.data.bindHandle).toBe(handleA);
+      expect(rebindB1.body.data.bindHandle).toBe(handleB);
+      expect(rebindB2.body.data.bindHandle).toBe(handleB);
+
+      // Exactly one agent_claims row per user.
+      const rowsA = testApp.db
+        .select()
+        .from(agentClaims)
+        .where(eq(agentClaims.userId, idA))
+        .all();
+      expect(rowsA.length).toBe(1);
+      expect(rowsA[0].workerKey).toBe("host-worker-a");
+      expect(rowsA[0].workerKeyPoolId).toBe(pool.id);
+
+      const rowsB = testApp.db
+        .select()
+        .from(agentClaims)
+        .where(eq(agentClaims.userId, idB))
+        .all();
+      expect(rowsB.length).toBe(1);
+      expect(rowsB[0].workerKey).toBe("host-worker-b");
+      expect(rowsB[0].workerKeyPoolId).toBe(pool.id);
+    });
   });
 
   // ── Legacy endpoint ──────────────────────────────────────────────

@@ -501,4 +501,102 @@ describe("Force-claim (reason-required claim takeover)", () => {
       );
     });
   });
+
+  // ── Composition with stable worker identity (C1 seal) ──────────
+  describe("Force-claim composes with keyed-stable identity (C1 seal)", () => {
+    const POOL_SECRET = "seal-pool-secret-12345";
+
+    async function createPool(name: string, secret: string) {
+      const res = await authRequest(testApp.app, "POST", "/api/v1/auth/agent-pools", {
+        body: { name, secret },
+      });
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      return body.data as { id: string };
+    }
+
+    async function createPoolAgents(poolId: string, count: number) {
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/auth/agent-pools/${poolId}/agents`,
+        { body: { count } },
+      );
+      expect(res.status).toBe(201);
+    }
+
+    async function keyedClaim(poolName: string, workerKey: string) {
+      const res = await testApp.app.request("/api/v1/auth/agent-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ poolName, poolSecret: POOL_SECRET, workerKey }),
+      });
+      const body = await res.json();
+      return { status: res.status, body };
+    }
+
+    it("a human/other agent can force-claim a task held by a keyed-stable worker; identity survives, displaced worker no longer holds it", async () => {
+      const project = createTestProject(testApp.db);
+
+      const pool = await createPool("seal-host", POOL_SECRET);
+      await createPoolAgents(pool.id, 3);
+
+      // The keyed-stable worker binds and holds a task.
+      const bind = await keyedClaim("seal-host", "stable-holder");
+      expect(bind.status).toBe(200);
+      const holderId = bind.body.data.user.id as string;
+
+      const agentB = createTestAiAgent(testApp.db);
+
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        status: "in_progress",
+        assigneeId: holderId,
+      });
+
+      // agentB force-claims the task away from the keyed-stable worker.
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/force-claim`, {
+        token: agentB.token,
+        body: { reason: "taking over a stranded stable worker's task" },
+      });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.previousHolder).toBe(holderId);
+      expect(json.data.newHolder).toBe(agentB.user.id);
+
+      // Exactly one force_claim audit row, before=holder, after=B.
+      const audit = auditService.list({ projectId: project.id, action: "force_claim" });
+      expect(audit.data).toHaveLength(1);
+      expect(audit.data[0].targetType).toBe("task");
+      expect(audit.data[0].targetId).toBe(task.id);
+      expect(audit.data[0].metadataBefore).toEqual({ assignee_id: holderId });
+      expect(audit.data[0].metadataAfter).toEqual({ assignee_id: agentB.user.id });
+
+      // ── Composition seal ──────────────────────────────────────
+      // 1. The displaced worker re-binds with the SAME key → SAME identity
+      //    (the takeover did not strand or re-mint it).
+      const rebind = await keyedClaim("seal-host", "stable-holder");
+      expect(rebind.status).toBe(200);
+      expect(rebind.body.data.user.id).toBe(holderId);
+
+      // 2. The task is now held by B (the displaced worker no longer holds it).
+      const get = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}`);
+      const getJson = await get.json();
+      expect(getJson.data.assigneeId).toBe(agentB.user.id);
+
+      // 3. A write by the displaced stable worker (with its fresh rebind token)
+      //    is rejected — force-claim's gate still bites the stable-but-displaced
+      //    identity.
+      const displacedToken = rebind.body.data.token as string;
+      const blocked = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/tasks/${task.id}/transitions`,
+        { token: displacedToken, body: { to_status: "done" } },
+      );
+      expect(blocked.status).toBe(409);
+      const blockedJson = await blocked.json();
+      expect(blockedJson.error.code).toBe("CLAIM_DENIED");
+    });
+  });
 });

@@ -1,5 +1,7 @@
 # Campaign C1 — Stable Worker Identity
 
+**Status:** shipped (2026-06-06) — P1 a065f0e, P2 db5a3ce, P3 <this commit>. See `docs/design/phase-c1-stable-worker-identity.md`.
+
 **Parent vision:** `roadmaps/vision-20260606-claim-liveness-heartbeat.md` (C1, tier A — independent safety fix; concurrency-eligible with C2/C3; unblocks C2's safe `on` flip).
 **Branch:** `campaign-claim-liveness-c1-c3` (C1 first, then C3 on the same branch).
 **Base:** main @ aae1bbd (C2 shipped: claim-lease engine, shadow default).
@@ -34,7 +36,7 @@ Worker-key shape: client-derived `{pool, machine, slot}` vs worker-supplied stab
 - `api-client.ts`: derive/persist a durable worker key and present it on (re)connect so reconnect re-binds the SAME `users` row + refreshes the token, instead of grabbing a new agent. Remove the in-memory-only `_claimedUserId` churn (or back it with the persisted key).
 - **Verify:** tests — reconnect re-binds the same `userId`; an in-flight claim survives a reconnect with no `CLAIM_DENIED` (the headline regression for the Worker 1→Worker 3 incident).
 
-### P3 — Seal: shared-host distinctness + back-compat + force-claim + docs + full suite
+### P3 — Seal: shared-host distinctness + back-compat + force-claim + docs + full suite ✅ done
 - Prove two workers on one host/pool get distinct stable identities; static-token users no-op; force-claim still works for a genuine handoff. Docs: CLAUDE.md note + design-doc stub; note that C1 unblocks the safe C2 `on` flip (but does NOT flip it — operator decision). Update vision/roadmap status.
 - **Verify:** full `pnpm test` 10/10, typecheck 6/6, lint 0, build 5/5; tree committed.
 

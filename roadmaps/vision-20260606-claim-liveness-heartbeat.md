@@ -49,6 +49,7 @@ All three are **false-positive-prone**: a crashed agent's task stays `in_progres
 **Three campaigns.** C2 is the lone foundation (the lease spine). C1 is an independent safety fix that unblocks *one phase* of C2. C3 surfaces the signal and folds in operator handoff/alerts.
 
 ### C1 — Stable worker identity
+- **Status: shipped (2026-06-06).** See `docs/design/phase-c1-stable-worker-identity.md`.
 - **Goal:** A worker re-binds to the **same `users` row** across reconnect / reboot / token refresh, so claims (and their leases) never strand under a dead identity.
 - **Tier:** A (independent fix — NOT foundation; nothing hard-depends on it, it only makes one C2 phase safe).
 - **Why this order / placement:** This is the deferred root cause (`project-force-claim`). It touches code **disjoint** from the lease engine (client identity binding, not the server lease), so it is concurrency-eligible with C2. Its payoff is the safety precondition for C2's "auto-reclaim on by default" phase: stable identity prevents false-reclaiming live-but-reconnected work and makes the stranded-claim bug class (#6) structurally impossible.
