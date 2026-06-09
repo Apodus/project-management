@@ -1,0 +1,23 @@
+{
+  "campaign": "C3 — Web inbox + triage surface + badges",
+  "roadmap": "roadmaps/roadmap-20260609-1942-c3-notes-web.md",
+  "vision": "roadmaps/vision-20260609-notes-findings-inbox.md",
+  "branch": "campaign-c3-notes-web",
+  "base": "main (1f284a3 — C1+C2 merged)",
+  "pm": { "project": "01KT1VN1BEMF1KZGBFMGXBY5W1", "epic": "01KTP3Y628M4JQFY7EMZVMZFAJ", "c3_task": "01KTP3ZCRBDBJFG41Y29RC3MP2" },
+  "phases": [
+    { "id": "P1", "title": "API types + data hooks", "status": "complete", "commit": "a1465ba", "outcome": "regen openapi.json (+ benign @hono/zod-openapi format normalization, noted) + api-types.d.ts; api.ts Notes section (re-exports + envelope interfaces + 8 wrappers); use-notes.ts (noteKeys + 3 queries + 5 mutations, cross-invalidate proposalKeys/taskKeys on promote); web typecheck/test 370/build + root typecheck green" },
+    { "id": "P2", "title": "inbox page + nav", "status": "complete", "commit": "c986738", "outcome": "notes-page.tsx (card grid, kind/status/anchor/severity filters, client-side title+body search, anchor+promoted-target resolution) + /notes route + sidebar Inbox nav; web tests 377/typecheck/build green. FIX: anchor map-miss renders raw type+id (server list caps tasks at 50) — NOT '(removed)'; true dangling detection deferred (needs per-anchor resolution)" },
+    { "id": "P3", "title": "triage actions UI", "status": "complete", "commit": "f86439d", "outcome": "DismissNoteDialog (required reason) + PromoteToProposalDialog + human-gated PromoteToTaskDialog (currentUser.type==='human', defense-in-depth over server 403) on open notes only; ForceLandDialog pattern; web tests 382/typecheck/build green" },
+    { "id": "P4", "title": "backlog banner + live SSE", "status": "complete", "commit": "7b3be97", "outcome": "note.* SSE invalidates noteKeys.all (live inbox); note.backlog_alert raises a sonner TOAST (no banner stack exists — mirrored the stale-claim toast precedent, identity-masked); useNotesHealth mounted in app-layout as the edge-trigger driver. COMMANDER DECISION: 'banner' read as toast (faithful to codebase) + a persistent sidebar Inbox count badge deferred to P5 for the standing-indicator intent. web tests 385/typecheck/build green" },
+    { "id": "P5", "title": "anchored-note badges + sidebar Inbox count badge (standing backlog indicator) + E2E seal", "status": "complete", "commit": "a19cedc", "outcome": "AnchoredNotesBadge on task/epic/proposal detail (deep-links to inbox filtered by anchor via new validateSearch); sidebar Inbox open-count badge (useNotesHealth, dedup w/ app-layout poll); E2E 06-notes-inbox (post->inbox->promote->provenance) passes 3/3. web tests 393/typecheck/build/lint green. Verifier-caught epic-detail-page.test QueryClient crash fixed. 3 OTHER E2E specs fail = pre-existing flakiness (01/02/05 untouched by C3, git-diff-confirmed)" }
+  ],
+  "status": "COMPLETE",
+  "current": "done",
+  "open_issues": [
+    "db:generate blocked by pre-existing 0005/0006 snapshot collision (no migrations in C3 — web only, so likely N/A this campaign)",
+    "P5 badges are the defensible trim per the vision — may defer to follow-up only if a real blocker surfaces"
+  ],
+  "dag_drift": [],
+  "last_check": "2026-06-09T19:42:00Z"
+}
