@@ -16,6 +16,7 @@ import type {
   NoteKind,
   NoteSeverity,
   NoteStatus,
+  NoteTriageOutcome,
   VerifyStepResult,
 } from "@pm/shared";
 
@@ -120,6 +121,11 @@ export const proposals = sqliteTable(
     resolvedAt: text("resolved_at"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
+    // Campaign C2: provenance back-pointer to the note this was promoted from.
+    // notes is defined BELOW → forward-ref arrow required (mergeRequests.resolvedFrom precedent).
+    sourceNoteId: text("source_note_id").references((): AnySQLiteColumn => notes.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => [
     index("idx_proposals_project_status").on(table.projectId, table.status),
@@ -245,6 +251,11 @@ export const tasks = sqliteTable(
     updatedAt: text("updated_at").notNull(),
     startedAt: text("started_at"),
     completedAt: text("completed_at"),
+    // Campaign C2: provenance back-pointer to the note this was promoted from.
+    // notes is defined BELOW → forward-ref arrow required (mergeRequests.resolvedFrom precedent).
+    sourceNoteId: text("source_note_id").references((): AnySQLiteColumn => notes.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => [
     index("idx_tasks_project_status").on(table.projectId, table.status),
@@ -1083,6 +1094,18 @@ export const notes = sqliteTable(
     anchorId: text("anchor_id"),
     codeLocator: text("code_locator", { mode: "json" }).$type<CodeLocator>(),
     severity: text("severity").$type<NoteSeverity>(),
+    // ─── Triage metadata (Campaign C2) ───────────────────────────────
+    // Server-driven on the open→triaged transition (P2 dismiss / P3-P4
+    // promote). All null until triaged. proposals/tasks/users precede notes
+    // → plain backward () => refs are fine here.
+    triagedAt: text("triaged_at"),
+    triagedBy: text("triaged_by").references(() => users.id, { onDelete: "set null" }),
+    triageOutcome: text("triage_outcome").$type<NoteTriageOutcome>(),
+    triageReason: text("triage_reason"),
+    promotedProposalId: text("promoted_proposal_id").references(() => proposals.id, {
+      onDelete: "set null",
+    }),
+    promotedTaskId: text("promoted_task_id").references(() => tasks.id, { onDelete: "set null" }),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),

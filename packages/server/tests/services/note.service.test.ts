@@ -4,6 +4,7 @@ import { createId } from "@pm/shared";
 import {
   createTestApp,
   createTestProject,
+  createTestTask,
   createTestUser,
   type TestApp,
 } from "../utils.js";
@@ -297,6 +298,108 @@ describe("note service", () => {
         expect(err).toBeInstanceOf(AppError);
         expect((err as AppError).statusCode).toBe(404);
       }
+    });
+  });
+
+  // ── applyTriage (state-machine core, C2 §P1) ────────────────────
+  describe("applyTriage", () => {
+    it("flips an open note to triaged and records outcome/metadata", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      // A real task so the promoted_task_id FK is satisfied.
+      const task = createTestTask(testApp.db, { projectId: project.id, reporterId: author.id });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "real bug" },
+        author.id,
+      );
+
+      const triaged = noteService.applyTriage(created.id, {
+        outcome: "promoted",
+        triagedBy: author.id,
+        triageReason: "worth a task",
+        promotedTaskId: task.id,
+      });
+
+      expect(triaged.status).toBe("triaged");
+      expect(triaged.triageOutcome).toBe("promoted");
+      expect(triaged.triagedBy).toBe(author.id);
+      expect(triaged.triagedAt).toBeTruthy();
+      expect(triaged.triageReason).toBe("worth a task");
+      expect(triaged.promotedTaskId).toBe(task.id);
+      expect(triaged.promotedProposalId).toBeNull();
+    });
+
+    it("defaults the optional pointers/reason to null", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        { kind: "idea", title: "meh" },
+        author.id,
+      );
+
+      const triaged = noteService.applyTriage(created.id, {
+        outcome: "dismissed",
+        triagedBy: author.id,
+      });
+
+      expect(triaged.status).toBe("triaged");
+      expect(triaged.triageOutcome).toBe("dismissed");
+      expect(triaged.triageReason).toBeNull();
+      expect(triaged.promotedProposalId).toBeNull();
+      expect(triaged.promotedTaskId).toBeNull();
+    });
+
+    it("throws 409 INVALID_STATUS on a second triage of an already-triaged note", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "triage once" },
+        author.id,
+      );
+      noteService.applyTriage(created.id, { outcome: "dismissed", triagedBy: author.id });
+
+      try {
+        noteService.applyTriage(created.id, { outcome: "promoted", triagedBy: author.id });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(409);
+        expect((err as AppError).code).toBe("INVALID_STATUS");
+      }
+    });
+
+    it("throws 404 for a missing note", () => {
+      const author = createTestUser(testApp.db);
+      try {
+        noteService.applyTriage(createId(), { outcome: "dismissed", triagedBy: author.id });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(404);
+      }
+    });
+
+    it("emits NO triage activity row in P1 (only the create row exists)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "no event yet" },
+        author.id,
+      );
+
+      // create wrote exactly one 'created' row.
+      expect(activityRows(created.id)).toHaveLength(1);
+
+      noteService.applyTriage(created.id, { outcome: "dismissed", triagedBy: author.id });
+
+      // applyTriage emits NO event in P1 → still exactly the one create row.
+      const rows = activityRows(created.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].action).toBe("created");
     });
   });
 

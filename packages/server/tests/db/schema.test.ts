@@ -26,6 +26,7 @@ import {
   auditLog,
   trainState,
   claimsAlertState,
+  notes,
 } from "../../src/db/index.js";
 import type { AppDatabase } from "../../src/db/index.js";
 
@@ -120,6 +121,30 @@ describe("Database schema", () => {
       expect(names).toContain("worker_key");
       expect(names).toContain("worker_key_pool_id");
       expect(names).toContain("bind_handle");
+    });
+
+    it("migration 0025: notes has the additive triage columns", () => {
+      const db = setupDb();
+      const cols = db.all<{ name: string }>(sql`PRAGMA table_info(notes)`);
+      const names = (cols as any[]).map((c: any) => c.name);
+      expect(names).toContain("triaged_at");
+      expect(names).toContain("triaged_by");
+      expect(names).toContain("triage_outcome");
+      expect(names).toContain("triage_reason");
+      expect(names).toContain("promoted_proposal_id");
+      expect(names).toContain("promoted_task_id");
+    });
+
+    it("migration 0025: proposals and tasks have the additive source_note_id column", () => {
+      const db = setupDb();
+      const proposalCols = (
+        db.all<{ name: string }>(sql`PRAGMA table_info(proposals)`) as any[]
+      ).map((c: any) => c.name);
+      const taskCols = (db.all<{ name: string }>(sql`PRAGMA table_info(tasks)`) as any[]).map(
+        (c: any) => c.name,
+      );
+      expect(proposalCols).toContain("source_note_id");
+      expect(taskCols).toContain("source_note_id");
     });
   });
 
@@ -1194,6 +1219,81 @@ describe("Database schema", () => {
           .values({ id: createId(), projectId: "nonexistent", createdAt: ts, updatedAt: ts })
           .run();
       }).toThrow();
+    });
+  });
+
+  // ── Note triage provenance (Campaign C2 §P1) ─────────────────────
+  describe("note triage provenance", () => {
+    let db: AppDatabase;
+    let userId: string;
+    let projectId: string;
+
+    beforeEach(() => {
+      db = setupDb();
+      const workspaceId = db.select().from(workspaces).all()[0].id;
+      const ts = now();
+
+      userId = createId();
+      db.insert(users)
+        .values({
+          id: userId,
+          username: "noteop",
+          displayName: "Note Operator",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      projectId = createId();
+      db.insert(projects)
+        .values({
+          id: projectId,
+          workspaceId,
+          name: "Note Project",
+          slug: "note-project",
+          createdAt: ts,
+          updatedAt: ts,
+          createdBy: userId,
+        })
+        .run();
+    });
+
+    it("SET NULL on proposals.source_note_id when the source note is deleted", () => {
+      const ts = now();
+      const noteId = createId();
+      db.insert(notes)
+        .values({
+          id: noteId,
+          projectId,
+          kind: "idea",
+          status: "triaged",
+          title: "promote me",
+          authorId: userId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const proposalId = createId();
+      db.insert(proposals)
+        .values({
+          id: proposalId,
+          projectId,
+          title: "Promoted proposal",
+          createdBy: userId,
+          sourceNoteId: noteId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      // foreign_keys is ON → ON DELETE SET NULL nulls the back-pointer rather
+      // than cascade-deleting the promoted proposal.
+      db.delete(notes).where(eq(notes.id, noteId)).run();
+
+      const result = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
+      expect(result).toBeDefined();
+      expect(result!.sourceNoteId).toBeNull();
     });
   });
 

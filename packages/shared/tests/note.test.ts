@@ -4,6 +4,7 @@ import {
   NOTE_STATUSES,
   NOTE_ANCHOR_TYPES,
   NOTE_SEVERITIES,
+  NOTE_TRIAGE_OUTCOMES,
   codeLocatorSchema,
   noteSchema,
   createNoteSchema,
@@ -38,6 +39,10 @@ describe("note enums", () => {
 
   it("NOTE_SEVERITIES is the canonical ordered tuple", () => {
     expect([...NOTE_SEVERITIES]).toEqual(["low", "medium", "high"]);
+  });
+
+  it("NOTE_TRIAGE_OUTCOMES is the canonical ordered tuple (Campaign C2)", () => {
+    expect([...NOTE_TRIAGE_OUTCOMES]).toEqual(["promoted", "dismissed"]);
   });
 });
 
@@ -80,6 +85,13 @@ describe("noteSchema", () => {
     authorId: VALID_ULID,
     createdAt: VALID_TIMESTAMP,
     updatedAt: VALID_TIMESTAMP,
+    // Campaign C2 triage fields — null on an untriaged (open) note.
+    triagedAt: null,
+    triagedBy: null,
+    triageOutcome: null,
+    triageReason: null,
+    promotedProposalId: null,
+    promotedTaskId: null,
   };
 
   it("accepts a full valid row", () => {
@@ -122,6 +134,25 @@ describe("noteSchema", () => {
   it("rejects an unknown severity", () => {
     expect(() => noteSchema.parse({ ...validRow, severity: "critical" })).toThrow();
   });
+
+  // ── Triage read-shape (Campaign C2) ──────────────────────────────
+  it("parses a triaged/promoted row with triage metadata populated", () => {
+    const promoted = {
+      ...validRow,
+      status: "triaged" as const,
+      triagedAt: VALID_TIMESTAMP,
+      triagedBy: VALID_ULID,
+      triageOutcome: "promoted" as const,
+      triageReason: "Real bug — worth a task",
+      promotedProposalId: VALID_ULID,
+      promotedTaskId: null,
+    };
+    expect(noteSchema.parse(promoted)).toEqual(promoted);
+  });
+
+  it("rejects an unknown triageOutcome value", () => {
+    expect(() => noteSchema.parse({ ...validRow, triageOutcome: "archived" })).toThrow();
+  });
 });
 
 // ─── createNoteSchema ─────────────────────────────────────────────
@@ -141,6 +172,15 @@ describe("createNoteSchema", () => {
   it("strips an unknown status key", () => {
     const parsed = createNoteSchema.parse({ kind: "idea", title: "Try X", status: "triaged" });
     expect(parsed).not.toHaveProperty("status");
+  });
+
+  it("ignores a triageOutcome key (triage is server-driven)", () => {
+    const parsed = createNoteSchema.parse({
+      kind: "idea",
+      title: "Try X",
+      triageOutcome: "promoted",
+    });
+    expect(parsed).not.toHaveProperty("triageOutcome");
   });
 });
 
@@ -162,5 +202,10 @@ describe("patchNoteSchema", () => {
 
   it("rejects an explicit empty title", () => {
     expect(() => patchNoteSchema.parse({ title: "" })).toThrow();
+  });
+
+  it("ignores a triageOutcome key (triage is server-driven)", () => {
+    const parsed = patchNoteSchema.parse({ triageOutcome: "dismissed" });
+    expect(parsed).not.toHaveProperty("triageOutcome");
   });
 });

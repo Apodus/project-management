@@ -1,6 +1,13 @@
 import { eq, and, desc } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import type { CreateNote, ListNotesQuery, NoteKind, PatchNote } from "@pm/shared";
+import type {
+  CreateNote,
+  ListNotesQuery,
+  NoteKind,
+  NoteStatus,
+  NoteTriageOutcome,
+  PatchNote,
+} from "@pm/shared";
 import { getDb, getRawDb, notes, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
@@ -22,6 +29,16 @@ function ensureProjectExists(projectId: string): void {
   const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
   if (!project) {
     throw new AppError(404, "NOT_FOUND", `Project not found: ${projectId}`);
+  }
+}
+
+/**
+ * Guard: only an OPEN note may be mutated or triaged. A triaged (terminal)
+ * note is immutable. Shared by `update` (C1) and `applyTriage` (C2).
+ */
+function assertOpen(note: { id: string; status: NoteStatus }): void {
+  if (note.status !== "open") {
+    throw new AppError(409, "INVALID_STATUS", `Note ${note.id} is not open and cannot be edited`);
   }
 }
 
@@ -115,13 +132,7 @@ export function update(id: string, patch: PatchNote, _actorId: string) {
     throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
   }
 
-  if (existing.status !== "open") {
-    throw new AppError(
-      409,
-      "INVALID_STATUS",
-      `Note ${id} is not open and cannot be edited`,
-    );
-  }
+  assertOpen(existing);
 
   const now = new Date().toISOString();
   const values: Record<string, unknown> = { updatedAt: now };
@@ -148,6 +159,60 @@ export function update(id: string, patch: PatchNote, _actorId: string) {
   });
 
   return row;
+}
+
+/**
+ * Apply a terminal triage to an OPEN note (Campaign C2 state-machine core).
+ * Flips status open→triaged in ONE update and records the outcome + metadata.
+ * Re-selects the note (404 if missing), asserts it is open (409 otherwise),
+ * then sets the triage fields and returns the fresh row.
+ *
+ * This is the shared entry point for the P2 dismiss + P3-P4 promote endpoints.
+ * It emits NO event in P1 — NOTE_DISMISSED / NOTE_PROMOTED arrive with their
+ * endpoints in P2/P3.
+ */
+export function applyTriage(
+  id: string,
+  {
+    outcome,
+    triagedBy,
+    triageReason,
+    promotedProposalId,
+    promotedTaskId,
+  }: {
+    outcome: NoteTriageOutcome;
+    triagedBy: string;
+    triageReason?: string | null;
+    promotedProposalId?: string | null;
+    promotedTaskId?: string | null;
+  },
+) {
+  const db = getDb();
+
+  const existing = db.select().from(notes).where(eq(notes.id, id)).get();
+  if (!existing) {
+    throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
+  }
+
+  assertOpen(existing);
+
+  const now = new Date().toISOString();
+
+  db.update(notes)
+    .set({
+      status: "triaged",
+      triageOutcome: outcome,
+      triagedAt: now,
+      triagedBy,
+      triageReason: triageReason ?? null,
+      promotedProposalId: promotedProposalId ?? null,
+      promotedTaskId: promotedTaskId ?? null,
+      updatedAt: now,
+    })
+    .where(eq(notes.id, id))
+    .run();
+
+  return db.select().from(notes).where(eq(notes.id, id)).get()!;
 }
 
 /**

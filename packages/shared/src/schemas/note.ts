@@ -3,9 +3,10 @@ import { z } from "zod";
 // ─── Notes inbox (Campaign C1) ────────────────────────────────────
 // Foundation for the notes inbox: a lightweight capture surface for bugs,
 // questions, ideas, tech debt, and observations that an agent or human
-// jots down mid-flow without committing to a full proposal/task. C1 ships
-// the schema + capture; the open→triaged transition and its metadata
-// (triagedAt/triagedBy/triageOutcome/promoted*) are deferred to campaign C2.
+// jots down mid-flow without committing to a full proposal/task. C1 shipped
+// the schema + capture; campaign C2 lands the triage read-shape fields
+// (triagedAt/triagedBy/triageOutcome/triageReason/promoted*) on noteSchema.
+// These are server-driven (P2 dismiss / P3-P4 promote), never client-set.
 //
 // Field names mirror the eventual Drizzle camelCase property names (P2 will
 // add the `notes` table to packages/server/src/db/schema.ts). Zod-3, no
@@ -31,6 +32,12 @@ export type NoteAnchorType = (typeof NOTE_ANCHOR_TYPES)[number];
 // Optional severity hint (most meaningful for bug/tech_debt).
 export const NOTE_SEVERITIES = ["low", "medium", "high"] as const;
 export type NoteSeverity = (typeof NOTE_SEVERITIES)[number];
+
+// ─── Triage outcomes (Campaign C2) ────────────────────────────────
+// Terminal disposition of a triaged note; distinct from NOTE_STATUSES.
+// Server-driven (P2 dismiss / P3-P4 promote), never client-set.
+export const NOTE_TRIAGE_OUTCOMES = ["promoted", "dismissed"] as const;
+export type NoteTriageOutcome = (typeof NOTE_TRIAGE_OUTCOMES)[number];
 
 // ─── CodeLocator ──────────────────────────────────────────────────
 // An optional pointer into the codebase a note refers to.
@@ -60,6 +67,13 @@ export const noteSchema = z.object({
   authorId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  // ─── Triage metadata (Campaign C2) — server-driven, all null until triaged.
+  triagedAt: z.string().nullable(),
+  triagedBy: z.string().nullable(),
+  triageOutcome: z.enum(NOTE_TRIAGE_OUTCOMES).nullable(),
+  triageReason: z.string().nullable(),
+  promotedProposalId: z.string().nullable(),
+  promotedTaskId: z.string().nullable(),
 });
 export type Note = z.infer<typeof noteSchema>;
 
