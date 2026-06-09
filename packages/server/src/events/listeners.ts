@@ -64,6 +64,12 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.NOTE_DISMISSED:
       return "dismissed";
 
+    // Note promote-to-proposal (Campaign C2 §P3). Bespoke verb — the proposal's
+    // own PROPOSAL_CREATED event logs "created" for the proposal id; this logs
+    // "promoted" for the note id.
+    case EVENT_NAMES.NOTE_PROMOTED:
+      return "promoted";
+
     // Commented events
     case EVENT_NAMES.PROPOSAL_COMMENTED:
     case EVENT_NAMES.TASK_COMMENTED:

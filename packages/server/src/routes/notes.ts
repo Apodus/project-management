@@ -104,6 +104,35 @@ const patchNoteBody = z
 
 const dismissNoteBody = z.object({ reason: z.string().min(1) }).openapi("DismissNote");
 
+const promoteToProposalBody = z
+  .object({
+    title: z.string().min(1).optional(),
+    description: z.string().optional(),
+  })
+  .openapi("PromoteNoteToProposal");
+
+// MINIMAL inline proposal schema for the promote response. NOT the proposal
+// route's full schema (which requires claimStatus/claimState the raw create row
+// lacks). projectId AND sourceNoteId are nullable (the columns are nullable).
+const promotedProposalSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string().nullable(),
+    title: z.string(),
+    description: z.string().nullable(),
+    status: z.string(),
+    createdBy: z.string(),
+    sourceNoteId: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi("PromotedProposal");
+
+const promoteToProposalResponseEnvelope = z.object({
+  data: noteSchema,
+  proposal: promotedProposalSchema,
+});
+
 const listNotesQuery = z.object({
   kind: z.enum(NOTE_KINDS).optional(),
   status: z.enum(NOTE_STATUSES).optional(),
@@ -260,6 +289,36 @@ const dismissNoteRoute = createRoute({
   },
 });
 
+const promoteToProposalRoute = createRoute({
+  method: "post",
+  path: "/api/v1/notes/{id}/promote-to-proposal",
+  tags: ["Notes"],
+  summary: "Promote note to proposal",
+  description:
+    "Terminally promote an OPEN note to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.",
+  request: {
+    params: z.object({ id: noteIdParam }),
+    body: {
+      content: { "application/json": { schema: promoteToProposalBody } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: "Note promoted; proposal created",
+      content: { "application/json": { schema: promoteToProposalResponseEnvelope } },
+    },
+    404: {
+      description: "Note not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Note is not open and cannot be promoted",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createNoteRoutes(): OpenAPIHono<{
@@ -312,6 +371,19 @@ export function createNoteRoutes(): OpenAPIHono<{
     const user = c.get("currentUser");
     const note = noteService.dismiss(id, { id: user!.id, type: user!.type as UserType }, body.reason);
     return c.json({ data: note }, 200);
+  });
+
+  // POST /api/v1/notes/:id/promote-to-proposal
+  router.openapi(promoteToProposalRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const user = c.get("currentUser");
+    const { note, proposal } = noteService.promoteToProposal(
+      id,
+      { id: user!.id, type: user!.type as UserType },
+      body,
+    );
+    return c.json({ data: note, proposal }, 200);
   });
 
   return router;

@@ -20,6 +20,7 @@ export const EVENT_NAMES = {
   NOTE_CREATED: "note.created",
   NOTE_UPDATED: "note.updated",
   NOTE_DISMISSED: "note.dismissed",
+  NOTE_PROMOTED: "note.promoted",
 
   // Epic events
   EPIC_CREATED: "epic.created",

@@ -13,6 +13,7 @@ import { getDb, getRawDb, notes, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 import { sanitizeFtsQuery } from "./search.service.js";
+import * as proposalService from "./proposal.service.js";
 
 // ─── Notes service (Campaign C1 §P3) ──────────────────────────────
 // Capture + read only. Notes are ownerless in C1 — no claim/lease logic.
@@ -243,6 +244,74 @@ export function dismiss(id: string, actor: { id: string; type: UserType }, reaso
     timestamp: row.triagedAt!,
   });
   return row;
+}
+
+/**
+ * Promote an OPEN note to a proposal (Campaign C2 §P3) — a terminal triage with
+ * outcome "promoted" that ALSO spawns a proposal carrying a `sourceNoteId`
+ * back-pointer (bidirectional provenance: note.promotedProposalId ⇆
+ * proposal.sourceNoteId).
+ *
+ * No authz gate (unlike dismiss): promote ELEVATES signal, so any authenticated
+ * caller — human or ai_agent, author or not — may promote. This preserves the
+ * proposal gate: a note feeds proposal creation, never auto-spawns epics/tasks.
+ *
+ * The open-guard runs BEFORE the proposal is created so a non-open note never
+ * leaves an orphan proposal pointing at an already-triaged note.
+ */
+export function promoteToProposal(
+  id: string,
+  actor: { id: string; type: UserType },
+  { title, description }: { title?: string; description?: string } = {},
+) {
+  const db = getDb();
+  const note = db.select().from(notes).where(eq(notes.id, id)).get();
+  if (!note) {
+    throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
+  }
+  // Early open-guard BEFORE creating the proposal — prevents an orphan
+  // proposal (sourceNoteId → already-triaged note) if the note isn't open.
+  assertOpen(note);
+
+  const finalTitle = title ?? note.title;
+  let finalDescription: string | null;
+  if (description !== undefined) {
+    finalDescription = description; // caller-supplied, verbatim (no auto-provenance)
+  } else {
+    const parts = [note.body ?? "", `\n\nPromoted from note ${note.id} (${note.kind}).`];
+    if (note.codeLocator) {
+      const cl = note.codeLocator;
+      parts.push(
+        `\nLocation: ${cl.path}${cl.line ? ":" + cl.line : ""}${cl.commitSha ? " @ " + cl.commitSha : ""}`,
+      );
+    }
+    const joined = parts.join("").trim();
+    finalDescription = joined.length > 0 ? joined : null;
+  }
+
+  const proposal = proposalService.create(note.projectId, {
+    title: finalTitle,
+    description: finalDescription,
+    createdBy: actor.id,
+    sourceNoteId: note.id,
+  });
+
+  const updatedNote = applyTriage(id, {
+    outcome: "promoted",
+    triagedBy: actor.id,
+    promotedProposalId: proposal.id,
+  });
+
+  getEventBus().emit(EVENT_NAMES.NOTE_PROMOTED, {
+    entity: updatedNote,
+    entityType: "note",
+    entityId: id,
+    projectId: updatedNote.projectId,
+    actorId: actor.id,
+    timestamp: updatedNote.triagedAt!,
+  });
+
+  return { note: updatedNote, proposal };
 }
 
 /**

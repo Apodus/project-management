@@ -8,7 +8,7 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import { activityLog, notes } from "../../src/db/index.js";
+import { activityLog, notes, proposals } from "../../src/db/index.js";
 import { AppError } from "../../src/types.js";
 import * as noteService from "../../src/services/note.service.js";
 
@@ -516,6 +516,183 @@ describe("note service", () => {
       expect(dismissed!.entityType).toBe("note");
       expect(dismissed!.actorId).toBe(author.id);
       expect(dismissed!.projectId).toBe(project.id);
+    });
+  });
+
+  // ── promoteToProposal (C2 §P3 — terminal triage + proposal + provenance) ──
+  describe("promoteToProposal", () => {
+    it("promotes an OPEN note to a proposal with bidirectional provenance", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "needs a proposal", body: "some context" },
+        author.id,
+      );
+
+      const { note, proposal } = noteService.promoteToProposal(created.id, {
+        id: author.id,
+        type: "ai_agent",
+      });
+
+      // Provenance round-trip.
+      expect(proposal.sourceNoteId).toBe(note.id);
+      expect(note.promotedProposalId).toBe(proposal.id);
+
+      // Note is terminally triaged with outcome "promoted".
+      expect(note.status).toBe("triaged");
+      expect(note.triageOutcome).toBe("promoted");
+      expect(note.triagedBy).toBe(author.id);
+      expect(note.triagedAt).toBeTruthy();
+      expect(note.promotedTaskId).toBeNull();
+
+      // Proposal shape.
+      expect(proposal.createdBy).toBe(author.id);
+      expect(proposal.status).toBe("open");
+      expect(proposal.projectId).toBe(project.id);
+    });
+
+    it("derives the default title/description from the note (incl. provenance line)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        { kind: "idea", title: "title from note", body: "the body text" },
+        author.id,
+      );
+
+      const { proposal } = noteService.promoteToProposal(created.id, {
+        id: author.id,
+        type: "human",
+      });
+
+      expect(proposal.title).toBe("title from note");
+      expect(proposal.description).toContain("the body text");
+      expect(proposal.description).toContain(`Promoted from note ${created.id}`);
+    });
+
+    it("includes a Location line when the note has a codeLocator", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        {
+          kind: "bug",
+          title: "located bug",
+          codeLocator: { path: "src/foo.ts", line: 42, commitSha: "abc123" },
+        },
+        author.id,
+      );
+
+      const { proposal } = noteService.promoteToProposal(created.id, {
+        id: author.id,
+        type: "human",
+      });
+
+      expect(proposal.description).toContain("Location: src/foo.ts:42 @ abc123");
+    });
+
+    it("uses caller-supplied title/description verbatim (no provenance append)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "note title", body: "note body" },
+        author.id,
+      );
+
+      const { proposal } = noteService.promoteToProposal(
+        created.id,
+        { id: author.id, type: "human" },
+        { title: "explicit title", description: "explicit description" },
+      );
+
+      expect(proposal.title).toBe("explicit title");
+      expect(proposal.description).toBe("explicit description");
+      expect(proposal.description).not.toContain("Promoted from note");
+    });
+
+    it("throws 409 INVALID_STATUS on an already-triaged note AND creates no orphan proposal", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "promote twice" },
+        author.id,
+      );
+      noteService.promoteToProposal(created.id, { id: author.id, type: "human" });
+
+      const before = testApp.db.select().from(proposals).all().length;
+
+      try {
+        noteService.promoteToProposal(created.id, { id: author.id, type: "human" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(409);
+        expect((err as AppError).code).toBe("INVALID_STATUS");
+      }
+
+      const after = testApp.db.select().from(proposals).all().length;
+      expect(after).toBe(before); // no orphan proposal
+    });
+
+    it("throws 404 for a missing note", () => {
+      const author = createTestUser(testApp.db);
+      try {
+        noteService.promoteToProposal(createId(), { id: author.id, type: "human" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(404);
+      }
+    });
+
+    it("lets a non-author ai_agent promote (contrast with dismiss)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const other = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "not author but can promote" },
+        author.id,
+      );
+
+      const { note, proposal } = noteService.promoteToProposal(created.id, {
+        id: other.id,
+        type: "ai_agent",
+      });
+
+      expect(note.status).toBe("triaged");
+      expect(note.triagedBy).toBe(other.id);
+      expect(proposal.createdBy).toBe(other.id);
+    });
+
+    it("emits NOTE_PROMOTED → 'promoted' note row AND a 'created' proposal row", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "emits promote events" },
+        author.id,
+      );
+
+      const { proposal } = noteService.promoteToProposal(created.id, {
+        id: author.id,
+        type: "human",
+      });
+
+      const noteRows = activityRows(created.id);
+      const promoted = noteRows.find((r) => r.action === "promoted");
+      expect(promoted).toBeDefined();
+      expect(promoted!.entityType).toBe("note");
+      expect(promoted!.actorId).toBe(author.id);
+      expect(promoted!.projectId).toBe(project.id);
+
+      const proposalRows = activityRows(proposal.id);
+      const proposalCreated = proposalRows.find((r) => r.action === "created");
+      expect(proposalCreated).toBeDefined();
+      expect(proposalCreated!.entityType).toBe("proposal");
     });
   });
 

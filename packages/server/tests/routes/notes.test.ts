@@ -306,6 +306,85 @@ describe("Notes API", () => {
     });
   });
 
+  // ── POST /api/v1/notes/:id/promote-to-proposal (C2 §P3) ──────────
+  describe("POST /api/v1/notes/:id/promote-to-proposal", () => {
+    it("promotes an open note to a proposal (200, provenance round-trip)", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "to promote", body: "body text" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/promote-to-proposal`,
+        { body: { title: "Fix the bug", description: "do the thing" } },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.status).toBe("triaged");
+      expect(body.data.triageOutcome).toBe("promoted");
+      expect(body.data.promotedProposalId).toBe(body.proposal.id);
+      expect(body.proposal.sourceNoteId).toBe(body.data.id);
+      expect(body.proposal.createdBy).toBe(testApp.testUser.id);
+    });
+
+    it("derives default title/description from the note for an empty body {}", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "idea", title: "default title", body: "default body" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/promote-to-proposal`,
+        { body: {} },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.proposal.title).toBe("default title");
+      expect(body.proposal.description).toContain("default body");
+      expect(body.proposal.description).toContain(`Promoted from note ${created.data.id}`);
+    });
+
+    it("returns 404 for an unknown note id", async () => {
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${createId()}/promote-to-proposal`,
+        { body: {} },
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 409 when promoting an already-triaged note", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "promote twice" },
+        })
+      ).json();
+
+      // First dismiss → terminal triaged; then promote must 409.
+      await authRequest(testApp.app, "POST", `/api/v1/notes/${created.data.id}/dismiss`, {
+        body: { reason: "wontfix" },
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/promote-to-proposal`,
+        { body: {} },
+      );
+      expect(res.status).toBe(409);
+    });
+  });
+
   // ── activity-feed enrichment ─────────────────────────────────────
   describe("activity feed enrichment", () => {
     it("surfaces the note in the project activity feed with entityType 'note' and its title", async () => {

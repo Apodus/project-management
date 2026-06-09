@@ -42,6 +42,7 @@ export interface CreateProposalInput {
   title: string;
   description?: string | null;
   createdBy: string;
+  sourceNoteId?: string | null;
 }
 
 export interface UpdateProposalInput {
@@ -220,6 +221,7 @@ export function create(projectId: string, data: CreateProposalInput) {
       description: data.description ?? null,
       status: "open",
       createdBy: data.createdBy,
+      sourceNoteId: data.sourceNoteId ?? null,
       createdAt: now,
       updatedAt: now,
     })
