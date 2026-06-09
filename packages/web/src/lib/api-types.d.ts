@@ -3239,6 +3239,579 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List notes
+         * @description List notes for a project, newest first, with optional filters.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    kind?: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+                    status?: "open" | "triaged";
+                    anchorType?: "task" | "epic" | "proposal";
+                    anchorId?: string;
+                    severity?: "low" | "medium" | "high";
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of notes */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Note"][];
+                            pagination: {
+                                total: number;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create note
+         * @description Capture a new note (bug/question/idea/tech_debt/wtf/observation) for a project.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateNote"];
+                };
+            };
+            responses: {
+                /** @description Note created (with advisory `similar` open-note candidates) */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Note"];
+                            similar: {
+                                id: string;
+                                title: string;
+                                /** @enum {string} */
+                                kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+                            }[];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get note
+         * @description Get a single note by ID.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Note */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Note"];
+                        };
+                    };
+                };
+                /** @description Note not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update note
+         * @description Update an OPEN note's fields. A triaged note is immutable in C1 (409). Status is not patchable.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PatchNote"];
+                };
+            };
+            responses: {
+                /** @description Note updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Note"];
+                        };
+                    };
+                };
+                /** @description Note not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Note is not open and cannot be edited */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/notes/{id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss note
+         * @description Terminally dismiss an OPEN note (triage outcome `dismissed`). Anti-signal-burying: only the note's author OR a human may dismiss.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DismissNote"];
+                };
+            };
+            responses: {
+                /** @description Note dismissed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Note"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Caller is not allowed to dismiss this note */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Note not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Note is not open and cannot be dismissed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notes/{id}/promote-to-proposal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote note to proposal
+         * @description Terminally promote an OPEN note to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PromoteNoteToProposal"];
+                };
+            };
+            responses: {
+                /** @description Note promoted; proposal created */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Note"];
+                            proposal: components["schemas"]["PromotedProposal"];
+                        };
+                    };
+                };
+                /** @description Note not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Note is not open and cannot be promoted */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notes/{id}/promote-to-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote note to task
+         * @description HUMAN-ONLY escape hatch: terminally promote an OPEN note directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PromoteNoteToTask"];
+                };
+            };
+            responses: {
+                /** @description Note promoted; task created */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Note"];
+                            task: components["schemas"]["PromotedTask"];
+                        };
+                    };
+                };
+                /** @description Caller is not allowed to promote this note to a task (human-only) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Note not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Note is not open and cannot be promoted */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/notes/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Notes backlog health
+         * @description Read the project's notes-backlog health (open-note count + oldest-open age). SIDE EFFECT: fires the edge-triggered `note.backlog_alert` (SSE + Discord) exactly ONCE per backlog episode when an open note ages past the backlog threshold; the latch re-arms when the backlog clears.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Notes backlog health */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["NotesHealth"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/epics": {
         parameters: {
             query?: never;
@@ -5938,14 +6511,14 @@ export interface paths {
         };
         /**
          * Full-text search
-         * @description Search across proposals, tasks, and comments using FTS5 full-text search.
+         * @description Search across proposals, tasks, comments, and notes using FTS5 full-text search.
          */
         get: {
             parameters: {
                 query: {
                     q: string;
                     project_id?: string;
-                    entity_type?: "proposal" | "task" | "comment";
+                    entity_type?: "proposal" | "task" | "comment" | "note";
                     limit?: number;
                 };
                 header?: never;
@@ -12862,6 +13435,109 @@ export interface components {
         };
         RequestTakeoverProposal: {
             reason: string;
+        };
+        Note: {
+            id: string;
+            projectId: string;
+            /** @enum {string} */
+            kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+            /** @enum {string} */
+            status: "open" | "triaged";
+            title: string;
+            body: string | null;
+            /** @enum {string|null} */
+            anchorType: "task" | "epic" | "proposal" | null;
+            anchorId: string | null;
+            codeLocator: {
+                path: string;
+                line?: number;
+                commitSha?: string;
+            } | null;
+            /** @enum {string|null} */
+            severity: "low" | "medium" | "high" | null;
+            authorId: string;
+            createdAt: string;
+            updatedAt: string;
+            triagedAt: string | null;
+            triagedBy: string | null;
+            /** @enum {string|null} */
+            triageOutcome: "promoted" | "dismissed" | null;
+            triageReason: string | null;
+            promotedProposalId: string | null;
+            promotedTaskId: string | null;
+        };
+        CreateNote: {
+            /** @enum {string} */
+            kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+            title: string;
+            body?: string | null;
+            /** @enum {string|null} */
+            anchorType?: "task" | "epic" | "proposal" | null;
+            anchorId?: string | null;
+            codeLocator?: {
+                path: string;
+                line?: number;
+                commitSha?: string;
+            } | null;
+            /** @enum {string|null} */
+            severity?: "low" | "medium" | "high" | null;
+        };
+        PatchNote: {
+            /** @enum {string} */
+            kind?: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+            title?: string;
+            body?: string | null;
+            /** @enum {string|null} */
+            anchorType?: "task" | "epic" | "proposal" | null;
+            anchorId?: string | null;
+            codeLocator?: {
+                path: string;
+                line?: number;
+                commitSha?: string;
+            } | null;
+            /** @enum {string|null} */
+            severity?: "low" | "medium" | "high" | null;
+        };
+        DismissNote: {
+            reason: string;
+        };
+        PromotedProposal: {
+            id: string;
+            projectId: string | null;
+            title: string;
+            description: string | null;
+            status: string;
+            createdBy: string;
+            sourceNoteId: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        PromoteNoteToProposal: {
+            title?: string;
+            description?: string;
+        };
+        PromotedTask: {
+            id: string;
+            projectId: string;
+            title: string;
+            description: string | null;
+            status: string;
+            priority: string;
+            type: string;
+            reporterId: string;
+            epicId: string | null;
+            sourceNoteId: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        PromoteNoteToTask: {
+            title?: string;
+            description?: string;
+            epicId?: string;
+        };
+        NotesHealth: {
+            open_count: number;
+            oldest_untriaged_age_ms: number | null;
         };
         Epic: {
             id: string;

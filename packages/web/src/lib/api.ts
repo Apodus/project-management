@@ -33,6 +33,12 @@ export type MergeRequest = components["schemas"]["MergeRequest"];
 export type MergeRequestTimeline = components["schemas"]["MergeRequestTimeline"];
 export type MergeRequestTimelineEvent = components["schemas"]["MergeRequestTimelineEvent"];
 export type ResolverDefaults = components["schemas"]["ResolverDefaults"];
+export type Note = components["schemas"]["Note"];
+export type NotesHealth = components["schemas"]["NotesHealth"];
+export type CreateNote = components["schemas"]["CreateNote"];
+export type PatchNote = components["schemas"]["PatchNote"];
+export type PromotedProposal = components["schemas"]["PromotedProposal"];
+export type PromotedTask = components["schemas"]["PromotedTask"];
 
 /**
  * The persisted `settings.integrator.resolver` shape (Phase 7.6). `command` is
@@ -328,6 +334,111 @@ export async function transitionTask(
       to_status: toStatus,
       ...(comment ? { comment } : {}),
     }),
+  });
+}
+
+// ---- Notes API ----
+
+// The list envelope is an inline server shape (not a named schema), so type it
+// locally — mirrors how getTasks types its {data,pagination}.
+export interface NoteListResult {
+  data: Note[];
+  pagination: { total: number };
+}
+
+// POST /notes returns the created note plus advisory `similar` open-note candidates.
+export interface CreateNoteResult {
+  data: Note;
+  similar: { id: string; title: string; kind: Note["kind"] }[];
+}
+
+export interface PromoteToProposalResult {
+  data: Note;
+  proposal: PromotedProposal;
+}
+
+export interface PromoteToTaskResult {
+  data: Note;
+  task: PromotedTask;
+}
+
+export interface NoteFilters {
+  status?: Note["status"];
+  kind?: Note["kind"];
+  anchorType?: Note["anchorType"];
+  anchorId?: string;
+  severity?: Note["severity"];
+}
+
+export async function getNotes(
+  projectId: string,
+  filters?: NoteFilters,
+): Promise<NoteListResult> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.kind) params.set("kind", filters.kind);
+  if (filters?.anchorType) params.set("anchorType", filters.anchorType);
+  if (filters?.anchorId) params.set("anchorId", filters.anchorId);
+  if (filters?.severity) params.set("severity", filters.severity);
+  const query = params.toString();
+  return apiFetch<NoteListResult>(
+    `/projects/${projectId}/notes${query ? `?${query}` : ""}`,
+    { rawResponse: true },
+  );
+}
+
+export async function getNote(id: string): Promise<Note> {
+  return apiFetch<Note>(`/notes/${id}`);
+}
+
+export async function getNotesHealth(projectId: string): Promise<NotesHealth> {
+  return apiFetch<NotesHealth>(`/projects/${projectId}/notes/health`);
+}
+
+export async function createNote(
+  projectId: string,
+  data: CreateNote,
+): Promise<CreateNoteResult> {
+  return apiFetch<CreateNoteResult>(`/projects/${projectId}/notes`, {
+    method: "POST",
+    body: JSON.stringify(data),
+    rawResponse: true,
+  });
+}
+
+export async function updateNote(id: string, data: PatchNote): Promise<Note> {
+  return apiFetch<Note>(`/notes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function dismissNote(id: string, reason: string): Promise<Note> {
+  return apiFetch<Note>(`/notes/${id}/dismiss`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function promoteNoteToProposal(
+  id: string,
+  body?: { title?: string; description?: string },
+): Promise<PromoteToProposalResult> {
+  return apiFetch<PromoteToProposalResult>(`/notes/${id}/promote-to-proposal`, {
+    method: "POST",
+    body: JSON.stringify(body ?? {}),
+    rawResponse: true,
+  });
+}
+
+export async function promoteNoteToTask(
+  id: string,
+  body?: { title?: string; description?: string; epicId?: string },
+): Promise<PromoteToTaskResult> {
+  return apiFetch<PromoteToTaskResult>(`/notes/${id}/promote-to-task`, {
+    method: "POST",
+    body: JSON.stringify(body ?? {}),
+    rawResponse: true,
   });
 }
 
