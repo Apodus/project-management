@@ -8,6 +8,7 @@ import { proposalKeys } from "./use-proposals";
 import { taskKeys } from "./use-tasks";
 import { epicKeys } from "./use-epics";
 import { trainKeys } from "./use-train";
+import { noteKeys } from "./use-notes";
 import { useConnectionStore } from "@/stores/connection-store";
 
 // ─── SSE event payload shape ─────────────────────────────────────
@@ -48,6 +49,12 @@ export function getInvalidationKeys(
     case "audit":
       // audit.recorded → the audit query lives under trainKeys.all → refresh live.
       return [trainKeys.all];
+    case "note":
+      // note.* (Campaign C3) — noteKeys.all = ["notes"] is the prefix of
+      // lists()/detail()/health(): one entry refreshes the inbox list, any open
+      // note detail, and notes health together (note.backlog_alert is toast-only,
+      // handled in maybeShowToast — the health poll owns its refresh).
+      return [noteKeys.all];
     default:
       return [];
   }
@@ -86,6 +93,16 @@ function maybeShowToast(eventType: string, payload: SSEPayload): void {
     toast.warning("Stale claims", {
       description:
         "Some work items are claimed but inactive past grace. Review or hand off.",
+    });
+    return;
+  }
+  // Backlog alert (Campaign C3) — identity-masked, aggregate copy (no ids/counts),
+  // exactly mirroring the stale-claim toast. Toast-only: the useNotesHealth poll
+  // owns the inbox refresh; this frame just surfaces the warning.
+  if (eventType === "note.backlog_alert") {
+    toast.warning("Untriaged notes piling up", {
+      description:
+        "Some notes have been waiting past the triage window. Review the inbox.",
     });
     return;
   }
@@ -236,6 +253,13 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       "train.integration_stalled",
       // Stale-claim alert (Campaign C3 §P5a) — claimed-but-inactive work items.
       "claim.stale_alert",
+      // Notes inbox (Campaign C3) — lifecycle invalidates noteKeys.all; the
+      // backlog alert is a toast-only banner (handled in maybeShowToast).
+      "note.created",
+      "note.updated",
+      "note.dismissed",
+      "note.promoted",
+      "note.backlog_alert",
       // Break-glass audit — an R1-override was recorded → refresh the audit log.
       "audit.recorded",
     ];

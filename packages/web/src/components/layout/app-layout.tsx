@@ -11,6 +11,7 @@ import {
 } from "@/components/keyboard-shortcuts-dialog";
 import { useSSE } from "@/hooks/use-sse";
 import { useClaimsHealth } from "@/hooks/use-train";
+import { useNotesHealth } from "@/hooks/use-notes";
 import { useFaviconBadge } from "@/hooks/use-favicon-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -31,6 +32,11 @@ export function AppLayout() {
   // read is the detection trigger — it fires the edge-triggered claim.stale_alert
   // (SSE banner + Discord) once per stale episode. Guarded on a current project.
   useClaimsHealth(currentProjectId ?? undefined);
+
+  // Poll notes-backlog health (Campaign C3) from the always-open layout: the
+  // read is the detection trigger — it fires the edge-triggered note.backlog_alert
+  // (SSE toast + Discord) once per backlog episode. Guarded on a current project.
+  useNotesHealth(currentProjectId ?? undefined);
 
   // Favicon badge + document title reflect unread event count
   useFaviconBadge();
