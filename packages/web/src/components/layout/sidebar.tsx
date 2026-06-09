@@ -8,6 +8,7 @@ import {
   FileText,
   Flag,
   FolderOpen,
+  Inbox,
   LayoutDashboard,
   ListTodo,
   Milestone,
@@ -64,6 +65,12 @@ function getNavItems(projectId: string | null): NavItem[] {
       icon: FileText,
       href: projectId ? `${base}/proposals` : "/projects",
       matchPath: "/proposals",
+    },
+    {
+      label: "Inbox",
+      icon: Inbox,
+      href: projectId ? `${base}/notes` : "/projects",
+      matchPath: "/notes",
     },
     {
       label: "Epics",

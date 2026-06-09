@@ -17,6 +17,7 @@ import { MilestonesPage } from "@/pages/milestones-page";
 import { ProjectListPage } from "@/pages/project-list-page";
 import { ProposalDetailPage } from "@/pages/proposal-detail-page";
 import { ProposalListPage } from "@/pages/proposal-list-page";
+import { NotesPage } from "@/pages/notes-page";
 import { SetupPage } from "@/pages/setup-page";
 import { TaskDetailPage } from "@/pages/task-detail-page";
 import { TaskListPage } from "@/pages/task-list-page";
@@ -121,6 +122,13 @@ const projectProposalListRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/proposals",
   component: ProposalListPage,
+});
+
+// /projects/$projectId/notes — notes inbox (Campaign C3)
+const projectNotesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/notes",
+  component: NotesPage,
 });
 
 // Search params type for task list
@@ -313,6 +321,7 @@ const routeTree = rootRoute.addChildren([
     projectRoute.addChildren([
       projectIndexRoute,
       projectProposalListRoute,
+      projectNotesRoute,
       projectBoardRoute,
       projectEpicBoardRoute,
       projectTaskListRoute,
