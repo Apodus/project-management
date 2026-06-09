@@ -21,6 +21,14 @@ export const EVENT_NAMES = {
   NOTE_UPDATED: "note.updated",
   NOTE_DISMISSED: "note.dismissed",
   NOTE_PROMOTED: "note.promoted",
+  // Backlog-age alert (Campaign C2 §P5 — emitted by notes-health.service
+  // computeNotesHealth when a project has an OPEN note aging past the backlog
+  // threshold). Edge-triggered (once per backlog episode, latched on
+  // notes_alert_state), mirroring CLAIM_STALE_ALERT / train.stuck. onAll
+  // auto-forwards it to the SSE stream (banner) AND it drives the outbound
+  // Discord listener (events/alerts-listener.ts). Identity-masked: the payload
+  // carries NO note id — only an aggregate count + the oldest-open age.
+  NOTE_BACKLOG_ALERT: "note.backlog_alert",
 
   // Epic events
   EPIC_CREATED: "epic.created",

@@ -9,6 +9,7 @@ import {
 import type { UserType } from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as noteService from "../services/note.service.js";
+import * as notesHealthService from "../services/notes-health.service.js";
 
 // ─── Notes routes (Campaign C1 §P3) ───────────────────────────────
 // Route-local Zod-4 schemas (via @hono/zod-openapi `z`), the established
@@ -75,6 +76,17 @@ const errorEnvelope = z.object({
     message: z.string(),
   }),
 });
+
+// ─── Notes-health (Campaign C2 §P5) ───────────────────────────────
+// snake_case on the wire (matches claims-health). Route-local Zod-4 mirror.
+const notesHealthSchema = z
+  .object({
+    open_count: z.number(),
+    oldest_untriaged_age_ms: z.number().nullable(),
+  })
+  .openapi("NotesHealth");
+
+const notesHealthEnvelope = z.object({ data: notesHealthSchema });
 
 // ─── Request schemas ──────────────────────────────────────────────
 
@@ -388,6 +400,32 @@ const promoteToTaskRoute = createRoute({
   },
 });
 
+const notesHealthRoute = createRoute({
+  method: "get",
+  path: "/api/v1/projects/{projectId}/notes/health",
+  tags: ["Notes"],
+  summary: "Notes backlog health",
+  description:
+    "Read the project's notes-backlog health (open-note count + oldest-open age). SIDE EFFECT: fires the edge-triggered `note.backlog_alert` (SSE + Discord) exactly ONCE per backlog episode when an open note ages past the backlog threshold; the latch re-arms when the backlog clears.",
+  request: {
+    params: z.object({ projectId: projectIdParam }),
+  },
+  responses: {
+    200: {
+      description: "Notes backlog health",
+      content: { "application/json": { schema: notesHealthEnvelope } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createNoteRoutes(): OpenAPIHono<{
@@ -466,6 +504,21 @@ export function createNoteRoutes(): OpenAPIHono<{
       body,
     );
     return c.json({ data: note, task }, 200);
+  });
+
+  // GET /api/v1/projects/:projectId/notes/health (Campaign C2 §P5)
+  router.openapi(notesHealthRoute, (c) => {
+    const { projectId } = c.req.valid("param");
+    const health = notesHealthService.computeNotesHealth(projectId);
+    return c.json(
+      {
+        data: {
+          open_count: health.openCount,
+          oldest_untriaged_age_ms: health.oldestUntriagedAgeMs,
+        },
+      },
+      200,
+    );
   });
 
   return router;

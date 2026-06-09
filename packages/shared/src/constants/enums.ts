@@ -115,6 +115,11 @@ export const LEASE_TTL_MS_DEFAULT = 30 * 60 * 1000;
 // want to observe lapses without aggressively reclaiming while the engine
 // is not yet the source of truth.
 export const LEASE_GRACE_MS_DEFAULT = 24 * 60 * 60 * 1000;
+// Campaign C2 (notes triage §P5) — an OPEN note aging past this threshold fires
+// the edge-triggered backlog-age alert. On-read constant idiom, mirroring
+// LEASE_GRACE_MS_DEFAULT (detection is a side effect of an on-read aggregate,
+// latched on notes_alert_state). 7 days.
+export const NOTES_BACKLOG_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 // A stricter-than-sweep margin (60s) ADDED to the grace when pick-next decides
 // whether to reclaim-then-claim a stale-claimed task (C3.P3, mode `on` only).
 // A pick is a hostile takeover of another holder's work, so it demands a lease

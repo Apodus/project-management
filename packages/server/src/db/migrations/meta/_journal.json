@@ -183,6 +183,13 @@
       "when": 1781913600000,
       "tag": "0025_note_triage",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1782000000000,
+      "tag": "0026_notes_alert_state",
+      "breakpoints": true
     }
   ]
 }

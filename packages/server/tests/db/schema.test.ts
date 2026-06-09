@@ -52,7 +52,7 @@ describe("Database schema", () => {
 
   // ── Table existence ──────────────────────────────────────────────
   describe("table existence", () => {
-    it("should create all 33 tables", () => {
+    it("should create all 34 tables", () => {
       const db = setupDb();
       const tableNames = db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' AND name NOT LIKE '%_fts%' ORDER BY name`,
@@ -84,6 +84,7 @@ describe("Database schema", () => {
         "merge_resolutions",
         "milestones",
         "notes",
+        "notes_alert_state",
         "projects",
         "proposals",
         "sessions",
@@ -198,6 +199,7 @@ describe("Database schema", () => {
         "idx_claim_leases_holder",
         "idx_agent_claims_worker",
         "idx_claims_alert_state_project",
+        "idx_notes_alert_state_project",
       ].sort();
 
       for (const idx of expected) {

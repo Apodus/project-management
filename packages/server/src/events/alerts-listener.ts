@@ -88,6 +88,15 @@ function formatAlert(event: EventName, payload: EventPayload): string {
         ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 3_600_000))}h)`;
       return `:warning: Stale claims on project — ${items} claimed but inactive past grace${oldest}. Review or hand off.`;
     }
+    case EVENT_NAMES.NOTE_BACKLOG_ALERT: {
+      // Identity-masked (Campaign C2 §P5): aggregate count + oldest-open age
+      // only — never a note id.
+      const count = Number(e.openCount ?? 0);
+      const items = count === 1 ? "1 untriaged note" : `${count} untriaged notes`;
+      const ageMs = e.oldestUntriagedAgeMs == null ? null : Number(e.oldestUntriagedAgeMs);
+      const oldest = ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 86_400_000))}d)`;
+      return `:warning: Note backlog on project — ${items}${oldest}. Triage or dismiss.`;
+    }
     default:
       return `:warning: Train alert (${event}) on \`${resource}\`.`;
   }
@@ -152,5 +161,11 @@ export function registerWebhookAlertListener(): void {
   // settings read + format are guarded, the fetch un-awaited (NOTE 2).
   bus.on(EVENT_NAMES.CLAIM_STALE_ALERT, (p) =>
     handler(EVENT_NAMES.CLAIM_STALE_ALERT, p),
+  );
+  // Campaign C2 §P5 — the notes backlog-age alert rides the same outbound
+  // Discord path (explicit wiring, NOT auto). Identity-masked message; the
+  // handler's settings read + format are guarded, the fetch un-awaited (NOTE 2).
+  bus.on(EVENT_NAMES.NOTE_BACKLOG_ALERT, (p) =>
+    handler(EVENT_NAMES.NOTE_BACKLOG_ALERT, p),
   );
 }

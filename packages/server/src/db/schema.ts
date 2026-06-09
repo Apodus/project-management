@@ -1118,3 +1118,24 @@ export const notes = sqliteTable(
     index("idx_notes_project_kind_status").on(table.projectId, table.kind, table.status),
   ],
 );
+
+// ─── notes_alert_state ──────────────────────────────────────────────
+// Campaign C2 (notes triage §P5): the per-project latch for the on-read,
+// edge-triggered backlog-age alert. Mirrors claims_alert_state exactly — a
+// single edge-trigger debounce flag set true when the alert fires and reset to
+// false when the backlog clears, so the alert fires exactly ONCE per backlog
+// episode and re-arms on resolution. Lazy-created on first read/write; the
+// unique (project_id) index makes the upsert race-safe. PM-owned, durable.
+export const notesAlertState = sqliteTable(
+  "notes_alert_state",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    backlogNotified: integer("backlog_notified", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [uniqueIndex("idx_notes_alert_state_project").on(table.projectId)],
+);

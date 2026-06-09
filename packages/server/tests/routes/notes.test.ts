@@ -483,4 +483,55 @@ describe("Notes API", () => {
       expect(entry.entityTitle).toBe("Enrich me");
     });
   });
+
+  // ── GET /api/v1/projects/:projectId/notes/health (Campaign C2 §P5) ─
+  describe("GET /api/v1/projects/:projectId/notes/health", () => {
+    it("returns a {data:{open_count, oldest_untriaged_age_ms}} envelope", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/notes/health`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.open_count).toBe(0);
+      expect(body.data.oldest_untriaged_age_ms).toBeNull();
+    });
+
+    it("counts open notes in the envelope", async () => {
+      const project = createTestProject(testApp.db);
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+        body: { kind: "bug", title: "open one" },
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/notes/health`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.open_count).toBe(1);
+      expect(typeof body.data.oldest_untriaged_age_ms).toBe("number");
+    });
+
+    it("returns 404 when the project does not exist", async () => {
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${createId()}/notes/health`,
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 401 when unauthenticated", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await testApp.app.request(`/api/v1/projects/${project.id}/notes/health`, {
+        method: "GET",
+      });
+      expect(res.status).toBe(401);
+    });
+  });
 });
