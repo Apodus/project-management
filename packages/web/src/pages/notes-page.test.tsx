@@ -42,6 +42,24 @@ vi.mock("@/hooks/use-projects", () => ({
   useProject: () => ({ data: { id: "proj-1", name: "Demo project" } }),
 }));
 
+// Shared mutation stub (mirrors train-audit-page.test.tsx). mutateAsync resolves
+// to the union shape promote hooks may return so awaits never reject.
+function mutation() {
+  return {
+    mutate: vi.fn(),
+    mutateAsync: vi
+      .fn()
+      .mockResolvedValue({ data: {}, proposal: { id: "prop-1" }, task: { id: "task-1" } }),
+    isPending: false,
+    reset: vi.fn(),
+  };
+}
+
+// Single mutation instances per hook so tests can assert on .mutateAsync.
+const dismissMutation = mutation();
+const promoteProposalMutation = mutation();
+const promoteTaskMutation = mutation();
+
 vi.mock("@/hooks/use-notes", () => ({
   useNotes: (_projectId: string | undefined, filters: NoteFilters) => {
     useNotesSpy(filters);
@@ -52,6 +70,15 @@ vi.mock("@/hooks/use-notes", () => ({
       refetch: vi.fn(),
     };
   },
+  useDismissNote: () => dismissMutation,
+  usePromoteNoteToProposal: () => promoteProposalMutation,
+  usePromoteNoteToTask: () => promoteTaskMutation,
+}));
+
+// Default: a human (promote-to-task visible). Override per test via mockReturnValue.
+const useCurrentUserMock = vi.fn(() => ({ data: { type: "human" } }));
+vi.mock("@/hooks/use-auth", () => ({
+  useCurrentUser: () => useCurrentUserMock(),
 }));
 
 vi.mock("@/hooks/use-tasks", () => ({
@@ -78,6 +105,8 @@ import { NotesPage } from "./notes-page";
 beforeEach(() => {
   vi.clearAllMocks();
   notesData = [];
+  // clearAllMocks wipes the implementation — restore the human default.
+  useCurrentUserMock.mockReturnValue({ data: { type: "human" } });
 });
 
 describe("NotesPage", () => {
@@ -165,5 +194,134 @@ describe("NotesPage", () => {
     // Map miss → raw "task <short-id>", never "(removed)".
     expect(screen.getByText(/task task-mis/)).toBeInTheDocument();
     expect(screen.queryByText(/removed/i)).not.toBeInTheDocument();
+  });
+
+  // ── Triage actions (C3 P3) ──────────────────────────────────────
+
+  it("renders Dismiss + Promote-to-proposal on an open note", () => {
+    notesData = [makeNote({ id: "n1", title: "Open note", status: "open" })];
+    render(<NotesPage />);
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Promote to proposal" }),
+    ).toBeInTheDocument();
+  });
+
+  it("dismiss: dialog requires a reason, then calls mutateAsync with {id, projectId, reason}", async () => {
+    notesData = [
+      makeNote({ id: "n1", projectId: "proj-1", title: "Open note", status: "open" }),
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    // Submit button (inside the dialog) is disabled while the reason is empty.
+    const submit = screen
+      .getAllByRole("button", { name: "Dismiss" })
+      .find((b) => b.closest("[data-slot='dialog-content']"))!;
+    expect(submit).toBeTruthy();
+    expect(submit).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText(/not reproducible/i), {
+      target: { value: "duplicate" },
+    });
+    expect(submit).not.toBeDisabled();
+
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(dismissMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "n1",
+        projectId: "proj-1",
+        reason: "duplicate",
+      }),
+    );
+  });
+
+  it("promote-to-proposal: prefills title and calls mutateAsync with {id, projectId, title, description}", async () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        projectId: "proj-1",
+        title: "Caching idea",
+        status: "open",
+      }),
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Promote to proposal" }));
+
+    const titleInput = screen.getByLabelText("Title") as HTMLInputElement;
+    expect(titleInput.value).toBe("Caching idea");
+
+    // Submit is the dialog-content "Promote" button.
+    const submit = screen
+      .getAllByRole("button", { name: "Promote" })
+      .find((b) => b.closest("[data-slot='dialog-content']"))!;
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(promoteProposalMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "n1",
+        projectId: "proj-1",
+        title: "Caching idea",
+        description: undefined,
+      }),
+    );
+  });
+
+  it("promote-to-task is hidden for ai_agent and shown for human; submit calls mutateAsync", async () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        projectId: "proj-1",
+        title: "Bug to fix",
+        status: "open",
+      }),
+    ];
+
+    // ai_agent → hidden.
+    useCurrentUserMock.mockReturnValue({ data: { type: "ai_agent" } });
+    const { unmount } = render(<NotesPage />);
+    expect(
+      screen.queryByRole("button", { name: "Promote to task" }),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    // human → shown.
+    useCurrentUserMock.mockReturnValue({ data: { type: "human" } });
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Promote to task" }));
+
+    const submit = screen
+      .getAllByRole("button", { name: "Promote" })
+      .find((b) => b.closest("[data-slot='dialog-content']"))!;
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(promoteTaskMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "n1",
+          projectId: "proj-1",
+          title: "Bug to fix",
+        }),
+      ),
+    );
+  });
+
+  it("renders NO triage actions on a triaged note", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        title: "Already triaged",
+        status: "triaged",
+        triageOutcome: "dismissed",
+      }),
+    ];
+    render(<NotesPage />);
+    expect(
+      screen.queryByRole("button", { name: "Dismiss" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Promote to proposal" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Promote to task" }),
+    ).not.toBeInTheDocument();
   });
 });

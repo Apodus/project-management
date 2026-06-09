@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { Inbox, Search, X } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,7 +10,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -18,8 +28,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useProject } from "@/hooks/use-projects";
-import { useNotes } from "@/hooks/use-notes";
+import { useCurrentUser } from "@/hooks/use-auth";
+import {
+  useNotes,
+  useDismissNote,
+  usePromoteNoteToProposal,
+  usePromoteNoteToTask,
+} from "@/hooks/use-notes";
 import { useTasks } from "@/hooks/use-tasks";
 import { useEpics } from "@/hooks/use-epics";
 import { useProposals } from "@/hooks/use-proposals";
@@ -136,19 +153,292 @@ function AnchorRef({
   );
 }
 
+// ─── Triage action dialogs (Campaign C3) ─────────────────────────
+//
+// Each mirrors the ForceLandDialog pattern in train-audit-page.tsx: controlled
+// open/onOpenChange, a reset() that also resets the mutation, canSubmit gating,
+// and `await mutateAsync(...)` then close — relying on the hook's onError toast
+// inside a swallowed catch.
+
+function DismissNoteDialog({
+  note,
+  open,
+  onOpenChange,
+}: {
+  note: Note;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const dismissMutation = useDismissNote();
+
+  function reset() {
+    setReason("");
+    dismissMutation.reset();
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (!next) reset();
+    onOpenChange(next);
+  }
+
+  const canSubmit = reason.trim().length > 0;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    try {
+      await dismissMutation.mutateAsync({
+        id: note.id,
+        projectId: note.projectId,
+        reason: reason.trim(),
+      });
+      handleOpenChange(false);
+    } catch {
+      // onError toast surfaces the backend message.
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Dismiss note</DialogTitle>
+          <DialogDescription>
+            Mark this note as triaged without acting on it. A reason is required.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="dismiss-reason">Reason</Label>
+          <Textarea
+            id="dismiss-reason"
+            placeholder="not reproducible; superseded; out of scope…"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!canSubmit || dismissMutation.isPending}
+          >
+            {dismissMutation.isPending ? "Dismissing…" : "Dismiss"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PromoteToProposalDialog({
+  note,
+  open,
+  onOpenChange,
+}: {
+  note: Note;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [title, setTitle] = useState(note.title);
+  const [description, setDescription] = useState("");
+  const promoteMutation = usePromoteNoteToProposal();
+
+  function reset() {
+    setTitle(note.title);
+    setDescription("");
+    promoteMutation.reset();
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (!next) reset();
+    onOpenChange(next);
+  }
+
+  const canSubmit = title.trim().length > 0;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    try {
+      await promoteMutation.mutateAsync({
+        id: note.id,
+        projectId: note.projectId,
+        title: title.trim(),
+        description: description.trim() || undefined,
+      });
+      toast.success("Promoted to proposal");
+      handleOpenChange(false);
+    } catch {
+      // onError toast surfaces the backend message.
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Promote to proposal</DialogTitle>
+          <DialogDescription>
+            Create a proposal from this note and mark the note as triaged.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="promote-proposal-title">Title</Label>
+            <Input
+              id="promote-proposal-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="promote-proposal-description">
+              Description (optional)
+            </Label>
+            <Textarea
+              id="promote-proposal-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!canSubmit || promoteMutation.isPending}
+          >
+            {promoteMutation.isPending ? "Promoting…" : "Promote"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PromoteToTaskDialog({
+  note,
+  open,
+  onOpenChange,
+}: {
+  note: Note;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [title, setTitle] = useState(note.title);
+  const [description, setDescription] = useState("");
+  const [epicId, setEpicId] = useState("");
+  const promoteMutation = usePromoteNoteToTask();
+
+  function reset() {
+    setTitle(note.title);
+    setDescription("");
+    setEpicId("");
+    promoteMutation.reset();
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (!next) reset();
+    onOpenChange(next);
+  }
+
+  const canSubmit = title.trim().length > 0;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    try {
+      await promoteMutation.mutateAsync({
+        id: note.id,
+        projectId: note.projectId,
+        title: title.trim(),
+        description: description.trim() || undefined,
+        epicId: epicId.trim() || undefined,
+      });
+      toast.success("Promoted to task");
+      handleOpenChange(false);
+    } catch {
+      // onError toast surfaces the backend message.
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Promote to task</DialogTitle>
+          <DialogDescription>
+            Create a task from this note and mark the note as triaged.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="promote-task-title">Title</Label>
+            <Input
+              id="promote-task-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="promote-task-description">
+              Description (optional)
+            </Label>
+            <Textarea
+              id="promote-task-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="promote-task-epic">Epic ID (optional)</Label>
+            <Input
+              id="promote-task-epic"
+              placeholder="epic-…"
+              value={epicId}
+              onChange={(e) => setEpicId(e.target.value)}
+              className="font-mono"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!canSubmit || promoteMutation.isPending}
+          >
+            {promoteMutation.isPending ? "Promoting…" : "Promote"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function NoteCard({
   note,
   anchorTitle,
   promotedTaskTitle,
   promotedProposalTitle,
+  isHuman,
 }: {
   note: Note;
   anchorTitle: string | undefined;
   promotedTaskTitle: string | undefined;
   promotedProposalTitle: string | undefined;
+  isHuman: boolean;
 }) {
   const isPromoted = note.status === "triaged" && note.triageOutcome === "promoted";
   const isDismissed = note.status === "triaged" && note.triageOutcome === "dismissed";
+  const isOpen = note.status === "open";
+
+  const [dismissOpen, setDismissOpen] = useState(false);
+  const [promoteProposalOpen, setPromoteProposalOpen] = useState(false);
+  const [promoteTaskOpen, setPromoteTaskOpen] = useState(false);
 
   return (
     <Card className="gap-3 py-4">
@@ -236,6 +526,49 @@ function NoteCard({
         <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground/70">
           <span>{formatRelativeTime(note.createdAt)}</span>
         </div>
+
+        {/* Triage actions — open notes only (triaged notes are terminal). */}
+        {isOpen && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDismissOpen(true)}
+            >
+              Dismiss
+            </Button>
+            <Button size="sm" onClick={() => setPromoteProposalOpen(true)}>
+              Promote to proposal
+            </Button>
+            {isHuman && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setPromoteTaskOpen(true)}
+              >
+                Promote to task
+              </Button>
+            )}
+
+            <DismissNoteDialog
+              note={note}
+              open={dismissOpen}
+              onOpenChange={setDismissOpen}
+            />
+            <PromoteToProposalDialog
+              note={note}
+              open={promoteProposalOpen}
+              onOpenChange={setPromoteProposalOpen}
+            />
+            {isHuman && (
+              <PromoteToTaskDialog
+                note={note}
+                open={promoteTaskOpen}
+                onOpenChange={setPromoteTaskOpen}
+              />
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -260,6 +593,13 @@ function NoteSkeleton() {
 export function NotesPage() {
   const { projectId } = useParams({ strict: false });
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
+
+  // Human gate for the human-only promote-to-task action. Use `type` (the
+  // human/ai_agent discriminator — cf. dashboard-page.tsx:462), NOT `role`
+  // (admin axis). The server enforces human-only on promote-to-task (403);
+  // this is ergonomics / defense-in-depth. Fetched ONCE here, threaded down.
+  const { data: currentUser } = useCurrentUser();
+  const isHuman = currentUser?.type === "human";
 
   // Fetch project details so we can set the project name in the store. Done in
   // an effect — calling a store setter during render flags a React 19 error.
@@ -508,6 +848,7 @@ export function NotesPage() {
                   ? proposalMap.get(note.promotedProposalId)
                   : undefined
               }
+              isHuman={isHuman}
             />
           ))}
         </div>
