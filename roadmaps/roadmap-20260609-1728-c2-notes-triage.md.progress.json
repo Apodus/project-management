@@ -1,0 +1,23 @@
+{
+  "campaign": "C2 — Triage lifecycle + proposal-gate seal (+ backlog-age alert)",
+  "roadmap": "roadmaps/roadmap-20260609-1728-c2-notes-triage.md",
+  "vision": "roadmaps/vision-20260609-notes-findings-inbox.md",
+  "branch": "campaign-c2-notes-triage",
+  "stacked_on": "campaign-c1-notes-capture",
+  "pm": { "project": "01KT1VN1BEMF1KZGBFMGXBY5W1", "epic": "01KTP3Y628M4JQFY7EMZVMZFAJ", "c2_task": "01KTP3Z3WPRNSJYVWDA55TVEHY" },
+  "phases": [
+    { "id": "P1", "title": "triage data model + state-machine core", "status": "complete", "commit": "1d882b3", "outcome": "NOTE_TRIAGE_OUTCOMES + noteSchema triage fields; migration 0025 (6 notes cols + sourceNoteId on proposals/tasks, inline-FK-in-ALTER form); assertOpen + exported applyTriage (no event in P1); shared 466 / server 1404 green; FK SET-NULL verified" },
+    { "id": "P2", "title": "dismiss endpoint + authz", "status": "complete", "commit": "e4ac7ee", "outcome": "dismiss(id,actor,reason) reusing applyTriage; authz=author-or-human (403 FORBIDDEN, before open-check); NOTE_DISMISSED + eventToAction 'dismissed'; route-local noteSchema gained 6 triage fields (GET/list/create now expose them as null); POST /notes/{id}/dismiss; 1414 server tests green" },
+    { "id": "P3", "title": "promote-to-proposal + provenance", "status": "complete", "commit": "f206df9", "outcome": "promoteToProposal (early open-guard prevents orphan proposal, no authz gate=elevates signal, reuses proposalService.create w/ optional sourceNoteId); bidirectional provenance (proposal.sourceNoteId<->note.promotedProposalId); NOTE_PROMOTED; POST /notes/{id}/promote-to-proposal {data,proposal}; 1426 server tests green" },
+    { "id": "P4", "title": "promote-to-task (human-gated) + structural invariant", "status": "complete", "commit": "d9b4794", "outcome": "promoteToTask HUMAN-only gate (before assertOpen, zero writes on 403); taskService.create extended w/ optional sourceNoteId (undefined-actor skips autonomy guardrail); WIRE-SEALED invariant test proves POST /tasks & /proposals strip client sourceNoteId (Zod) so no AI path forges note->task/epic provenance; 1445 server tests green" },
+    { "id": "P5", "title": "backlog-age alert", "status": "complete", "commit": "9912634", "outcome": "notes_alert_state latch (migration 0026) + computeNotesHealth (openCount + oldest-untriaged age, NaN-guarded) cloning claims-health idiom; NOTE_BACKLOG_ALERT edge-triggered (fire once >threshold, re-arm on drain) SSE + Discord (identity-masked, NOTE-2 non-fatal); 7d constant threshold; GET /projects/{id}/notes/health; shared 466 / server 1455 green" },
+    { "id": "P6", "title": "MCP triage tools", "status": "complete", "commit": "f9653e2", "outcome": "pm_dismiss_note + pm_promote_note_to_proposal (promote-to-task NOT exposed — human-only); api-client dismissNote (apiRequest) + promoteNoteToProposal (bespoke fetch preserves proposal sibling); MCP 154 tests; full suite 10/10 green. Executor implemented+verified but stopped before commit; commander ran gates + committed." }
+  ],
+  "status": "COMPLETE",
+  "current": "done",
+  "open_issues": [
+    "db:generate blocked by pre-existing 0005/0006 snapshot collision — hand-author migrations + journal entries (C1 P2 precedent)"
+  ],
+  "dag_drift": [],
+  "last_check": "2026-06-09T17:28:00Z"
+}
