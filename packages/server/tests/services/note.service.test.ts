@@ -300,6 +300,78 @@ describe("note service", () => {
     });
   });
 
+  // ── findSimilarOpenNotes (advisory dedup, §P4) ──────────────────
+  describe("findSimilarOpenNotes", () => {
+    it("surfaces a near-duplicate OPEN note sharing a distinctive title term", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const existing = noteService.create(
+        project.id,
+        { kind: "bug", title: "Login flickers on the dashboard" },
+        author.id,
+      );
+
+      const hits = noteService.findSimilarOpenNotes(project.id, "Login flickers");
+      expect(hits.some((h) => h.id === existing.id)).toBe(true);
+      const hit = hits.find((h) => h.id === existing.id)!;
+      expect(hit).toMatchObject({ id: existing.id, title: existing.title, kind: "bug" });
+    });
+
+    it("does not surface a distinct (non-matching) note", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      noteService.create(
+        project.id,
+        { kind: "idea", title: "Completely unrelated zebra topic" },
+        author.id,
+      );
+
+      const hits = noteService.findSimilarOpenNotes(project.id, "Login flickers");
+      expect(hits).toHaveLength(0);
+    });
+
+    it("excludes a triaged near-duplicate (status != open)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      testApp.db
+        .insert(notes)
+        .values({
+          id: createId(),
+          projectId: project.id,
+          kind: "bug",
+          status: "triaged",
+          title: "Login flickers on the dashboard",
+          authorId: author.id,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        .run();
+
+      const hits = noteService.findSimilarOpenNotes(project.id, "Login flickers");
+      expect(hits).toHaveLength(0);
+    });
+
+    it("excludes a near-duplicate in another project", () => {
+      const projectA = createTestProject(testApp.db);
+      const projectB = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      noteService.create(
+        projectB.id,
+        { kind: "bug", title: "Login flickers on the dashboard" },
+        author.id,
+      );
+
+      const hits = noteService.findSimilarOpenNotes(projectA.id, "Login flickers");
+      expect(hits).toHaveLength(0);
+    });
+
+    it("returns [] for empty/whitespace input", () => {
+      const project = createTestProject(testApp.db);
+      expect(noteService.findSimilarOpenNotes(project.id, "")).toEqual([]);
+      expect(noteService.findSimilarOpenNotes(project.id, "   ")).toEqual([]);
+    });
+  });
+
   // ── activity integration ────────────────────────────────────────
   describe("activity_log integration", () => {
     it("writes a 'created' activity row on create and 'updated' on update", () => {

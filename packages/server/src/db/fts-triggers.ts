@@ -89,6 +89,31 @@ CREATE TRIGGER IF NOT EXISTS comments_fts_ad AFTER DELETE ON comments BEGIN
 END;
 `.trim();
 
+// ─── notes_fts triggers ─────────────────────────────────────────
+
+export const NOTES_FTS_INSERT_TRIGGER = `
+CREATE TRIGGER IF NOT EXISTS notes_fts_ai AFTER INSERT ON notes BEGIN
+  INSERT INTO notes_fts(rowid, title, body)
+    VALUES (NEW.rowid, NEW.title, NEW.body);
+END;
+`.trim();
+
+export const NOTES_FTS_UPDATE_TRIGGER = `
+CREATE TRIGGER IF NOT EXISTS notes_fts_au AFTER UPDATE ON notes BEGIN
+  INSERT INTO notes_fts(notes_fts, rowid, title, body)
+    VALUES ('delete', OLD.rowid, OLD.title, OLD.body);
+  INSERT INTO notes_fts(rowid, title, body)
+    VALUES (NEW.rowid, NEW.title, NEW.body);
+END;
+`.trim();
+
+export const NOTES_FTS_DELETE_TRIGGER = `
+CREATE TRIGGER IF NOT EXISTS notes_fts_ad AFTER DELETE ON notes BEGIN
+  INSERT INTO notes_fts(notes_fts, rowid, title, body)
+    VALUES ('delete', OLD.rowid, OLD.title, OLD.body);
+END;
+`.trim();
+
 /** All FTS trigger creation statements, in order. */
 export const ALL_FTS_TRIGGER_STATEMENTS = [
   PROPOSALS_FTS_INSERT_TRIGGER,
@@ -100,4 +125,7 @@ export const ALL_FTS_TRIGGER_STATEMENTS = [
   COMMENTS_FTS_INSERT_TRIGGER,
   COMMENTS_FTS_UPDATE_TRIGGER,
   COMMENTS_FTS_DELETE_TRIGGER,
+  NOTES_FTS_INSERT_TRIGGER,
+  NOTES_FTS_UPDATE_TRIGGER,
+  NOTES_FTS_DELETE_TRIGGER,
 ] as const;

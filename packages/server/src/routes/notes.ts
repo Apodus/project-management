@@ -43,6 +43,17 @@ const noteDataEnvelope = z.object({
   data: noteSchema,
 });
 
+const similarNoteSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  kind: z.enum(NOTE_KINDS),
+});
+
+const createNoteResponseEnvelope = z.object({
+  data: noteSchema,
+  similar: z.array(similarNoteSchema),
+});
+
 const noteListEnvelope = z.object({
   data: z.array(noteSchema),
   pagination: z.object({
@@ -118,8 +129,8 @@ const createNoteRoute = createRoute({
   },
   responses: {
     201: {
-      description: "Note created",
-      content: { "application/json": { schema: noteDataEnvelope } },
+      description: "Note created (with advisory `similar` open-note candidates)",
+      content: { "application/json": { schema: createNoteResponseEnvelope } },
     },
     400: {
       description: "Validation error",
@@ -213,9 +224,15 @@ export function createNoteRoutes(): OpenAPIHono<{
     const { projectId } = c.req.valid("param");
     const body = c.req.valid("json");
     const user = c.get("currentUser")!;
+    // Advisory dedup BEFORE create (so the new note never matches itself);
+    // `similar` is always present (`[]` when none) and never blocks the 201.
+    const similar = noteService.findSimilarOpenNotes(
+      projectId,
+      `${body.title} ${body.body ?? ""}`,
+    );
     // Author is always the caller — never accepted from the body.
     const note = noteService.create(projectId, body, user.id);
-    return c.json({ data: note }, 201);
+    return c.json({ data: note, similar }, 201);
   });
 
   // GET /api/v1/notes/:id

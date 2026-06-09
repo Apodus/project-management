@@ -8,7 +8,8 @@ import {
   authRequest,
   type TestApp,
 } from "../utils.js";
-import { comments } from "../../src/db/index.js";
+import { comments, notes } from "../../src/db/index.js";
+import { eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
 
 describe("Search API", () => {
@@ -232,6 +233,119 @@ describe("Search API", () => {
         "/api/v1/search",
       );
       expect(res.status).toBe(400);
+    });
+  });
+
+  // ── notes_fts integration (Campaign C1 §P4) ─────────────────────
+  describe("notes search", () => {
+    async function createNote(
+      projectId: string,
+      body: { kind: string; title: string; body?: string },
+    ) {
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${projectId}/notes`,
+        { body },
+      );
+      expect(res.status).toBe(201);
+      return (await res.json()).data;
+    }
+
+    it("finds a note by a title term", async () => {
+      const project = createTestProject(testApp.db);
+      await createNote(project.id, { kind: "bug", title: "Quasar flicker in canvas" });
+
+      const res = await authRequest(testApp.app, "GET", "/api/v1/search?q=quasar");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const hit = body.data.find((r: any) => r.entityType === "note");
+      expect(hit).toBeDefined();
+      expect(hit.title).toContain("Quasar");
+    });
+
+    it("finds a note by a body term", async () => {
+      const project = createTestProject(testApp.db);
+      await createNote(project.id, {
+        kind: "observation",
+        title: "Misc",
+        body: "Repro only on the zephyrine build",
+      });
+
+      const res = await authRequest(testApp.app, "GET", "/api/v1/search?q=zephyrine");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const hit = body.data.find((r: any) => r.entityType === "note");
+      expect(hit).toBeDefined();
+    });
+
+    it("reflects a title PATCH (AFTER UPDATE trigger): old term drops, new term matches", async () => {
+      const project = createTestProject(testApp.db);
+      const note = await createNote(project.id, { kind: "bug", title: "oldterm splunge" });
+
+      let res = await authRequest(testApp.app, "GET", "/api/v1/search?q=oldterm");
+      expect((await res.json()).data.some((r: any) => r.entityId === note.id)).toBe(true);
+
+      const patch = await authRequest(testApp.app, "PATCH", `/api/v1/notes/${note.id}`, {
+        body: { title: "newterm splunge" },
+      });
+      expect(patch.status).toBe(200);
+
+      res = await authRequest(testApp.app, "GET", "/api/v1/search?q=oldterm");
+      expect((await res.json()).data.some((r: any) => r.entityId === note.id)).toBe(false);
+
+      res = await authRequest(testApp.app, "GET", "/api/v1/search?q=newterm");
+      expect((await res.json()).data.some((r: any) => r.entityId === note.id)).toBe(true);
+    });
+
+    it("drops out of search when the row is deleted (AFTER DELETE trigger)", async () => {
+      const project = createTestProject(testApp.db);
+      const note = await createNote(project.id, { kind: "bug", title: "deletable glomph" });
+
+      let res = await authRequest(testApp.app, "GET", "/api/v1/search?q=glomph");
+      expect((await res.json()).data.some((r: any) => r.entityId === note.id)).toBe(true);
+
+      testApp.db.delete(notes).where(eq(notes.id, note.id)).run();
+
+      res = await authRequest(testApp.app, "GET", "/api/v1/search?q=glomph");
+      expect((await res.json()).data.some((r: any) => r.entityId === note.id)).toBe(false);
+    });
+
+    it("scopes by project_id", async () => {
+      const p1 = createTestProject(testApp.db);
+      const p2 = createTestProject(testApp.db);
+      const n1 = await createNote(p1.id, { kind: "bug", title: "scopedterm one" });
+      await createNote(p2.id, { kind: "bug", title: "scopedterm two" });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/search?q=scopedterm&project_id=${p1.id}`,
+      );
+      const body = await res.json();
+      const notesHits = body.data.filter((r: any) => r.entityType === "note");
+      expect(notesHits).toHaveLength(1);
+      expect(notesHits[0].entityId).toBe(n1.id);
+    });
+
+    it("entity_type=note returns only the note when a task shares the term", async () => {
+      const project = createTestProject(testApp.db);
+      const user = createTestUser(testApp.db);
+      createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: user.id,
+        title: "shared frobnicate term",
+      });
+      await createNote(project.id, { kind: "idea", title: "shared frobnicate term" });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        "/api/v1/search?q=frobnicate&entity_type=note",
+      );
+      const body = await res.json();
+      expect(body.data.length).toBe(1);
+      expect(body.data[0].entityType).toBe("note");
     });
   });
 });

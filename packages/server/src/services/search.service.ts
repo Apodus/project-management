@@ -4,7 +4,7 @@ import { getRawDb } from "../db/index.js";
 
 export interface SearchOptions {
   projectId?: string;
-  entityType?: string; // "proposal", "task", "comment"
+  entityType?: string; // "proposal", "task", "comment", "note"
   limit?: number;
 }
 
@@ -58,6 +58,11 @@ export function search(query: string, options?: SearchOptions): SearchResult[] {
     results.push(...commentResults);
   }
 
+  // Search notes
+  if (entityTypes.includes("note")) {
+    results.push(...searchNotes(rawDb, sanitizedQuery, options?.projectId));
+  }
+
   // Sort by rank (FTS5 rank is negative; more negative = better match)
   results.sort((a, b) => a.rank - b.rank);
 
@@ -68,13 +73,13 @@ export function search(query: string, options?: SearchOptions): SearchResult[] {
 
 function getEntityTypes(entityType?: string): string[] {
   if (entityType) {
-    const valid = ["proposal", "task", "comment"];
+    const valid = ["proposal", "task", "comment", "note"];
     if (valid.includes(entityType)) {
       return [entityType];
     }
     return [];
   }
-  return ["proposal", "task", "comment"];
+  return ["proposal", "task", "comment", "note"];
 }
 
 /**
@@ -82,7 +87,7 @@ function getEntityTypes(entityType?: string): string[] {
  * Wraps individual tokens in double quotes to escape special chars,
  * preserving wildcard suffix (*) when present.
  */
-function sanitizeFtsQuery(query: string): string {
+export function sanitizeFtsQuery(query: string): string {
   const trimmed = query.trim();
   if (!trimmed) return "";
 
@@ -172,6 +177,56 @@ function searchTasks(
 
   if (projectId) {
     sql += ` AND t.project_id = ?`;
+    params.push(projectId);
+  }
+
+  sql += ` ORDER BY rank LIMIT 100`;
+
+  try {
+    const stmt = rawDb.prepare(sql);
+    const rows = stmt.all(...params) as Array<{
+      entity_type: string;
+      entity_id: string;
+      title: string;
+      excerpt: string;
+      rank: number;
+      project_id: string | null;
+    }>;
+
+    return rows.map((row) => ({
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      title: row.title,
+      excerpt: row.excerpt,
+      rank: row.rank,
+      projectId: row.project_id,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function searchNotes(
+  rawDb: ReturnType<typeof getRawDb>,
+  query: string,
+  projectId?: string,
+): SearchResult[] {
+  let sql = `
+    SELECT
+      'note' as entity_type,
+      n.id as entity_id,
+      n.title as title,
+      snippet(notes_fts, 0, '<mark>', '</mark>', '...', 32) as excerpt,
+      notes_fts.rank as rank,
+      n.project_id as project_id
+    FROM notes_fts
+    JOIN notes n ON n.rowid = notes_fts.rowid
+    WHERE notes_fts MATCH ?
+  `;
+  const params: unknown[] = [query];
+
+  if (projectId) {
+    sql += ` AND n.project_id = ?`;
     params.push(projectId);
   }
 

@@ -55,6 +55,42 @@ describe("Notes API", () => {
       expect(body.data.authorId).not.toBe("bogus-spoofed-id");
     });
 
+    it("returns similar: [] when no open duplicate exists", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/notes`,
+        { body: { kind: "bug", title: "Totally novel zorvex finding" } },
+      );
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.similar).toEqual([]);
+    });
+
+    it("populates similar ({id,title,kind}) when a matching OPEN note pre-exists in the same project, still 201", async () => {
+      const project = createTestProject(testApp.db);
+
+      const first = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "Cursor blinks on the widget panel" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/notes`,
+        { body: { kind: "bug", title: "Cursor blinks widget" } },
+      );
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(Array.isArray(body.similar)).toBe(true);
+      const hit = body.similar.find((s: { id: string }) => s.id === first.data.id);
+      expect(hit).toBeDefined();
+      expect(hit).toMatchObject({ id: first.data.id, title: first.data.title, kind: "bug" });
+    });
+
     it("returns 404 when the project does not exist", async () => {
       const res = await authRequest(
         testApp.app,

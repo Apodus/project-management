@@ -37,12 +37,12 @@ const searchRoute = createRoute({
   tags: ["Search"],
   summary: "Full-text search",
   description:
-    "Search across proposals, tasks, and comments using FTS5 full-text search.",
+    "Search across proposals, tasks, comments, and notes using FTS5 full-text search.",
   request: {
     query: z.object({
       q: z.string().min(1, "Search query is required"),
       project_id: z.string().optional(),
-      entity_type: z.enum(["proposal", "task", "comment"] as const).optional(),
+      entity_type: z.enum(["proposal", "task", "comment", "note"] as const).optional(),
       limit: z.coerce.number().int().min(1).max(100).optional(),
     }),
   },

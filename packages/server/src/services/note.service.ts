@@ -1,9 +1,10 @@
 import { eq, and, desc } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import type { CreateNote, ListNotesQuery, PatchNote } from "@pm/shared";
-import { getDb, notes, projects } from "../db/index.js";
+import type { CreateNote, ListNotesQuery, NoteKind, PatchNote } from "@pm/shared";
+import { getDb, getRawDb, notes, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
+import { sanitizeFtsQuery } from "./search.service.js";
 
 // ─── Notes service (Campaign C1 §P3) ──────────────────────────────
 // Capture + read only. Notes are ownerless in C1 — no claim/lease logic.
@@ -147,4 +148,49 @@ export function update(id: string, patch: PatchNote, _actorId: string) {
   });
 
   return row;
+}
+
+/**
+ * Advisory dedup: find OPEN notes in the same project whose title/body
+ * fuzzily match the given text (FTS5 MATCH on notes_fts). Returns up to
+ * `limit` candidates, best-ranked first. Identity-light shape ({id,title,kind})
+ * for surfacing on the create response.
+ *
+ * Best-effort and fail-safe: an empty/whitespace query (which would make
+ * `MATCH ''` throw) short-circuits to [], and any SQL throw also returns [] —
+ * advisory dedup must NEVER break a note post.
+ */
+export function findSimilarOpenNotes(
+  projectId: string,
+  titleAndBody: string,
+  limit = 5,
+): Array<{ id: string; title: string; kind: NoteKind }> {
+  const sanitized = sanitizeFtsQuery(titleAndBody);
+  if (!sanitized) return [];
+
+  try {
+    const rawDb = getRawDb();
+    const rows = rawDb
+      .prepare(
+        `
+        SELECT n.id, n.title, n.kind, notes_fts.rank as rank
+        FROM notes_fts
+        JOIN notes n ON n.rowid = notes_fts.rowid
+        WHERE notes_fts MATCH ?
+          AND n.project_id = ?
+          AND n.status = 'open'
+        ORDER BY rank LIMIT ?
+        `,
+      )
+      .all(sanitized, projectId, limit) as Array<{
+      id: string;
+      title: string;
+      kind: NoteKind;
+      rank: number;
+    }>;
+
+    return rows.map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+  } catch {
+    return [];
+  }
 }
