@@ -12,6 +12,7 @@ import { registerAgentTools } from "./agent.js";
 import { registerMergeLockTools } from "./merge-locks.js";
 import { registerMergeRequestTools } from "./merge-requests.js";
 import { registerMergeGroupTools } from "./merge-groups.js";
+import { registerNoteTools } from "./notes.js";
 
 /**
  * Register all MCP tools on the server.
@@ -30,4 +31,5 @@ export function registerAllTools(server: McpServer): void {
   registerMergeLockTools(server);
   registerMergeRequestTools(server);
   registerMergeGroupTools(server);
+  registerNoteTools(server);
 }

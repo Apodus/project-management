@@ -71,6 +71,9 @@ vi.mock("../src/api-client.js", () => ({
   getMergeGroup: vi.fn(),
   listMergeIncidents: vi.fn(),
   getMergeIncident: vi.fn(),
+  createNote: vi.fn(),
+  listNotes: vi.fn(),
+  getNote: vi.fn(),
 }));
 
 // Import the mocked functions so we can configure them per test
@@ -127,6 +130,9 @@ const mockRequestMergeGroup = vi.mocked(apiClient.requestMergeGroup);
 const mockGetMergeGroup = vi.mocked(apiClient.getMergeGroup);
 const mockListMergeIncidents = vi.mocked(apiClient.listMergeIncidents);
 const mockGetMergeIncident = vi.mocked(apiClient.getMergeIncident);
+const mockCreateNote = vi.mocked(apiClient.createNote);
+const mockListNotes = vi.mocked(apiClient.listNotes);
+const mockGetNote = vi.mocked(apiClient.getNote);
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -3354,6 +3360,150 @@ describe("MCP Tools", () => {
       expect(text).toContain("stale");
       expect(text).not.toContain("user_secret_A");
       expect(text).not.toContain("user_secret_B");
+    });
+  });
+
+  // ---- Notes (Campaign C1) ----
+
+  const sampleNote = {
+    id: "note_001",
+    projectId: "proj_001",
+    kind: "bug" as const,
+    status: "open" as const,
+    title: "DB connection leaks on retry",
+    body: "Seen under load when the pool is exhausted.",
+    anchorType: "task" as const,
+    anchorId: "task_001",
+    codeLocator: { path: "src/db/pool.ts", line: 42, commitSha: "abc1234" },
+    severity: "high" as const,
+    authorId: "user_001",
+    createdAt: "2026-06-09T00:00:00Z",
+    updatedAt: "2026-06-09T00:00:00Z",
+  };
+
+  describe("pm_post_note", () => {
+    it("renders the created note and the similar-notes block", async () => {
+      mockCreateNote.mockResolvedValue({
+        note: sampleNote,
+        similar: [{ id: "note_999", title: "Connection pool leak", kind: "bug" }],
+      });
+
+      const result = await client.callTool({
+        name: "pm_post_note",
+        arguments: {
+          project_id: "proj_001",
+          kind: "bug",
+          title: "DB connection leaks on retry",
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("DB connection leaks on retry");
+      expect(text).toContain("note_001");
+      expect(text).toContain("possibly-similar");
+      expect(text).toContain("Connection pool leak");
+      expect(text).toContain("note_999");
+    });
+
+    it("omits the similar block when there are no candidates", async () => {
+      mockCreateNote.mockResolvedValue({ note: sampleNote, similar: [] });
+
+      const result = await client.callTool({
+        name: "pm_post_note",
+        arguments: { project_id: "proj_001", kind: "bug", title: "X" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Note captured.");
+      expect(text).not.toContain("possibly-similar");
+    });
+
+    it("maps snake_case params to the camelCase client payload (no author field)", async () => {
+      mockCreateNote.mockResolvedValue({ note: sampleNote, similar: [] });
+
+      await client.callTool({
+        name: "pm_post_note",
+        arguments: {
+          project_id: "proj_001",
+          kind: "bug",
+          title: "DB connection leaks on retry",
+          body: "details",
+          anchor_type: "task",
+          anchor_id: "task_001",
+          code_locator: { path: "src/db/pool.ts", line: 42, commit_sha: "abc1234" },
+          severity: "high",
+        },
+      });
+
+      expect(mockCreateNote).toHaveBeenCalledWith("proj_001", {
+        kind: "bug",
+        title: "DB connection leaks on retry",
+        body: "details",
+        anchorType: "task",
+        anchorId: "task_001",
+        codeLocator: { path: "src/db/pool.ts", line: 42, commitSha: "abc1234" },
+        severity: "high",
+      });
+      const payload = mockCreateNote.mock.calls[0][1] as Record<string, unknown>;
+      expect(payload).not.toHaveProperty("author");
+      expect(payload).not.toHaveProperty("authorId");
+    });
+  });
+
+  describe("pm_list_notes", () => {
+    it("renders a claim-free note list and passes filters through", async () => {
+      mockListNotes.mockResolvedValue([sampleNote]);
+
+      const result = await client.callTool({
+        name: "pm_list_notes",
+        arguments: { project_id: "proj_001", status: "open", kind: "bug" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("DB connection leaks on retry");
+      expect(text).toContain("note_001");
+      expect(text).not.toContain("Claim");
+
+      expect(mockListNotes).toHaveBeenCalledWith("proj_001", {
+        status: "open",
+        kind: "bug",
+        anchorType: undefined,
+        anchorId: undefined,
+        severity: undefined,
+      });
+    });
+
+    it("handles empty results", async () => {
+      mockListNotes.mockResolvedValue([]);
+
+      const result = await client.callTool({
+        name: "pm_list_notes",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("No notes found.");
+    });
+  });
+
+  describe("pm_get_note", () => {
+    it("renders full note detail", async () => {
+      mockGetNote.mockResolvedValue(sampleNote);
+
+      const result = await client.callTool({
+        name: "pm_get_note",
+        arguments: { note_id: "note_001" },
+      });
+
+      expect(mockGetNote).toHaveBeenCalledWith("note_001");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("DB connection leaks on retry");
+      expect(text).toContain("note_001");
+      expect(text).toContain("bug");
+      expect(text).toContain("high");
+      expect(text).toContain("src/db/pool.ts");
+      expect(text).toContain("Seen under load");
+      expect(text).not.toContain("Claim");
     });
   });
 });

@@ -225,6 +225,39 @@ describe("SSE Events API", () => {
     });
   });
 
+  // ── Notes events over SSE (Campaign C1) ──────────────────────
+
+  describe("Notes events over SSE", () => {
+    it("projects the note title onto the note.created frame", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(testApp.app, "GET", "/api/v1/events");
+      const bus = getEventBus();
+
+      setTimeout(() => {
+        const payload: EventPayload = {
+          entity: { id: "note_001", title: "DB connection leaks on retry" },
+          entityType: "note",
+          entityId: "note_001",
+          projectId: project.id,
+          actorId: testApp.testUser.id,
+          timestamp: new Date().toISOString(),
+        };
+        bus.emit(EVENT_NAMES.NOTE_CREATED, payload);
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 2, timeoutMs: 2000 });
+      const events = parseSSEEvents(text);
+
+      const noteEvent = events.find((e) => e.event === "note.created");
+      expect(noteEvent).toBeDefined();
+
+      const data = JSON.parse(noteEvent!.data!);
+      expect(data.entity_type).toBe("note");
+      expect(data.entity_title).toBe("DB connection leaks on retry");
+    });
+  });
+
   // ── Project filter ───────────────────────────────────────────
 
   describe("Project filter", () => {

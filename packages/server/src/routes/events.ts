@@ -110,6 +110,9 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
             case "project":
               entity_title = typeof entity.name === "string" ? entity.name : undefined;
               break;
+            case "note":
+              entity_title = typeof entity.title === "string" ? entity.title : undefined;
+              break;
             // comments have no title — omit
           }
           if (typeof entity.batchId === "string") {

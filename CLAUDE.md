@@ -387,6 +387,7 @@ The MCP server exposes tools for:
 - **Projects**: List, create, and manage projects
 - **Proposals**: List, create, discuss, and transition proposals
 - **Tasks**: List, get, create, and update tasks
+- **Notes**: Capture, list, and get lightweight ownerless notes (bug/question/idea/tech_debt/wtf/observation) via `pm_post_note`/`pm_list_notes`/`pm_get_note`
 - **Search**: Full-text search across all entities
 - **Updates**: Activity feed and status updates
 - **Workflow**: Status transitions and workflow management

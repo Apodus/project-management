@@ -3,6 +3,7 @@ import {
   apiRequest,
   ApiError,
   claimAgent,
+  createNote,
   releaseAgent,
   getAgentIdentity,
   shouldReleaseOnShutdown,
@@ -276,6 +277,90 @@ describe("claimAgent", () => {
     await apiRequest("GET", "/projects");
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer tok-B");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Notes — createNote bypasses apiRequest to preserve the advisory `similar`
+// envelope (Campaign C1 P5). apiRequest would unwrap `.data` and drop it.
+// ---------------------------------------------------------------------------
+
+describe("createNote", () => {
+  beforeEach(() => {
+    process.env.PM_API_URL = "http://test-server:9999";
+    process.env.PM_API_TOKEN = "test-token-123";
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.PM_API_URL;
+    delete process.env.PM_API_TOKEN;
+  });
+
+  const sampleNote = {
+    id: "note_001",
+    title: "DB connection leaks on retry",
+    kind: "bug",
+  };
+
+  it("returns { note, similar } preserving similar from the raw envelope", async () => {
+    mockFetch({
+      status: 201,
+      ok: true,
+      body: {
+        data: sampleNote,
+        similar: [{ id: "note_999", title: "Connection pool leak", kind: "bug" }],
+      },
+    });
+
+    const result = await createNote("proj_001", {
+      kind: "bug",
+      title: "DB connection leaks on retry",
+    });
+
+    expect(result.note).toEqual(sampleNote);
+    expect(result.similar).toEqual([
+      { id: "note_999", title: "Connection pool leak", kind: "bug" },
+    ]);
+  });
+
+  it("defaults similar to [] when absent from the envelope", async () => {
+    mockFetch({ status: 201, ok: true, body: { data: sampleNote } });
+
+    const result = await createNote("proj_001", { kind: "bug", title: "X" });
+
+    expect(result.similar).toEqual([]);
+  });
+
+  it("sends the Bearer token to the project notes URL", async () => {
+    const fetchMock = mockFetch({
+      status: 201,
+      ok: true,
+      body: { data: sampleNote, similar: [] },
+    });
+
+    await createNote("proj_001", { kind: "bug", title: "X" });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://test-server:9999/api/v1/projects/proj_001/notes");
+    expect(init.method).toBe("POST");
+    // A claimed token from a prior test can leak via module state; assert the
+    // Bearer scheme is present rather than a specific token value.
+    expect(init.headers.Authorization).toMatch(/^Bearer .+/);
+    expect(init.headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("throws ApiError with the server code on a non-ok response", async () => {
+    mockFetch({
+      status: 400,
+      ok: false,
+      body: { error: { code: "VALIDATION_ERROR", message: "bad" } },
+    });
+
+    await expect(createNote("proj_001", { kind: "bug", title: "X" })).rejects.toMatchObject({
+      status: 400,
+      code: "VALIDATION_ERROR",
+    });
   });
 });
 

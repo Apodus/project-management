@@ -1276,6 +1276,10 @@ import type {
   MergeRequestGroupView,
   MergeIncidentView,
   ClaimState,
+  Note,
+  NoteKind,
+  CreateNote,
+  ListNotesQuery,
 } from "@pm/shared";
 
 // Re-export so MCP tool files can pull types from one place.
@@ -1479,4 +1483,88 @@ export async function getMergeIncident(
     "GET",
     `/merge-incidents/${encodeURIComponent(incidentId)}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Notes (Campaign C1)
+// ---------------------------------------------------------------------------
+//
+// A lightweight, ownerless capture surface for bugs/questions/ideas/tech-debt/
+// WTFs/observations jotted down mid-flow. createNote bypasses apiRequest because
+// the POST returns a `{ data, similar }` envelope — apiRequest unwraps `.data`
+// and would DROP the advisory `similar` candidates. list/get use the standard
+// `{ data }` envelope and go through apiRequest.
+
+export interface SimilarNote {
+  id: string;
+  title: string;
+  kind: NoteKind;
+}
+
+export interface CreateNoteResult {
+  note: Note;
+  similar: SimilarNote[];
+}
+
+/**
+ * Create a note. Bespoke fetch (mirrors apiRequest's contract) because the
+ * 201 envelope is `{ data: Note, similar: SimilarNote[] }` — apiRequest unwraps
+ * `.data` and drops `similar`. Returns both the saved note and any
+ * possibly-similar open notes (advisory; `[]` when none).
+ */
+export async function createNote(
+  projectId: string,
+  data: CreateNote,
+): Promise<CreateNoteResult> {
+  const url = `${getBaseUrl()}/api/v1/projects/${encodeURIComponent(projectId)}/notes`;
+  const token = getToken();
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  const json = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    const err = json?.error;
+    throw new ApiError(
+      res.status,
+      err?.code ?? "UNKNOWN_ERROR",
+      err?.message ?? `HTTP ${res.status}`,
+    );
+  }
+
+  return { note: json.data as Note, similar: (json.similar ?? []) as SimilarNote[] };
+}
+
+/**
+ * List notes for a project (most-recent first), with optional filters.
+ */
+export async function listNotes(
+  projectId: string,
+  filters?: ListNotesQuery,
+): Promise<Note[]> {
+  const params: Record<string, string | number | boolean | undefined> = {};
+  if (filters?.status) params.status = filters.status;
+  if (filters?.kind) params.kind = filters.kind;
+  if (filters?.anchorType) params.anchorType = filters.anchorType;
+  if (filters?.anchorId) params.anchorId = filters.anchorId;
+  if (filters?.severity) params.severity = filters.severity;
+  return apiRequest<Note[]>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/notes${qs(params)}`,
+  );
+}
+
+/**
+ * Get a single note by ID.
+ */
+export async function getNote(id: string): Promise<Note> {
+  return apiRequest<Note>("GET", `/notes/${encodeURIComponent(id)}`);
 }
