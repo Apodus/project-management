@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { Inbox, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +49,7 @@ import {
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Note, NoteFilters } from "@/lib/api";
+import type { NotesSearch } from "@/router";
 
 const NOTE_KINDS = [
   "bug",
@@ -592,6 +593,7 @@ function NoteSkeleton() {
 
 export function NotesPage() {
   const { projectId } = useParams({ strict: false });
+  const search = useSearch({ strict: false }) as NotesSearch;
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
 
   // Human gate for the human-only promote-to-task action. Use `type` (the
@@ -610,10 +612,15 @@ export function NotesPage() {
     }
   }, [project, setCurrentProject]);
 
-  // Filter state: "" / "all" sentinel → omitted from NoteFilters.
+  // Filter state: "" / "all" sentinel → omitted from NoteFilters. Anchor /
+  // status seeded ONCE from deep-link search params (the badge Link is a fresh
+  // navigation that mounts this page fresh, so useState initializers are correct).
   const [kindFilter, setKindFilter] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [anchorTypeFilter, setAnchorTypeFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>(search.status ?? "");
+  const [anchorTypeFilter, setAnchorTypeFilter] = useState<string>(
+    search.anchorType ?? "",
+  );
+  const [anchorId, setAnchorId] = useState<string>(search.anchorId ?? "");
   const [severityFilter, setSeverityFilter] = useState<string>("");
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -625,10 +632,11 @@ export function NotesPage() {
       f.status = statusFilter as Note["status"];
     if (anchorTypeFilter && anchorTypeFilter !== "all")
       f.anchorType = anchorTypeFilter as Note["anchorType"];
+    if (anchorId) f.anchorId = anchorId;
     if (severityFilter && severityFilter !== "all")
       f.severity = severityFilter as Note["severity"];
     return f;
-  }, [kindFilter, statusFilter, anchorTypeFilter, severityFilter]);
+  }, [kindFilter, statusFilter, anchorTypeFilter, anchorId, severityFilter]);
 
   // note.service.list has NO server limit (returns all project notes), so the
   // client-side search below is complete. NOTE the double `.data` — useNotes
@@ -686,6 +694,7 @@ export function NotesPage() {
     (kindFilter && kindFilter !== "all") ||
     (statusFilter && statusFilter !== "all") ||
     (anchorTypeFilter && anchorTypeFilter !== "all") ||
+    anchorId ||
     (severityFilter && severityFilter !== "all") ||
     searchInput
   );
@@ -694,6 +703,7 @@ export function NotesPage() {
     setKindFilter("");
     setStatusFilter("");
     setAnchorTypeFilter("");
+    setAnchorId("");
     setSeverityFilter("");
     setSearchInput("");
   }

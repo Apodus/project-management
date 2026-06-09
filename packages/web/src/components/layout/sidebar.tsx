@@ -21,6 +21,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,6 +38,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/hooks/use-projects";
+import { useNotesHealth } from "@/hooks/use-notes";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
@@ -48,6 +50,7 @@ interface NavItem {
   matchPath: string;
   disabled?: boolean;
   exactMatch?: boolean;
+  badgeCount?: number;
 }
 
 function getNavItems(projectId: string | null): NavItem[] {
@@ -141,6 +144,11 @@ function NavLink({
     >
       <item.icon className="size-4 shrink-0" />
       {!collapsed && <span>{item.label}</span>}
+      {!collapsed && item.badgeCount && item.badgeCount > 0 ? (
+        <Badge variant="secondary" className="ml-auto text-[10px]">
+          {item.badgeCount}
+        </Badge>
+      ) : null}
     </Link>
   );
 
@@ -162,6 +170,8 @@ export function Sidebar() {
   const { collapsed, toggle } = useSidebarStore();
   const { currentProjectName, currentProjectId, setCurrentProject } = useProjectStore();
   const navItems = getNavItems(currentProjectId);
+  // Dedups with app-layout's P4 poll via the shared noteKeys.health key — no extra fetch.
+  const { data: notesHealth } = useNotesHealth(currentProjectId ?? undefined);
   const { data: projects } = useProjects();
   const { data: user } = useCurrentUser();
   const isAdmin = user?.role === "admin";
@@ -276,7 +286,15 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className={cn("flex-1 space-y-1 px-3", collapsed && "px-2")}>
         {navItems.map((item) => (
-          <NavLink key={item.label} item={item} collapsed={collapsed} />
+          <NavLink
+            key={item.label}
+            item={
+              item.label === "Inbox"
+                ? { ...item, badgeCount: notesHealth?.open_count }
+                : item
+            }
+            collapsed={collapsed}
+          />
         ))}
       </nav>
 

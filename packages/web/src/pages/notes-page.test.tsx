@@ -33,6 +33,7 @@ function makeNote(overrides: Partial<Note>): Note {
 
 vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ projectId: "proj-1" }),
+  useSearch: () => ({}),
   useNavigate: () => vi.fn(),
   // Render <Link> as a plain anchor so it mounts without a RouterProvider.
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,

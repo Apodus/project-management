@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { AnchoredNotesBadge } from "@/components/anchored-notes-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -462,6 +463,11 @@ export function ProposalDetailPage() {
             <span className="text-xs text-muted-foreground">
               Created {formatRelativeTime(proposal.createdAt)}
             </span>
+            <AnchoredNotesBadge
+              projectId={proposal.projectId ?? undefined}
+              anchorType="proposal"
+              anchorId={proposal.id}
+            />
           </div>
         </div>
 

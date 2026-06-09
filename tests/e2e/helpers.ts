@@ -157,6 +157,31 @@ export async function createTaskViaAPI(
 }
 
 /**
+ * Helper to create a note via the API directly (Campaign C3 — Inbox).
+ * Returns the created note object.
+ */
+export async function createNoteViaAPI(
+  page: Page,
+  projectId: string,
+  data: {
+    kind: string;
+    title: string;
+    body?: string;
+    anchorType?: "task" | "epic" | "proposal";
+    anchorId?: string;
+  },
+): Promise<{ id: string; title: string; status: string; kind: string }> {
+  const response = await page.request.post(
+    `/api/v1/projects/${projectId}/notes`,
+    { data },
+  );
+
+  expect(response.ok()).toBeTruthy();
+  const json = await response.json();
+  return json.data;
+}
+
+/**
  * Wait for the page to settle after navigation (avoid networkidle with SSE).
  */
 export async function waitForPageReady(page: Page): Promise<void> {

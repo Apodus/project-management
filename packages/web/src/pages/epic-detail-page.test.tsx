@@ -48,6 +48,9 @@ vi.mock("@/hooks/use-milestones", () => ({
 vi.mock("@/hooks/use-projects", () => ({ useProject: mocks.useProject }));
 vi.mock("@/hooks/use-users", () => ({ useUsers: mocks.useUsers }));
 vi.mock("@/hooks/use-auth", () => ({ useCurrentUser: mocks.useCurrentUser }));
+// AnchoredNotesBadge calls a real useQuery; this test renders bare (no
+// QueryClientProvider), so stub useNotes to a stable empty result.
+vi.mock("@/hooks/use-notes", () => ({ useNotes: () => ({ data: undefined }) }));
 
 import { EpicDetailPage } from "./epic-detail-page";
 

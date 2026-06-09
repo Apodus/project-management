@@ -53,6 +53,7 @@ import {
 import { useCreateTemplateFromTask } from "@/hooks/use-templates";
 import { useUsers } from "@/hooks/use-users";
 import { useProjectStore } from "@/stores/project-store";
+import { AnchoredNotesBadge } from "@/components/anchored-notes-badge";
 import {
   formatRelativeTime,
   formatStatus,
@@ -1158,6 +1159,11 @@ export function TaskDetailPage() {
               </span>
             </>
           )}
+          <AnchoredNotesBadge
+            projectId={currentProjectId ?? undefined}
+            anchorType="task"
+            anchorId={task.id}
+          />
         </div>
       </div>
 

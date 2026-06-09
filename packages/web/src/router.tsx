@@ -124,11 +124,24 @@ const projectProposalListRoute = createRoute({
   component: ProposalListPage,
 });
 
+// Search params type for the notes inbox (deep-link from anchored-note badges)
+export interface NotesSearch {
+  anchorType?: string;
+  anchorId?: string;
+  status?: string;
+}
+
 // /projects/$projectId/notes — notes inbox (Campaign C3)
 const projectNotesRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/notes",
   component: NotesPage,
+  validateSearch: (search: Record<string, unknown>): NotesSearch => ({
+    anchorType:
+      typeof search.anchorType === "string" ? search.anchorType : undefined,
+    anchorId: typeof search.anchorId === "string" ? search.anchorId : undefined,
+    status: typeof search.status === "string" ? search.status : undefined,
+  }),
 });
 
 // Search params type for task list

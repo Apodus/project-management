@@ -20,6 +20,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClaimStateBadge } from "@/components/claim-state-badge";
+import { AnchoredNotesBadge } from "@/components/anchored-notes-badge";
 import {
   Table,
   TableBody,
@@ -336,6 +337,11 @@ export function EpicDetailPage() {
         <EditableTitle value={epic.name} onSave={handleTitleSave} />
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>Created {formatRelativeTime(epic.createdAt)}</span>
+          <AnchoredNotesBadge
+            projectId={projectId ?? undefined}
+            anchorType="epic"
+            anchorId={epic.id}
+          />
         </div>
       </div>
 
