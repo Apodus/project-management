@@ -9,7 +9,7 @@ import {
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
-import type { MergeResolutionDetail, VerifyStepResult } from "@pm/shared";
+import type { CodeLocator, MergeResolutionDetail, VerifyStepResult } from "@pm/shared";
 
 // ─── workspaces ────────────────────────────────────────────────────
 export const workspaces = sqliteTable("workspaces", {
@@ -1049,4 +1049,41 @@ export const claimsAlertState = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [uniqueIndex("idx_claims_alert_state_project").on(table.projectId)],
+);
+
+// ─── notes ──────────────────────────────────────────────────────────
+// Campaign C1 (Notes / Findings Inbox §P2): the capture surface for
+// bugs/questions/ideas/tech_debt/wtf/observations jotted mid-flow. C1 adds
+// the TABLE + capture only; the open→triaged transition and its metadata are
+// deferred to C2. Enum-valued columns (kind/status/anchorType/severity) are
+// plain text validated in the app layer (claim_leases precedent). anchorType/
+// anchorId are a heterogeneous polymorphic anchor — NOT FKs; NULL anchorType
+// is the single encoding for "no anchor" (no sentinel). Field names mirror the
+// @pm/shared note schema (P1) exactly.
+export const notes = sqliteTable(
+  "notes",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("open"),
+    title: text("title").notNull(),
+    body: text("body"),
+    anchorType: text("anchor_type"),
+    anchorId: text("anchor_id"),
+    codeLocator: text("code_locator", { mode: "json" }).$type<CodeLocator>(),
+    severity: text("severity"),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_notes_project_status").on(table.projectId, table.status),
+    index("idx_notes_anchor").on(table.anchorType, table.anchorId),
+    index("idx_notes_project_kind_status").on(table.projectId, table.kind, table.status),
+  ],
 );
