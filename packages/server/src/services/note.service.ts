@@ -7,6 +7,7 @@ import type {
   NoteStatus,
   NoteTriageOutcome,
   PatchNote,
+  UserType,
 } from "@pm/shared";
 import { getDb, getRawDb, notes, projects } from "../db/index.js";
 import { AppError } from "../types.js";
@@ -213,6 +214,35 @@ export function applyTriage(
     .run();
 
   return db.select().from(notes).where(eq(notes.id, id)).get()!;
+}
+
+/**
+ * Dismiss an OPEN note (Campaign C2 §P2) — a terminal triage with outcome
+ * "dismissed". Anti-signal-burying authz: only the note's author OR a human
+ * may dismiss (a non-author ai_agent gets 403). The authz check runs BEFORE
+ * applyTriage's open-check so a forbidden actor gets 403 regardless of status;
+ * applyTriage handles 404-on-reselect / 409-on-not-open.
+ */
+export function dismiss(id: string, actor: { id: string; type: UserType }, reason: string) {
+  const db = getDb();
+  const existing = db.select().from(notes).where(eq(notes.id, id)).get();
+  if (!existing) {
+    throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
+  }
+  // Anti-signal-burying: only the note's author OR a human may dismiss.
+  if (actor.type !== "human" && existing.authorId !== actor.id) {
+    throw new AppError(403, "FORBIDDEN", `User "${actor.id}" is not allowed to dismiss note ${id}`);
+  }
+  const row = applyTriage(id, { outcome: "dismissed", triagedBy: actor.id, triageReason: reason });
+  getEventBus().emit(EVENT_NAMES.NOTE_DISMISSED, {
+    entity: row,
+    entityType: "note",
+    entityId: id,
+    projectId: row.projectId,
+    actorId: actor.id,
+    timestamp: row.triagedAt!,
+  });
+  return row;
 }
 
 /**

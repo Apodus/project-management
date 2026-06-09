@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   createTestApp,
   createTestProject,
+  createTestAiAgent,
   authRequest,
   type TestApp,
 } from "../utils.js";
@@ -228,6 +229,79 @@ describe("Notes API", () => {
       const res = await authRequest(testApp.app, "PATCH", `/api/v1/notes/${createId()}`, {
         body: { title: "x" },
       });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── POST /api/v1/notes/:id/dismiss (C2 §P2) ──────────────────────
+  describe("POST /api/v1/notes/:id/dismiss", () => {
+    it("dismisses an open note (200, human dismiss)", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "to dismiss" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/dismiss`,
+        { body: { reason: "wontfix" } },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.status).toBe("triaged");
+      expect(body.data.triageOutcome).toBe("dismissed");
+      expect(body.data.triageReason).toBe("wontfix");
+      expect(body.data.triagedBy).toBe(testApp.testUser.id);
+    });
+
+    it("returns 400 for an empty reason", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "needs reason" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/dismiss`,
+        { body: { reason: "" } },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 403 when a different ai_agent tries to dismiss another agent's note", async () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestAiAgent(testApp.db);
+      const other = createTestAiAgent(testApp.db);
+
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          token: author.token,
+          body: { kind: "bug", title: "agent-owned" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/dismiss`,
+        { token: other.token, body: { reason: "sweep" } },
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 404 for an unknown note id", async () => {
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${createId()}/dismiss`,
+        { body: { reason: "x" } },
+      );
       expect(res.status).toBe(404);
     });
   });

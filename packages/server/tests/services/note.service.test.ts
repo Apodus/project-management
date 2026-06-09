@@ -403,6 +403,122 @@ describe("note service", () => {
     });
   });
 
+  // ── dismiss (C2 §P2 — terminal triage + author-or-human authz) ──
+  describe("dismiss", () => {
+    it("lets the author dismiss an open note (status triaged, outcome dismissed, metadata set)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "author can dismiss" },
+        author.id,
+      );
+
+      const dismissed = noteService.dismiss(
+        created.id,
+        { id: author.id, type: "ai_agent" },
+        "not reproducible",
+      );
+
+      expect(dismissed.status).toBe("triaged");
+      expect(dismissed.triageOutcome).toBe("dismissed");
+      expect(dismissed.triageReason).toBe("not reproducible");
+      expect(dismissed.triagedBy).toBe(author.id);
+      expect(dismissed.triagedAt).toBeTruthy();
+    });
+
+    it("lets a human (non-author) dismiss another agent's note", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "human can dismiss" },
+        author.id,
+      );
+
+      const dismissed = noteService.dismiss(
+        created.id,
+        { id: human.id, type: "human" },
+        "wontfix",
+      );
+
+      expect(dismissed.status).toBe("triaged");
+      expect(dismissed.triageOutcome).toBe("dismissed");
+      expect(dismissed.triagedBy).toBe(human.id);
+    });
+
+    it("throws 403 FORBIDDEN when a DIFFERENT ai_agent tries to dismiss (anti-signal-burying)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const other = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "not yours" },
+        author.id,
+      );
+
+      try {
+        noteService.dismiss(created.id, { id: other.id, type: "ai_agent" }, "sweep it");
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(403);
+        expect((err as AppError).code).toBe("FORBIDDEN");
+      }
+    });
+
+    it("throws 409 INVALID_STATUS when dismissing an already-triaged note", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "dismiss twice" },
+        author.id,
+      );
+      noteService.dismiss(created.id, { id: author.id, type: "ai_agent" }, "first");
+
+      try {
+        noteService.dismiss(created.id, { id: author.id, type: "ai_agent" }, "second");
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(409);
+        expect((err as AppError).code).toBe("INVALID_STATUS");
+      }
+    });
+
+    it("throws 404 for a missing note", () => {
+      const human = createTestUser(testApp.db, { type: "human" });
+      try {
+        noteService.dismiss(createId(), { id: human.id, type: "human" }, "x");
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(404);
+      }
+    });
+
+    it("emits NOTE_DISMISSED → a 'dismissed' activity row for the note", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "emits event" },
+        author.id,
+      );
+
+      noteService.dismiss(created.id, { id: author.id, type: "ai_agent" }, "done");
+
+      const rows = activityRows(created.id);
+      const dismissed = rows.find((r) => r.action === "dismissed");
+      expect(dismissed).toBeDefined();
+      expect(dismissed!.entityType).toBe("note");
+      expect(dismissed!.actorId).toBe(author.id);
+      expect(dismissed!.projectId).toBe(project.id);
+    });
+  });
+
   // ── findSimilarOpenNotes (advisory dedup, §P4) ──────────────────
   describe("findSimilarOpenNotes", () => {
     it("surfaces a near-duplicate OPEN note sharing a distinctive title term", () => {

@@ -4,7 +4,9 @@ import {
   NOTE_STATUSES,
   NOTE_ANCHOR_TYPES,
   NOTE_SEVERITIES,
+  NOTE_TRIAGE_OUTCOMES,
 } from "@pm/shared";
+import type { UserType } from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as noteService from "../services/note.service.js";
 
@@ -36,6 +38,12 @@ const noteSchema = z
     authorId: z.string(),
     createdAt: z.string(),
     updatedAt: z.string(),
+    triagedAt: z.string().nullable(),
+    triagedBy: z.string().nullable(),
+    triageOutcome: z.enum(NOTE_TRIAGE_OUTCOMES).nullable(),
+    triageReason: z.string().nullable(),
+    promotedProposalId: z.string().nullable(),
+    promotedTaskId: z.string().nullable(),
   })
   .openapi("Note");
 
@@ -93,6 +101,8 @@ const patchNoteBody = z
     severity: z.enum(NOTE_SEVERITIES).nullable().optional(),
   })
   .openapi("PatchNote");
+
+const dismissNoteBody = z.object({ reason: z.string().min(1) }).openapi("DismissNote");
 
 const listNotesQuery = z.object({
   kind: z.enum(NOTE_KINDS).optional(),
@@ -212,6 +222,44 @@ const patchNoteRoute = createRoute({
   },
 });
 
+const dismissNoteRoute = createRoute({
+  method: "post",
+  path: "/api/v1/notes/{id}/dismiss",
+  tags: ["Notes"],
+  summary: "Dismiss note",
+  description:
+    "Terminally dismiss an OPEN note (triage outcome `dismissed`). Anti-signal-burying: only the note's author OR a human may dismiss.",
+  request: {
+    params: z.object({ id: noteIdParam }),
+    body: {
+      content: { "application/json": { schema: dismissNoteBody } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: "Note dismissed",
+      content: { "application/json": { schema: noteDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Caller is not allowed to dismiss this note",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Note not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Note is not open and cannot be dismissed",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createNoteRoutes(): OpenAPIHono<{
@@ -255,6 +303,15 @@ export function createNoteRoutes(): OpenAPIHono<{
     const body = c.req.valid("json");
     const user = c.get("currentUser")!;
     return c.json({ data: noteService.update(id, body, user.id) }, 200);
+  });
+
+  // POST /api/v1/notes/:id/dismiss
+  router.openapi(dismissNoteRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const user = c.get("currentUser");
+    const note = noteService.dismiss(id, { id: user!.id, type: user!.type as UserType }, body.reason);
+    return c.json({ data: note }, 200);
   });
 
   return router;

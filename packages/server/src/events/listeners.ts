@@ -59,6 +59,11 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.CLAIM_TAKEOVER_REQUESTED:
       return "takeover_requested";
 
+    // Note dismiss (Campaign C2 §P2). Bespoke verb — logActivity.action is
+    // free-form; onAll auto-enrolls it.
+    case EVENT_NAMES.NOTE_DISMISSED:
+      return "dismissed";
+
     // Commented events
     case EVENT_NAMES.PROPOSAL_COMMENTED:
     case EVENT_NAMES.TASK_COMMENTED:
