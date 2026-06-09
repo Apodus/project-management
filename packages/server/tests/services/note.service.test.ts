@@ -5,10 +5,11 @@ import {
   createTestApp,
   createTestProject,
   createTestTask,
+  createTestEpic,
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import { activityLog, notes, proposals } from "../../src/db/index.js";
+import { activityLog, notes, proposals, tasks } from "../../src/db/index.js";
 import { AppError } from "../../src/types.js";
 import * as noteService from "../../src/services/note.service.js";
 
@@ -693,6 +694,202 @@ describe("note service", () => {
       const proposalCreated = proposalRows.find((r) => r.action === "created");
       expect(proposalCreated).toBeDefined();
       expect(proposalCreated!.entityType).toBe("proposal");
+    });
+  });
+
+  // ── promoteToTask (C2 §P4 — HUMAN-ONLY escape hatch + provenance) ──
+  describe("promoteToTask", () => {
+    function taskById(id: string) {
+      return testApp.db.select().from(tasks).where(eq(tasks.id, id)).get()!;
+    }
+
+    it("promotes an OPEN note to a task with provenance + defaults (feature/medium/backlog)", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "needs a task" },
+        human.id,
+      );
+
+      const { note, task } = noteService.promoteToTask(created.id, {
+        id: human.id,
+        type: "human",
+      });
+
+      // Task shape + provenance + reporter.
+      expect(task.sourceNoteId).toBe(note.id);
+      expect(task.reporterId).toBe(human.id);
+      expect(task.projectId).toBe(project.id);
+      expect(task.type).toBe("feature");
+      expect(task.priority).toBe("medium");
+      expect(task.status).toBe("backlog");
+
+      // Note terminally triaged with the promoted-task back-pointer.
+      expect(note.status).toBe("triaged");
+      expect(note.triageOutcome).toBe("promoted");
+      expect(note.triagedBy).toBe(human.id);
+      expect(note.triagedAt).toBeTruthy();
+      expect(note.promotedTaskId).toBe(task.id);
+      expect(note.promotedProposalId).toBeNull();
+    });
+
+    it("derives default title/description from the note (incl. provenance line)", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "idea", title: "title from note", body: "the body text" },
+        human.id,
+      );
+
+      const { task } = noteService.promoteToTask(created.id, { id: human.id, type: "human" });
+
+      expect(task.title).toBe("title from note");
+      expect(task.description).toContain("the body text");
+      expect(task.description).toContain(`Promoted from note ${created.id}`);
+    });
+
+    it("includes a Location line when the note has a codeLocator", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        {
+          kind: "bug",
+          title: "located bug",
+          codeLocator: { path: "src/foo.ts", line: 42, commitSha: "abc123" },
+        },
+        human.id,
+      );
+
+      const { task } = noteService.promoteToTask(created.id, { id: human.id, type: "human" });
+      expect(task.description).toContain("Location: src/foo.ts:42 @ abc123");
+    });
+
+    it("uses caller-supplied title/description verbatim (no provenance append)", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "note title", body: "note body" },
+        human.id,
+      );
+
+      const { task } = noteService.promoteToTask(
+        created.id,
+        { id: human.id, type: "human" },
+        { title: "explicit title", description: "explicit description" },
+      );
+
+      expect(task.title).toBe("explicit title");
+      expect(task.description).toBe("explicit description");
+      expect(task.description).not.toContain("Promoted from note");
+    });
+
+    it("links the task to a given epicId", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const epic = createTestEpic(testApp.db, { projectId: project.id });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "epic-linked" },
+        human.id,
+      );
+
+      const { task } = noteService.promoteToTask(
+        created.id,
+        { id: human.id, type: "human" },
+        { epicId: epic.id },
+      );
+
+      expect(task.epicId).toBe(epic.id);
+    });
+
+    it("throws 403 FORBIDDEN for an ai_agent AND creates no orphan task (note stays open)", () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "not for AI" },
+        agent.id,
+      );
+
+      const before = testApp.db.select().from(tasks).all().length;
+
+      try {
+        noteService.promoteToTask(created.id, { id: agent.id, type: "ai_agent" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(403);
+        expect((err as AppError).code).toBe("FORBIDDEN");
+      }
+
+      expect(testApp.db.select().from(tasks).all().length).toBe(before);
+      expect(noteService.getById(created.id).status).toBe("open");
+    });
+
+    it("throws 409 INVALID_STATUS on an already-triaged note AND creates no orphan task", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "promote twice" },
+        human.id,
+      );
+      noteService.promoteToTask(created.id, { id: human.id, type: "human" });
+
+      const before = testApp.db.select().from(tasks).all().length;
+
+      try {
+        noteService.promoteToTask(created.id, { id: human.id, type: "human" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(409);
+        expect((err as AppError).code).toBe("INVALID_STATUS");
+      }
+
+      expect(testApp.db.select().from(tasks).all().length).toBe(before);
+    });
+
+    it("throws 404 for a missing note", () => {
+      const human = createTestUser(testApp.db, { type: "human" });
+      try {
+        noteService.promoteToTask(createId(), { id: human.id, type: "human" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(404);
+      }
+    });
+
+    it("emits NOTE_PROMOTED → 'promoted' note row AND a 'created' task row", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "emits promote-to-task events" },
+        human.id,
+      );
+
+      const { task } = noteService.promoteToTask(created.id, { id: human.id, type: "human" });
+
+      const noteRows = activityRows(created.id);
+      const promoted = noteRows.find((r) => r.action === "promoted");
+      expect(promoted).toBeDefined();
+      expect(promoted!.entityType).toBe("note");
+      expect(promoted!.actorId).toBe(human.id);
+      expect(promoted!.projectId).toBe(project.id);
+
+      const taskRows = activityRows(task.id);
+      const taskCreated = taskRows.find((r) => r.action === "created");
+      expect(taskCreated).toBeDefined();
+      expect(taskCreated!.entityType).toBe("task");
+
+      // sanity: provenance persisted on the task row.
+      expect(taskById(task.id).sourceNoteId).toBe(created.id);
     });
   });
 

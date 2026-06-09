@@ -385,6 +385,82 @@ describe("Notes API", () => {
     });
   });
 
+  // ── POST /api/v1/notes/:id/promote-to-task (C2 §P4, HUMAN-ONLY) ──
+  describe("POST /api/v1/notes/:id/promote-to-task", () => {
+    it("promotes an open note to a task (200, human, provenance round-trip)", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "to taskify", body: "body text" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/promote-to-task`,
+        { body: { title: "Do the work" } },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.status).toBe("triaged");
+      expect(body.data.triageOutcome).toBe("promoted");
+      expect(body.data.promotedTaskId).toBe(body.task.id);
+      expect(body.task.sourceNoteId).toBe(body.data.id);
+      expect(body.task.reporterId).toBe(testApp.testUser.id);
+    });
+
+    it("returns 403 for an ai_agent token (human-only) and creates no task", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          token: agent.token,
+          body: { kind: "bug", title: "agent-owned" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/promote-to-task`,
+        { token: agent.token, body: {} },
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 404 for an unknown note id", async () => {
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${createId()}/promote-to-task`,
+        { body: {} },
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 409 when promoting an already-triaged note (dismiss-then-promote)", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "triage twice" },
+        })
+      ).json();
+
+      await authRequest(testApp.app, "POST", `/api/v1/notes/${created.data.id}/dismiss`, {
+        body: { reason: "wontfix" },
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/promote-to-task`,
+        { body: {} },
+      );
+      expect(res.status).toBe(409);
+    });
+  });
+
   // ── activity-feed enrichment ─────────────────────────────────────
   describe("activity feed enrichment", () => {
     it("surfaces the note in the project activity feed with entityType 'note' and its title", async () => {

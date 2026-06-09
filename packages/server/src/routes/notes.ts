@@ -133,6 +133,41 @@ const promoteToProposalResponseEnvelope = z.object({
   proposal: promotedProposalSchema,
 });
 
+const promoteToTaskBody = z
+  .object({
+    title: z.string().min(1).optional(),
+    description: z.string().optional(),
+    epicId: z.string().min(1).optional(),
+  })
+  .openapi("PromoteNoteToTask");
+
+// MINIMAL inline task schema for the promote response (mirror of
+// promotedProposalSchema). tasks.projectId is NOT NULL → z.string(); epicId and
+// sourceNoteId are nullable (the columns are nullable). The response is not
+// rejected for extra keys, so the enriched claimStatus/claimState from create
+// pass through harmlessly.
+const promotedTaskSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    title: z.string(),
+    description: z.string().nullable(),
+    status: z.string(),
+    priority: z.string(),
+    type: z.string(),
+    reporterId: z.string(),
+    epicId: z.string().nullable(),
+    sourceNoteId: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi("PromotedTask");
+
+const promoteToTaskResponseEnvelope = z.object({
+  data: noteSchema,
+  task: promotedTaskSchema,
+});
+
 const listNotesQuery = z.object({
   kind: z.enum(NOTE_KINDS).optional(),
   status: z.enum(NOTE_STATUSES).optional(),
@@ -319,6 +354,40 @@ const promoteToProposalRoute = createRoute({
   },
 });
 
+const promoteToTaskRoute = createRoute({
+  method: "post",
+  path: "/api/v1/notes/{id}/promote-to-task",
+  tags: ["Notes"],
+  summary: "Promote note to task",
+  description:
+    "HUMAN-ONLY escape hatch: terminally promote an OPEN note directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.",
+  request: {
+    params: z.object({ id: noteIdParam }),
+    body: {
+      content: { "application/json": { schema: promoteToTaskBody } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: "Note promoted; task created",
+      content: { "application/json": { schema: promoteToTaskResponseEnvelope } },
+    },
+    403: {
+      description: "Caller is not allowed to promote this note to a task (human-only)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Note not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Note is not open and cannot be promoted",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createNoteRoutes(): OpenAPIHono<{
@@ -384,6 +453,19 @@ export function createNoteRoutes(): OpenAPIHono<{
       body,
     );
     return c.json({ data: note, proposal }, 200);
+  });
+
+  // POST /api/v1/notes/:id/promote-to-task (HUMAN-ONLY escape hatch)
+  router.openapi(promoteToTaskRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const user = c.get("currentUser");
+    const { note, task } = noteService.promoteToTask(
+      id,
+      { id: user!.id, type: user!.type as UserType },
+      body,
+    );
+    return c.json({ data: note, task }, 200);
   });
 
   return router;

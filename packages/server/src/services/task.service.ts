@@ -81,6 +81,7 @@ export interface CreateTaskInput {
   sortOrder?: number;
   context?: Record<string, unknown> | null;
   gitBranch?: string | null;
+  sourceNoteId?: string | null;
 }
 
 export interface UpdateTaskInput {
@@ -553,6 +554,7 @@ export function create(data: CreateTaskInput, actor?: AuthUser) {
       sortOrder: data.sortOrder ?? 0,
       context: data.context ?? null,
       gitBranch: data.gitBranch ?? null,
+      sourceNoteId: data.sourceNoteId ?? null,
       createdAt: now,
       updatedAt: now,
     })

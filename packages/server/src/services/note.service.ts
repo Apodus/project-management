@@ -14,6 +14,7 @@ import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 import { sanitizeFtsQuery } from "./search.service.js";
 import * as proposalService from "./proposal.service.js";
+import * as taskService from "./task.service.js";
 
 // ─── Notes service (Campaign C1 §P3) ──────────────────────────────
 // Capture + read only. Notes are ownerless in C1 — no claim/lease logic.
@@ -312,6 +313,81 @@ export function promoteToProposal(
   });
 
   return { note: updatedNote, proposal };
+}
+
+/**
+ * Promote an OPEN note to a task (Campaign C2 §P4) — the HUMAN-ONLY escape
+ * hatch. This is the only path from a note to a task, and it is deliberately
+ * NOT exposed via MCP: NO ai-reachable path mints a task from a note (the
+ * proposal gate — a note feeds proposal creation for AI, never auto-spawns a
+ * task/epic). A human reviewer flips the note into a task directly.
+ *
+ * The human-only gate runs BEFORE assertOpen so a non-human gets 403 regardless
+ * of status, with zero writes (no orphan task, note untouched).
+ */
+export function promoteToTask(
+  id: string,
+  actor: { id: string; type: UserType },
+  { title, description, epicId }: { title?: string; description?: string; epicId?: string } = {},
+) {
+  const db = getDb();
+  const note = db.select().from(notes).where(eq(notes.id, id)).get();
+  if (!note) throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
+  // HUMAN-ONLY escape hatch (the proposal gate): NO ai-reachable path mints a
+  // task from a note. Gate runs BEFORE assertOpen so a non-human gets 403
+  // regardless of status, with zero writes.
+  if (actor.type !== "human") {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      `User "${actor.id}" is not allowed to promote note ${id} to a task (human-only)`,
+    );
+  }
+  assertOpen(note);
+
+  const finalTitle = title ?? note.title;
+  let finalDescription: string | null;
+  if (description !== undefined) {
+    finalDescription = description;
+  } else {
+    const parts = [note.body ?? "", `\n\nPromoted from note ${note.id} (${note.kind}).`];
+    if (note.codeLocator) {
+      const cl = note.codeLocator;
+      parts.push(
+        `\nLocation: ${cl.path}${cl.line ? ":" + cl.line : ""}${cl.commitSha ? " @ " + cl.commitSha : ""}`,
+      );
+    }
+    const joined = parts.join("").trim();
+    finalDescription = joined.length > 0 ? joined : null;
+  }
+
+  // No `actor` 2nd arg → skip the AI autonomy guardrail (the human already
+  // passed the human-only gate); provenance/TASK_CREATED actor = reporterId.
+  const task = taskService.create({
+    projectId: note.projectId,
+    title: finalTitle,
+    description: finalDescription,
+    reporterId: actor.id,
+    epicId: epicId ?? null,
+    sourceNoteId: note.id,
+  });
+
+  const updatedNote = applyTriage(id, {
+    outcome: "promoted",
+    triagedBy: actor.id,
+    promotedTaskId: task.id,
+  });
+
+  getEventBus().emit(EVENT_NAMES.NOTE_PROMOTED, {
+    entity: updatedNote,
+    entityType: "note",
+    entityId: id,
+    projectId: updatedNote.projectId,
+    actorId: actor.id,
+    timestamp: updatedNote.triagedAt!,
+  });
+
+  return { note: updatedNote, task };
 }
 
 /**
