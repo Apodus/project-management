@@ -4,6 +4,7 @@ import {
   ApiError,
   claimAgent,
   createNote,
+  promoteNoteToProposal,
   releaseAgent,
   getAgentIdentity,
   shouldReleaseOnShutdown,
@@ -360,6 +361,84 @@ describe("createNote", () => {
     await expect(createNote("proj_001", { kind: "bug", title: "X" })).rejects.toMatchObject({
       status: 400,
       code: "VALIDATION_ERROR",
+    });
+  });
+});
+
+describe("promoteNoteToProposal", () => {
+  beforeEach(() => {
+    process.env.PM_API_URL = "http://test-server:9999";
+    process.env.PM_API_TOKEN = "test-token-123";
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.PM_API_URL;
+    delete process.env.PM_API_TOKEN;
+  });
+
+  const sampleNote = {
+    id: "note_001",
+    title: "DB connection leaks on retry",
+    kind: "bug",
+    status: "triaged",
+    triageOutcome: "promoted",
+    promotedProposalId: "prop_900",
+  };
+
+  const sampleProposal = {
+    id: "prop_900",
+    projectId: "proj_001",
+    title: "Fix DB connection leak",
+    description: "From note.",
+    status: "draft",
+    createdBy: "user_001",
+    sourceNoteId: "note_001",
+    createdAt: "2026-06-09T01:00:00Z",
+    updatedAt: "2026-06-09T01:00:00Z",
+  };
+
+  it("returns { note, proposal } preserving the proposal sibling from the raw envelope", async () => {
+    mockFetch({
+      status: 200,
+      ok: true,
+      body: { data: sampleNote, proposal: sampleProposal },
+    });
+
+    const result = await promoteNoteToProposal("note_001", { title: "Fix DB connection leak" });
+
+    expect(result.note).toEqual(sampleNote);
+    expect(result.proposal).toEqual(sampleProposal);
+  });
+
+  it("POSTs to the promote-to-proposal URL with the Bearer token", async () => {
+    const fetchMock = mockFetch({
+      status: 200,
+      ok: true,
+      body: { data: sampleNote, proposal: sampleProposal },
+    });
+
+    await promoteNoteToProposal("note_001", {});
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://test-server:9999/api/v1/notes/note_001/promote-to-proposal");
+    expect(init.method).toBe("POST");
+    // A claimed token from a prior test can leak via module state; assert the
+    // Bearer scheme is present rather than a specific token value.
+    expect(init.headers.Authorization).toMatch(/^Bearer .+/);
+    expect(init.headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("throws ApiError with the server code on a non-ok response", async () => {
+    mockFetch({
+      status: 409,
+      ok: false,
+      body: { error: { code: "NOTE_NOT_OPEN", message: "not open" } },
+    });
+
+    await expect(promoteNoteToProposal("note_001", {})).rejects.toMatchObject({
+      status: 409,
+      code: "NOTE_NOT_OPEN",
     });
   });
 });

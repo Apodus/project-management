@@ -74,6 +74,8 @@ vi.mock("../src/api-client.js", () => ({
   createNote: vi.fn(),
   listNotes: vi.fn(),
   getNote: vi.fn(),
+  dismissNote: vi.fn(),
+  promoteNoteToProposal: vi.fn(),
 }));
 
 // Import the mocked functions so we can configure them per test
@@ -133,6 +135,8 @@ const mockGetMergeIncident = vi.mocked(apiClient.getMergeIncident);
 const mockCreateNote = vi.mocked(apiClient.createNote);
 const mockListNotes = vi.mocked(apiClient.listNotes);
 const mockGetNote = vi.mocked(apiClient.getNote);
+const mockDismissNote = vi.mocked(apiClient.dismissNote);
+const mockPromoteNoteToProposal = vi.mocked(apiClient.promoteNoteToProposal);
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -3504,6 +3508,112 @@ describe("MCP Tools", () => {
       expect(text).toContain("src/db/pool.ts");
       expect(text).toContain("Seen under load");
       expect(text).not.toContain("Claim");
+    });
+  });
+
+  // ---- Note triage (Campaign C2) ----
+
+  const dismissedNote = {
+    ...sampleNote,
+    status: "triaged" as const,
+    triagedAt: "2026-06-09T01:00:00Z",
+    triagedBy: "user_001",
+    triageOutcome: "dismissed" as const,
+    triageReason: "duplicate",
+    promotedProposalId: null,
+    promotedTaskId: null,
+  };
+
+  const promotedNote = {
+    ...sampleNote,
+    status: "triaged" as const,
+    triagedAt: "2026-06-09T01:00:00Z",
+    triagedBy: "user_001",
+    triageOutcome: "promoted" as const,
+    triageReason: null,
+    promotedProposalId: "prop_900",
+    promotedTaskId: null,
+  };
+
+  describe("pm_dismiss_note", () => {
+    it("renders the dismissed note and passes (note_id, reason)", async () => {
+      mockDismissNote.mockResolvedValue(dismissedNote);
+
+      const result = await client.callTool({
+        name: "pm_dismiss_note",
+        arguments: { note_id: "note_001", reason: "duplicate" },
+      });
+
+      expect(mockDismissNote).toHaveBeenCalledWith("note_001", "duplicate");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("dismissed");
+      expect(text).toContain("duplicate");
+      expect(text).toContain("triaged");
+    });
+  });
+
+  describe("pm_promote_note_to_proposal", () => {
+    it("renders the promoted note + proposal and passes through title/description", async () => {
+      mockPromoteNoteToProposal.mockResolvedValue({
+        note: promotedNote,
+        proposal: {
+          id: "prop_900",
+          projectId: "proj_001",
+          title: "Fix DB connection leak",
+          description: "From note.",
+          status: "draft",
+          createdBy: "user_001",
+          sourceNoteId: "note_001",
+          createdAt: "2026-06-09T01:00:00Z",
+          updatedAt: "2026-06-09T01:00:00Z",
+        },
+      });
+
+      const result = await client.callTool({
+        name: "pm_promote_note_to_proposal",
+        arguments: {
+          note_id: "note_001",
+          title: "Fix DB connection leak",
+          description: "From note.",
+        },
+      });
+
+      expect(mockPromoteNoteToProposal).toHaveBeenCalledWith("note_001", {
+        title: "Fix DB connection leak",
+        description: "From note.",
+      });
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("prop_900");
+      expect(text).toContain("promoted");
+    });
+
+    it("works with minimal args (no title/description)", async () => {
+      mockPromoteNoteToProposal.mockResolvedValue({
+        note: promotedNote,
+        proposal: {
+          id: "prop_900",
+          projectId: "proj_001",
+          title: "DB connection leaks on retry",
+          description: null,
+          status: "draft",
+          createdBy: "user_001",
+          sourceNoteId: "note_001",
+          createdAt: "2026-06-09T01:00:00Z",
+          updatedAt: "2026-06-09T01:00:00Z",
+        },
+      });
+
+      const result = await client.callTool({
+        name: "pm_promote_note_to_proposal",
+        arguments: { note_id: "note_001" },
+      });
+
+      expect(mockPromoteNoteToProposal).toHaveBeenCalledWith("note_001", {
+        title: undefined,
+        description: undefined,
+      });
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("prop_900");
     });
   });
 });

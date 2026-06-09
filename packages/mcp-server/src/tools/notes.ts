@@ -6,7 +6,13 @@ import {
   NOTE_ANCHOR_TYPES,
   NOTE_SEVERITIES,
 } from "@pm/shared";
-import { createNote, listNotes, getNote } from "../api-client.js";
+import {
+  createNote,
+  listNotes,
+  getNote,
+  dismissNote,
+  promoteNoteToProposal,
+} from "../api-client.js";
 
 /**
  * Notes — a lightweight, ownerless capture surface (Campaign C1). No claim is
@@ -190,6 +196,76 @@ export function registerNoteTools(server: McpServer): void {
       if (note.body) {
         sections.push("", "---", "", note.body);
       }
+
+      return {
+        content: [{ type: "text" as const, text: sections.join("\n") }],
+      };
+    },
+  );
+
+  // ---- pm_dismiss_note ----
+
+  server.tool(
+    "pm_dismiss_note",
+    "Dismiss a note you've reviewed and decided needs no action (you must be the note's author or a human). Use when a finding is a duplicate, no longer relevant, or not worth pursuing — distinct from promoting it into a proposal.",
+    {
+      note_id: z.string().describe("The note ID to dismiss"),
+      reason: z
+        .string()
+        .describe("Why this note needs no action (required, recorded on the note)"),
+    },
+    async ({ note_id, reason }) => {
+      const note = await dismissNote(note_id, reason);
+
+      const sections: string[] = [
+        "Note dismissed.",
+        "",
+        `**ID:** ${note.id}`,
+        `**Title:** ${note.title}`,
+        `**Status:** ${note.status}`,
+        `**Outcome:** ${note.triageOutcome}`,
+        `**Reason:** ${note.triageReason}`,
+      ];
+
+      return {
+        content: [{ type: "text" as const, text: sections.join("\n") }],
+      };
+    },
+  );
+
+  // ---- pm_promote_note_to_proposal ----
+
+  server.tool(
+    "pm_promote_note_to_proposal",
+    "Promote a note into a proposal for the team to discuss/plan — the canonical way a finding becomes planned work (preserves the proposal gate: a note never becomes an epic/task directly). Use when a note describes work worth doing; use pm_dismiss_note instead when no action is needed.",
+    {
+      note_id: z.string().describe("The note ID to promote"),
+      title: z
+        .string()
+        .optional()
+        .describe("Optional proposal title (defaults to the note's title)"),
+      description: z
+        .string()
+        .optional()
+        .describe("Optional proposal description (defaults to the note body)"),
+    },
+    async ({ note_id, title, description }) => {
+      const { note, proposal } = await promoteNoteToProposal(note_id, { title, description });
+
+      const sections: string[] = [
+        "Note promoted to proposal.",
+        "",
+        `**ID:** ${note.id}`,
+        `**Status:** ${note.status}`,
+        `**Outcome:** ${note.triageOutcome}`,
+        "",
+        "**Promoted proposal:**",
+        `**Proposal ID:** ${proposal.id}`,
+        `**Title:** ${proposal.title}`,
+        `**Status:** ${proposal.status}`,
+        "",
+        "Next: call pm_get_proposal / pm_claim_proposal to plan it.",
+      ];
 
       return {
         content: [{ type: "text" as const, text: sections.join("\n") }],

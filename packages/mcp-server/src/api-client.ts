@@ -1568,3 +1568,77 @@ export async function listNotes(
 export async function getNote(id: string): Promise<Note> {
   return apiRequest<Note>("GET", `/notes/${encodeURIComponent(id)}`);
 }
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Note triage (Campaign C2)
+// ---------------------------------------------------------------------------
+//
+// Triage moves an OPEN note off the board: dismiss (no action needed) or
+// promote-to-proposal (the canonical way a finding becomes planned work —
+// preserving the proposal gate). dismiss uses the standard `{ data }` envelope
+// and goes through apiRequest. promoteNoteToProposal bypasses apiRequest for
+// the SAME reason createNote does: the response is `{ data, proposal }` and
+// apiRequest unwraps `.data`, which would DROP the `proposal` sibling.
+// (pm_promote_note_to_task is intentionally NOT exposed via MCP — human-only.)
+
+/**
+ * Dismiss a note you've reviewed and decided needs no action. Returns the
+ * triaged note (status "triaged", triageOutcome "dismissed").
+ */
+export async function dismissNote(noteId: string, reason: string): Promise<Note> {
+  return apiRequest<Note>("POST", `/notes/${encodeURIComponent(noteId)}/dismiss`, { reason });
+}
+
+export interface PromotedProposal {
+  id: string;
+  projectId: string | null;
+  title: string;
+  description: string | null;
+  status: string;
+  createdBy: string;
+  sourceNoteId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PromoteNoteToProposalResult {
+  note: Note;
+  proposal: PromotedProposal;
+}
+
+/**
+ * Promote a note into a new proposal. Bespoke fetch (mirrors apiRequest's
+ * contract) because the 200 envelope is `{ data: Note, proposal: ... }` —
+ * apiRequest unwraps `.data` and would drop the `proposal` sibling. Returns
+ * both the triaged note (triageOutcome "promoted") and the created proposal.
+ */
+export async function promoteNoteToProposal(
+  noteId: string,
+  data: { title?: string; description?: string },
+): Promise<PromoteNoteToProposalResult> {
+  const url = `${getBaseUrl()}/api/v1/notes/${encodeURIComponent(noteId)}/promote-to-proposal`;
+  const token = getToken();
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  const json = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    const err = json?.error;
+    throw new ApiError(
+      res.status,
+      err?.code ?? "UNKNOWN_ERROR",
+      err?.message ?? `HTTP ${res.status}`,
+    );
+  }
+
+  return { note: json.data as Note, proposal: json.proposal as PromotedProposal };
+}
