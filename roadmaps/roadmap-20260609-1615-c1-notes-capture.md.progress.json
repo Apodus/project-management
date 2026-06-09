@@ -1,0 +1,22 @@
+{
+  "campaign": "C1 — Notes capture foundation (+ dedup-on-post)",
+  "roadmap": "roadmaps/roadmap-20260609-1615-c1-notes-capture.md",
+  "vision": "roadmaps/vision-20260609-notes-findings-inbox.md",
+  "branch": "campaign-c1-notes-capture",
+  "pm": { "project": "01KT1VN1BEMF1KZGBFMGXBY5W1", "epic": "01KTP3Y628M4JQFY7EMZVMZFAJ", "c1_task": "01KTP3YPNC2F1PP2KWNP2BQHP4" },
+  "phases": [
+    { "id": "P1", "title": "@pm/shared note schemas", "status": "complete", "commit": "2b081d5", "outcome": "note enums/Note/create-list-patch DTOs/CodeLocator; 23 tests; verifier fixes (no none sentinel, no status in patch) baked in" },
+    { "id": "P2", "title": "notes table + migration 0024", "status": "complete", "commit": "75f5104", "outcome": "notes sqliteTable + 0024_notes.sql + journal entry; soft anchor; 1356 server tests green; schema.test table array updated" },
+    { "id": "P3", "title": "note.service + routes/notes + activity", "status": "complete", "commit": "e69d26f", "outcome": "note.service (create/get/list/update open-only) + 4 REST routes + activity via event->listener + enrich branch; 1382 tests green; enum cols got type-level .$type<>() (no migration change); SSE note.* frames auto-emit (harmless, P5 curates)" },
+    { "id": "P4", "title": "FTS5 notes_fts + search + dedup-on-post", "status": "complete", "commit": "847fe48", "outcome": "notes_fts + 3 triggers + searchNotes + /search note entityType + findSimilarOpenNotes (advisory, before-insert, open+same-project); 1395 tests green; create 201 gains similar[]" },
+    { "id": "P5", "title": "SSE curation (note title in events.ts) + MCP capture tools", "status": "complete", "commit": "80b1823", "outcome": "events.ts note entity_title case + pm_post_note/pm_list_notes/pm_get_note MCP tools + api-client createNote(preserves similar)/listNotes/getNote; MCP 148 tests, server 1396, typecheck 6/6, build 5/5, lint 0 errors. NOTE: executor implemented+verified but stopped before commit; commander ran gates + committed." }
+  ],
+  "status": "COMPLETE",
+  "current": "done",
+  "open_issues": [
+    "db:generate has a pre-existing 0005/0006 snapshot parent-pointer collision (unrelated to notes); migrations hand-authored as workaround — informational, not blocking",
+    "Dedup recall is AND-gated (sanitizeFtsQuery joins tokens with FTS AND): findSimilarOpenNotes surfaces only open notes containing ALL of the new note's terms. Conservative by design (advisory; triage is the real dedup backstop). Candidate future tweak: OR-weighted similarity — deferred (OR would add noise)."
+  ],
+  "dag_drift": [],
+  "last_check": "2026-06-09T16:15:00Z"
+}
