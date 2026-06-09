@@ -1,6 +1,6 @@
 import { eq, and, desc, count, gt, ne, inArray } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import { getDb, activityLog, tasks, epics, proposals, projects, users } from "../db/index.js";
+import { getDb, activityLog, tasks, epics, proposals, projects, users, notes } from "../db/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -79,6 +79,7 @@ export function enrichActivityEntries<
   const epicIds = new Set<string>();
   const proposalIds = new Set<string>();
   const projectIds = new Set<string>();
+  const noteIds = new Set<string>();
   const actorIds = new Set<string>();
 
   for (const e of entries) {
@@ -94,6 +95,9 @@ export function enrichActivityEntries<
         break;
       case "project":
         projectIds.add(e.entityId);
+        break;
+      case "note":
+        noteIds.add(e.entityId);
         break;
     }
     if (e.actorId) actorIds.add(e.actorId);
@@ -149,6 +153,18 @@ export function enrichActivityEntries<
     }
   }
 
+  const noteMap = new Map<string, string>();
+  if (noteIds.size > 0) {
+    const rows = db
+      .select({ id: notes.id, title: notes.title })
+      .from(notes)
+      .where(inArray(notes.id, [...noteIds]))
+      .all();
+    for (const r of rows) {
+      noteMap.set(r.id, r.title);
+    }
+  }
+
   const userMap = new Map<string, { displayName: string; type: string }>();
   if (actorIds.size > 0) {
     const rows = db
@@ -183,6 +199,9 @@ export function enrichActivityEntries<
         break;
       case "project":
         entityTitle = projectMap.get(entry.entityId) ?? null;
+        break;
+      case "note":
+        entityTitle = noteMap.get(entry.entityId) ?? null;
         break;
     }
 

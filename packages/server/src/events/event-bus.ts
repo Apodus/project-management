@@ -16,6 +16,10 @@ export const EVENT_NAMES = {
   PROPOSAL_CLAIMED: "proposal.claimed",
   PROPOSAL_RELEASED: "proposal.released",
 
+  // Note events (Campaign C1 — notes/findings inbox capture)
+  NOTE_CREATED: "note.created",
+  NOTE_UPDATED: "note.updated",
+
   // Epic events
   EPIC_CREATED: "epic.created",
   EPIC_UPDATED: "epic.updated",

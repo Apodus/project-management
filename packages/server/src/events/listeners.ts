@@ -14,6 +14,7 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.EPIC_CREATED:
     case EVENT_NAMES.TASK_CREATED:
     case EVENT_NAMES.COMMENT_CREATED:
+    case EVENT_NAMES.NOTE_CREATED:
       return "created";
 
     // Updated events
@@ -21,6 +22,7 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.EPIC_UPDATED:
     case EVENT_NAMES.TASK_UPDATED:
     case EVENT_NAMES.COMMENT_UPDATED:
+    case EVENT_NAMES.NOTE_UPDATED:
       return "updated";
 
     // Archived events

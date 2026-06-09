@@ -9,7 +9,15 @@ import {
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
-import type { CodeLocator, MergeResolutionDetail, VerifyStepResult } from "@pm/shared";
+import type {
+  CodeLocator,
+  MergeResolutionDetail,
+  NoteAnchorType,
+  NoteKind,
+  NoteSeverity,
+  NoteStatus,
+  VerifyStepResult,
+} from "@pm/shared";
 
 // ─── workspaces ────────────────────────────────────────────────────
 export const workspaces = sqliteTable("workspaces", {
@@ -1067,14 +1075,14 @@ export const notes = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id),
-    kind: text("kind").notNull(),
-    status: text("status").notNull().default("open"),
+    kind: text("kind").notNull().$type<NoteKind>(),
+    status: text("status").notNull().default("open").$type<NoteStatus>(),
     title: text("title").notNull(),
     body: text("body"),
-    anchorType: text("anchor_type"),
+    anchorType: text("anchor_type").$type<NoteAnchorType>(),
     anchorId: text("anchor_id"),
     codeLocator: text("code_locator", { mode: "json" }).$type<CodeLocator>(),
-    severity: text("severity"),
+    severity: text("severity").$type<NoteSeverity>(),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
