@@ -1,5 +1,10 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { PROJECT_STATUSES, TASK_STATUSES, CACHE_MODES } from "@pm/shared";
+import {
+  PROJECT_STATUSES,
+  TASK_STATUSES,
+  CACHE_MODES,
+  cacheConfigWarnings,
+} from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as projectService from "../services/project.service.js";
 
@@ -242,6 +247,14 @@ const projectDataEnvelope = z.object({
   data: projectSchema,
 });
 
+// C2: the PATCH 200 envelope can carry advisory config warnings (the
+// verify-cache guardrail — see cacheConfigWarnings). `warnings` is OMITTED
+// when empty, never `[]`, so unchanged responses stay byte-identical.
+const projectUpdateEnvelope = z.object({
+  data: projectSchema,
+  warnings: z.array(z.string()).optional(),
+});
+
 const projectListEnvelope = z.object({
   data: z.array(projectSchema),
   pagination: z.object({
@@ -372,7 +385,8 @@ const updateProjectRoute = createRoute({
   path: "/api/v1/projects/{id}",
   tags: ["Projects"],
   summary: "Update project",
-  description: "Update project fields.",
+  description:
+    "Update project fields. The 200 envelope may carry advisory `warnings` (omitted when empty) — e.g. the verify-cache guardrail: cache_mode \"on\" with verify steps lacking cache_key_inputs is the documented false-pass precondition (deployment guide §16.2; shadow-first discipline). Warnings never block the save.",
   request: {
     params: z.object({ id: projectIdParam }),
     body: {
@@ -382,8 +396,8 @@ const updateProjectRoute = createRoute({
   },
   responses: {
     200: {
-      description: "Project updated",
-      content: { "application/json": { schema: projectDataEnvelope } },
+      description: "Project updated (with optional advisory warnings)",
+      content: { "application/json": { schema: projectUpdateEnvelope } },
     },
     404: {
       description: "Project not found",
@@ -475,7 +489,18 @@ export function createProjectRoutes(): OpenAPIHono<{ Variables: AppVariables }> 
     const body = c.req.valid("json");
     const project = projectService.update(id, body);
 
-    return c.json({ data: project }, 200);
+    // C2 guardrail: compute advisory warnings from the PERSISTED settings
+    // post-update (not the request body — a partial PATCH that leaves a
+    // dangerous stored config in place still warns). Omit when empty.
+    const settings = (project.settings ?? {}) as {
+      integrator?: Parameters<typeof cacheConfigWarnings>[0];
+    };
+    const warnings = cacheConfigWarnings(settings.integrator);
+
+    return c.json(
+      warnings.length > 0 ? { data: project, warnings } : { data: project },
+      200,
+    );
   });
 
   // DELETE /api/v1/projects/:id

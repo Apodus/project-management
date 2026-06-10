@@ -2114,7 +2114,7 @@ export interface paths {
         head?: never;
         /**
          * Update project
-         * @description Update project fields.
+         * @description Update project fields. The 200 envelope may carry advisory `warnings` (omitted when empty) — e.g. the verify-cache guardrail: cache_mode "on" with verify steps lacking cache_key_inputs is the documented false-pass precondition (deployment guide §16.2; shadow-first discipline). Warnings never block the save.
          */
         patch: {
             parameters: {
@@ -2131,7 +2131,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Project updated */
+                /** @description Project updated (with optional advisory warnings) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2139,6 +2139,7 @@ export interface paths {
                     content: {
                         "application/json": {
                             data: components["schemas"]["Project"];
+                            warnings?: string[];
                         };
                     };
                 };

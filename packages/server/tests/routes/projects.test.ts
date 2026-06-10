@@ -300,6 +300,125 @@ describe("Projects API", () => {
     });
   });
 
+  // ── PATCH verify-cache guardrail warnings (C2) ────────────────────
+  describe("PATCH verify-cache config guardrail (C2)", () => {
+    function integratorSettings(overrides: Record<string, unknown> = {}) {
+      return {
+        settings: {
+          integrator: {
+            enabled: false,
+            ...overrides,
+          },
+        },
+      };
+    }
+
+    it("cache_enabled + cache_mode on + steps lacking cache_key_inputs → 200 WITH warnings naming each step", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: integratorSettings({
+          cache_enabled: true,
+          cache_mode: "on",
+          verify_steps: [
+            { id: "lint", command: "pnpm lint" },
+            { id: "test", command: "pnpm test", cache_key_inputs: ["node -v"] },
+            { id: "build", command: "pnpm build", depends_on: ["lint"] },
+          ],
+        }),
+      });
+      expect(res.status).toBe(200); // NEVER a 400 — advisory only.
+      const body = await res.json();
+      expect(body.warnings).toHaveLength(1);
+      const warning = body.warnings[0] as string;
+      // Names exactly the offending steps (test has inputs → not named).
+      expect(warning).toContain('"lint"');
+      expect(warning).toContain('"build"');
+      expect(warning).not.toContain('"test"');
+      // Cites the false-pass precondition + the shadow-first discipline.
+      expect(warning).toContain("§16.2");
+      expect(warning).toContain("false-pass");
+      expect(warning).toContain("shadow");
+    });
+
+    it("cache on + EMPTY verify_steps → warns on the synthetic verify_command step", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: integratorSettings({ cache_enabled: true, cache_mode: "on" }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.warnings).toHaveLength(1);
+      expect(body.warnings[0]).toContain("synthetic verify_command step");
+    });
+
+    it("all steps declare cache_key_inputs → NO warnings key", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: integratorSettings({
+          cache_enabled: true,
+          cache_mode: "on",
+          verify_steps: [
+            { id: "verify", command: "pnpm verify", cache_key_inputs: ["node -v"] },
+          ],
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect("warnings" in body).toBe(false); // omitted, never []
+    });
+
+    it("cache_mode shadow → NO warnings key (shadow always runs the real step)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: integratorSettings({
+          cache_enabled: true,
+          cache_mode: "shadow",
+          verify_steps: [{ id: "lint", command: "pnpm lint" }],
+        }),
+      });
+      const body = await res.json();
+      expect("warnings" in body).toBe(false);
+    });
+
+    it("cache_enabled false (mode on but kill-switch off) → NO warnings key", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: integratorSettings({
+          cache_enabled: false,
+          cache_mode: "on",
+          verify_steps: [{ id: "lint", command: "pnpm lint" }],
+        }),
+      });
+      const body = await res.json();
+      expect("warnings" in body).toBe(false);
+    });
+
+    it("warnings derive from the PERSISTED settings — a later non-settings PATCH on a dangerous stored config still warns", async () => {
+      const project = createTestProject(testApp.db);
+      await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: integratorSettings({ cache_enabled: true, cache_mode: "on" }),
+      });
+      // PATCH only the name; the stored cache config is unchanged-dangerous.
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: { name: "Renamed" },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.name).toBe("Renamed");
+      expect(body.warnings).toHaveLength(1);
+    });
+
+    it("plain PATCH with no integrator settings stored → NO warnings key (byte-identical envelope)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: { name: "Plain" },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect("warnings" in body).toBe(false);
+    });
+  });
+
   // ── DELETE /api/v1/projects/:id ───────────────────────────────────
   describe("DELETE /api/v1/projects/:id", () => {
     it("should archive a project (set status to archived)", async () => {

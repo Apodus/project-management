@@ -162,6 +162,58 @@ function hasDagIssues(steps: { id: string; depends_on?: string[] }[]): {
   return { dup, dangling, cycle };
 }
 
+/**
+ * C2 (failure legibility) — the verify-cache config guardrail predicate.
+ *
+ * PURE + advisory (NEVER a 400): returns warning strings when the cache is
+ * armed for real use (`cache_enabled === true` AND `cache_mode === "on"`)
+ * while any verify step declares NO `cache_key_inputs` — the documented
+ * false-pass precondition (deployment guide §16.2): in `on`, the cache is
+ * only as correct as the operator's declared inputs, so an UNDECLARED
+ * out-of-tree input (toolchain, env, external service) CAN false-pass a
+ * cached verdict. The shadow-first discipline (shadow → observe zero
+ * verify.cache_mismatch → on) is the safe rollout.
+ *
+ * Empty/absent `verify_steps` is the synthetic single `verify` step over
+ * `verify_command` — it can never declare cache_key_inputs, so it warns too.
+ * `shadow` / `off` / `cache_enabled: false` → no warnings (shadow always runs
+ * the real step; off is inert).
+ *
+ * Duplicated VERBATIM as the web mirror in packages/web/src/lib/integrator.ts
+ * (the established route/web mirror pattern) — keep the two in lockstep.
+ */
+export function cacheConfigWarnings(
+  integrator:
+    | {
+        cache_enabled?: boolean;
+        cache_mode?: string;
+        verify_steps?: { id: string; cache_key_inputs?: string[] }[];
+      }
+    | null
+    | undefined,
+): string[] {
+  if (!integrator) return [];
+  if (integrator.cache_enabled !== true || integrator.cache_mode !== "on") {
+    return [];
+  }
+  const steps = integrator.verify_steps ?? [];
+  const missing =
+    steps.length === 0
+      ? [`"verify" (the synthetic verify_command step)`]
+      : steps
+          .filter((s) => (s.cache_key_inputs ?? []).length === 0)
+          .map((s) => `"${s.id}"`);
+  if (missing.length === 0) return [];
+  const plural = missing.length > 1;
+  return [
+    `verify-cache is ON (cache_enabled + cache_mode "on") but verify step${plural ? "s" : ""} ` +
+      `${missing.join(", ")} declare${plural ? "" : "s"} no cache_key_inputs. ` +
+      `An undeclared out-of-tree input (toolchain, env, external service) CAN false-pass a ` +
+      `cached verdict (deployment guide §16.2). Run cache_mode "shadow" first and observe ` +
+      `zero verify.cache_mismatch events before flipping to "on".`,
+  ];
+}
+
 export const integratorSettingsSchema = z
   .object({
     enabled: z.boolean().default(false),

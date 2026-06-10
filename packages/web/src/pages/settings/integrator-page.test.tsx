@@ -105,6 +105,61 @@ describe("IntegratorPage — seeding", () => {
   });
 });
 
+describe("IntegratorPage — verify-cache guardrail hint (C2)", () => {
+  it("shows the amber hint when the stored config is cache on + steps lacking cache_key_inputs", () => {
+    mocks.useProject.mockReturnValue(
+      projectWith({
+        ...SEEDED,
+        cache_enabled: true,
+        cache_mode: "on",
+        verify_steps: [{ id: "lint", command: "pnpm lint" }],
+      }),
+    );
+    render(<IntegratorPage />);
+    expect(screen.getByText(/verify-cache is ON/)).toBeInTheDocument();
+    expect(screen.getByText(/"lint"/)).toBeInTheDocument();
+    expect(screen.getByText(/§16\.2/)).toBeInTheDocument();
+    expect(screen.getByText(/shadow/)).toBeInTheDocument();
+  });
+
+  it("shows the synthetic-step hint when cache is on with no verify_steps", () => {
+    mocks.useProject.mockReturnValue(
+      projectWith({ ...SEEDED, cache_enabled: true, cache_mode: "on" }),
+    );
+    render(<IntegratorPage />);
+    expect(
+      screen.getByText(/synthetic verify_command step/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows NO hint in shadow mode / when the cache is off / when inputs are declared", () => {
+    mocks.useProject.mockReturnValue(
+      projectWith({
+        ...SEEDED,
+        cache_enabled: true,
+        cache_mode: "shadow",
+        verify_steps: [{ id: "lint", command: "pnpm lint" }],
+      }),
+    );
+    const { unmount } = render(<IntegratorPage />);
+    expect(screen.queryByText(/verify-cache is ON/)).toBeNull();
+    unmount();
+
+    mocks.useProject.mockReturnValue(
+      projectWith({
+        ...SEEDED,
+        cache_enabled: true,
+        cache_mode: "on",
+        verify_steps: [
+          { id: "lint", command: "pnpm lint", cache_key_inputs: ["node -v"] },
+        ],
+      }),
+    );
+    render(<IntegratorPage />);
+    expect(screen.queryByText(/verify-cache is ON/)).toBeNull();
+  });
+});
+
 describe("IntegratorPage — validation", () => {
   it("disables Save and shows a message when enabled but verify/worktree blank", () => {
     mocks.useProject.mockReturnValue(

@@ -33,6 +33,50 @@ export function integratorConfigFromProject(
 }
 
 /**
+ * C2 — the verify-cache config guardrail predicate (WEB MIRROR).
+ *
+ * Duplicated-VERBATIM mirror of the canonical `cacheConfigWarnings` in
+ * packages/shared/src/schemas/project.ts (the established mirror pattern —
+ * like IntegratorConfig in api.ts:71 mirroring the server schema). Keep the
+ * two in lockstep. PURE + advisory (never blocks): warns when the cache is
+ * armed (`cache_enabled === true` AND `cache_mode === "on"`) while any verify
+ * step — including the synthetic verify_command step when verify_steps is
+ * empty — declares no cache_key_inputs (the §16.2 false-pass precondition;
+ * shadow-first is the safe rollout).
+ */
+export function cacheConfigWarnings(
+  integrator:
+    | {
+        cache_enabled?: boolean;
+        cache_mode?: string;
+        verify_steps?: { id: string; cache_key_inputs?: string[] }[];
+      }
+    | null
+    | undefined,
+): string[] {
+  if (!integrator) return [];
+  if (integrator.cache_enabled !== true || integrator.cache_mode !== "on") {
+    return [];
+  }
+  const steps = integrator.verify_steps ?? [];
+  const missing =
+    steps.length === 0
+      ? [`"verify" (the synthetic verify_command step)`]
+      : steps
+          .filter((s) => (s.cache_key_inputs ?? []).length === 0)
+          .map((s) => `"${s.id}"`);
+  if (missing.length === 0) return [];
+  const plural = missing.length > 1;
+  return [
+    `verify-cache is ON (cache_enabled + cache_mode "on") but verify step${plural ? "s" : ""} ` +
+      `${missing.join(", ")} declare${plural ? "" : "s"} no cache_key_inputs. ` +
+      `An undeclared out-of-tree input (toolchain, env, external service) CAN false-pass a ` +
+      `cached verdict (deployment guide §16.2). Run cache_mode "shadow" first and observe ` +
+      `zero verify.cache_mismatch events before flipping to "on".`,
+  ];
+}
+
+/**
  * Merge an edited IntegratorConfig back into a project's full settings object,
  * preserving every sibling settings block AND every integrator sub-field the
  * config does not carry (verify_steps, cache_*, heartbeat, slo, worktree_name,

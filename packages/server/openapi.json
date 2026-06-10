@@ -10775,7 +10775,7 @@
           "Projects"
         ],
         "summary": "Update project",
-        "description": "Update project fields.",
+        "description": "Update project fields. The 200 envelope may carry advisory `warnings` (omitted when empty) — e.g. the verify-cache guardrail: cache_mode \"on\" with verify steps lacking cache_key_inputs is the documented false-pass precondition (deployment guide §16.2; shadow-first discipline). Warnings never block the save.",
         "parameters": [
           {
             "schema": {
@@ -10800,7 +10800,7 @@
         },
         "responses": {
           "200": {
-            "description": "Project updated",
+            "description": "Project updated (with optional advisory warnings)",
             "content": {
               "application/json": {
                 "schema": {
@@ -10808,6 +10808,12 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/Project"
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [

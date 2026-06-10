@@ -22,7 +22,10 @@ import {
 } from "@/components/ui/select";
 import { useProject, useUpdateIntegratorConfig } from "@/hooks/use-projects";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { integratorConfigFromProject } from "@/lib/integrator";
+import {
+  cacheConfigWarnings,
+  integratorConfigFromProject,
+} from "@/lib/integrator";
 import { ApiError, type IntegratorConfig, type LinkedRepo } from "@/lib/api";
 import { useProjectStore } from "@/stores/project-store";
 
@@ -89,6 +92,14 @@ export function IntegratorPage() {
     verifyTimeoutValid &&
     enabledReqsMet &&
     linkedReposValid;
+
+  // C2 guardrail: advisory verify-cache warnings computed from the PERSISTED
+  // settings on load (the cache/verify_steps fields are REST-only — not
+  // editable here — so the hint reflects the stored config, never the form).
+  const cacheWarnings = cacheConfigWarnings(
+    (project?.settings as { integrator?: Parameters<typeof cacheConfigWarnings>[0] } | null | undefined)
+      ?.integrator,
+  );
 
   // ── clean_keep editors ──────────────────────────────────────────
   function updateCleanKeep(i: number, value: string) {
@@ -539,6 +550,15 @@ export function IntegratorPage() {
               resolver) are REST-only for now — see
               docs/integrator-deployment.md.
             </p>
+
+            {cacheWarnings.map((warning, i) => (
+              <div
+                key={i}
+                className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300"
+              >
+                {warning}
+              </div>
+            ))}
 
             {updateMutation.isError && (
               <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">

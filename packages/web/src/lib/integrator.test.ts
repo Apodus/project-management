@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { IntegratorConfig, Project } from "./api";
 import {
+  cacheConfigWarnings,
   integratorConfigFromProject,
   mergeIntegratorSettings,
 } from "./integrator";
@@ -148,5 +149,57 @@ describe("mergeIntegratorSettings — preservation (load-bearing)", () => {
   it("seeds integrator block from empty / missing settings", () => {
     const result = mergeIntegratorSettings(undefined, DEFAULTS);
     expect(result.integrator).toEqual(DEFAULTS);
+  });
+});
+
+// ── cacheConfigWarnings (C2 — web mirror of @pm/shared) ───────────
+
+describe("cacheConfigWarnings", () => {
+  it("warns ONLY when cache_enabled true AND cache_mode on AND a step lacks cache_key_inputs", () => {
+    const warnings = cacheConfigWarnings({
+      cache_enabled: true,
+      cache_mode: "on",
+      verify_steps: [
+        { id: "lint" },
+        { id: "test", cache_key_inputs: ["node -v"] },
+      ],
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('"lint"');
+    expect(warnings[0]).not.toContain('"test"');
+    expect(warnings[0]).toContain("§16.2");
+    expect(warnings[0]).toContain("shadow");
+  });
+
+  it("empty verify_steps → warns on the synthetic verify_command step", () => {
+    const warnings = cacheConfigWarnings({
+      cache_enabled: true,
+      cache_mode: "on",
+      verify_steps: [],
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("synthetic verify_command step");
+  });
+
+  it("returns [] for shadow / off / kill-switch off / inputs declared / absent integrator", () => {
+    const step = [{ id: "lint" }];
+    expect(
+      cacheConfigWarnings({ cache_enabled: true, cache_mode: "shadow", verify_steps: step }),
+    ).toEqual([]);
+    expect(
+      cacheConfigWarnings({ cache_enabled: true, cache_mode: "off", verify_steps: step }),
+    ).toEqual([]);
+    expect(
+      cacheConfigWarnings({ cache_enabled: false, cache_mode: "on", verify_steps: step }),
+    ).toEqual([]);
+    expect(
+      cacheConfigWarnings({
+        cache_enabled: true,
+        cache_mode: "on",
+        verify_steps: [{ id: "lint", cache_key_inputs: ["node -v"] }],
+      }),
+    ).toEqual([]);
+    expect(cacheConfigWarnings(null)).toEqual([]);
+    expect(cacheConfigWarnings(undefined)).toEqual([]);
   });
 });
