@@ -182,6 +182,7 @@ function makeMember(over: Partial<MergeRequestView>): MergeRequestView {
     submittedBy: "worker-1",
     taskId: null,
     resolvedFrom: null,
+    synthetic: false,
     branch: null,
     commitSha: null,
     verifyCmd: null,

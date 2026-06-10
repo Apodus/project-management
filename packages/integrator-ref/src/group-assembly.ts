@@ -38,6 +38,8 @@ export interface AssembledGroupErr {
    * - `backpressure`: a correlated pool slot was unavailable (§5.1). Retry next
    *   integration; nothing was acquired-and-held.
    * - `inner_conflict` / `outer_conflict`: the inner/outer rebase conflicted.
+   *   (`outer_conflict` is structurally unreachable when the outer member is
+   *   synthetic — there is no outer ref to rebase; see AssembleGroupDeps.outerRef.)
    * - `gitlink_mismatch`: the §11 post-assembly assertion failed (committed
    *   gitlink != Ri, or the working tree at gitlinkPath was not populated).
    */
@@ -69,8 +71,15 @@ export interface AssembleGroupDeps {
   gitOps(worktreePath: string): GitOps;
   /** Inner member ref to rebase: branch ?? commitSha. */
   innerRef: string;
-  /** Outer member ref to rebase: branch ?? commitSha. */
-  outerRef: string;
+  /**
+   * Outer member ref to rebase: branch ?? commitSha. NULL ⇔ the outer member
+   * is SYNTHETIC (an inner-only group, campaign 2026-06-10) — steps 4-6
+   * degenerate to resetForAttempt + HEAD as baseOuterSha (no outer ref, nothing
+   * to rebase ⇒ `outer_conflict` structurally unreachable). Steps 7-9 then
+   * synthesize the outer candidate as exactly one gitlink-bump commit on top of
+   * live outer main.
+   */
+  outerRef: string | null;
   /** The inner linkedRepo's gitlink path within the outer tree (POSIX slashes). */
   gitlinkPath: string;
 }
@@ -85,18 +94,26 @@ export interface AssembleGroupDeps {
  *   §5.1  correlated lease: acquire inner THEN outer (fixed order, deadlock-free);
  *         release-on-partial-failure; either null -> backpressure.
  *   1-3   inner: resetForAttempt; baseInnerSha = HEAD; rebase inner -> Ri.
- *   4-6   outer: resetForAttempt; baseOuterSha = HEAD; rebase outer -> Ro'.
+ *   4-6   outer: resetForAttempt; baseOuterSha = HEAD; then
+ *           - `outerRef` non-null (a REAL outer member): rebase outer -> Ro'.
+ *           - `outerRef` null (a SYNTHETIC outer member, inner-only group):
+ *             nothing to rebase — the worktree sits at live outer main and
+ *             steps 7-9 synthesize the outer candidate directly on top of it,
+ *             so `outer_conflict` is structurally unreachable (the stale-
+ *             outer-bump failure class cannot occur: there is no pre-minted
+ *             outer branch to go stale).
  *   7     outerGitOps.fetchFromPath(innerWt.path, Ri) — so step 9 can checkout Ri.
- *   8     outerGitOps.updateSubmoduleGitlink(gitlinkPath, Ri) -> Ro (commit gitlink).
+ *   8     outerGitOps.updateSubmoduleGitlink(gitlinkPath, Ri) -> Ro (commit gitlink;
+ *         idempotent — gitlink already at Ri returns HEAD, no empty bump commit).
  *   9     outerGitOps.materializeSubmoduleWorktree(gitlinkPath, Ri) — populate disk.
  *   §11   post-assembly assertion: readSubmoduleGitlink === Ri AND the working
  *         tree at gitlinkPath is populated -> else gitlink_mismatch.
  *
+ * ONE assembly function, no forked code path: the synthetic arm is the same
+ * sequence with the single outer-rebase step conditional on `outerRef !== null`.
  * Does NOT verify (§5.3 / Step 10) and does NOT push (§6 / Step 11).
  */
-export async function assembleGroup(
-  deps: AssembleGroupDeps,
-): Promise<AssembledGroup> {
+export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledGroup> {
   // ── §5.1 correlated lease (fixed inner-before-outer; release-on-partial) ──
   const innerWt = deps.acquireInner();
   if (innerWt === null) {
@@ -137,19 +154,24 @@ export async function assembleGroup(
     }
     const Ri = innerRebase.treeSha;
 
-    // ── steps 4-6: outer reset, base, rebase ──
+    // ── steps 4-6: outer reset, base, then rebase (REAL outer member only) ──
     await outerWt.resetForAttempt();
     const baseOuterSha = await outerGitOps.resolveRef("HEAD"); // = Mo
-    const outerRebase = await outerGitOps.rebaseOnto(baseOuterSha, deps.outerRef);
-    if (!outerRebase.ok) {
-      return {
-        ok: false,
-        reason: "outer_conflict",
-        detail: outerRebase.conflictingFiles.join(", "),
-        release,
-      };
+    if (deps.outerRef !== null) {
+      const outerRebase = await outerGitOps.rebaseOnto(baseOuterSha, deps.outerRef);
+      if (!outerRebase.ok) {
+        return {
+          ok: false,
+          reason: "outer_conflict",
+          detail: outerRebase.conflictingFiles.join(", "),
+          release,
+        };
+      }
+      // outerRebase.treeSha is Ro' — outer rebased, gitlink still at the OLD inner.
     }
-    // outerRebase.treeSha is Ro' — outer rebased, gitlink still at the OLD inner.
+    // SYNTHETIC outer (outerRef null): no rebase — the worktree sits at live
+    // outer main (= baseOuterSha) and step 8 mints the one gitlink-bump commit
+    // on top of it. outer_conflict is structurally unreachable on this arm.
 
     // ── step 7: copy Ri's objects into the outer clone (for step 9's checkout) ──
     await outerGitOps.fetchFromPath(innerWt.path, Ri);
@@ -220,10 +242,7 @@ export async function assembleGroup(
  * contains at least one file (step 9 materialized the inner sources). A bare or
  * absent directory => the materialize did not run / failed.
  */
-async function worktreePopulated(
-  outerWtPath: string,
-  gitlinkPath: string,
-): Promise<boolean> {
+async function worktreePopulated(outerWtPath: string, gitlinkPath: string): Promise<boolean> {
   const dir = path.join(outerWtPath, ...gitlinkPath.split("/"));
   try {
     const entries = await readdir(dir);

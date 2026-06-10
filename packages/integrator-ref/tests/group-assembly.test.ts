@@ -139,6 +139,60 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops submodule ops (real git)", () => {
     expect(existsSync(libOnDisk)).toBe(true);
     expect(existsSync(readmeOnDisk)).toBe(true);
   });
+
+  // BEHAVIORAL PIN (inner-only groups campaign): updateSubmoduleGitlink's
+  // no-change IDEMPOTENCE is contractual. Calling it again with the SAME sha
+  // returns the same HEAD and creates NO commit (no empty gitlink-bump — the
+  // no-op land path depends on this: an up-to-date FF push then lands cleanly
+  // at the current main). This pins behavior that previously held only
+  // incidentally (simple-git's empty-stderr heuristic on git's "nothing to
+  // commit" exit 1) and is now explicit by construction.
+  it("updateSubmoduleGitlink is idempotent: same sha again → same HEAD, no new commit", async () => {
+    // Fresh inner + outer pair (this describe's tests build their own repos).
+    const innerBare = path.join(tmpRoot, "idem-inner.git");
+    const innerWt = path.join(tmpRoot, "idem-inner-wt");
+    await simpleGit().init(["--bare", "--initial-branch=main", innerBare]);
+    await simpleGit().clone(innerBare, innerWt);
+    const innerGit = simpleGit(innerWt);
+    await configIdentity(innerGit);
+    writeFileSync(path.join(innerWt, "lib.txt"), "idem lib\n");
+    await innerGit.add(["lib.txt"]);
+    await innerGit.commit("inner sources");
+    await innerGit.branch(["-M", "main"]);
+    const innerSha = (await innerGit.revparse(["HEAD"])).trim();
+
+    const outerBare = path.join(tmpRoot, "idem-outer.git");
+    const outerWt = path.join(tmpRoot, "idem-outer-wt");
+    await simpleGit().init(["--bare", "--initial-branch=main", outerBare]);
+    await simpleGit().clone(outerBare, outerWt);
+    const outerGit = simpleGit(outerWt);
+    await configIdentity(outerGit);
+    writeFileSync(path.join(outerWt, "top.txt"), "top\n");
+    await outerGit.add(["top.txt"]);
+    await outerGit.commit("outer init");
+    await outerGit.branch(["-M", "main"]);
+
+    const ops = createGitOps(outerGit);
+
+    // First call: a REAL gitlink change → a new commit.
+    const ro1 = await ops.updateSubmoduleGitlink(GITLINK_PATH, innerSha);
+    expect(ro1).toMatch(/^[0-9a-f]{40}$/);
+    const countAfterFirst = parseInt(
+      (await outerGit.raw(["rev-list", "--count", "HEAD"])).trim(),
+      10,
+    );
+
+    // Second call with the SAME sha: returns the SAME HEAD, no new commit.
+    const ro2 = await ops.updateSubmoduleGitlink(GITLINK_PATH, innerSha);
+    expect(ro2).toBe(ro1);
+    const countAfterSecond = parseInt(
+      (await outerGit.raw(["rev-list", "--count", "HEAD"])).trim(),
+      10,
+    );
+    expect(countAfterSecond).toBe(countAfterFirst);
+    // The gitlink still reads back the sha.
+    expect(await ops.readSubmoduleGitlink(GITLINK_PATH)).toBe(innerSha);
+  }, 30_000);
 });
 
 // ─── materialize populates NESTED submodules (real git, file protocol) ─

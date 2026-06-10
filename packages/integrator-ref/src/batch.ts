@@ -1883,10 +1883,12 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
   }
 
   // 3. Acquire the lane lock ONCE (like runBatchOnce). Representative = the
-  //    forming group's first member (its intent seeds the lock) when integrating,
-  //    else a recovery-marker (recovery-only pass). OUTSIDE the try/finally so a
+  //    forming group's first REAL member (a synthetic outer member carries null
+  //    taskId/branch/commitSha — the real member's intent fields make the lock
+  //    legible; behavior-neutral otherwise) when integrating, else a
+  //    recovery-marker (recovery-only pass). OUTSIDE the try/finally so a
   //    failed/unavailable acquire never enters the release.
-  const rep = group?.members[0];
+  const rep = group?.members.find((m) => m.synthetic !== true) ?? group?.members[0];
   try {
     const lock = await pmClient.acquireLock(projectId, resource, {
       taskId: rep?.taskId ?? null,

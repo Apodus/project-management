@@ -134,6 +134,15 @@ export interface GitOps {
    * `gitlinkPath` to point at inner commit `sha`, then COMMIT the outer tree.
    * Returns the new outer HEAD SHA (the assembled `Ro`).
    *
+   * IDEMPOTENT — when the gitlink already references `sha`, returns the current
+   * HEAD without creating a commit (never an empty bump commit; the up-to-date
+   * FF push then makes the land a clean no-op). Explicit by construction:
+   * previously this held only incidentally via simple-git's empty-stderr
+   * heuristic on git's "nothing to commit" exit-1 (a simple-git bump or git
+   * routing that message to stderr would have silently turned no-ops into
+   * rejections); the staged-index-vs-HEAD check is now a direct numeric-exit
+   * spawn (the runIsAncestor/runTreesIdentical precedent), never text parsing.
+   *
    * Notes (per §5.4, confirmed on win32):
    *  - `--add` is REQUIRED to stage a gitlink path not already present in the
    *    index (harmless when it already exists — it updates in place).
@@ -442,6 +451,35 @@ function runTreesIdentical(a: string, b: string, cwd: string): Promise<boolean> 
   });
 }
 
+/**
+ * Run `git diff --cached --quiet` as a DIRECT spawn, reading the NUMERIC exit
+ * code (same precedent as runIsAncestor / runTreesIdentical): exit 0 = the
+ * staged index matches HEAD (a commit would be empty) → `true`; exit 1 = staged
+ * changes exist → `false`; any other code (128 — corrupt repo / unborn HEAD)
+ * REJECTS so the caller escalates rather than silently misreading an error.
+ * Used by updateSubmoduleGitlink to make its no-change idempotence EXPLICIT
+ * (never text-parsing git's "nothing to commit" message).
+ */
+function runIndexMatchesHead(cwd: string): Promise<boolean> {
+  return new Promise<boolean>((resolve, reject) => {
+    const child = spawn("git", ["diff", "--cached", "--quiet"], {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      if (code === 0) resolve(true);
+      else if (code === 1) resolve(false);
+      else reject(new Error(`git diff --cached --quiet exited ${code}: ${stderr.trim()}`));
+    });
+  });
+}
+
 // ─── Factory ──────────────────────────────────────────────────────
 
 // Explicit commit identity for pool-cloned worktrees. Pool clones have NO
@@ -598,6 +636,19 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     // introduce the cacheinfo entry; forward slashes are the git index
     // convention. `cacheinfo` does NOT need `sha` present locally.
     await git.raw(["update-index", "--add", "--cacheinfo", `160000,${sha},${gitlinkPath}`]);
+    // EXPLICIT no-change idempotence: if the staged index already matches HEAD
+    // (the gitlink already referenced `sha`), return the current HEAD WITHOUT
+    // committing — never an empty bump commit (the up-to-date FF push then makes
+    // the land a clean no-op). This was previously only INCIDENTAL behavior —
+    // git's no-change `commit` exits 1 with "nothing to commit" on STDOUT
+    // (stderr empty) and simple-git's error detection only throws on
+    // nonzero-exit-WITH-stderr — i.e. it hung on a heuristic a simple-git bump
+    // or git message-routing change could silently break. The check is a direct
+    // numeric-exit spawn (the treesIdentical precedent), never text parsing.
+    const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+    if (await runIndexMatchesHead(topLevel)) {
+      return (await git.revparse(["HEAD"])).trim();
+    }
     // Commit with an EXPLICIT identity — pool-cloned worktrees have no
     // configured user, so without this the commit fails "Author identity
     // unknown" (this is the integrator's first authored commit).

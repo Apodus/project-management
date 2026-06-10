@@ -12,6 +12,11 @@
  *   §6.2 PUSH 2 (outer)   — fast-forward outer main Mo → Ro (gitlink → Ri).
  *   §6.7 clean land       — both pushed → completeAttempts(passed) BEFORE
  *                           landGroup (landGroup does NOT touch attempts).
+ *                           A SYNTHETIC outer member (inner-only group) flows
+ *                           through this identical body keyed by requestId: its
+ *                           landedSha is Ro (the synthesized gitlink-bump
+ *                           commit, or the unchanged outer main on a no-op
+ *                           land) — no branch in landGroup's payload or logic.
  *   §6.5 failure (b)      — outer push failed AFTER inner landed → THE ORPHAN:
  *                           outer main UNCHANGED (no half-landed gitlink); mark
  *                           inner orphaned, open the durable incident, reject the
@@ -110,14 +115,8 @@ export async function landAssembledGroup(
   const { pmClient, logger, gitRemote, gitMainBranch } = deps;
   const { groupId, projectId, ready, innerRepoName, outerRepoName } = args;
   const asm = ready.assembled;
-  const {
-    innerMember,
-    outerMember,
-    innerAttemptId,
-    outerAttemptId,
-    innerSteps,
-    outerSteps,
-  } = ready;
+  const { innerMember, outerMember, innerAttemptId, outerAttemptId, innerSteps, outerSteps } =
+    ready;
   const Mi = asm.baseInnerSha;
   const Mo = asm.baseOuterSha;
 
@@ -125,12 +124,8 @@ export async function landAssembledGroup(
     // ── §6.1 drift guard: re-fetch + re-resolve BOTH live mains. ──
     await asm.innerGitOps.fetch(gitRemote);
     await asm.outerGitOps.fetch(gitRemote);
-    const liveInner = await asm.innerGitOps.resolveRef(
-      `${gitRemote}/${gitMainBranch}`,
-    );
-    const liveOuter = await asm.outerGitOps.resolveRef(
-      `${gitRemote}/${gitMainBranch}`,
-    );
+    const liveInner = await asm.innerGitOps.resolveRef(`${gitRemote}/${gitMainBranch}`);
+    const liveOuter = await asm.outerGitOps.resolveRef(`${gitRemote}/${gitMainBranch}`);
 
     if (liveInner !== Mi || liveOuter !== Mo) {
       const reason = "live main drifted before land; re-verify next pass";
