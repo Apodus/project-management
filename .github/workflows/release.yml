@@ -28,12 +28,20 @@ name: release
 #      `npm install -g npm@latest` before publishing.
 #   4. Publish by pushing a version tag, e.g.:
 #         git tag v0.1.0 && git push origin v0.1.0
+#
+# Verify gate: typecheck + the full unit/integration suite run BEFORE any
+# publish step — a tag whose tree does not verify never reaches npm.
+#
+# Dry-run: the `workflow_dispatch` trigger runs install → typecheck → test →
+# build but SKIPS both publish steps — they are guarded by
+# `if: startsWith(github.ref, 'refs/tags/v')` and only execute on a v* tag.
 # ────────────────────────────────────────────────────────────────────────────
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -59,6 +67,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
       - name: Build MCP server bundle
         run: pnpm --filter @urtela/pm-mcp-server build
 
@@ -69,9 +83,11 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Publish @urtela/pm-mcp-server
+        if: startsWith(github.ref, 'refs/tags/v')
         run: npm publish --provenance --access public
         working-directory: packages/mcp-server
 
       - name: Publish @urtela/pm-integrator
+        if: startsWith(github.ref, 'refs/tags/v')
         run: npm publish --provenance --access public
         working-directory: packages/integrator-ref
