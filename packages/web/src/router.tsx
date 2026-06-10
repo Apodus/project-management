@@ -2,40 +2,128 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Navigate,
   Outlet,
   redirect,
 } from "@tanstack/react-router";
 import { AppLayout } from "@/components/layout/app-layout";
-import { ActivityPage } from "@/pages/activity-page";
-import { DashboardPage } from "@/pages/dashboard-page";
-import { EpicDetailPage } from "@/pages/epic-detail-page";
-import { EpicListPage } from "@/pages/epic-list-page";
-import { EpicTimelinePage } from "@/pages/epic-timeline-page";
 import { LoginPage } from "@/pages/login-page";
-import { MilestonesPage } from "@/pages/milestones-page";
-import { ProjectListPage } from "@/pages/project-list-page";
-import { ProposalDetailPage } from "@/pages/proposal-detail-page";
-import { ProposalListPage } from "@/pages/proposal-list-page";
-import { NotesPage } from "@/pages/notes-page";
 import { SetupPage } from "@/pages/setup-page";
-import { TaskDetailPage } from "@/pages/task-detail-page";
-import { TaskListPage } from "@/pages/task-list-page";
-import { BoardPage } from "@/pages/board-page";
-import { ClaimsPage } from "@/pages/claims-page";
-import { TrainDashboardPage } from "@/pages/train-dashboard-page";
-import { TrainAuditPage } from "@/pages/train-audit-page";
-import { MergeRequestTimelinePage } from "@/pages/merge-request-timeline-page";
-import { UsersPage } from "@/pages/settings/users-page";
-import { BackupPage } from "@/pages/settings/backup-page";
-import { TemplatesPage } from "@/pages/settings/templates-page";
-import { AutomationPage } from "@/pages/settings/automation-page";
-import { NotificationsPage } from "@/pages/settings/notifications-page";
-import { ConflictResolutionPage } from "@/pages/settings/conflict-resolution-page";
-import { IntegratorPage } from "@/pages/settings/integrator-page";
-import { CategoriesPage } from "@/pages/settings/categories-page";
-import { HelpPage } from "@/pages/help-page";
 import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
+
+// ─── Route-level code splitting (Campaign C3 P6) ───────────────────
+// Every authenticated-layout page is a lazy route chunk
+// (lazyRouteComponent(import, exportName) — the typed exportName makes a
+// rename/typo a TYPECHECK error, not a runtime blank). Kept EAGER: AppLayout
+// (the shell), LoginPage/SetupPage (first paint on a cold visit), and the
+// index <Navigate>. defaultPreload: "intent" (already set below) prefetches a
+// chunk on hover/focus, so the lazy hop is rarely felt.
+
+const ActivityPage = lazyRouteComponent(
+  () => import("@/pages/activity-page"),
+  "ActivityPage",
+);
+const DashboardPage = lazyRouteComponent(
+  () => import("@/pages/dashboard-page"),
+  "DashboardPage",
+);
+const EpicDetailPage = lazyRouteComponent(
+  () => import("@/pages/epic-detail-page"),
+  "EpicDetailPage",
+);
+const EpicListPage = lazyRouteComponent(
+  () => import("@/pages/epic-list-page"),
+  "EpicListPage",
+);
+const EpicTimelinePage = lazyRouteComponent(
+  () => import("@/pages/epic-timeline-page"),
+  "EpicTimelinePage",
+);
+const MilestonesPage = lazyRouteComponent(
+  () => import("@/pages/milestones-page"),
+  "MilestonesPage",
+);
+const ProjectListPage = lazyRouteComponent(
+  () => import("@/pages/project-list-page"),
+  "ProjectListPage",
+);
+const ProposalDetailPage = lazyRouteComponent(
+  () => import("@/pages/proposal-detail-page"),
+  "ProposalDetailPage",
+);
+const ProposalListPage = lazyRouteComponent(
+  () => import("@/pages/proposal-list-page"),
+  "ProposalListPage",
+);
+const NotesPage = lazyRouteComponent(
+  () => import("@/pages/notes-page"),
+  "NotesPage",
+);
+const TaskDetailPage = lazyRouteComponent(
+  () => import("@/pages/task-detail-page"),
+  "TaskDetailPage",
+);
+const TaskListPage = lazyRouteComponent(
+  () => import("@/pages/task-list-page"),
+  "TaskListPage",
+);
+const BoardPage = lazyRouteComponent(
+  () => import("@/pages/board-page"),
+  "BoardPage",
+);
+const ClaimsPage = lazyRouteComponent(
+  () => import("@/pages/claims-page"),
+  "ClaimsPage",
+);
+const TrainDashboardPage = lazyRouteComponent(
+  () => import("@/pages/train-dashboard-page"),
+  "TrainDashboardPage",
+);
+const TrainAuditPage = lazyRouteComponent(
+  () => import("@/pages/train-audit-page"),
+  "TrainAuditPage",
+);
+const MergeRequestTimelinePage = lazyRouteComponent(
+  () => import("@/pages/merge-request-timeline-page"),
+  "MergeRequestTimelinePage",
+);
+const UsersPage = lazyRouteComponent(
+  () => import("@/pages/settings/users-page"),
+  "UsersPage",
+);
+const BackupPage = lazyRouteComponent(
+  () => import("@/pages/settings/backup-page"),
+  "BackupPage",
+);
+const TemplatesPage = lazyRouteComponent(
+  () => import("@/pages/settings/templates-page"),
+  "TemplatesPage",
+);
+const AutomationPage = lazyRouteComponent(
+  () => import("@/pages/settings/automation-page"),
+  "AutomationPage",
+);
+const NotificationsPage = lazyRouteComponent(
+  () => import("@/pages/settings/notifications-page"),
+  "NotificationsPage",
+);
+const ConflictResolutionPage = lazyRouteComponent(
+  () => import("@/pages/settings/conflict-resolution-page"),
+  "ConflictResolutionPage",
+);
+const IntegratorPage = lazyRouteComponent(
+  () => import("@/pages/settings/integrator-page"),
+  "IntegratorPage",
+);
+const CategoriesPage = lazyRouteComponent(
+  () => import("@/pages/settings/categories-page"),
+  "CategoriesPage",
+);
+const HelpPage = lazyRouteComponent(
+  () => import("@/pages/help-page"),
+  "HelpPage",
+);
 
 // ---- Root route (no layout — just an outlet) ----
 
