@@ -1,0 +1,19 @@
+{
+  "campaign": "Notes follow-ups + tooling hardening",
+  "roadmap": "roadmaps/roadmap-20260610-notes-followups-hardening.md",
+  "branch": "campaign-notes-followups-hardening",
+  "base": "main (bb4052b)",
+  "phases": [
+    { "id": "P1", "title": "openapi.json drift-guard vitest", "status": "complete", "commit": "75fdb7b", "outcome": "tests/openapi-drift.test.ts — two-tier (parsed toEqual for diagnosis + byte toBe seal); verifier empirically confirmed spec in sync + deterministic + CRLF-safe (.gitattributes eol=lf); negative check proven; 1456 server tests green" },
+    { "id": "P2", "title": "drizzle snapshot baseline rebuild", "status": "complete", "commit": "cfb48c5", "outcome": "7 stale snapshots deleted; single fresh baseline 0026_snapshot.json (version 6 — sqlite snapshots are v6, only the journal is v7; verifier caught the plan's wrong v7 assertion); db:generate works: 'nothing to migrate' clean + correct single-ALTER 0027 probe diff; 1456 tests green; CLAUDE.md migrations note updated" },
+    { "id": "P3", "title": "dedup two-pass OR-fallback", "status": "complete", "commit": "d8237cc", "outcome": "sanitizeFtsQueryOr (15-token cap) + two-pass findSimilarOpenNotes (AND unchanged; OR top-3 only on zero AND-hits; one try/catch wraps both — advisory invariant); /search byte-identical; existing fixtures verified zero-overlap-safe; 1462 server tests green" },
+    { "id": "P4", "title": "E2E stabilization", "status": "complete", "commit": "2359624", "outcome": "20/20 GREEN. Spec 01 deterministic wizard drive; spec 02 ROOT CAUSE was a stale spec (a03b0ba auto-advances open->discussing on any author's comment; explicit transition 400'd deterministically) — fixed + all API asserts print response bodies; spec 04 data-loaded gate; spec 05 count-based edge assert after node-settle; per-run DB path kills the zombie-handle cascade by construction; 60s budget for concurrent-agent-session machine load. KNOWN LIMITATION: specs 02-06 are order-dependent (only 01 creates the admin) — single-spec isolation runs hit the setup wizard; pre-existing, noted as follow-up." }
+  ],
+  "status": "COMPLETE",
+  "current": "done",
+  "open_issues": ["PM check 2026-06-10T03:29Z: another actor created vision epic 01KTQS5YJ5XF6XK3H41Z6R901N (repo-quality consolidation, 5 campaigns) which explicitly excludes this campaign's scope and phase-pins on its P3/P4 — no overlap, no redirect; downstream arc awaits this campaign landing"],
+  "parked": "FTS wiring + anchor enrichment — one future bundled campaign, trigger ~>500-1000 notes/project (documented in the roadmap)",
+  "dag_drift": [],
+  "execution_mode": "sequential (phases file-disjoint but share one working tree)",
+  "last_check": "2026-06-10T00:00:00Z"
+}
