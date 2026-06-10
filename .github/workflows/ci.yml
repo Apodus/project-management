@@ -1,0 +1,95 @@
+name: ci
+
+# Structural guardrail: every push and PR must pass typecheck → lint →
+# test → build. The unit/integration suite includes the integrator-ref
+# merge-train tests (real git repos + worktrees), which are the slow tail —
+# hence the generous job timeout.
+#
+# Turbo task graph note: `pnpm test` depends on `build` (turbo.json), so the
+# suite runs against built packages; the trailing explicit `pnpm build` step
+# is then a cache hit and exists to surface build errors as their own step.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck + lint + test + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # ── Format check — DISABLED STUB (pre-existing drift) ───────────────
+      # `pnpm format:check` fails on main today: 359 files are committed
+      # wrapped at printWidth 80 while .prettierrc says 100 (the drift
+      # predates this workflow — nothing enforces prettier at commit time;
+      # lint-staged only runs secretlint). Enable this step in the SAME
+      # change as a dedicated tree-wide `pnpm format` normalization commit,
+      # after the in-flight campaigns land (a 359-file rewrite now would
+      # conflict with every open branch).
+      #
+      # - name: Format check
+      #   run: pnpm format:check
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  # ── E2E job — PHASE-PINNED STUB, do not enable yet ──────────────────────
+  # Uncomment when roadmap-20260610-notes-followups-hardening P4 (E2E
+  # stabilization, 20/20 green) lands on main. Keep `continue-on-error: true`
+  # (non-blocking) for the first week after enabling, then remove the flag.
+  #
+  # e2e:
+  #   name: e2e (Playwright)
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 30
+  #   continue-on-error: true # non-blocking for the first week after enabling
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set up pnpm
+  #       uses: pnpm/action-setup@v4
+  #
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 22
+  #         cache: pnpm
+  #
+  #     - name: Install dependencies
+  #       run: pnpm install --frozen-lockfile
+  #
+  #     - name: Install Playwright Chromium
+  #       run: pnpm exec playwright install --with-deps chromium
+  #
+  #     - name: Run E2E tests
+  #       run: pnpm test:e2e
