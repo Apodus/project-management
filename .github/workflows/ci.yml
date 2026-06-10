@@ -56,8 +56,14 @@ jobs:
       # - name: Format check
       #   run: pnpm format:check
 
+      # --concurrency=1 serializes the per-package turbo test tasks: on a
+      # 2-vCPU hosted runner, running the server suite (70 files) concurrently
+      # with the integrator merge-train suite (real git worktrees + spawned
+      # verify children) starves the train's timing-sensitive E2E flows into
+      # spurious rejections. Serial costs a few minutes of wall clock and
+      # removes the oversubscription entirely. Local `pnpm test` stays parallel.
       - name: Test
-        run: pnpm test
+        run: pnpm test -- --concurrency=1
 
       - name: Build
         run: pnpm build
