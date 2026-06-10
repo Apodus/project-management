@@ -385,45 +385,7 @@ export function resolve(
   const now = new Date().toISOString();
 
   db.transaction((tx) => {
-    tx.update(mergeIncidents)
-      .set({
-        state: terminal,
-        resolvedAt: now,
-        resolution,
-        updatedAt: now,
-      })
-      .where(eq(mergeIncidents.id, id))
-      .run();
-
-    if (row.taskId !== null) {
-      const commentBody =
-        `Incident resolved (${params.mode}): ${row.outerRepo} gitlink now at ` +
-        `${params.outerLandedSha ?? "(unspecified)"}.`;
-      tx.insert(comments)
-        .values({
-          id: createId(),
-          taskId: row.taskId,
-          proposalId: null,
-          authorId: actor.id,
-          body: commentBody,
-          commentType: "merge_incident",
-          metadata: {
-            incidentId: id,
-            groupId: row.groupId,
-            mode: params.mode,
-            ...(params.outerLandedSha
-              ? { outerLandedSha: params.outerLandedSha }
-              : {}),
-            ...(params.resolvedByGroupId
-              ? { resolvedByGroupId: params.resolvedByGroupId }
-              : {}),
-            ...(params.note ? { note: params.note } : {}),
-          },
-          createdAt: now,
-          updatedAt: now,
-        })
-        .run();
-    }
+    applyResolveInTx(tx, row, terminal, resolution, params, actor.id, now);
   });
 
   const updated = readIncidentOrThrow(id);
@@ -445,4 +407,127 @@ export function resolve(
     });
   }
   return toView(updated);
+}
+
+// ─── Tx-internal resolve (C2 — shared with train.service.forceLand) ─
+
+/**
+ * The tx handle a db.transaction callback receives (same inline pattern as
+ * merge-request.service.ts:attachLandedRef / audit.service.ts:record).
+ */
+type TxHandle = Parameters<
+  Parameters<ReturnType<typeof getDb>["transaction"]>[0]
+>[0];
+
+/**
+ * The minimal incident-row shape the tx-internal resolve needs. A full
+ * `merge_incidents` row (read inside the caller's tx) satisfies it.
+ */
+export interface ResolvableIncidentRow {
+  id: string;
+  groupId: string | null;
+  taskId: string | null;
+  outerRepo: string;
+}
+
+/**
+ * Shared tx body of resolve(): UPDATE state → terminal + the follow-up
+ * merge_incident comment (when the incident has a task). Emits NOTHING — the
+ * caller emits after its transaction commits. Extracted byte-identical from
+ * resolve(); the caller is responsible for the transition guard (state must
+ * be "open").
+ */
+function applyResolveInTx(
+  tx: TxHandle,
+  row: ResolvableIncidentRow,
+  terminal: "auto_resolved" | "human_resolved",
+  resolution: MergeIncidentResolution,
+  params: ResolveIncidentParams,
+  actorId: string,
+  now: string,
+): void {
+  tx.update(mergeIncidents)
+    .set({
+      state: terminal,
+      resolvedAt: now,
+      resolution,
+      updatedAt: now,
+    })
+    .where(eq(mergeIncidents.id, row.id))
+    .run();
+
+  if (row.taskId !== null) {
+    const commentBody =
+      `Incident resolved (${params.mode}): ${row.outerRepo} gitlink now at ` +
+      `${params.outerLandedSha ?? "(unspecified)"}.`;
+    tx.insert(comments)
+      .values({
+        id: createId(),
+        taskId: row.taskId,
+        proposalId: null,
+        authorId: actorId,
+        body: commentBody,
+        commentType: "merge_incident",
+        metadata: {
+          incidentId: row.id,
+          groupId: row.groupId,
+          mode: params.mode,
+          ...(params.outerLandedSha
+            ? { outerLandedSha: params.outerLandedSha }
+            : {}),
+          ...(params.resolvedByGroupId
+            ? { resolvedByGroupId: params.resolvedByGroupId }
+            : {}),
+          ...(params.note ? { note: params.note } : {}),
+        },
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+  }
+}
+
+/**
+ * Tx-internal HUMAN resolve — open → human_resolved INSIDE the caller's
+ * transaction (train.service.forceLand resolves a partially-landed group's
+ * open incidents atomically with the member's force-land). Non-emitting: the
+ * caller MUST emit MERGE_INCIDENT_HUMAN_RESOLVED after commit (use
+ * `emitHumanResolved`). The caller is responsible for selecting only OPEN
+ * incidents and for authz (forceLand is already admin-gated).
+ */
+export function resolveHumanInTx(
+  tx: TxHandle,
+  row: ResolvableIncidentRow,
+  params: Omit<ResolveIncidentParams, "mode">,
+  actorId: string,
+  now: string,
+): void {
+  const fullParams: ResolveIncidentParams = { ...params, mode: "human" };
+  const resolution: MergeIncidentResolution = {
+    mode: "human",
+    ...(params.outerLandedSha ? { outerLandedSha: params.outerLandedSha } : {}),
+    ...(params.resolvedByGroupId
+      ? { resolvedByGroupId: params.resolvedByGroupId }
+      : {}),
+    ...(params.note ? { note: params.note } : {}),
+  };
+  applyResolveInTx(tx, row, "human_resolved", resolution, fullParams, actorId, now);
+}
+
+/**
+ * Post-commit event half of `resolveHumanInTx`. Re-reads the resolved row and
+ * emits MERGE_INCIDENT_HUMAN_RESOLVED with the same extras resolve() uses.
+ */
+export function emitHumanResolved(
+  incidentId: string,
+  actorId: string,
+  params: Omit<ResolveIncidentParams, "mode">,
+): void {
+  const updated = readIncidentOrThrow(incidentId);
+  emit(EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED, updated, actorId, {
+    incidentId,
+    groupId: updated.groupId,
+    ...(params.outerLandedSha ? { outerLandedSha: params.outerLandedSha } : {}),
+    note: params.note ?? null,
+  });
 }

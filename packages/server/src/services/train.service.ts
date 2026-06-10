@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import {
   comments,
   getDb,
   mergeAttempts,
+  mergeIncidents,
   mergeLocks,
   mergeRequests,
   projects,
@@ -20,7 +21,11 @@ import {
   attachLandedRef,
   type Actor,
 } from "./merge-request.service.js";
-import { assertMemberLandableViaGroup } from "./merge-group.service.js";
+import { assertForceLandableViaGroup } from "./merge-group.service.js";
+import {
+  emitHumanResolved,
+  resolveHumanInTx,
+} from "./merge-incident.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 //
@@ -86,6 +91,7 @@ interface MergeRequestRow {
   resource: string;
   submittedBy: string;
   taskId: string | null;
+  groupId: string | null;
   branch: string | null;
   commitSha: string | null;
   verifyCmd: string | null;
@@ -658,10 +664,18 @@ export interface ForceLandBody {
  * past an unverified tree. The mandatory force_land audit row is the entire
  * accountability mechanism.
  *
- * Admin-only, reason-required. Precondition: integrating (landed → idempotent
- * 200 no-op no-audit; queued/rejected/abandoned → 409). Grouped members → 409
- * (land via the group). Does NOT run git — records the operator-asserted
- * landedSha; PM-state vs git-remote divergence is BY DESIGN (§4.3.4).
+ * Admin-only, reason-required. Legality matrix (C2 group-state-aware):
+ *   - non-grouped: integrating → land; landed → idempotent 200 no-op no-audit;
+ *     queued/rejected/abandoned → 409 (byte-identical to 7.4).
+ *   - grouped, member landed → idempotent 200 no-op no-audit (evaluated FIRST).
+ *   - grouped, group forming/integrating/landed → 409 GROUPED_MEMBER (land via
+ *     the group).
+ *   - grouped, group rejected/partially_landed + member rejected → force-land;
+ *     any other member status (orphaned/queued/abandoned) → 409.
+ *   - force-landing the LAST stuck member of a partially_landed group resolves
+ *     the group's open incidents human_resolved in the SAME transaction.
+ * Does NOT run git — records the operator-asserted landedSha; PM-state vs
+ * git-remote divergence is BY DESIGN (§4.3.4).
  *
  * Does NOT delegate to land()/completeAttempt() (ai_agent-gated → would 403
  * the human admin). All writes inline in ONE db.transaction.
@@ -693,21 +707,43 @@ export function forceLand(
   if (!row) {
     throw new AppError(404, "NOT_FOUND", `Merge request not found: ${requestId}`);
   }
-  // Grouped members can only land via the group (reuses the existing guard →
-  // 409 GROUPED_MEMBER, or 404 if absent).
-  assertMemberLandableViaGroup(requestId);
 
-  // Transition guard (force-land variant of the land matrix).
+  // ORDER PINNED (C2): the member-status-`landed` idempotent no-op evaluates
+  // FIRST — a landed member of a landed group is a clean 200 no-op (no audit);
+  // the "group landed → 409" arm of the guard only covers the residue.
   if (row.status === "landed") {
     // Idempotent 200 no-op — no audit.
     return toRequestView(row);
   }
-  if (row.status !== "integrating") {
-    throw new AppError(
-      409,
-      "INVALID_TRANSITION",
-      `Cannot force-land merge request ${requestId} from state "${row.status}"`,
-    );
+
+  // Group-state-aware guard (C2 legality matrix):
+  //   non-grouped                      → today's path, byte-identical.
+  //   group forming/integrating/landed → 409 GROUPED_MEMBER (land via group).
+  //   group rejected/partially_landed  → the stuck member IS force-landable.
+  const groupCheck = assertForceLandableViaGroup(requestId);
+
+  // Transition guard (force-land variant of the land matrix).
+  if (groupCheck.kind === "non_grouped") {
+    if (row.status !== "integrating") {
+      throw new AppError(
+        409,
+        "INVALID_TRANSITION",
+        `Cannot force-land merge request ${requestId} from state "${row.status}"`,
+      );
+    }
+  } else {
+    // A terminal group's stuck member sits at `rejected` (markIntegrating →
+    // reject sequencing); orphaned/queued/abandoned members are NOT the
+    // stuck-member shape and stay 409.
+    if (row.status !== "rejected") {
+      throw new AppError(
+        409,
+        "INVALID_TRANSITION",
+        `Cannot force-land merge request ${requestId} from state "${row.status}" ` +
+          `(group ${groupCheck.groupId} is ${groupCheck.groupState}; only a ` +
+          `rejected member is force-landable)`,
+      );
+    }
   }
 
   const now = new Date().toISOString();
@@ -715,6 +751,8 @@ export function forceLand(
   let attemptId: string | null = null;
   let auditId: string | null = null;
   let auditView: AuditLogView | null = null;
+  const resolvedIncidentIds: string[] = [];
+  const incidentNote = `auto-resolved by force_land of ${requestId}: ${body.reason}`;
 
   const db = getDb();
   db.transaction((tx) => {
@@ -796,9 +834,67 @@ export function forceLand(
       now,
     });
 
-    // 4. The mandatory force_land audit row — the sole record R1 was bypassed.
-    const before = { status: "integrating", landedSha: null };
-    const after = { status: "landed", landedSha: body.landedSha, overridden: true };
+    // 4. Partial-group incident auto-resolve (C2): force-landing the LAST
+    //    stuck (rejected) member of a partially_landed group is the human
+    //    completing the group's recovery — resolve its open incidents
+    //    human_resolved in the SAME transaction. If other rejected siblings
+    //    remain, the group is still incomplete and the incidents stay open.
+    if (
+      groupCheck.kind === "grouped_terminal" &&
+      groupCheck.groupState === "partially_landed"
+    ) {
+      const stuckSiblings = tx
+        .select({ id: mergeRequests.id })
+        .from(mergeRequests)
+        .where(
+          and(
+            eq(mergeRequests.groupId, groupCheck.groupId),
+            eq(mergeRequests.status, "rejected"),
+            ne(mergeRequests.id, requestId),
+          ),
+        )
+        .all();
+      if (stuckSiblings.length === 0) {
+        const openIncidents = tx
+          .select()
+          .from(mergeIncidents)
+          .where(
+            and(
+              eq(mergeIncidents.groupId, groupCheck.groupId),
+              eq(mergeIncidents.state, "open"),
+            ),
+          )
+          .all();
+        for (const incident of openIncidents) {
+          resolveHumanInTx(
+            tx,
+            incident,
+            { outerLandedSha: body.landedSha, note: incidentNote },
+            actor.id,
+            now,
+          );
+          resolvedIncidentIds.push(incident.id);
+        }
+      }
+    }
+
+    // 5. The mandatory force_land audit row — the sole record R1 was bypassed.
+    //    `before` is status-derived (C2 audit honesty): identical output for
+    //    the non-grouped path (always integrating/null there), truthful for
+    //    the grouped-terminal path (rejected member, landedSha null).
+    const before = { status: row.status, landedSha: row.landedSha };
+    const after = {
+      status: "landed",
+      landedSha: body.landedSha,
+      overridden: true,
+      ...(groupCheck.kind === "grouped_terminal"
+        ? {
+            groupId: groupCheck.groupId,
+            groupState: groupCheck.groupState,
+            resolvedIncidentIds,
+          }
+        : {}),
+    };
     auditId = recordAudit(tx, {
       projectId: row.projectId,
       actorId: actor.id,
@@ -832,6 +928,13 @@ export function forceLand(
     attemptId,
     overridden: true,
   });
+  // Post-commit event half of the in-tx incident resolves (C2).
+  for (const incidentId of resolvedIncidentIds) {
+    emitHumanResolved(incidentId, actor.id, {
+      outerLandedSha: body.landedSha,
+      note: incidentNote,
+    });
+  }
   if (auditId !== null && auditView !== null) {
     emitAuditRecorded(auditId, row.projectId, actor.id, auditView);
   }

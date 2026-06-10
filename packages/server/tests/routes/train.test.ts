@@ -13,6 +13,7 @@ import {
   type TestProject,
 } from "../utils.js";
 import {
+  mergeIncidents,
   mergeRequests,
   mergeRequestGroups,
   users,
@@ -265,6 +266,139 @@ describe("Train + break-glass routes", () => {
         { body: { landedSha: "x", reason: "y" } },
       );
       expect(res.status).toBe(409);
+    });
+
+    // ── group-state-aware matrix (C2) ─────────────────────────────
+
+    /** Insert a group in `groupState` with one member in `memberStatus`. */
+    function groupedMember(
+      project: TestProject,
+      groupState: string,
+      memberStatus: string,
+      opts: { landedSha?: string | null; incidentState?: string } = {},
+    ): { reqId: string; groupId: string; incidentId: string | null } {
+      const submitter = createTestUser(testApp.db);
+      const ts = new Date().toISOString();
+      const groupId = createId();
+      testApp.db
+        .insert(mergeRequestGroups)
+        .values({
+          id: groupId,
+          projectId: project.id,
+          state: groupState,
+          submittedBy: submitter.id,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+      const reqId = createId();
+      testApp.db
+        .insert(mergeRequests)
+        .values({
+          id: reqId,
+          projectId: project.id,
+          submittedBy: submitter.id,
+          groupId,
+          status: memberStatus,
+          landedSha: opts.landedSha ?? null,
+          enqueuedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+      let incidentId: string | null = null;
+      if (opts.incidentState) {
+        incidentId = createId();
+        testApp.db
+          .insert(mergeIncidents)
+          .values({
+            id: incidentId,
+            projectId: project.id,
+            groupId,
+            type: "orphaned_inner",
+            innerRepo: "rynx",
+            orphanedSha: "inner-sha",
+            outerRepo: "game",
+            state: opts.incidentState,
+            openedAt: ts,
+            createdAt: ts,
+            updatedAt: ts,
+          })
+          .run();
+      }
+      return { reqId, groupId, incidentId };
+    }
+
+    it("member of a LANDED group already landed → 200 idempotent no-op", async () => {
+      const project = createTestProject(testApp.db);
+      const { reqId } = groupedMember(project, "landed", "landed", {
+        landedSha: "g1",
+      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${reqId}/force-land`,
+        { body: { landedSha: "other", reason: "noop" } },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.landedSha).toBe("g1"); // unchanged
+    });
+
+    it("non-landed member of a LANDED group → 409 GROUPED_MEMBER", async () => {
+      const project = createTestProject(testApp.db);
+      const { reqId } = groupedMember(project, "landed", "rejected");
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${reqId}/force-land`,
+        { body: { landedSha: "x", reason: "y" } },
+      );
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error.code).toBe("GROUPED_MEMBER");
+    });
+
+    it("rejected member of a PARTIALLY_LANDED group → 200 lands + open incident auto-resolves human_resolved", async () => {
+      const project = createTestProject(testApp.db);
+      const { reqId, incidentId } = groupedMember(
+        project,
+        "partially_landed",
+        "rejected",
+        { incidentState: "open" },
+      );
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${reqId}/force-land`,
+        { body: { landedSha: "outer-final", reason: "manual recovery" } },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.status).toBe("landed");
+      expect(body.data.landedSha).toBe("outer-final");
+      const incident = testApp.db
+        .select()
+        .from(mergeIncidents)
+        .where(eq(mergeIncidents.id, incidentId!))
+        .get()!;
+      expect(incident.state).toBe("human_resolved");
+    });
+
+    it("orphaned member of a PARTIALLY_LANDED group → 409 INVALID_TRANSITION", async () => {
+      const project = createTestProject(testApp.db);
+      const { reqId } = groupedMember(project, "partially_landed", "orphaned", {
+        landedSha: "inner-sha",
+      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${reqId}/force-land`,
+        { body: { landedSha: "x", reason: "y" } },
+      );
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error.code).toBe("INVALID_TRANSITION");
     });
   });
 

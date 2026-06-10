@@ -1257,3 +1257,52 @@ export function assertMemberLandableViaGroup(requestId: string): void {
     );
   }
 }
+
+/**
+ * Force-land variant of the group guard (C2 — failure legibility). The
+ * break-glass force-land is allowed to reach INTO a group, but ONLY when the
+ * group itself is terminal (rejected / partially_landed) — i.e. the train is
+ * done with it and a stuck member can only be recovered by a human. A live
+ * group (forming / integrating) or an already-landed group still 409s exactly
+ * like `assertMemberLandableViaGroup` (land via the group / nothing to fix).
+ *
+ * Returns a discriminated result so the caller can branch its status matrix:
+ *   { kind: "non_grouped" }                       — plain request, today's path.
+ *   { kind: "grouped_terminal", groupId, groupState } — terminal-group member.
+ * Throws 404 when the request is missing; 409 GROUPED_MEMBER (with the group
+ * state in the message) when the group is non-terminal-or-landed.
+ */
+export type ForceLandGroupCheck =
+  | { kind: "non_grouped" }
+  | {
+      kind: "grouped_terminal";
+      groupId: string;
+      groupState: "rejected" | "partially_landed";
+    };
+
+export function assertForceLandableViaGroup(
+  requestId: string,
+): ForceLandGroupCheck {
+  const row = readRequest(requestId);
+  if (!row) {
+    throw new AppError(404, "NOT_FOUND", `Merge request not found: ${requestId}`);
+  }
+  if (row.groupId === null) {
+    return { kind: "non_grouped" };
+  }
+  const group = readGroupOrThrow(row.groupId);
+  if (group.state === "rejected" || group.state === "partially_landed") {
+    return {
+      kind: "grouped_terminal",
+      groupId: group.id,
+      groupState: group.state,
+    };
+  }
+  throw new AppError(
+    409,
+    "GROUPED_MEMBER",
+    `Merge request ${requestId} is a member of group ${group.id} in state ` +
+      `"${group.state}"; force-land only applies to members of terminal groups ` +
+      `(rejected/partially_landed) — land via the group instead.`,
+  );
+}

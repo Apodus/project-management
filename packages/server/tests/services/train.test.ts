@@ -14,6 +14,7 @@ import {
   comments,
   gitRefs,
   mergeAttempts,
+  mergeIncidents,
   mergeLocks,
   mergeRequests,
   mergeRequestGroups,
@@ -497,6 +498,339 @@ describe("train service", () => {
       expect(view.status).toBe("landed");
       expect(view.landedSha).toBe("s1"); // unchanged
       expect(auditCount(testApp)).toBe(before); // no new audit
+    });
+  });
+
+  // ── forceLand — group-state-aware legality matrix (C2) ───────────
+
+  describe("forceLand — group-state-aware matrix (C2)", () => {
+    /**
+     * Insert a group (in `groupState`) + member requests (each with a status,
+     * optional landedSha/taskId) + optionally an orphaned_inner incident
+     * bound to the group. Pure row-level fixture — these shapes are produced
+     * by the integrator's group land/reject paths in production.
+     */
+    function groupedFixture(
+      project: TestProject,
+      opts: {
+        groupState: string;
+        members: {
+          status: string;
+          landedSha?: string | null;
+          taskId?: string | null;
+        }[];
+        incident?: { state: string; taskId?: string | null };
+      },
+    ): { groupId: string; memberIds: string[]; incidentId: string | null } {
+      const submitter = createTestUser(testApp.db);
+      const ts = new Date().toISOString();
+      const groupId = createId();
+      testApp.db
+        .insert(mergeRequestGroups)
+        .values({
+          id: groupId,
+          projectId: project.id,
+          state: opts.groupState,
+          submittedBy: submitter.id,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+      const memberIds: string[] = [];
+      for (const m of opts.members) {
+        const reqId = createId();
+        memberIds.push(reqId);
+        testApp.db
+          .insert(mergeRequests)
+          .values({
+            id: reqId,
+            projectId: project.id,
+            submittedBy: submitter.id,
+            taskId: m.taskId ?? null,
+            groupId,
+            status: m.status,
+            landedSha: m.landedSha ?? null,
+            enqueuedAt: ts,
+            createdAt: ts,
+            updatedAt: ts,
+          })
+          .run();
+      }
+      let incidentId: string | null = null;
+      if (opts.incident) {
+        incidentId = createId();
+        testApp.db
+          .insert(mergeIncidents)
+          .values({
+            id: incidentId,
+            projectId: project.id,
+            groupId,
+            type: "orphaned_inner",
+            innerRepo: "rynx",
+            orphanedSha: "inner-orphan-sha",
+            outerRepo: "game",
+            innerRequestId: null,
+            taskId: opts.incident.taskId ?? null,
+            state: opts.incident.state,
+            openedAt: ts,
+            createdAt: ts,
+            updatedAt: ts,
+          })
+          .run();
+      }
+      return { groupId, memberIds, incidentId };
+    }
+
+    function readIncidentRow(incidentId: string) {
+      return testApp.db
+        .select()
+        .from(mergeIncidents)
+        .where(eq(mergeIncidents.id, incidentId))
+        .get()!;
+    }
+
+    it("grouped member already landed → idempotent 200 no-op, NO audit (evaluated BEFORE the group guard, even on a landed group)", () => {
+      const project = createTestProject(testApp.db);
+      const { memberIds } = groupedFixture(project, {
+        groupState: "landed",
+        members: [{ status: "landed", landedSha: "g1" }],
+      });
+      const before = auditCount(testApp);
+      const view = svc.forceLand(
+        memberIds[0],
+        { landedSha: "other", reason: "noop" },
+        adminActor(testApp),
+      );
+      expect(view.status).toBe("landed");
+      expect(view.landedSha).toBe("g1"); // unchanged
+      expect(auditCount(testApp)).toBe(before); // no audit
+    });
+
+    it("group landed + member NOT landed (residue) → 409 GROUPED_MEMBER", () => {
+      const project = createTestProject(testApp.db);
+      const { memberIds } = groupedFixture(project, {
+        groupState: "landed",
+        members: [{ status: "rejected" }],
+      });
+      expect(() =>
+        svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
+      );
+    });
+
+    it("group integrating → 409 GROUPED_MEMBER (live group, land via the group)", () => {
+      const project = createTestProject(testApp.db);
+      const { memberIds } = groupedFixture(project, {
+        groupState: "integrating",
+        members: [{ status: "integrating" }],
+      });
+      expect(() =>
+        svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
+      );
+    });
+
+    it("group rejected + member rejected → force-lands; ONE audit, before status-derived, after carries groupId/groupState/resolvedIncidentIds", () => {
+      const project = createTestProject(testApp.db);
+      const { groupId, memberIds } = groupedFixture(project, {
+        groupState: "rejected",
+        members: [{ status: "rejected" }],
+      });
+      const view = svc.forceLand(
+        memberIds[0],
+        { landedSha: "outer-sha", reason: "manual recovery" },
+        adminActor(testApp),
+      );
+      expect(view.status).toBe("landed");
+      expect(view.landedSha).toBe("outer-sha");
+
+      const audits = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "force_land"))
+        .all();
+      expect(audits).toHaveLength(1);
+      // Audit honesty: `before` is status-derived (rejected member, null sha).
+      expect(audits[0].metadataBefore).toEqual({
+        status: "rejected",
+        landedSha: null,
+      });
+      const after = audits[0].metadataAfter as Record<string, unknown>;
+      expect(after.status).toBe("landed");
+      expect(after.overridden).toBe(true);
+      expect(after.groupId).toBe(groupId);
+      expect(after.groupState).toBe("rejected");
+      expect(after.resolvedIncidentIds).toEqual([]);
+    });
+
+    it("partially_landed + NOT last stuck (another rejected sibling) → lands, incident STAYS open", () => {
+      const project = createTestProject(testApp.db);
+      const { memberIds, incidentId } = groupedFixture(project, {
+        groupState: "partially_landed",
+        members: [
+          { status: "rejected" }, // the one we force-land
+          { status: "rejected" }, // a remaining stuck sibling
+          { status: "landed", landedSha: "inner1" },
+        ],
+        incident: { state: "open" },
+      });
+      const resolved = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED, resolved);
+
+      const view = svc.forceLand(
+        memberIds[0],
+        { landedSha: "outer-sha", reason: "first of two" },
+        adminActor(testApp),
+      );
+      expect(view.status).toBe("landed");
+      expect(readIncidentRow(incidentId!).state).toBe("open"); // untouched
+      expect(resolved).not.toHaveBeenCalled();
+
+      const audits = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "force_land"))
+        .all();
+      expect(audits).toHaveLength(1);
+      expect(
+        (audits[0].metadataAfter as Record<string, unknown>).resolvedIncidentIds,
+      ).toEqual([]);
+    });
+
+    it("partially_landed + LAST stuck → lands + incident human_resolved + follow-up comment + ONE audit + both events", () => {
+      const project = createTestProject(testApp.db);
+      const taskId = createTestTask(testApp.db, { projectId: project.id }).id;
+      const { groupId, memberIds, incidentId } = groupedFixture(project, {
+        groupState: "partially_landed",
+        members: [
+          { status: "rejected", taskId }, // the LAST stuck member
+          { status: "landed", landedSha: "inner1" },
+        ],
+        incident: { state: "open", taskId },
+      });
+      const landed = vi.fn();
+      const resolved = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_LANDED, landed);
+      getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED, resolved);
+
+      const view = svc.forceLand(
+        memberIds[0],
+        { landedSha: "outer-final", reason: "git reconciled by hand" },
+        adminActor(testApp),
+      );
+      expect(view.status).toBe("landed");
+
+      // Incident resolved human_resolved in the SAME transaction.
+      const incident = readIncidentRow(incidentId!);
+      expect(incident.state).toBe("human_resolved");
+      expect(incident.resolvedAt).toBeTruthy();
+      const resolution = incident.resolution as Record<string, unknown>;
+      expect(resolution.mode).toBe("human");
+      expect(resolution.outerLandedSha).toBe("outer-final");
+      expect(resolution.note).toBe(
+        `auto-resolved by force_land of ${memberIds[0]}: git reconciled by hand`,
+      );
+
+      // Follow-up merge_incident comment on the linked task.
+      const incidentComments = testApp.db
+        .select()
+        .from(comments)
+        .where(eq(comments.taskId, taskId))
+        .all()
+        .filter((c) => c.commentType === "merge_incident");
+      expect(incidentComments).toHaveLength(1);
+      expect(incidentComments[0].body).toContain("human");
+      expect(incidentComments[0].body).toContain("outer-final");
+
+      // Exactly ONE audit row (force_land) — the incident resolve adds none.
+      const audits = testApp.db.select().from(auditLog).all();
+      expect(audits).toHaveLength(1);
+      expect(audits[0].action).toBe("force_land");
+      const after = audits[0].metadataAfter as Record<string, unknown>;
+      expect(after.groupId).toBe(groupId);
+      expect(after.groupState).toBe("partially_landed");
+      expect(after.resolvedIncidentIds).toEqual([incidentId]);
+
+      // Both post-commit events.
+      expect(landed).toHaveBeenCalledTimes(1);
+      expect(landed.mock.calls[0][0].entity.overridden).toBe(true);
+      expect(resolved).toHaveBeenCalledTimes(1);
+      expect(resolved.mock.calls[0][0].entity.incidentId).toBe(incidentId);
+    });
+
+    it("incident already resolved → no double-resolve (resolvedIncidentIds [], no event, resolution untouched)", () => {
+      const project = createTestProject(testApp.db);
+      const { memberIds, incidentId } = groupedFixture(project, {
+        groupState: "partially_landed",
+        members: [
+          { status: "rejected" },
+          { status: "landed", landedSha: "inner1" },
+        ],
+        incident: { state: "human_resolved" },
+      });
+      const resolved = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED, resolved);
+
+      const view = svc.forceLand(
+        memberIds[0],
+        { landedSha: "outer", reason: "already handled" },
+        adminActor(testApp),
+      );
+      expect(view.status).toBe("landed");
+      expect(readIncidentRow(incidentId!).state).toBe("human_resolved");
+      expect(readIncidentRow(incidentId!).resolution).toBeNull(); // untouched
+      expect(resolved).not.toHaveBeenCalled();
+
+      const audits = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "force_land"))
+        .all();
+      expect(audits).toHaveLength(1);
+      expect(
+        (audits[0].metadataAfter as Record<string, unknown>).resolvedIncidentIds,
+      ).toEqual([]);
+    });
+
+    it("orphaned member of a partially_landed group → 409 INVALID_TRANSITION (recovery owns it, not force-land)", () => {
+      const project = createTestProject(testApp.db);
+      const { memberIds } = groupedFixture(project, {
+        groupState: "partially_landed",
+        members: [{ status: "orphaned", landedSha: "inner-orphan-sha" }],
+      });
+      expect(() =>
+        svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
+      );
+    });
+
+    it("queued member of a rejected group → 409 INVALID_TRANSITION", () => {
+      const project = createTestProject(testApp.db);
+      const { memberIds } = groupedFixture(project, {
+        groupState: "rejected",
+        members: [{ status: "queued" }],
+      });
+      expect(() =>
+        svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
+      );
+    });
+
+    it("abandoned member of a rejected group → 409 INVALID_TRANSITION", () => {
+      const project = createTestProject(testApp.db);
+      const { memberIds } = groupedFixture(project, {
+        groupState: "rejected",
+        members: [{ status: "abandoned" }],
+      });
+      expect(() =>
+        svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
+      ).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
+      );
     });
   });
 

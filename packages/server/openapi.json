@@ -27079,7 +27079,7 @@
           "Merge Train"
         ],
         "summary": "Force-land a request without verify (admin break-glass — THE R1 override)",
-        "description": "Admin override: land an `integrating` request WITHOUT verify (design §4.3.4) — the deliberate, recorded human bypass of the verify-gate. Admin-only, reason-required (both 400 if absent/empty). Grouped members → 409. Records the operator-asserted landedSha; does NOT run git (PM-state vs git-remote divergence is by design). Writes one prominently-recorded `force_land` audit row.",
+        "description": "Admin override: land a request WITHOUT verify (design §4.3.4) — the deliberate, recorded human bypass of the verify-gate. Admin-only, reason-required (both 400 if absent/empty). Legality matrix: non-grouped `integrating` → lands (queued/rejected/abandoned → 409); member already `landed` → idempotent 200 no-op (no audit); member of a group in `forming`/`integrating`/`landed` → 409 GROUPED_MEMBER (land via the group); member of a TERMINAL group (`rejected`/`partially_landed`) with member status `rejected` → lands (any other member status → 409). Force-landing the LAST stuck member of a `partially_landed` group auto-resolves the group's open incidents as `human_resolved` in the same transaction (operator runbook: deployment guide §15.3.2). Records the operator-asserted landedSha; does NOT run git (PM-state vs git-remote divergence is by design). Writes one prominently-recorded `force_land` audit row.",
         "parameters": [
           {
             "schema": {
