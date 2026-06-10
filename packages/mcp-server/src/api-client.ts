@@ -1414,13 +1414,24 @@ export interface MergeGroupMemberSpecBody {
 
 /**
  * Exactly one of `memberRequestIds` (bind existing) | `members` (atomic
- * submit-and-group). The server enforces the exactly-one-of; this client just
- * carries whichever the caller set.
+ * submit-and-group) — plus the inner-only third form: `members` with exactly
+ * one spec + `synthesizeOuter: true`. The server enforces the exactly-one-of
+ * and the synthesizeOuter combination matrix; this client just carries
+ * whichever the caller set.
  */
 export interface MergeGroupRequestBody {
   resource?: string;
   memberRequestIds?: string[];
   members?: MergeGroupMemberSpecBody[];
+  /**
+   * Inner-only cross-repo form (campaign 2026-06-10): with exactly one `members`
+   * spec, PM also records a SYNTHETIC outer member and the integrator
+   * synthesizes the outer gitlink-bump candidate at integration. STRICT
+   * `=== true` server-side. The client forwards whatever the caller set
+   * (including explicit `false` and illegal combinations) so the server's 400
+   * matrix stays the single owner of the rules.
+   */
+  synthesizeOuter?: boolean;
 }
 
 export interface MergeIncidentListFilters {

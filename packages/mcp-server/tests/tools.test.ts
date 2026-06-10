@@ -3022,6 +3022,11 @@ describe("MCP Tools", () => {
       // The atomic form must NOT send memberRequestIds.
       const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<string, unknown>;
       expect(callArg.memberRequestIds).toBeUndefined();
+      // Legacy byte-identity seal: when the caller never set synthesize_outer,
+      // the key must be ABSENT from the wire body — not present-as-undefined.
+      // (toHaveBeenCalledWith treats {k: undefined} as {}, so the in-check is
+      // the real seal.)
+      expect(Object.prototype.hasOwnProperty.call(callArg, "synthesizeOuter")).toBe(false);
     });
 
     it("pm_request_merge_group ids form sends {memberRequestIds}, not {members}", async () => {
@@ -3038,6 +3043,251 @@ describe("MCP Tools", () => {
       const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<string, unknown>;
       expect(callArg.memberRequestIds).toEqual(["mreq_A", "mreq_B"]);
       expect(callArg.members).toBeUndefined();
+      // Legacy byte-identity seal: synthesize_outer omitted ⇒ key ABSENT on
+      // the wire (hasOwnProperty, not just undefined — see the members-form
+      // test above).
+      expect(Object.prototype.hasOwnProperty.call(callArg, "synthesizeOuter")).toBe(false);
+    });
+
+    it("pm_request_merge_group inner-only form forwards synthesizeOuter and renders the synthetic outer", async () => {
+      mockRequestMergeGroup.mockResolvedValue({
+        ...sampleGroupDetail,
+        members: [
+          { ...sampleMergeRequest, id: "mreq_inner", branch: "feat/inner" },
+          {
+            ...sampleMergeRequest,
+            id: "mreq_synth",
+            branch: null,
+            commitSha: null,
+            synthetic: true,
+          },
+        ],
+      });
+
+      const result = await client.callTool({
+        name: "pm_request_merge_group",
+        arguments: {
+          project_id: "P1",
+          members: [
+            {
+              branch: "feat/inner",
+              commit_sha: "abc1234",
+              verify_cmd: "pnpm test",
+              task_id: "T1",
+            },
+          ],
+          synthesize_outer: true,
+        },
+      });
+
+      expect(mockRequestMergeGroup).toHaveBeenCalledWith("P1", {
+        resource: "main",
+        synthesizeOuter: true,
+        members: [
+          {
+            branch: "feat/inner",
+            commitSha: "abc1234",
+            verifyCmd: "pnpm test",
+            taskId: "T1",
+          },
+        ],
+      });
+      const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<string, unknown>;
+      expect(Object.prototype.hasOwnProperty.call(callArg, "memberRequestIds")).toBe(false);
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("grp_001");
+      expect(text).toContain("forming");
+      expect(text).toContain(
+        "(synthetic gitlink bump — outer candidate synthesized at integration)",
+      );
+      expect(text).toContain("can never go stale");
+    });
+
+    it("pm_request_merge_group forwards an explicit synthesize_outer: false untouched", async () => {
+      // The client never normalizes the flag — explicit false goes on the wire
+      // (the server treats it like absent; strict === true server-side).
+      mockRequestMergeGroup.mockResolvedValue(sampleGroupDetail);
+
+      await client.callTool({
+        name: "pm_request_merge_group",
+        arguments: {
+          project_id: "P1",
+          members: [{ branch: "feat/inner", commit_sha: "abc1234" }, { branch: "feat/outer" }],
+          synthesize_outer: false,
+        },
+      });
+
+      expect(mockRequestMergeGroup).toHaveBeenCalledWith("P1", {
+        resource: "main",
+        synthesizeOuter: false,
+        members: [
+          {
+            branch: "feat/inner",
+            commitSha: "abc1234",
+            verifyCmd: undefined,
+            taskId: undefined,
+          },
+          {
+            branch: "feat/outer",
+            commitSha: undefined,
+            verifyCmd: undefined,
+            taskId: undefined,
+          },
+        ],
+      });
+    });
+
+    it("pm_request_merge_group forwards synthesize_outer EVEN with member_request_ids (server rejects legibly)", async () => {
+      // Deliberate design: the client never silently drops the flag — the
+      // server's 400 matrix is the single owner of the combination rules. The
+      // ids+flag combination dies at the ROUTE Zod-4 tier (superRefine), and
+      // zValidator's default (no defaultHook anywhere in the server) returns
+      // the raw ZodError serialization, which api-client maps to
+      // ApiError(400, "UNKNOWN_ERROR", "<issues JSON blob>").
+      mockRequestMergeGroup.mockRejectedValue(
+        new apiClient.ApiError(
+          400,
+          "UNKNOWN_ERROR",
+          JSON.stringify(
+            [
+              {
+                code: "custom",
+                path: ["synthesizeOuter"],
+                message:
+                  "synthesizeOuter cannot be combined with memberRequestIds; provide members with exactly one inner member spec.",
+              },
+            ],
+            null,
+            2,
+          ),
+        ),
+      );
+
+      const result = await client.callTool({
+        name: "pm_request_merge_group",
+        arguments: {
+          project_id: "P1",
+          member_request_ids: ["mreq_A", "mreq_B"],
+          synthesize_outer: true,
+        },
+      });
+
+      // The flag rode along on the ids arm — present, not dropped.
+      const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<string, unknown>;
+      expect(Object.prototype.hasOwnProperty.call(callArg, "synthesizeOuter")).toBe(true);
+      expect(callArg.synthesizeOuter).toBe(true);
+      expect(callArg.memberRequestIds).toEqual(["mreq_A", "mreq_B"]);
+      expect(result.isError).toBe(true);
+    });
+
+    it("pm_request_merge_group surfaces the route-tier 400 for synthesize_outer with 2 members", async () => {
+      // Route-tier-wins reality: the merge-groups route validates with the
+      // route-local Zod-4 schema via OpenAPIHono's built-in zValidator, and
+      // there is NO defaultHook — a shape violation returns zValidator's raw
+      // {success:false, error: ZodError} body directly (c.json, status 400).
+      // api-client sees no error.code ⇒ "UNKNOWN_ERROR", and error.message IS
+      // the serialized issues JSON blob — NOT a VALIDATION_ERROR envelope.
+      mockRequestMergeGroup.mockRejectedValue(
+        new apiClient.ApiError(
+          400,
+          "UNKNOWN_ERROR",
+          JSON.stringify(
+            [
+              {
+                code: "custom",
+                path: ["synthesizeOuter"],
+                message:
+                  "synthesizeOuter requires exactly one member spec (the inner change); the outer member is synthesized at integration time.",
+              },
+            ],
+            null,
+            2,
+          ),
+        ),
+      );
+
+      const result = await client.callTool({
+        name: "pm_request_merge_group",
+        arguments: {
+          project_id: "P1",
+          members: [{ branch: "feat/inner" }, { branch: "feat/outer" }],
+          synthesize_outer: true,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain(
+        "synthesizeOuter requires exactly one member spec (the inner change); the outer member is synthesized at integration time.",
+      );
+    });
+
+    it("pm_request_merge_group surfaces the route-tier 400 for 1 member without the flag", async () => {
+      // Same route-tier UNKNOWN_ERROR pattern. NOTE: this route string
+      // deliberately differs from the service-tier string — the route owns the
+      // shape rule ("at least 2 member specs (or exactly one with
+      // synthesizeOuter: true)"), the service owns the topology gate.
+      mockRequestMergeGroup.mockRejectedValue(
+        new apiClient.ApiError(
+          400,
+          "UNKNOWN_ERROR",
+          JSON.stringify(
+            [
+              {
+                code: "custom",
+                path: ["members"],
+                message:
+                  "A merge group requires at least 2 member specs (or exactly one with synthesizeOuter: true).",
+              },
+            ],
+            null,
+            2,
+          ),
+        ),
+      );
+
+      const result = await client.callTool({
+        name: "pm_request_merge_group",
+        arguments: {
+          project_id: "P1",
+          members: [{ branch: "feat/inner" }],
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain(
+        "A merge group requires at least 2 member specs (or exactly one with synthesizeOuter: true).",
+      );
+    });
+
+    it("pm_request_merge_group surfaces the service-tier topology-gate 400", async () => {
+      // The topology gate IS service-tier (the route can't see project
+      // settings), so it arrives as a real AppError envelope: VALIDATION_ERROR
+      // with the exact message.
+      mockRequestMergeGroup.mockRejectedValue(
+        new apiClient.ApiError(
+          400,
+          "VALIDATION_ERROR",
+          "synthesizeOuter requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found 0 inner / 0 outer.",
+        ),
+      );
+
+      const result = await client.callTool({
+        name: "pm_request_merge_group",
+        arguments: {
+          project_id: "P1",
+          members: [{ branch: "feat/inner", commit_sha: "abc1234" }],
+          synthesize_outer: true,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain(
+        "synthesizeOuter requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found 0 inner / 0 outer.",
+      );
     });
 
     it("pm_get_merge_group surfaces state + members", async () => {

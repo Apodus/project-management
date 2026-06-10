@@ -43,7 +43,7 @@ export function registerMergeGroupTools(server: McpServer): void {
 
   server.tool(
     "pm_request_merge_group",
-    "Submit >=2 merge requests as ONE atomic cross-repo unit (state 'forming'). The integrator lands-or-fails the whole group atomically — either every member lands together or none does. Two forms (provide EXACTLY ONE): (1) members — the RACE-FREE atomic form: pass the member specs ({branch and/or commit_sha, optional verify_cmd, task_id}) and PM submits + groups them in a single call, so members are born group-bound and a single-repo pickup can never grab one mid-grouping (PREFER THIS); (2) member_request_ids — the legacy two-step form: bind >=2 already-queued, ungrouped requests you submitted earlier via pm_request_merge. Subscribe to 'merge.group.landed' / 'merge.group.rejected' SSE events with the returned group id to learn the outcome. Use this for cross-repo changes (e.g. inner + outer gitlink) that must land together.",
+    "Submit merge requests as ONE atomic cross-repo unit (state 'forming'). The integrator lands-or-fails the whole group atomically — either every member lands together or none does. THREE forms (provide EXACTLY ONE of members / member_request_ids): (1) INNER-ONLY — RECOMMENDED for any change that lives entirely in the inner repo: members with EXACTLY ONE spec (your inner change: {branch and/or commit_sha, optional verify_cmd, task_id}) plus synthesize_outer: true. PM records your inner member plus a SYNTHETIC outer member (no branch/commit); the integrator synthesizes the outer gitlink-bump candidate against LIVE outer main at integration time and fills its landedSha at land. WHY: a hand-minted outer gitlink-bump branch goes stale the moment ANY other gitlink change lands on outer main — the rebase hits both-sides-modified on the gitlink and the whole group is rejected (outer_conflict). With synthesize_outer there is no bump branch to go stale, so that rejection class cannot happen. Do NOT mint gitlink-bump-only outer branches. Prerequisite: the project declares exactly one inner and one outer repo in settings.integrator.linked_repos (otherwise 400). (2) MULTI-MEMBER atomic form: >=2 member specs submitted AND grouped in one call, so members are born group-bound and a single-repo pickup can never grab one mid-grouping. Use this ONLY when the outer member carries REAL outer-repo content changes (not just a gitlink bump), or when a repo is not declared in linked_repos. If your outer member would be nothing but a gitlink bump, use form (1) instead. (3) member_request_ids — LEGACY two-step form: bind >=2 already-queued, ungrouped requests you submitted earlier via pm_request_merge. Subscribe to 'merge.group.landed' / 'merge.group.rejected' SSE events with the returned group id to learn the outcome.",
     {
       project_id: z.string().describe("The project ID."),
       members: z
@@ -64,26 +64,38 @@ export function registerMergeGroupTools(server: McpServer): void {
               .describe("Task this member's landing is for (recommended)."),
           }),
         )
-        .min(2)
+        .min(1)
         .optional()
         .describe(
-          "ATOMIC form (preferred, race-free): >=2 member specs submitted AND grouped in one call. Provide EITHER this OR member_request_ids, not both.",
+          "ATOMIC form (race-free): member specs submitted AND grouped in one call. >=2 specs, OR exactly 1 spec with synthesize_outer: true (inner-only form). Provide EITHER this OR member_request_ids, not both.",
+        ),
+      synthesize_outer: z
+        .boolean()
+        .optional()
+        .describe(
+          "Inner-only cross-repo form: pass true with members containing EXACTLY ONE spec (your inner-repo change). PM records a synthetic outer member and the integrator synthesizes the outer gitlink-bump candidate against live outer main at integration — never mint a gitlink-bump branch yourself. Strictly true: false behaves like absent. Requires the project to declare exactly one inner and one outer repo in settings.integrator.linked_repos. Cannot be combined with member_request_ids.",
         ),
       member_request_ids: z
         .array(z.string())
         .min(2)
         .optional()
         .describe(
-          "LEGACY form: IDs of >=2 already-queued, ungrouped merge requests to bind into this group (submit each via pm_request_merge first). Provide EITHER this OR members, not both.",
+          "LEGACY form: IDs of >=2 already-queued, ungrouped merge requests to bind into this group (submit each via pm_request_merge first). Provide EITHER this OR members, not both. Cannot be combined with synthesize_outer.",
         ),
       resource: z.string().optional().default("main").describe(resourceDesc),
     },
-    async ({ project_id, members, member_request_ids, resource }) => {
+    async ({ project_id, members, synthesize_outer, member_request_ids, resource }) => {
       const resolvedResource = resource ?? "main";
       const group = await requestMergeGroup(project_id, {
         resource: resolvedResource,
-        // Dispatch: atomic members form maps snake_case → camelCase wire; else
-        // the legacy ids form. The server enforces exactly-one-of.
+        // Inner-only flag: forwarded whenever the caller set it — EVEN with the
+        // ids arm (deliberate: the server's 400 matrix owns the combination
+        // rules and rejects legibly; never silently drop). Key ABSENT when the
+        // caller omitted it, so legacy calls stay byte-identical on the wire.
+        ...(synthesize_outer !== undefined ? { synthesizeOuter: synthesize_outer } : {}),
+        // Dispatch: atomic members form (>=2 specs, or exactly 1 with
+        // synthesize_outer) maps snake_case → camelCase wire; else the legacy
+        // ids form. The server enforces exactly-one-of.
         ...(members !== undefined
           ? {
               members: members.map((m) => ({
@@ -105,6 +117,14 @@ export function registerMergeGroupTools(server: McpServer): void {
       lines.push(`  Members (${group.members.length}):`);
       for (const m of group.members) {
         lines.push(`    - ${m.id}   ${memberRef(m)}`);
+      }
+      if (group.members.some((m) => m.synthetic === true)) {
+        lines.push("");
+        lines.push("  The outer member is SYNTHETIC: the integrator builds the outer gitlink-bump");
+        lines.push("  candidate against live outer main at integration and fills its landedSha at");
+        lines.push(
+          "  land. No outer bump branch exists, so it can never go stale (no outer_conflict).",
+        );
       }
       lines.push("");
       lines.push(`Subscribe to SSE events for "merge.group.landed" / "merge.group.rejected"`);
