@@ -43,6 +43,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ClaimStateBadge } from "@/components/claim-state-badge";
 import { useProject } from "@/hooks/use-projects";
 import { useTasks } from "@/hooks/use-tasks";
 import { useEpics } from "@/hooks/use-epics";
@@ -234,7 +235,15 @@ function TaskRow({
         />
       </TableCell>
       <TableCell className="font-medium max-w-[350px]">
-        <span className="line-clamp-1">{task.title}</span>
+        {/* Claim badge inline beside the title (epic-list idiom — no new
+            column, colSpan untouched). Renders nothing when unclaimed. */}
+        <div className="flex items-center gap-1.5">
+          <span className="line-clamp-1">{task.title}</span>
+          <ClaimStateBadge
+            state={task.claimState}
+            className="shrink-0 text-[10px] px-1.5 py-0"
+          />
+        </div>
       </TableCell>
       <TableCell>
         <Badge

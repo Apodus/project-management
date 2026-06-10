@@ -54,6 +54,7 @@ import { useCreateTemplateFromTask } from "@/hooks/use-templates";
 import { useUsers } from "@/hooks/use-users";
 import { useProjectStore } from "@/stores/project-store";
 import { AnchoredNotesBadge } from "@/components/anchored-notes-badge";
+import { ClaimStateBadge } from "@/components/claim-state-badge";
 import {
   formatRelativeTime,
   formatStatus,
@@ -1149,6 +1150,8 @@ export function TaskDetailPage() {
       <div className="space-y-2">
         <EditableTitle value={task.title} onSave={handleTitleSave} />
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {/* Claim liveness badge (Campaign C3) — renders nothing when unclaimed. */}
+          <ClaimStateBadge state={task.claimState} className="text-[10px] px-1.5 py-0" />
           <span>Created {formatRelativeTime(task.createdAt)}</span>
           {task.gitBranch && (
             <>

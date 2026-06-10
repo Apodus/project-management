@@ -1,8 +1,16 @@
-import { describe, expect, it } from "vitest";
-import { getInvalidationKeys } from "./use-sse";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { getInvalidationKeys, maybeShowToast } from "./use-sse";
 import { trainKeys } from "./use-train";
 import { noteKeys } from "./use-notes";
 import { claimKeys } from "./use-claims";
+
+const toastMock = vi.hoisted(() => ({
+  success: vi.fn(),
+  info: vi.fn(),
+  warning: vi.fn(),
+  error: vi.fn(),
+}));
+vi.mock("sonner", () => ({ toast: toastMock }));
 
 describe("getInvalidationKeys — merge-train wiring", () => {
   it("invalidates trainKeys on train.* alert events", () => {
@@ -90,5 +98,48 @@ describe("getInvalidationKeys — merge-train wiring", () => {
     expect(getInvalidationKeys("note.created")).not.toContainEqual(
       claimKeys.all,
     );
+  });
+});
+
+// ─── maybeShowToast — actionable stale-claim toast (Campaign C3 P4) ──
+
+describe("maybeShowToast — claim.stale_alert action", () => {
+  beforeEach(() => {
+    toastMock.warning.mockClear();
+  });
+
+  const stalePayload = {
+    entity_type: "project",
+    // entity_id IS the projectId on this frame (per-project aggregate alert).
+    entity_id: "proj-42",
+    action: "stale_alert",
+    actor: { id: null, name: "system", type: "system" },
+    timestamp: "2026-06-10T00:00:00.000Z",
+  };
+
+  it("attaches a View-claims action that navigates to the project claims panel", () => {
+    const navigate = vi.fn();
+    maybeShowToast("claim.stale_alert", stalePayload, navigate);
+
+    expect(toastMock.warning).toHaveBeenCalledTimes(1);
+    const [title, opts] = toastMock.warning.mock.calls[0] as [
+      string,
+      { action?: { label: string; onClick: () => void } },
+    ];
+    expect(title).toBe("Stale claims");
+    expect(opts.action?.label).toBe("View claims");
+
+    opts.action!.onClick();
+    expect(navigate).toHaveBeenCalledWith({
+      to: "/projects/$projectId/claims",
+      params: { projectId: "proj-42" },
+    });
+  });
+
+  it("omits the action when no navigate fn is supplied (still toasts)", () => {
+    maybeShowToast("claim.stale_alert", stalePayload);
+    expect(toastMock.warning).toHaveBeenCalledTimes(1);
+    const opts = toastMock.warning.mock.calls[0][1] as { action?: unknown };
+    expect(opts.action).toBeUndefined();
   });
 });

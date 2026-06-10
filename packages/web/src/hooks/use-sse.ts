@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 import { activityKeys } from "./use-activity";
@@ -66,7 +67,22 @@ export function getInvalidationKeys(
 
 // ─── Toast notifications for key events ──────────────────────────
 
-function maybeShowToast(eventType: string, payload: SSEPayload): void {
+/**
+ * Navigate function shape for the stale-claim toast action — the subset of
+ * TanStack's NavigateFn the toast needs (kept loose so the unit test can pass
+ * a plain spy).
+ */
+export type ToastNavigate = (opts: {
+  to: string;
+  params: Record<string, string>;
+}) => void;
+
+// Exported for unit testing (sanctioned by the roadmap amendment).
+export function maybeShowToast(
+  eventType: string,
+  payload: SSEPayload,
+  navigate?: ToastNavigate,
+): void {
   // ── Merge-train health alerts (§7a in-app alert) ──────────────
   if (eventType === "train.integrator_unhealthy") {
     toast.warning("Integrator unhealthy", {
@@ -93,10 +109,25 @@ function maybeShowToast(eventType: string, payload: SSEPayload): void {
     return;
   }
   // Stale-claim alert (Campaign C3 §P5a). Identity-masked — no holder id.
+  // The frame's entity_id IS the projectId (verified — the alert is a
+  // per-project aggregate), so the action deep-links to that project's
+  // claims panel.
   if (eventType === "claim.stale_alert") {
     toast.warning("Stale claims", {
       description:
         "Some work items are claimed but inactive past grace. Review or hand off.",
+      ...(navigate && payload.entity_id
+        ? {
+            action: {
+              label: "View claims",
+              onClick: () =>
+                navigate({
+                  to: "/projects/$projectId/claims",
+                  params: { projectId: payload.entity_id },
+                }),
+            },
+          }
+        : {}),
     });
     return;
   }
@@ -174,6 +205,12 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
   const eventSourceRef = useRef<EventSource | null>(null);
   const currentUserIdRef = useRef(currentUserId);
   currentUserIdRef.current = currentUserId;
+  // useSSE mounts under RouterProvider (app-layout), so useNavigate is legal
+  // here. Held in a ref so the SSE effect never re-subscribes on a navigate
+  // identity change.
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   useEffect(() => {
     const { setStatus, recordEvent, clearUnread } =
@@ -286,7 +323,9 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       const isSelf = currentUserIdRef.current && payload.actor.id === currentUserIdRef.current;
       if (!isSelf) {
         recordEvent();
-        maybeShowToast(eventType, payload);
+        maybeShowToast(eventType, payload, (opts) =>
+          navigateRef.current({ to: opts.to, params: opts.params }),
+        );
       }
     };
 
