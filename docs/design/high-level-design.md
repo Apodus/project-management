@@ -1303,8 +1303,11 @@ All configuration via environment variables (12-factor app):
 | `PM_PORT` | 3000 | Server port |
 | `PM_HOST` | 127.0.0.1 | Bind address (0.0.0.0 for LAN) |
 | `PM_DB_PATH` | ./data/pm.db | SQLite database path |
-| `PM_SESSION_SECRET` | (generated on first run) | Session signing secret |
 | `PM_LOG_LEVEL` | info | Logging verbosity |
+
+There is no session-signing secret: sessions and API tokens are opaque random tokens stored
+bcrypt-hashed server-side. Sessions are delivered via an httpOnly `pm_session` cookie; API tokens
+are presented in the `Authorization` header.
 
 ---
 
