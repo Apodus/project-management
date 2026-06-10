@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { FileText, Hand, ListTodo, Milestone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ClaimStateBadge } from "@/components/claim-state-badge";
+import { ReleaseToDialog } from "@/components/release-to-dialog";
+import { RequestTakeoverDialog } from "@/components/request-takeover-dialog";
 import { useProject } from "@/hooks/use-projects";
 import { useProjectClaims } from "@/hooks/use-claims";
 import { useProjectStore } from "@/stores/project-store";
@@ -132,10 +134,35 @@ function ClaimRow({ item }: { item: ClaimItem }) {
   );
 }
 
-// Row actions — wired to the release-to / request-takeover dialogs in P3.
+// Row actions — the two handoff primitives. Release-to directly transfers the
+// claim to a named worker; request-takeover is stomp-safe (stale auto-grants,
+// live only notifies — never mutated).
 function ClaimRowActions({ item }: { item: ClaimItem }) {
-  void item;
-  return null;
+  const [releaseOpen, setReleaseOpen] = useState(false);
+  const [takeoverOpen, setTakeoverOpen] = useState(false);
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button variant="outline" size="sm" onClick={() => setReleaseOpen(true)}>
+        Release to…
+      </Button>
+      {item.claimState !== "yours" && (
+        <Button variant="outline" size="sm" onClick={() => setTakeoverOpen(true)}>
+          Request takeover
+        </Button>
+      )}
+      <ReleaseToDialog
+        item={item}
+        open={releaseOpen}
+        onOpenChange={setReleaseOpen}
+      />
+      <RequestTakeoverDialog
+        item={item}
+        open={takeoverOpen}
+        onOpenChange={setTakeoverOpen}
+      />
+    </div>
+  );
 }
 
 export function ClaimsPage() {

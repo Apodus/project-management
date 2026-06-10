@@ -1,4 +1,4 @@
-import type { components } from "./api-types";
+import type { components, paths } from "./api-types";
 
 // ---- Types extracted from OpenAPI-generated definitions ----
 
@@ -991,6 +991,56 @@ export async function getClaimsHealth(projectId: string): Promise<ClaimsHealth> 
  */
 export async function getProjectClaims(projectId: string): Promise<ProjectClaims> {
   return apiFetch<ProjectClaims>(`/projects/${projectId}/claims`);
+}
+
+// ---- Claim handoff API (Campaign C3 — release-to / request-takeover) ----
+
+export type ClaimEntityType = ClaimItem["entityType"];
+
+// Typed against the generated paths so api-types drift breaks the build. The
+// three entity families share identical request/response shapes — the task
+// path is the canonical source.
+export type ReleaseClaimToResult =
+  paths["/api/v1/tasks/{id}/release-to"]["post"]["responses"][200]["content"]["application/json"]["data"];
+export type RequestClaimTakeoverResult =
+  paths["/api/v1/tasks/{id}/request-takeover"]["post"]["responses"][200]["content"]["application/json"]["data"];
+
+const CLAIM_ENTITY_SEGMENT: Record<ClaimEntityType, "tasks" | "epics" | "proposals"> = {
+  task: "tasks",
+  epic: "epics",
+  proposal: "proposals",
+};
+
+/**
+ * Hand a claim to a NAMED worker (reason required, audited). The current
+ * holder, or any human, may release. Never stomps a live claim — it transfers
+ * the holder's own claim.
+ */
+export async function releaseClaimTo(
+  entityType: ClaimEntityType,
+  id: string,
+  body: { reason: string; targetId: string },
+): Promise<ReleaseClaimToResult> {
+  return apiFetch<ReleaseClaimToResult>(
+    `/${CLAIM_ENTITY_SEGMENT[entityType]}/${id}/release-to`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+/**
+ * Ask to take over a claim, stomp-safely: a STALE (lease-lapsed) claim is
+ * auto-granted to the caller (`force_claimed`); a LIVE claim is NEVER mutated —
+ * the holder is notified and the result is `notified_holder`.
+ */
+export async function requestClaimTakeover(
+  entityType: ClaimEntityType,
+  id: string,
+  body: { reason: string },
+): Promise<RequestClaimTakeoverResult> {
+  return apiFetch<RequestClaimTakeoverResult>(
+    `/${CLAIM_ENTITY_SEGMENT[entityType]}/${id}/request-takeover`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
 }
 
 export async function getTrainInFlight(

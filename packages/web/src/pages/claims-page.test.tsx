@@ -23,9 +23,28 @@ let claimsResult: {
   refetch: () => void;
 } = { data: undefined, isLoading: false, error: null, refetch: vi.fn() };
 
+const releaseMutation = {
+  mutate: vi.fn(),
+  mutateAsync: vi.fn().mockResolvedValue({ ok: true, status: "force_claimed" }),
+  isPending: false,
+  reset: vi.fn(),
+};
+const takeoverMutation = {
+  mutate: vi.fn(),
+  mutateAsync: vi.fn().mockResolvedValue({ ok: true, status: "force_claimed" }),
+  isPending: false,
+  reset: vi.fn(),
+};
+
 vi.mock("@/hooks/use-claims", () => ({
   useProjectClaims: () => claimsResult,
+  useReleaseClaimTo: () => releaseMutation,
+  useRequestClaimTakeover: () => takeoverMutation,
   claimKeys: { all: ["claims"] },
+}));
+
+vi.mock("@/hooks/use-users", () => ({
+  useUsers: () => ({ data: [], error: null }),
 }));
 
 vi.mock("@/stores/project-store", () => ({
@@ -113,6 +132,23 @@ describe("ClaimsPage", () => {
     expect(dataRowTitles[0]).toContain("Row stale");
     expect(dataRowTitles[1]).toContain("Row live");
     expect(dataRowTitles[2]).toContain("Row yours");
+  });
+
+  it("renders the handoff action buttons per row (takeover hidden on yours)", () => {
+    claimsResult.data = {
+      items: [
+        makeItem({ id: "t-other", title: "Held by other", claimState: "live" }),
+        makeItem({ id: "t-mine", title: "Held by me", claimState: "yours" }),
+      ],
+      total: 2,
+    };
+    render(<ClaimsPage />);
+    // Release-to is offered on every row; request-takeover only on rows the
+    // caller does NOT already hold.
+    expect(screen.getAllByRole("button", { name: "Release to…" })).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Request takeover" }),
+    ).toHaveLength(1);
   });
 
   it("marks AI holders with an AI tag", () => {
