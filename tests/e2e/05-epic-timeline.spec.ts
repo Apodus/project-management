@@ -60,9 +60,6 @@ test.describe("Epic Timeline (Roadmap)", () => {
     await expect(page.locator(".react-flow__node").first()).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.locator(".react-flow__edge").first()).toBeVisible({
-      timeout: 10_000,
-    });
     await expect(page.getByText("Foundation epic")).toBeVisible({
       timeout: 10_000,
     });
@@ -100,12 +97,19 @@ test.describe("Epic Timeline (Roadmap)", () => {
       expect(Math.abs(aCenterY - bCenterY)).toBeLessThan(140);
     }).toPass({ timeout: 10_000 });
 
+    // Exactly 2 epics + 1 dependency in the seed → exactly 1 edge. A count-based
+    // assertion avoids the fitView degenerate-bbox false-negative that a
+    // .toBeVisible() on a thin SVG edge can hit.
+    await expect(page.locator(".react-flow__edge")).toHaveCount(1, {
+      timeout: 10_000,
+    });
+
     // The mode toggle flips between Structure and Timeline. The "Today" line
     // renders ONLY in timeline mode, so it is the observable discriminator.
     await page.getByRole("radio", { name: "Timeline" }).click();
     await expect(page.getByText("Today")).toBeVisible({ timeout: 10_000 });
     await page.getByRole("radio", { name: "Structure" }).click();
-    await expect(page.getByText("Today")).toHaveCount(0);
+    await expect(page.getByText("Today")).toHaveCount(0, { timeout: 10_000 });
 
     // Clicking an epic node opens the floating task panel IN PLACE — it no
     // longer navigates away (that changed when the floating task mini-DAG

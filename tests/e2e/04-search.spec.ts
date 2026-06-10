@@ -33,7 +33,7 @@ test.describe("Search via Command Palette", () => {
         `/api/v1/projects/${projectId}/tasks`,
         { data: { reporterId: userId, ...task } },
       );
-      expect(resp.ok()).toBeTruthy();
+      expect(resp.ok(), await resp.text()).toBeTruthy();
     }
   });
 
@@ -49,6 +49,13 @@ test.describe("Search via Command Palette", () => {
     await expect(page.locator("h1", { hasText: "Tasks" })).toBeVisible({
       timeout: 10_000,
     });
+
+    // Data-loaded gate: ensure the project + tasks data has actually rendered
+    // (not just the static shell) before opening the palette, so the search
+    // queries don't race readiness.
+    await expect(
+      page.getByText("Implement dark mode toggle").first(),
+    ).toBeVisible({ timeout: 10_000 });
 
     // Open command palette with Ctrl+K
     await page.keyboard.press("Control+k");

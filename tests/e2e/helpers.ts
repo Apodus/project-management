@@ -13,9 +13,29 @@ export async function setupAdmin(
   } = {},
 ): Promise<void> {
   await page.goto("/");
-  // Should redirect to /setup on fresh DB
-  await page.waitForURL("**/setup");
 
+  // Defensive landing branch. With per-run fresh DBs the WIZARD path is the
+  // only reachable one, but a pre-set-up DB would land on /login. The wizard
+  // and login "titles" are CardTitle DIVS (`<div data-slot="card-title">`),
+  // NOT heading-role elements — so we match them with getByText / the
+  // data-slot locator, matching the spec-01 idiom.
+  await Promise.race([
+    page.getByText("Welcome to Project Management").waitFor({ timeout: 15_000 }),
+    page
+      .locator('[data-slot="card-title"]', { hasText: "Sign In" })
+      .waitFor({ timeout: 15_000 }),
+  ]);
+
+  if (page.url().includes("/login")) {
+    // Already set up (defensive — unreachable with per-run fresh DBs).
+    await page.getByLabel("Username").fill(username);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/projects");
+    return;
+  }
+
+  // WIZARD path.
   await page.getByLabel("Username").fill(username);
   await page.getByLabel("Display Name").fill(displayName);
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -28,28 +48,22 @@ export async function setupAdmin(
     ),
     page.getByRole("button", { name: "Create Admin Account" }).click(),
   ]);
-
-  // Verify the setup response was successful
   expect(response.ok()).toBeTruthy();
 
-  // The SPA navigates to /projects after setup.  The auth guard in the
-  // router may briefly redirect to /login if the session cookie isn't
-  // picked up in time.  Wait a moment, then if we ended up on /login,
-  // explicitly log in to reach the projects page.
-  await page.waitForTimeout(1_000);
+  // Drive the wizard deterministically through its remaining steps. Each step
+  // is conditionally rendered, so exactly one "Skip" button is mounted at a
+  // time. Gate each transition on the next step's visible content.
+  await expect(page.getByText("Create your first project")).toBeVisible();
+  await page.getByRole("button", { name: "Skip" }).click();
 
-  if (page.url().includes("/login")) {
-    // The auth guard didn't pick up the session from setup.
-    // Log in explicitly.
-    await page.getByLabel("Username").fill(username);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Sign In" }).click();
-  }
+  await expect(page.getByText("Connect your agents")).toBeVisible();
+  await page.getByRole("button", { name: "Skip" }).click();
 
-  await page.waitForURL("**/projects", { timeout: 10_000 });
+  await page.waitForURL("**/projects");
+  // This one IS a real <h1> — the only true heading among these screens.
   await expect(
-    page.locator("h1", { hasText: "Projects" }),
-  ).toBeVisible({ timeout: 15_000 });
+    page.getByRole("heading", { name: "Projects" }),
+  ).toBeVisible();
 }
 
 /**

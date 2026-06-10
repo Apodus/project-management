@@ -61,7 +61,7 @@ test.describe("Project Workflow", () => {
         },
       },
     );
-    expect(proposalResponse.ok()).toBeTruthy();
+    expect(proposalResponse.ok(), await proposalResponse.text()).toBeTruthy();
     const proposalJson = await proposalResponse.json();
     const proposalId = proposalJson.data.id;
 
@@ -83,25 +83,15 @@ test.describe("Project Workflow", () => {
         },
       },
     );
-    expect(commentResponse.ok()).toBeTruthy();
+    expect(commentResponse.ok(), await commentResponse.text()).toBeTruthy();
 
     // Reload to see the comment
     await page.reload();
     await expect(page.getByText(commentText)).toBeVisible();
 
     // --- Accept the proposal via API ---
-    // Proposals must go open -> discussing -> accepted
-    const discussResponse = await page.request.post(
-      `/api/v1/proposals/${proposalId}/transitions`,
-      {
-        data: {
-          toStatus: "discussing",
-          actorId: userId,
-        },
-      },
-    );
-    expect(discussResponse.ok()).toBeTruthy();
-
+    // The comment above already auto-advanced the proposal open -> discussing
+    // (any author; proposal.service addComment), so this transition is discussing -> accepted.
     const acceptResponse = await page.request.post(
       `/api/v1/proposals/${proposalId}/transitions`,
       {
@@ -111,15 +101,15 @@ test.describe("Project Workflow", () => {
         },
       },
     );
-    expect(acceptResponse.ok()).toBeTruthy();
+    expect(acceptResponse.ok(), await acceptResponse.text()).toBeTruthy();
 
     // Reload and verify the status badge changed to "Accepted"
     await page.reload();
+    // Positive loaded-state gate: the Accepted badge (only fresh post-accept data
+    // renders it) + the description (only the loaded, non-skeleton state renders it).
     await expect(page.getByText("Accepted")).toBeVisible();
-
-    // Accept/Reject buttons should no longer be visible
-    await expect(
-      page.getByRole("button", { name: "Accept" }),
-    ).not.toBeVisible();
+    await expect(page.getByText(proposalDescription)).toBeVisible();
+    // Now absence is meaningful: stronger than the old racy not.toBeVisible().
+    await expect(page.getByRole("button", { name: "Accept" })).toHaveCount(0);
   });
 });
