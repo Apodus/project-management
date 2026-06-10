@@ -28,6 +28,9 @@
  *   (chaos-1) crash after inner push, before outer push (§6.4) → reclaim →
  *             clean atomic land, NO orphan ever, no half-landed gitlink.
  *   (chaos-2) crash mid-assembly → re-spawn → clean land, zero side effects.
+ *   (g) inner-only synthetic group (synthesizeOuter) — gitlink drift between
+ *       submit and pickup still lands (drift immunity, the campaign seal) +
+ *       a second group submitted against the LIVE built drain lands.
  *
  * GATING: runs iff git is available AND the integrator dist exists. Build with:
  *   pnpm --filter @pm/shared build
@@ -128,11 +131,21 @@ interface MergeRequest {
   id: string;
   status: string;
   landedSha: string | null;
+  // Flow (g) — present on the merge-groups GET/201 member payload
+  // (routes/merge-groups.ts mergeGroupMemberSchema).
+  synthetic: boolean;
+  branch: string | null;
+  commitSha: string | null;
+  rejectReason: string | null;
 }
 
 interface MergeGroup {
   id: string;
   state: string;
+}
+
+interface MergeGroupDetail extends MergeGroup {
+  members: MergeRequest[];
 }
 
 interface MergeIncident {
@@ -176,7 +189,14 @@ interface Harness {
       innerTask?: string | null;
     },
   ) => Promise<{ group: MergeGroup; inner: MergeRequest; outer: MergeRequest }>;
+  /** Flow (g): ONE atomic POST of the inner-only synthesizeOuter form. */
+  submitInnerOnlyGroup: (
+    innerCommit: string,
+    opts?: { verifyCmd?: string; taskId?: string },
+  ) => Promise<{ group: MergeGroup; members: MergeRequest[] }>;
   getGroup: (id: string) => Promise<MergeGroup>;
+  /** Same GET as getGroup, wider cast — includes the members array. */
+  getGroupDetail: (id: string) => Promise<MergeGroupDetail>;
   pollGroup: (id: string, timeoutMs?: number) => Promise<MergeGroup>;
   listOpenIncidents: () => Promise<MergeIncident[]>;
   getIncident: (id: string) => Promise<MergeIncident>;
@@ -184,6 +204,7 @@ interface Harness {
   outerBareMainSha: () => Promise<string>;
   gitlinkOnOuterBareMain: () => Promise<string>;
   outerFileOnMain: (file: string) => boolean;
+  innerFileOnMain: (file: string) => boolean;
   teardown: () => Promise<void>;
 }
 
@@ -478,12 +499,58 @@ async function makeGroupHarness(
     throw new Error("submitGroup: could not atomically group members after retries");
   }
 
+  // Flow (g): the inner-only synthesizeOuter submit-and-group form. ONE fetch,
+  // NO retry loop — unlike submitGroup above there is no pickup race to retry
+  // around: the atomic `members` form mints members born group-bound in one
+  // txn, so the single-repo drain can never claim one in a window.
+  async function submitInnerOnlyGroup(
+    innerCommit: string,
+    opts: { verifyCmd?: string; taskId?: string } = {},
+  ): Promise<{ group: MergeGroup; members: MergeRequest[] }> {
+    const res = await fetch(
+      `${baseUrl}/api/v1/projects/${project.id}/merge-groups`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${workerToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          resource: "main",
+          synthesizeOuter: true,
+          members: [
+            {
+              commitSha: innerCommit,
+              verifyCmd: opts.verifyCmd ?? "exit 0",
+              // taskId OMITTED when absent (never null): the route Zod is
+              // z.string().min(1).optional() — an explicit null → 400.
+              ...(opts.taskId ? { taskId: opts.taskId } : {}),
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(201);
+    const detail = (await res.json()).data as MergeGroupDetail;
+    return { group: detail, members: detail.members };
+  }
+
   async function getGroup(id: string): Promise<MergeGroup> {
     const res = await fetch(`${baseUrl}/api/v1/merge-groups/${id}`, {
       headers: { Authorization: `Bearer ${workerToken}` },
     });
     expect(res.status).toBe(200);
     return (await res.json()).data as MergeGroup;
+  }
+
+  // Same GET endpoint as getGroup — wider cast for flow (g)'s member-level
+  // PM assertions (synthetic / landedSha / rejectReason per member).
+  async function getGroupDetail(id: string): Promise<MergeGroupDetail> {
+    const res = await fetch(`${baseUrl}/api/v1/merge-groups/${id}`, {
+      headers: { Authorization: `Bearer ${workerToken}` },
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()).data as MergeGroupDetail;
   }
 
   async function pollGroup(
@@ -542,6 +609,17 @@ async function makeGroupHarness(
     return out.status === 0;
   }
 
+  // Inner-side twin of outerFileOnMain — flow (g) asserts the rebased inner
+  // main carries BOTH the feature file and the concurrent drift file.
+  function innerFileOnMain(file: string): boolean {
+    const out = spawnSync(
+      "git",
+      ["-C", innerBare, "cat-file", "-e", `refs/heads/main:${file}`],
+      { stdio: "ignore" },
+    );
+    return out.status === 0;
+  }
+
   async function killProc(proc: ChildProcess | null): Promise<void> {
     if (!proc) return;
     if (proc.exitCode === null) {
@@ -587,7 +665,9 @@ async function makeGroupHarness(
     submitMember: (commitSha, taskId) => submitMember(commitSha, taskId),
     createGroup,
     submitGroup,
+    submitInnerOnlyGroup,
     getGroup,
+    getGroupDetail,
     pollGroup,
     listOpenIncidents,
     getIncident,
@@ -595,6 +675,7 @@ async function makeGroupHarness(
     outerBareMainSha: () => bareMainSha(outerBare),
     gitlinkOnOuterBareMain,
     outerFileOnMain,
+    innerFileOnMain,
     teardown,
   };
   return { h, refs: { innerMainSha, innerFeatureSha, outerFeatureSha } };
@@ -1210,6 +1291,174 @@ describe.skipIf(!RUN || !LFS_AVAILABLE)(
       // ── 3) Durable outer BARE state (not the ephemeral worktree) ──
       // The gitlink rolled forward to Ri on outer bare main; no open incidents.
       expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+    }, 120_000);
+  },
+);
+
+// ─── Flow (g): inner-only synthetic group — drift-immune land ─────────
+//
+// The CAMPAIGN SEAL for inner-only groups. P1 pinned the wire form
+// (synthesizeOuter + synthetic member birth), P2 the MCP surface, P3 the
+// binding/assembly tier — this flow proves the whole arc through the REAL
+// built integrator: an inner-only group whose OUTER gitlink drifted between
+// submit and pickup still lands, because the synthesized outer bump is built
+// against LIVE outer main at integration time (there is no stale
+// worker-authored outer commit to conflict — the exact failure mode of the
+// legacy two-member form under drift).
+describe.skipIf(!RUN)(
+  "group E2E (g) — inner-only synthetic group: drift-immune land + live-drain submit",
+  () => {
+    let h: Harness;
+    let refs: FixtureRefs;
+    beforeAll(async () => {
+      // Deliberately NO spawnIntegrator here: it 1's drift determinism depends
+      // on the submit → drift → spawn ordering (the chaos describes are the
+      // deferred-spawn precedent). it 1 spawns AFTER drifting both remotes;
+      // it 2 then runs against the already-live drain.
+      ({ h, refs } = await makeGroupHarness());
+    }, 90_000);
+    afterAll(async () => {
+      if (h) await h.teardown();
+    });
+
+    it("conflict immunity (campaign seal): gitlink drift between submit and pickup → inner-only group still lands", async () => {
+      const innerTask = createTestTask(h.db, { projectId: h.project.id });
+      const { group, members } = await h.submitInnerOnlyGroup(
+        refs.innerFeatureSha,
+        { taskId: innerTask.id },
+      );
+
+      // ── Birth shape: forming group, EXACTLY ONE synthetic member with no
+      //    refs to land, one real member carrying the inner commit. ──
+      expect(group.state).toBe("forming");
+      expect(members).toHaveLength(2);
+      const synthAtBirth = members.filter((m) => m.synthetic);
+      expect(synthAtBirth).toHaveLength(1);
+      expect(synthAtBirth[0].branch).toBeNull();
+      expect(synthAtBirth[0].commitSha).toBeNull();
+      expect(synthAtBirth[0].status).toBe("queued");
+      const realAtBirth = members.find((m) => !m.synthetic);
+      expect(realAtBirth).toBeDefined();
+      expect(realAtBirth!.commitSha).toBe(refs.innerFeatureSha);
+
+      // ── Drift BOTH remotes between submit and pickup (real remotes;
+      //    mirrors flow (d)'s clone-built outer gitlink bump). ──
+      // inner: a concurrent change lands on inner main.
+      const innerDriftWk = path.join(h.tmpRoot, "inner-drift-g");
+      await simpleGit().clone(h.innerBare, innerDriftWk);
+      const ig = simpleGit(innerDriftWk);
+      await configIdentity(ig);
+      await ig.checkout("main");
+      writeFileSync(path.join(innerDriftWk, "other.txt"), "concurrent\n");
+      await ig.add(["other.txt"]);
+      await ig.commit("concurrent inner change");
+      await ig.push(["origin", "main"]);
+      const innerSecondSha = (await ig.revparse(["HEAD"])).trim();
+
+      // outer: main's gitlink is bumped to the concurrent inner SHA — the
+      // exact drift a stale worker-authored outer commit would conflict on.
+      const outerDriftWk = path.join(h.tmpRoot, "outer-drift-g");
+      await simpleGit().clone(h.outerBare, outerDriftWk);
+      const og = simpleGit(outerDriftWk);
+      await configIdentity(og);
+      await og.raw([
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        `160000,${innerSecondSha},${GITLINK_PATH}`,
+      ]);
+      await og.commit("concurrent outer: bump gitlink to the drifted inner");
+      await og.push(["origin", "main"]);
+      const advancedOuterMain = await h.outerBareMainSha();
+      expect(await h.gitlinkOnOuterBareMain()).toBe(innerSecondSha);
+
+      // NOW spawn — the integrator's first sight of the group is post-drift.
+      await h.spawnIntegrator();
+
+      const final = await h.pollGroup(group.id, 90_000);
+      expect(final.state).toBe("landed");
+
+      // ── Git: inner rebased ONTO the drift (a NEW Ri carrying BOTH lines);
+      //    outer = the drifted main + exactly ONE synthesized bump to Ri. ──
+      const Ri = await h.innerBareMainSha();
+      expect(Ri).not.toBe(refs.innerFeatureSha);
+      expect(Ri).not.toBe(innerSecondSha);
+      const innerAnc = spawnSync(
+        "git",
+        ["-C", h.innerBare, "merge-base", "--is-ancestor", innerSecondSha, Ri],
+        { stdio: "ignore" },
+      );
+      expect(innerAnc.status).toBe(0);
+      expect(h.innerFileOnMain("feature.txt")).toBe(true);
+      expect(h.innerFileOnMain("other.txt")).toBe(true);
+      expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
+      const outerAnc = spawnSync(
+        "git",
+        [
+          "-C",
+          h.outerBare,
+          "merge-base",
+          "--is-ancestor",
+          advancedOuterMain,
+          GIT_MAIN,
+        ],
+        { stdio: "ignore" },
+      );
+      expect(outerAnc.status).toBe(0);
+      const bumpCount = (
+        await simpleGit(h.outerBare).raw([
+          "rev-list",
+          "--count",
+          `${advancedOuterMain}..${GIT_MAIN}`,
+        ])
+      ).trim();
+      expect(bumpCount).toBe("1");
+
+      // ── PM: both members landed; real landedSha = Ri; the SYNTHETIC
+      //    member's landedSha = the bump commit (current outer main). ──
+      const detail = await h.getGroupDetail(group.id);
+      expect(detail.members).toHaveLength(2);
+      for (const m of detail.members) {
+        expect(m.status).toBe("landed");
+        expect(m.rejectReason).toBeNull();
+      }
+      const realFinal = detail.members.find((m) => !m.synthetic)!;
+      const synthFinal = detail.members.find((m) => m.synthetic)!;
+      expect(realFinal.landedSha).toBe(Ri);
+      expect(synthFinal.landedSha).toBe(await h.outerBareMainSha());
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+    }, 120_000);
+
+    it("second inner-only group submitted while the built integrator is live → born group-bound, lands", async () => {
+      // Fresh inner feature off LIVE inner main (post-it-1 Ri). Inline seed —
+      // seedSecondFeaturePair stays untouched (it also seeds an outer feature
+      // this flow must NOT have: there is no worker-authored outer change).
+      const wk = path.join(h.tmpRoot, "inner-feat-g2");
+      await simpleGit().clone(h.innerBare, wk);
+      const ig = simpleGit(wk);
+      await configIdentity(ig);
+      await ig.checkout("main");
+      await ig.pull("origin", "main");
+      await ig.checkoutLocalBranch("feature/inner-g2");
+      writeFileSync(path.join(wk, "inner-g2.txt"), "inner g2\n");
+      await ig.add(["inner-g2.txt"]);
+      await ig.commit("inner feature g2");
+      await ig.push(["-u", "origin", "feature/inner-g2"]);
+      const innerFeatG2 = (await ig.revparse(["HEAD"])).trim();
+
+      // The point under test: a SINGLE atomic POST against the LIVE polling
+      // drain — members born group-bound in one txn, so no pickup race and
+      // no retry loop (contrast submitGroup's bounded-retry idiom).
+      const { group } = await h.submitInnerOnlyGroup(innerFeatG2);
+      const final = await h.pollGroup(group.id, 90_000);
+      expect(final.state).toBe("landed");
+
+      const Ri = await h.innerBareMainSha();
+      expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
+      const detail = await h.getGroupDetail(group.id);
+      const synthFinal = detail.members.find((m) => m.synthetic)!;
+      expect(synthFinal.landedSha).toBe(await h.outerBareMainSha());
       expect(await h.listOpenIncidents()).toHaveLength(0);
     }, 120_000);
   },
