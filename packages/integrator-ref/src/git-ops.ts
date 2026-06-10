@@ -444,6 +444,24 @@ function runTreesIdentical(a: string, b: string, cwd: string): Promise<boolean> 
 
 // ─── Factory ──────────────────────────────────────────────────────
 
+// Explicit commit identity for pool-cloned worktrees. Pool clones have NO
+// configured user, and on a host without a global git identity (a CI runner,
+// a fresh server) every commit-creating git op fails "Committer identity
+// unknown" — which a replaying rebase reports as a generic non-zero exit that
+// rebaseOnto would misclassify as a CONFLICT (observed on the first hosted-CI
+// run: every chained-member rebase "conflicted" → rejected, while dev
+// machines with a global identity passed). commitResolution and
+// updateSubmoduleGitlink already pass these flags; every rebase that can
+// REPLAY commits (create new ones) must too.
+const COMMIT_IDENTITY_ARGS = [
+  "-c",
+  "user.email=integrator@pm.local",
+  "-c",
+  "user.name=PM Integrator",
+  "-c",
+  "commit.gpgsign=false",
+];
+
 export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
   const maxBuffer = opts.maxBufferBytes ?? DEFAULT_MAX_BUFFER;
 
@@ -464,7 +482,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
   async function rebaseOnto(base: string, branch: string): Promise<RebaseResult> {
     await git.checkout(branch);
     try {
-      await git.rebase([base]);
+      await git.raw([...COMMIT_IDENTITY_ARGS, "rebase", base]);
       const treeSha = (await git.revparse(["HEAD"])).trim();
       return { ok: true, treeSha };
     } catch (err) {
@@ -506,7 +524,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     // Replay `ref` onto `baseSha`, leaving the markers in place (do NOT abort).
     await git.checkout(ref);
     try {
-      await git.rebase([baseSha]);
+      await git.raw([...COMMIT_IDENTITY_ARGS, "rebase", baseSha]);
       // No conflict on replay (main moved so the collision is gone). The rebase
       // already completed; report an empty conflict set.
       return { conflictingFiles: [] };
