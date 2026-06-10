@@ -6,6 +6,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ALL_FTS_STATEMENTS } from "./fts.js";
 import { ALL_FTS_TRIGGER_STATEMENTS } from "./fts-triggers.js";
+import { assertMigrationLogCurrent, healMigrationLogDrift } from "./migration-journal.js";
 import { seedDefaultWorkspace } from "./seed.js";
 import * as schema from "./schema.js";
 import * as relations from "./relations.js";
@@ -54,9 +55,7 @@ export function initializeDatabase(options?: InitOptions): AppDatabase {
     return db;
   }
 
-  const dbPath = options?.inMemory
-    ? ":memory:"
-    : options?.dbPath ?? "./data/pm.db";
+  const dbPath = options?.inMemory ? ":memory:" : (options?.dbPath ?? "./data/pm.db");
 
   // Ensure parent directory exists for file-based DBs
   if (dbPath !== ":memory:") {
@@ -76,9 +75,15 @@ export function initializeDatabase(options?: InitOptions): AppDatabase {
 
   db = drizzle(rawDb, { schema: { ...schema, ...relations } });
 
-  // Run Drizzle migrations
+  // Run Drizzle migrations — bracketed by migration-log integrity guards (see
+  // migration-journal.ts for the 2026-06-10 silent-skip incident this fixes):
+  // heal first (a DB migrated under the fabricated-timestamp journal carries a
+  // future watermark that would silently skip every new migration), then
+  // migrate, then assert fail-loud that the schema is actually current.
   const migrationsFolder = resolveMigrationsFolder();
+  healMigrationLogDrift(rawDb, migrationsFolder);
   migrate(db, { migrationsFolder });
+  assertMigrationLogCurrent(rawDb, migrationsFolder);
 
   // Create FTS5 virtual tables
   for (const stmt of ALL_FTS_STATEMENTS) {
@@ -102,9 +107,7 @@ export function initializeDatabase(options?: InitOptions): AppDatabase {
  */
 export function getDb(): AppDatabase {
   if (!db) {
-    throw new Error(
-      "Database not initialized. Call initializeDatabase() first.",
-    );
+    throw new Error("Database not initialized. Call initializeDatabase() first.");
   }
   return db;
 }
@@ -116,9 +119,7 @@ export function getDb(): AppDatabase {
  */
 export function getRawDb(): Database.Database {
   if (!rawDb) {
-    throw new Error(
-      "Database not initialized. Call initializeDatabase() first.",
-    );
+    throw new Error("Database not initialized. Call initializeDatabase() first.");
   }
   return rawDb;
 }

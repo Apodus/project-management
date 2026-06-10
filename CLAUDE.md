@@ -496,6 +496,16 @@ automatically â€” the `.sql`, its `meta/0027_snapshot.json`, and the `_jour
 written for you. Hand-authored migrations remain possible, but each must append its own
 `_journal.json` entry â€” migrations apply by journal order, not by `.sql` glob.
 
+**Journal `when` MUST be the real current time (`Date.now()`), strictly greater than the previous
+entry and NEVER in the future.** Drizzle applies a migration iff `when > MAX(created_at)` of the
+applied log — a future-stamped entry raises the watermark so the NEXT (honestly-stamped) migration
+silently skips on every existing DB (the 2026-06-10 incident: hand-authored entries 0004–0026
+carried fabricated sequential-midnight stamps marching to 2026-06-21; the auto-generated 0027 sat
+below the watermark, skipped, and the server 500'd per request). Guards now exist
+(`src/db/migration-journal.ts`): boot HEALS drifted `created_at` values (hash-matched to the
+journal) and then FAIL-LOUD asserts every journal migration is applied — plus a journal-hygiene
+test pins monotonic, non-future `when`s. Don't fight the guards; stamp honestly.
+
 ### Backup
 
 The database is a single SQLite file (default: `./data/pm.db`). To back up:
