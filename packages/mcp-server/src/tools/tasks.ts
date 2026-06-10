@@ -33,10 +33,7 @@ export function registerTaskTools(server: McpServer): void {
         .string()
         .optional()
         .describe("Filter by priority ('critical', 'high', 'medium', 'low')"),
-      assignee: z
-        .string()
-        .optional()
-        .describe("Filter by assignee user ID, or 'unassigned'"),
+      assignee: z.string().optional().describe("Filter by assignee user ID, or 'unassigned'"),
       type: z
         .string()
         .optional()
@@ -47,7 +44,7 @@ export function registerTaskTools(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          "Filter to tasks tagged with this label (by name, scoped to the project). Use this as the subsystem/area filter when you don't know label IDs.",
+          "Filter to tasks tagged with this label (by name, scoped to the project). Use this as the subsystem/area filter when you don't know label IDs. Call pm_list_labels to discover valid names — an unknown name returns empty results, not an error.",
         ),
       claim: z
         .enum(["available", "mine", "all"])
@@ -90,7 +87,10 @@ export function registerTaskTools(server: McpServer): void {
         content: [
           {
             type: "text" as const,
-            text: tasks.length > 0 ? `Found ${tasks.length} task(s):\n\n${text}` : "No tasks found matching the given filters.",
+            text:
+              tasks.length > 0
+                ? `Found ${tasks.length} task(s):\n\n${text}`
+                : "No tasks found matching the given filters.",
           },
         ],
       };
@@ -129,9 +129,7 @@ export function registerTaskTools(server: McpServer): void {
       if (task.estimatedEffort) sections.push(`**Estimated Effort:** ${task.estimatedEffort}`);
       if (task.dueDate) sections.push(`**Due Date:** ${task.dueDate}`);
       if (task.parentTaskId) {
-        sections.push(
-          `**Parent Task:** ${task.parentTaskTitle ?? task.parentTaskId}`,
-        );
+        sections.push(`**Parent Task:** ${task.parentTaskTitle ?? task.parentTaskId}`);
       }
 
       sections.push("");
@@ -188,9 +186,7 @@ export function registerTaskTools(server: McpServer): void {
       task_id: z.string(),
       reason: z
         .string()
-        .describe(
-          "Why you are taking over this claim (required, recorded in the audit log)",
-        ),
+        .describe("Why you are taking over this claim (required, recorded in the audit log)"),
       assignee_id: z
         .string()
         .optional()
@@ -239,12 +235,8 @@ export function registerTaskTools(server: McpServer): void {
     "Hand off your task claim to a named worker (reason required, audited). You must currently hold the claim (a human director may hand off any claim). The claim and its liveness lease transfer to the target.",
     {
       task_id: z.string().describe("The task ID to hand off"),
-      reason: z
-        .string()
-        .describe("Why you are handing off (required, recorded in the audit log)"),
-      target: z
-        .string()
-        .describe("The user id of the worker to hand the claim to"),
+      reason: z.string().describe("Why you are handing off (required, recorded in the audit log)"),
+      target: z.string().describe("The user id of the worker to hand the claim to"),
     },
     async ({ task_id, reason, target }) => {
       const result = await releaseTaskTo(task_id, reason, target);
@@ -296,7 +288,7 @@ export function registerTaskTools(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          "Optional label name (subsystem/area). If omitted, returns all in-flight tasks in the project.",
+          "Optional label name (subsystem/area). If omitted, returns all in-flight tasks in the project. Call pm_list_labels to discover valid names — an unknown name returns empty results, not an error.",
         ),
     },
     async ({ project_id, label }) => {

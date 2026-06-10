@@ -94,6 +94,7 @@ const mockCreateEpic = vi.mocked(apiClient.createEpic);
 const mockListEpics = vi.mocked(apiClient.listEpics);
 const mockGetEpic = vi.mocked(apiClient.getEpic);
 const mockGetEpicGraph = vi.mocked(apiClient.getEpicGraph);
+const mockListLabels = vi.mocked(apiClient.listLabels);
 const mockGetAgentIdentity = vi.mocked(apiClient.getAgentIdentity);
 const mockListTasks = vi.mocked(apiClient.listTasks);
 const mockGetTask = vi.mocked(apiClient.getTask);
@@ -2349,9 +2350,7 @@ describe("MCP Tools", () => {
 
       expect(mockGetEpicGraph).toHaveBeenCalledWith("proj_001");
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain(
-        "Epic graph for project proj_001: 2 epic(s), 1 edge(s).",
-      );
+      expect(text).toContain("Epic graph for project proj_001: 2 epic(s), 1 edge(s).");
       expect(text).toContain('"Epic epic_a" [P1-2]');
       expect(text).toContain("at_risk");
       expect(text).toContain("live (actively worked)");
@@ -2483,6 +2482,59 @@ describe("MCP Tools", () => {
       // Tripwire: the graph node carries no holder id, and the render must not
       // invent one.
       expect(text).not.toContain("user_secret");
+    });
+  });
+
+  // ---- pm_list_labels (C5.P2) ----
+
+  describe("pm_list_labels", () => {
+    it("renders name, id, color, and description per label", async () => {
+      mockListLabels.mockResolvedValue([
+        {
+          id: "label_001",
+          projectId: "proj_001",
+          name: "rendering",
+          color: "#ff8800",
+          description: "GPU/render subsystem",
+        },
+        {
+          id: "label_002",
+          projectId: "proj_001",
+          name: "netcode",
+          color: null,
+          description: null,
+        },
+      ]);
+
+      const result = await client.callTool({
+        name: "pm_list_labels",
+        arguments: { project_id: "proj_001" },
+      });
+
+      expect(mockListLabels).toHaveBeenCalledWith("proj_001");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Found 2 label(s) in project proj_001:");
+      expect(text).toContain(
+        "- **rendering** — ID: label_001, color #ff8800 — GPU/render subsystem",
+      );
+      expect(text).toContain("- **netcode** — ID: label_002");
+      // No color/description → no dangling separators on that line.
+      expect(text).not.toContain("label_002,");
+      expect(text).not.toContain("label_002 —");
+    });
+
+    it("explains the empty case (labels are human-created)", async () => {
+      mockListLabels.mockResolvedValue([]);
+
+      const result = await client.callTool({
+        name: "pm_list_labels",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain(
+        "No labels in this project. Labels are created by humans in the web UI; pm_list_tasks label_name only matches existing names.",
+      );
     });
   });
 

@@ -5,6 +5,7 @@ import {
   claimAgent,
   createNote,
   getEpicGraph,
+  listLabels,
   promoteNoteToProposal,
   releaseAgent,
   getAgentIdentity,
@@ -242,9 +243,7 @@ describe("getEpicGraph", () => {
     await getEpicGraph("proj 001");
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(
-      "http://test-server:9999/api/v1/projects/proj%20001/epic-graph",
-    );
+    expect(url).toBe("http://test-server:9999/api/v1/projects/proj%20001/epic-graph");
     expect(init.method).toBe("GET");
     // A claimed token from a prior test can leak via module state; assert the
     // Bearer scheme is present rather than a specific token value.
@@ -258,6 +257,62 @@ describe("getEpicGraph", () => {
 
     expect(result).toEqual(sampleGraph);
     expect(result.cycles).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Labels — listLabels (C5.P2)
+// ---------------------------------------------------------------------------
+
+describe("listLabels", () => {
+  beforeEach(() => {
+    process.env.PM_API_URL = "http://test-server:9999";
+    process.env.PM_API_TOKEN = "test-token-123";
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.PM_API_URL;
+    delete process.env.PM_API_TOKEN;
+  });
+
+  const sampleLabels = [
+    {
+      id: "label_001",
+      projectId: "proj 001",
+      name: "rendering",
+      color: "#ff8800",
+      description: "GPU/render subsystem",
+    },
+  ];
+
+  it("GETs the URL-encoded labels path with the Bearer token", async () => {
+    const fetchMock = mockFetch({
+      status: 200,
+      ok: true,
+      body: { data: sampleLabels, pagination: { total: 1 } },
+    });
+
+    await listLabels("proj 001");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://test-server:9999/api/v1/projects/proj%20001/labels");
+    expect(init.method).toBe("GET");
+    // A claimed token from a prior test can leak via module state; assert the
+    // Bearer scheme is present rather than a specific token value.
+    expect(init.headers.Authorization).toMatch(/^Bearer .+/);
+  });
+
+  it("unwraps { data }, dropping pagination (total === data.length, unbounded select)", async () => {
+    mockFetch({
+      status: 200,
+      ok: true,
+      body: { data: sampleLabels, pagination: { total: 1 } },
+    });
+
+    const result = await listLabels("proj_001");
+
+    expect(result).toEqual(sampleLabels);
   });
 });
 

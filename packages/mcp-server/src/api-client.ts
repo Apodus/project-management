@@ -279,10 +279,7 @@ export async function createProposal(
 }
 
 export async function claimProposal(proposalId: string): Promise<ClaimResultData> {
-  return apiRequest<ClaimResultData>(
-    "POST",
-    `/proposals/${encodeURIComponent(proposalId)}/claim`,
-  );
+  return apiRequest<ClaimResultData>("POST", `/proposals/${encodeURIComponent(proposalId)}/claim`);
 }
 
 export async function releaseProposal(proposalId: string): Promise<ClaimResultData> {
@@ -463,6 +460,27 @@ export async function getTask(id: string): Promise<TaskSummary> {
 }
 
 // ---------------------------------------------------------------------------
+// Typed API functions — Labels (C5.P2)
+// ---------------------------------------------------------------------------
+
+export interface LabelData {
+  id: string;
+  projectId: string;
+  name: string;
+  color: string | null;
+  description: string | null;
+}
+
+/**
+ * List a project's labels. The route envelope is `{ data, pagination: { total } }`;
+ * apiRequest unwraps `.data`, dropping `pagination` — harmless, because the
+ * route's select is unbounded so total === data.length always.
+ */
+export async function listLabels(projectId: string): Promise<LabelData[]> {
+  return apiRequest<LabelData[]>("GET", `/projects/${encodeURIComponent(projectId)}/labels`);
+}
+
+// ---------------------------------------------------------------------------
 // Typed API functions — Search
 // ---------------------------------------------------------------------------
 
@@ -543,14 +561,10 @@ export async function transitionTask(
   toStatus: string,
   comment?: string,
 ): Promise<TaskSummary> {
-  return apiRequest<TaskSummary>(
-    "POST",
-    `/tasks/${encodeURIComponent(taskId)}/transitions`,
-    {
-      to_status: toStatus,
-      ...(comment ? { comment } : {}),
-    },
-  );
+  return apiRequest<TaskSummary>("POST", `/tasks/${encodeURIComponent(taskId)}/transitions`, {
+    to_status: toStatus,
+    ...(comment ? { comment } : {}),
+  });
 }
 
 export interface PickNextOptions {
@@ -581,15 +595,11 @@ export async function addTaskComment(
   commentType?: string,
   metadata?: Record<string, unknown> | null,
 ): Promise<CommentData> {
-  return apiRequest<CommentData>(
-    "POST",
-    `/tasks/${encodeURIComponent(taskId)}/comments`,
-    {
-      body,
-      ...(commentType ? { commentType } : {}),
-      ...(metadata !== undefined ? { metadata } : {}),
-    },
-  );
+  return apiRequest<CommentData>("POST", `/tasks/${encodeURIComponent(taskId)}/comments`, {
+    body,
+    ...(commentType ? { commentType } : {}),
+    ...(metadata !== undefined ? { metadata } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -609,14 +619,10 @@ export async function addTaskDependency(
   dependsOnTaskId: string,
   type?: string,
 ): Promise<DependencyData> {
-  return apiRequest<DependencyData>(
-    "POST",
-    `/tasks/${encodeURIComponent(taskId)}/dependencies`,
-    {
-      dependsOnTaskId,
-      ...(type ? { type } : {}),
-    },
-  );
+  return apiRequest<DependencyData>("POST", `/tasks/${encodeURIComponent(taskId)}/dependencies`, {
+    dependsOnTaskId,
+    ...(type ? { type } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -710,10 +716,7 @@ export interface EpicGraphData {
 }
 
 export async function getEpicGraph(projectId: string): Promise<EpicGraphData> {
-  return apiRequest<EpicGraphData>(
-    "GET",
-    `/projects/${encodeURIComponent(projectId)}/epic-graph`,
-  );
+  return apiRequest<EpicGraphData>("GET", `/projects/${encodeURIComponent(projectId)}/epic-graph`);
 }
 
 // ---------------------------------------------------------------------------
@@ -731,15 +734,8 @@ export interface CreateTaskData {
   context?: Record<string, unknown> | null;
 }
 
-export async function createTask(
-  projectId: string,
-  data: CreateTaskData,
-): Promise<TaskSummary> {
-  return apiRequest<TaskSummary>(
-    "POST",
-    `/projects/${encodeURIComponent(projectId)}/tasks`,
-    data,
-  );
+export async function createTask(projectId: string, data: CreateTaskData): Promise<TaskSummary> {
+  return apiRequest<TaskSummary>("POST", `/projects/${encodeURIComponent(projectId)}/tasks`, data);
 }
 
 export interface UpdateTaskData {
@@ -752,15 +748,8 @@ export interface UpdateTaskData {
   dueDate?: string | null;
 }
 
-export async function updateTask(
-  taskId: string,
-  data: UpdateTaskData,
-): Promise<TaskSummary> {
-  return apiRequest<TaskSummary>(
-    "PATCH",
-    `/tasks/${encodeURIComponent(taskId)}`,
-    data,
-  );
+export async function updateTask(taskId: string, data: UpdateTaskData): Promise<TaskSummary> {
+  return apiRequest<TaskSummary>("PATCH", `/tasks/${encodeURIComponent(taskId)}`, data);
 }
 
 // ---------------------------------------------------------------------------
@@ -786,15 +775,8 @@ export interface CreateGitRefData {
   title?: string | null;
 }
 
-export async function createGitRef(
-  taskId: string,
-  data: CreateGitRefData,
-): Promise<GitRefData> {
-  return apiRequest<GitRefData>(
-    "POST",
-    `/tasks/${encodeURIComponent(taskId)}/git-refs`,
-    data,
-  );
+export async function createGitRef(taskId: string, data: CreateGitRefData): Promise<GitRefData> {
+  return apiRequest<GitRefData>("POST", `/tasks/${encodeURIComponent(taskId)}/git-refs`, data);
 }
 
 // ---------------------------------------------------------------------------
@@ -822,10 +804,7 @@ export interface UpdatesResponse {
   data: ActivityEntry[];
 }
 
-export async function checkUpdates(
-  since: string,
-  projectId?: string,
-): Promise<UpdatesResponse> {
+export async function checkUpdates(since: string, projectId?: string): Promise<UpdatesResponse> {
   const params: Record<string, string | number | boolean | undefined> = {
     since,
   };
@@ -952,10 +931,7 @@ export async function releaseAgent(): Promise<void> {
 export function shouldReleaseOnShutdown(): boolean {
   const workerKey = process.env.PM_WORKER_KEY?.trim() || undefined;
   return Boolean(
-    !process.env.PM_API_TOKEN &&
-      process.env.PM_POOL_SECRET &&
-      !workerKey &&
-      getAgentIdentity(),
+    !process.env.PM_API_TOKEN && process.env.PM_POOL_SECRET && !workerKey && getAgentIdentity(),
   );
 }
 
@@ -1035,35 +1011,19 @@ export async function listEpics(
 }
 
 export async function getEpic(epicId: string): Promise<EpicSummary> {
-  return apiRequest<EpicSummary>(
-    "GET",
-    `/epics/${encodeURIComponent(epicId)}`,
-  );
+  return apiRequest<EpicSummary>("GET", `/epics/${encodeURIComponent(epicId)}`);
 }
 
-export async function createEpic(
-  projectId: string,
-  data: CreateEpicData,
-): Promise<EpicSummary> {
-  return apiRequest<EpicSummary>(
-    "POST",
-    `/projects/${encodeURIComponent(projectId)}/epics`,
-    data,
-  );
+export async function createEpic(projectId: string, data: CreateEpicData): Promise<EpicSummary> {
+  return apiRequest<EpicSummary>("POST", `/projects/${encodeURIComponent(projectId)}/epics`, data);
 }
 
 export async function claimEpic(epicId: string): Promise<ClaimResultData> {
-  return apiRequest<ClaimResultData>(
-    "POST",
-    `/epics/${encodeURIComponent(epicId)}/claim`,
-  );
+  return apiRequest<ClaimResultData>("POST", `/epics/${encodeURIComponent(epicId)}/claim`);
 }
 
 export async function releaseEpic(epicId: string): Promise<ClaimResultData> {
-  return apiRequest<ClaimResultData>(
-    "POST",
-    `/epics/${encodeURIComponent(epicId)}/release`,
-  );
+  return apiRequest<ClaimResultData>("POST", `/epics/${encodeURIComponent(epicId)}/release`);
 }
 
 export async function releaseEpicTo(
@@ -1105,10 +1065,7 @@ export async function forceClaimEpic(
 // Typed API functions — Project Tasks (for board resource)
 // ---------------------------------------------------------------------------
 
-export async function getProjectTasks(
-  projectId: string,
-  status?: string,
-): Promise<TaskSummary[]> {
+export async function getProjectTasks(projectId: string, status?: string): Promise<TaskSummary[]> {
   const params: Record<string, string | number | boolean | undefined> = {};
   if (status) params.status = status;
 
@@ -1123,17 +1080,11 @@ export async function getProjectTasks(
 // ---------------------------------------------------------------------------
 
 export async function claimTask(taskId: string): Promise<ClaimResultData> {
-  return apiRequest<ClaimResultData>(
-    "POST",
-    `/tasks/${encodeURIComponent(taskId)}/claim`,
-  );
+  return apiRequest<ClaimResultData>("POST", `/tasks/${encodeURIComponent(taskId)}/claim`);
 }
 
 export async function releaseTask(taskId: string): Promise<ClaimResultData> {
-  return apiRequest<ClaimResultData>(
-    "POST",
-    `/tasks/${encodeURIComponent(taskId)}/release`,
-  );
+  return apiRequest<ClaimResultData>("POST", `/tasks/${encodeURIComponent(taskId)}/release`);
 }
 
 export async function forceClaimTask(
@@ -1192,10 +1143,7 @@ export interface AwarenessData {
   total: number;
 }
 
-export async function awareness(
-  projectId: string,
-  label?: string,
-): Promise<AwarenessData> {
+export async function awareness(projectId: string, label?: string): Promise<AwarenessData> {
   return apiRequest<AwarenessData>(
     "GET",
     `/projects/${encodeURIComponent(projectId)}/awareness${qs({ label })}`,
@@ -1297,19 +1245,14 @@ export async function releaseMergeLock(
   );
 }
 
-export async function getMergeLock(
-  projectId: string,
-  resource: string,
-): Promise<MergeLockView> {
+export async function getMergeLock(projectId: string, resource: string): Promise<MergeLockView> {
   return apiRequest<MergeLockView>(
     "GET",
     `/projects/${encodeURIComponent(projectId)}/merge-locks/${encodeURIComponent(resource)}`,
   );
 }
 
-export async function listMergeLocks(
-  projectId: string,
-): Promise<MergeLockView[]> {
+export async function listMergeLocks(projectId: string): Promise<MergeLockView[]> {
   return apiRequest<MergeLockView[]>(
     "GET",
     `/projects/${encodeURIComponent(projectId)}/merge-locks`,
@@ -1404,9 +1347,7 @@ export async function listMergeRequests(
 /**
  * Get a single merge request with its attempts (most-recent first).
  */
-export async function getMergeRequest(
-  requestId: string,
-): Promise<MergeRequestDetailView> {
+export async function getMergeRequest(requestId: string): Promise<MergeRequestDetailView> {
   return apiRequest<MergeRequestDetailView>(
     "GET",
     `/merge-requests/${encodeURIComponent(requestId)}`,
@@ -1432,9 +1373,7 @@ export async function cancelMergeRequest(
 /**
  * Integrator picks up a queued request — queued → integrating.
  */
-export async function pickupMergeRequest(
-  requestId: string,
-): Promise<MergeRequestView> {
+export async function pickupMergeRequest(requestId: string): Promise<MergeRequestView> {
   return apiRequest<MergeRequestView>(
     "POST",
     `/merge-requests/${encodeURIComponent(requestId)}/pickup`,
@@ -1514,9 +1453,7 @@ export async function requestMergeGroup(
 /**
  * Get a single merge group with its members.
  */
-export async function getMergeGroup(
-  groupId: string,
-): Promise<MergeRequestGroupDetailView> {
+export async function getMergeGroup(groupId: string): Promise<MergeRequestGroupDetailView> {
   return apiRequest<MergeRequestGroupDetailView>(
     "GET",
     `/merge-groups/${encodeURIComponent(groupId)}`,
@@ -1543,13 +1480,8 @@ export async function listMergeIncidents(
 /**
  * Get a single merge incident.
  */
-export async function getMergeIncident(
-  incidentId: string,
-): Promise<MergeIncidentView> {
-  return apiRequest<MergeIncidentView>(
-    "GET",
-    `/merge-incidents/${encodeURIComponent(incidentId)}`,
-  );
+export async function getMergeIncident(incidentId: string): Promise<MergeIncidentView> {
+  return apiRequest<MergeIncidentView>("GET", `/merge-incidents/${encodeURIComponent(incidentId)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1579,10 +1511,7 @@ export interface CreateNoteResult {
  * `.data` and drops `similar`. Returns both the saved note and any
  * possibly-similar open notes (advisory; `[]` when none).
  */
-export async function createNote(
-  projectId: string,
-  data: CreateNote,
-): Promise<CreateNoteResult> {
+export async function createNote(projectId: string, data: CreateNote): Promise<CreateNoteResult> {
   const url = `${getBaseUrl()}/api/v1/projects/${encodeURIComponent(projectId)}/notes`;
   const token = getToken();
 
@@ -1613,20 +1542,14 @@ export async function createNote(
 /**
  * List notes for a project (most-recent first), with optional filters.
  */
-export async function listNotes(
-  projectId: string,
-  filters?: ListNotesQuery,
-): Promise<Note[]> {
+export async function listNotes(projectId: string, filters?: ListNotesQuery): Promise<Note[]> {
   const params: Record<string, string | number | boolean | undefined> = {};
   if (filters?.status) params.status = filters.status;
   if (filters?.kind) params.kind = filters.kind;
   if (filters?.anchorType) params.anchorType = filters.anchorType;
   if (filters?.anchorId) params.anchorId = filters.anchorId;
   if (filters?.severity) params.severity = filters.severity;
-  return apiRequest<Note[]>(
-    "GET",
-    `/projects/${encodeURIComponent(projectId)}/notes${qs(params)}`,
-  );
+  return apiRequest<Note[]>("GET", `/projects/${encodeURIComponent(projectId)}/notes${qs(params)}`);
 }
 
 /**
