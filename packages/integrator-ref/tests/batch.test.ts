@@ -1033,22 +1033,22 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(remoteMain).toBe(r2.treeSha);
   });
 
-  it("concurrent verify overlap: latest-start < earliest-end for ≥2 members", async () => {
+  it("concurrent verify overlap: ≥2 members in flight simultaneously (rendezvous probe)", async () => {
     const root = path.join(tmpRoot, "wt-overlap");
     const reqA = makeRequest({
       id: "req-o1",
       branch: "feature/clean",
-      verifyCmd: SLEEP_300,
+      verifyCmd: "echo ok",
     });
     const reqB = makeRequest({
       id: "req-o2",
       branch: "feature/clean2",
-      verifyCmd: SLEEP_300,
+      verifyCmd: "echo ok",
     });
     const reqC = makeRequest({
       id: "req-o3",
       branch: "feature/clean3",
-      verifyCmd: SLEEP_300,
+      verifyCmd: "echo ok",
     });
     const state: FakeState = {
       requests: [reqA, reqB, reqC],
@@ -1057,17 +1057,52 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       calls: [],
     };
 
-    // Record per-call verify start/end by wrapping runVerify in the factory.
-    const windows: { start: number; end: number }[] = [];
+    // Deterministic concurrency probe: a rendezvous fake runVerify. Each call
+    // bumps an in-flight counter (tracking the peak) and BLOCKS on a shared
+    // barrier that opens only once ≥2 verifies are in flight at the same
+    // instant — proving true overlap structurally, with zero dependence on
+    // wall-clock timing or machine load (the previous form recorded real
+    // verify start/end windows and asserted intersection, which flaked under
+    // load when the serialized rebases staggered the launches far enough
+    // apart). The drain loop launches member verifies un-awaited before
+    // racing on completions, so with parallelism 3 the rendezvous always
+    // forms; if a regression ever serializes verifies, the 10s safety timer
+    // (cleared on normal release) opens the barrier so the test fails the
+    // peak assertion cleanly inside its 20s timeout instead of hanging.
+    let inFlight = 0;
+    let peak = 0;
+    let releaseBarrier!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+    let safety: NodeJS.Timeout | undefined;
+    const release = (): void => {
+      if (safety !== undefined) clearTimeout(safety);
+      safety = undefined;
+      releaseBarrier();
+    };
+    safety = setTimeout(release, 10_000);
     const factory = (p: string): GitOps => {
       const real = createGitOps(simpleGit(p));
       return {
         ...real,
-        async runVerify(cmd, timeoutMs, runOpts) {
+        async runVerify(_cmd, _timeoutMs, runOpts) {
           const start = Date.now();
-          const res = await real.runVerify(cmd, timeoutMs, runOpts);
-          windows.push({ start, end: Date.now() });
-          return res;
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          if (inFlight >= 2) release();
+          await barrier;
+          inFlight -= 1;
+          // Synthetic passing VerifyResult (shape: src/git-ops.ts).
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: "ok",
+            stderr: "",
+            durationMs: Date.now() - start,
+            timedOut: false,
+            logPath: runOpts.logPath,
+          };
         },
       };
     };
@@ -1078,27 +1113,15 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       gitOpsFactory: factory,
     });
     const outcome = await runBatchOnce(deps);
+    release(); // idempotent — clears the safety timer if <2 verifies ever ran
 
     expect(outcome.kind).toBe("drained");
-    expect(windows.length).toBeGreaterThanOrEqual(2);
-    // Non-flaky overlap form: there exists a PAIR of verifies whose time
-    // windows intersect (one started before the other ended and vice-versa) —
-    // i.e. ≥2 verifies ran concurrently. We don't require ALL N to mutually
-    // overlap, because the serialized rebases (each a real git op) can stagger
-    // the launches enough that the first verify finishes before the last
-    // starts; concurrency of ANY two members is the property under test.
-    let overlapFound = false;
-    for (let i = 0; i < windows.length && !overlapFound; i += 1) {
-      for (let j = i + 1; j < windows.length; j += 1) {
-        const a = windows[i];
-        const b = windows[j];
-        if (a.start < b.end && b.start < a.end) {
-          overlapFound = true;
-          break;
-        }
-      }
-    }
-    expect(overlapFound).toBe(true);
+    expect(reqA.status).toBe("landed");
+    expect(reqB.status).toBe("landed");
+    expect(reqC.status).toBe("landed");
+    // The load-bearing assertion: ≥2 verify executions were concurrently in
+    // flight at one instant (counted inside the fake, not inferred from time).
+    expect(peak).toBeGreaterThanOrEqual(2);
   }, 20_000);
 
   it("mid-chain rebase conflict fails that member; member 0 lands; lock released once", async () => {
@@ -1471,14 +1494,76 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
   // cut it short; if it doesn't, the test times out — a clear failure signal.
   const SLEEP_LONG = process.platform === "win32" ? "ping -n 10 127.0.0.1 > nul" : "sleep 9";
 
-  // A verify that SLEEPS ~2s and THEN fails (exit non-zero). Load-bearing for
-  // the suffix-invalidation tests: the failing member must fail AFTER its
-  // dependents have been admitted (chained onto it) and started verifying —
-  // otherwise the surviving-prefix logic simply admits the dependents fresh
-  // against main (no speculation on the failed member → nothing to invalidate).
-  // The delay guarantees the dependents speculate on the failing member first.
-  const DELAY_FAIL =
-    process.platform === "win32" ? "ping -n 3 127.0.0.1 > nul & exit 1" : "sleep 2; exit 1";
+  // Sentinel verify command for the rendezvous-gated head failure below.
+  // Never executed by a shell — the rendezvous wrapper intercepts it.
+  const HEAD_FAIL_AFTER_SUFFIX = "__head_fail_after_suffix__";
+
+  /**
+   * Rendezvous-gated head failure for the suffix-invalidation/kill tests: the
+   * failing member must fail AFTER its dependents have been admitted (chained
+   * onto it) and started verifying — otherwise the surviving-prefix logic
+   * simply admits the dependents fresh against main (no speculation on the
+   * failed member → nothing to invalidate).
+   *
+   * This replaces the old DELAY_FAIL ("sleep 2; exit 1"), which only made the
+   * ordering PROBABLE: under machine load the suffix's serialized rebase
+   * could take >2s, the head failed before the suffix had speculated, and the
+   * invalidation assertions found nothing (observed flake, 2026-06-10). The
+   * rendezvous makes the ordering STRUCTURAL: the head's verify (sentinel
+   * HEAD_FAIL_AFTER_SUFFIX) blocks until the wrapper has seen a runVerify
+   * call for EVERY command in `suffixCmds` (each dependent truly speculated
+   * and reached verify — the inner runVerify spawns its child synchronously
+   * inside the call, so the suffix child exists before the gate opens), then
+   * returns a synthetic REAL failure (exitCode 1, no spawnError, !timedOut →
+   * classified non-transient, no retry). A 10s safety timer (cleared on
+   * normal release) opens the gate so a concurrency regression fails the
+   * invalidation assertions cleanly inside the test timeout instead of
+   * hanging the suite.
+   *
+   * Returns a wrapper that composes over a test's own GitOps fakes: apply it
+   * OUTERMOST so it observes every runVerify call.
+   */
+  const headFailRendezvous = (suffixCmds: string[]): ((ops: GitOps) => GitOps) => {
+    const waiting = new Set(suffixCmds);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let safety: NodeJS.Timeout | undefined;
+    const open = (): void => {
+      if (safety !== undefined) clearTimeout(safety);
+      safety = undefined;
+      release();
+    };
+    safety = setTimeout(open, 10_000);
+    return (ops: GitOps): GitOps => ({
+      ...ops,
+      async runVerify(cmd, timeoutMs, runOpts) {
+        if (cmd === HEAD_FAIL_AFTER_SUFFIX) {
+          await gate;
+          // Synthetic real (non-transient) failure — shape: src/git-ops.ts.
+          return {
+            exitCode: 1,
+            signal: null,
+            stdout: "",
+            stderr: "head fail (rendezvous: suffix speculated)",
+            durationMs: 1,
+            timedOut: false,
+            logPath: runOpts.logPath,
+          };
+        }
+        if (waiting.has(cmd)) {
+          // A suffix member reached verify: delegate FIRST (child spawns
+          // synchronously inside), then open the gate once all have.
+          const res = ops.runVerify(cmd, timeoutMs, runOpts);
+          waiting.delete(cmd);
+          if (waiting.size === 0) open();
+          return res;
+        }
+        return ops.runVerify(cmd, timeoutMs, runOpts);
+      },
+    });
+  };
 
   it("Step 6 mid-failure: req1 verify-fails; req0 lands, req2 invalidated→re-admitted→landed onto main+0", async () => {
     const root = path.join(tmpRoot, "wt-s6-mid");
@@ -1490,15 +1575,17 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     const reqB = makeRequest({
       id: "req-s2",
       branch: "feature/clean2",
-      // Delayed verify failure (NOT a conflict — clean rebase): fails AFTER req2
-      // has chained onto it and started verifying, so req2 truly speculates on
-      // req1 and must be invalidated when req1 fails.
-      verifyCmd: DELAY_FAIL,
+      // Rendezvous-gated verify failure (NOT a conflict — clean rebase): fails
+      // AFTER req2 has chained onto it and started verifying, so req2 truly
+      // speculates on req1 and must be invalidated when req1 fails.
+      verifyCmd: HEAD_FAIL_AFTER_SUFFIX,
     });
     const reqC = makeRequest({
       id: "req-s3",
       branch: "feature/clean3",
-      verifyCmd: "echo ok",
+      // Unique command (vs req-s1's "echo ok") so the rendezvous can key the
+      // gate on THIS member's verify start specifically.
+      verifyCmd: "echo suffix-ok",
     });
     const state: FakeState = {
       requests: [reqA, reqB, reqC],
@@ -1509,16 +1596,17 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
 
     // Record every rebaseOnto so we can prove req2's re-admit base.
     const rebases: { ref: string; base: string; treeSha: string }[] = [];
+    const wrapRendezvous = headFailRendezvous(["echo suffix-ok"]);
     const factory = (p: string): GitOps => {
       const real = createGitOps(simpleGit(p));
-      return {
+      return wrapRendezvous({
         ...real,
         async rebaseOnto(base, branch) {
           const r = await real.rebaseOnto(base, branch);
           if (r.ok) rebases.push({ ref: branch, base, treeSha: r.treeSha });
           return r;
         },
-      };
+      });
     };
 
     const deps = await depsFor(state, {
@@ -1631,17 +1719,19 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     const reqA = makeRequest({
       id: "req-h1",
       branch: "feature/clean",
-      verifyCmd: DELAY_FAIL, // head fails AFTER the suffix speculates on it
+      // Head fails only AFTER the ENTIRE suffix speculates on it (rendezvous
+      // gated on BOTH suffix members' verify starts).
+      verifyCmd: HEAD_FAIL_AFTER_SUFFIX,
     });
     const reqB = makeRequest({
       id: "req-h2",
       branch: "feature/clean2",
-      verifyCmd: "echo ok",
+      verifyCmd: "echo ok-h2", // unique per member for the rendezvous keying
     });
     const reqC = makeRequest({
       id: "req-h3",
       branch: "feature/clean3",
-      verifyCmd: "echo ok",
+      verifyCmd: "echo ok-h3",
     });
     const state: FakeState = {
       requests: [reqA, reqB, reqC],
@@ -1651,16 +1741,17 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     };
 
     const rebases: { ref: string; base: string; treeSha: string }[] = [];
+    const wrapRendezvous = headFailRendezvous(["echo ok-h2", "echo ok-h3"]);
     const factory = (p: string): GitOps => {
       const real = createGitOps(simpleGit(p));
-      return {
+      return wrapRendezvous({
         ...real,
         async rebaseOnto(base, branch) {
           const r = await real.rebaseOnto(base, branch);
           if (r.ok) rebases.push({ ref: branch, base, treeSha: r.treeSha });
           return r;
         },
-      };
+      });
     };
 
     const deps = await depsFor(state, {
@@ -1705,10 +1796,10 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     const reqA = makeRequest({
       id: "req-k1",
       branch: "feature/clean",
-      // Delayed fail (~2s): long enough for member 1's LONG verify to be in
-      // flight (chained onto member 0) when member 0's failure fires the
-      // suffix invalidation that must KILL member 1's verify.
-      verifyCmd: DELAY_FAIL,
+      // Rendezvous-gated fail: guarantees member 1's LONG verify is in flight
+      // (chained onto member 0, child spawned) when member 0's failure fires
+      // the suffix invalidation that must KILL member 1's verify.
+      verifyCmd: HEAD_FAIL_AFTER_SUFFIX,
     });
     const reqB = makeRequest({
       id: "req-k2",
@@ -1726,11 +1817,14 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     };
 
     // Wrap runVerify to record member 1's verify durations. The FIRST member-1
-    // verify must be cut short (well under the full ~9s sleep) by the kill seam.
+    // verify must be cut short (well under the full ~9s sleep) by the kill
+    // seam. The rendezvous wrapper composes OUTSIDE the recorder, so the gate
+    // opens when the SLEEP_LONG child is already spawned and being timed.
     const durations: { cmd: string; ms: number; killedish: boolean }[] = [];
+    const wrapRendezvous = headFailRendezvous([SLEEP_LONG]);
     const factory = (p: string): GitOps => {
       const real = createGitOps(simpleGit(p));
-      return {
+      return wrapRendezvous({
         ...real,
         async runVerify(cmd, timeoutMs, runOpts) {
           const start = Date.now();
@@ -1743,7 +1837,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
           });
           return res;
         },
-      };
+      });
     };
 
     const deps = await depsFor(state, {
@@ -1845,12 +1939,13 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     const reqA = makeRequest({
       id: "req-bi1",
       branch: "feature/clean",
-      verifyCmd: DELAY_FAIL, // head fails AFTER the suffix speculates on it
+      // Head fails AFTER the suffix speculates on it (rendezvous gated).
+      verifyCmd: HEAD_FAIL_AFTER_SUFFIX,
     });
     const reqB = makeRequest({
       id: "req-bi2",
       branch: "feature/clean2",
-      verifyCmd: "echo ok",
+      verifyCmd: "echo suffix-ok",
     });
     const state: FakeState = {
       requests: [reqA, reqB],
@@ -1859,10 +1954,12 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       calls: [],
     };
     const captured: BatchEvent[] = [];
+    const wrapRendezvous = headFailRendezvous(["echo suffix-ok"]);
     const deps = await depsFor(state, {
       worktreeRoot: root,
       parallelism: 2,
       onBatchEvent: (e) => captured.push(e),
+      gitOpsFactory: (p) => wrapRendezvous(createGitOps(simpleGit(p))),
     });
     deps.newBatchId = () => "batch-bi";
 
@@ -2091,15 +2188,18 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
 
   it("Step 8 suffix-killed-during-backoff → NOT retried in place; re-admitted fresh and lands; no illegal attempt", async () => {
     const root = path.join(tmpRoot, "wt-s8-killbackoff");
-    // Member 0 fails REAL (delayed exit 1) so its failure + suffix invalidation
-    // lands while member 1 is in a backoff sleep. Member 1's verify returns a
-    // transient ONCE → enters a LONG (200ms base) backoff; the invalidation must
-    // abort that sleep and the post-sleep guard must make the retry loop bail
-    // WITHOUT a fresh startAttempt. Member 1 is then re-admitted fresh and lands.
+    // Member 0 fails REAL (rendezvous-gated exit 1) so its failure + suffix
+    // invalidation lands while member 1 is in a backoff sleep. Member 1's verify
+    // returns a transient ONCE → enters a LONG (200ms base) backoff; the
+    // invalidation must abort that sleep and the post-sleep guard must make the
+    // retry loop bail WITHOUT a fresh startAttempt. Member 1 is then re-admitted
+    // fresh and lands.
     const reqA = makeRequest({
       id: "req-kb1",
       branch: "feature/clean",
-      verifyCmd: DELAY_FAIL, // ~2s then exit 1 (real)
+      // Rendezvous-gated real failure: fires once member 1's verify has
+      // started (i.e. while member 1 is in its transient→backoff window).
+      verifyCmd: HEAD_FAIL_AFTER_SUFFIX,
     });
     const reqB = makeRequest({
       id: "req-kb2",
@@ -2118,9 +2218,10 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     // later call (the re-admit's fresh verify against main) runs the real passing
     // verify. Keyed on the clean2 ref so member 0's verify is untouched.
     let b1Calls = 0;
+    const wrapRendezvous = headFailRendezvous(["echo ok"]);
     const factory = (p: string): GitOps => {
       const real = createGitOps(simpleGit(p));
-      return {
+      return wrapRendezvous({
         ...real,
         async runVerify(cmd, timeoutMs, runOpts) {
           if (cmd === "echo ok") {
@@ -2129,7 +2230,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
           }
           return real.runVerify(cmd, timeoutMs, runOpts);
         },
-      };
+      });
     };
 
     const deps = await depsFor(state, {
@@ -2137,7 +2238,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       parallelism: 2,
       gitOpsFactory: factory,
     });
-    // A backoff long enough that member 0's ~2s failure + invalidation lands
+    // A backoff long enough that member 0's gated failure + invalidation lands
     // DURING member 1's first backoff sleep.
     deps.maxVerifyRetries = 3;
     deps.retryBackoffMs = [200, 200, 200];
