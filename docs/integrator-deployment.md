@@ -637,13 +637,12 @@ game_one, 2026-06-10). Other outer-level submodules still need initializing, so 
 the gitlink path. The detection idiom — "populated but not a repo ⇒ assembled mode":
 
 ```bat
-REM cmd / pm-verify.bat — rynx = the gitlink_path
-if exist "rynx\.gitmodules" if not exist "rynx\.git" (
-  REM assembled-train mode: rynx sources are provided by the integrator
-  git -c submodule.rynx.update=none submodule update --init --recursive || exit /b 1
-) else (
-  git submodule update --init --recursive || exit /b 1
-)
+REM cmd / pm-verify.bat — rynx = the gitlink_path. (Env-var pattern, NOT an
+REM if/else: cmd binds `else` to the inner `if`, so a fresh clone — where
+REM rynx\.gitmodules does not exist yet — would silently skip the init.)
+set "PM_SUBMODULE_ARGS="
+if exist "rynx\.gitmodules" if not exist "rynx\.git" set "PM_SUBMODULE_ARGS=-c submodule.rynx.update=none"
+git %PM_SUBMODULE_ARGS% submodule update --init --recursive || exit /b 1
 ```
 
 ```sh
