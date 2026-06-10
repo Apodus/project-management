@@ -15,6 +15,7 @@ import {
 import {
   claimDeniedText,
   claimResultText,
+  claimStateLabel,
   claimStatusLabel,
   forceClaimResultText,
   releaseToResultText,
@@ -47,7 +48,7 @@ export function registerProposalTools(server: McpServer): void {
 
       const text = proposals
         .map((p) => {
-          const claimLine = `  Claim: ${claimStatusLabel(p.claimStatus)}`;
+          const claimLine = `  Claim: ${claimStateLabel(p.claimState) || claimStatusLabel(p.claimStatus)}`;
           const descLine = p.description
             ? p.description.slice(0, 200)
             : "(no description)";
@@ -90,7 +91,7 @@ export function registerProposalTools(server: McpServer): void {
         "",
         `**ID:** ${proposal.id}`,
         `**Status:** ${proposal.status}`,
-        `**Claim:** ${claimStatusLabel(proposal.claimStatus)}`,
+        `**Claim:** ${claimStateLabel(proposal.claimState) || claimStatusLabel(proposal.claimStatus)}`,
         `**Project:** ${proposal.projectId}`,
         `**Created by:** ${proposal.createdBy ?? "unknown"}`,
         `**Created:** ${proposal.createdAt}`,

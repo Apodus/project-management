@@ -3833,6 +3833,110 @@ describe("MCP Tools", () => {
       expect(text).not.toContain("user_secret_A");
       expect(text).not.toContain("user_secret_B");
     });
+
+    // ---- C5.P3: proposals adopt the liveness-aware render ----
+
+    it("pm_list_proposals renders each claim_state, never the holder id", async () => {
+      mockListProposals.mockResolvedValue([
+        {
+          ...sampleProposal,
+          id: "prop_yours",
+          title: "Yours",
+          claimedBy: "user_secret_P1",
+          claimStatus: "claimed_by_you",
+          claimState: "yours",
+        },
+        {
+          ...sampleProposal,
+          id: "prop_live",
+          title: "Live",
+          claimedBy: "user_secret_P2",
+          claimStatus: "claimed_by_other",
+          claimState: "live",
+        },
+        {
+          ...sampleProposal,
+          id: "prop_stale",
+          title: "Stale",
+          claimedBy: "user_secret_P3",
+          claimStatus: "claimed_by_other",
+          claimState: "stale",
+        },
+        {
+          ...sampleProposal,
+          id: "prop_free",
+          title: "Free",
+          claimedBy: null,
+          claimStatus: "unclaimed",
+          claimState: "unclaimed",
+        },
+      ]);
+
+      const result = await client.callTool({
+        name: "pm_list_proposals",
+        arguments: { claim: "all" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("yours (you hold this)");
+      expect(text).toContain("live (actively worked)");
+      expect(text).toContain("stale (claim lease lapsed — may be abandoned)");
+      expect(text).toContain("unclaimed (free to pick up)");
+      expect(text).not.toContain("user_secret_P1");
+      expect(text).not.toContain("user_secret_P2");
+      expect(text).not.toContain("user_secret_P3");
+    });
+
+    it("pm_get_proposal renders the claim_state, never the holder id", async () => {
+      mockGetProposal.mockResolvedValue({
+        ...sampleProposalDetail,
+        claimedBy: "user_secret_P9",
+        claimStatus: "claimed_by_other",
+        claimState: "stale",
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_proposal",
+        arguments: { proposal_id: "prop_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("**Claim:** stale (claim lease lapsed — may be abandoned)");
+      expect(text).not.toContain("user_secret_P9");
+    });
+
+    it("proposals fall back to claimStatusLabel when claimState is absent (older server)", async () => {
+      mockListProposals.mockResolvedValue([
+        {
+          ...sampleProposal,
+          id: "prop_legacy",
+          title: "Legacy",
+          claimedBy: "user_secret_L",
+          claimStatus: "claimed_by_other",
+          // claimState intentionally absent.
+        },
+      ]);
+      mockGetProposal.mockResolvedValue({
+        ...sampleProposalDetail,
+        claimStatus: "unclaimed",
+        // claimState intentionally absent.
+      });
+
+      const listResult = await client.callTool({
+        name: "pm_list_proposals",
+        arguments: { claim: "all" },
+      });
+      const listText = (listResult.content[0] as { type: "text"; text: string }).text;
+      expect(listText).toContain("Claim: claimed by another agent");
+      expect(listText).not.toContain("user_secret_L");
+
+      const getResult = await client.callTool({
+        name: "pm_get_proposal",
+        arguments: { proposal_id: "prop_001" },
+      });
+      const getText = (getResult.content[0] as { type: "text"; text: string }).text;
+      expect(getText).toContain("**Claim:** available to claim");
+    });
   });
 
   // ---- Notes (Campaign C1) ----
