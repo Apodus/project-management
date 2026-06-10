@@ -8,6 +8,7 @@ import {
   FileText,
   Flag,
   FolderOpen,
+  Hand,
   Inbox,
   LayoutDashboard,
   ListTodo,
@@ -39,6 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/hooks/use-projects";
 import { useNotesHealth } from "@/hooks/use-notes";
+import { useClaimsHealth } from "@/hooks/use-train";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
@@ -92,6 +94,12 @@ function getNavItems(projectId: string | null): NavItem[] {
       icon: Flag,
       href: projectId ? `${base}/milestones` : "/projects",
       matchPath: "/milestones",
+    },
+    {
+      label: "Claims",
+      icon: Hand,
+      href: projectId ? `${base}/claims` : "/projects",
+      matchPath: "/claims",
     },
     {
       label: "Train",
@@ -172,6 +180,9 @@ export function Sidebar() {
   const navItems = getNavItems(currentProjectId);
   // Dedups with app-layout's P4 poll via the shared noteKeys.health key — no extra fetch.
   const { data: notesHealth } = useNotesHealth(currentProjectId ?? undefined);
+  // Dedups with app-layout's stale-claim poll via the shared trainKeys.claimsHealth
+  // key — no extra fetch. Surfaces the STALE count (the actionable number).
+  const { data: claimsHealth } = useClaimsHealth(currentProjectId ?? undefined);
   const { data: projects } = useProjects();
   const { data: user } = useCurrentUser();
   const isAdmin = user?.role === "admin";
@@ -291,7 +302,9 @@ export function Sidebar() {
             item={
               item.label === "Inbox"
                 ? { ...item, badgeCount: notesHealth?.open_count }
-                : item
+                : item.label === "Claims"
+                  ? { ...item, badgeCount: claimsHealth?.stale_count }
+                  : item
             }
             collapsed={collapsed}
           />

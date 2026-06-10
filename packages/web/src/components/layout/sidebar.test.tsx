@@ -14,10 +14,16 @@ vi.mock("@tanstack/react-router", () => ({
 const mocks = vi.hoisted(() => ({
   useProjects: vi.fn(() => ({ data: [] })),
   useNotesHealth: vi.fn(),
+  useClaimsHealth: vi.fn(
+    (): { data?: { stale_count: number; oldest_stale_age_ms: number | null } } => ({
+      data: undefined,
+    }),
+  ),
   useCurrentUser: vi.fn(() => ({ data: { role: "member" } })),
 }));
 vi.mock("@/hooks/use-projects", () => ({ useProjects: mocks.useProjects }));
 vi.mock("@/hooks/use-notes", () => ({ useNotesHealth: mocks.useNotesHealth }));
+vi.mock("@/hooks/use-train", () => ({ useClaimsHealth: mocks.useClaimsHealth }));
 vi.mock("@/hooks/use-auth", () => ({ useCurrentUser: mocks.useCurrentUser }));
 
 // ── Mock the stores ──────────────────────────────────────────────
@@ -37,6 +43,7 @@ import { Sidebar } from "./sidebar";
 describe("Sidebar Inbox count badge", () => {
   beforeEach(() => {
     mocks.useNotesHealth.mockReset();
+    mocks.useClaimsHealth.mockReturnValue({ data: undefined });
   });
 
   it("shows the open-note count next to Inbox when > 0", () => {
@@ -73,5 +80,35 @@ describe("Sidebar Inbox count badge", () => {
       </TooltipProvider>,
     );
     expect(screen.getByText("Inbox")).toBeInTheDocument();
+  });
+
+  // Campaign C3 (claims surface) — the Claims entry surfaces the STALE count
+  // from the cache-shared claims-health poll (trainKeys.claimsHealth).
+  it("shows the stale-claim count next to Claims when > 0", () => {
+    mocks.useNotesHealth.mockReturnValue({ data: undefined });
+    mocks.useClaimsHealth.mockReturnValue({
+      data: { stale_count: 3, oldest_stale_age_ms: 60_000 },
+    });
+    render(
+      <TooltipProvider>
+        <Sidebar />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("Claims")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("hides the Claims count when stale_count is 0", () => {
+    mocks.useNotesHealth.mockReturnValue({ data: undefined });
+    mocks.useClaimsHealth.mockReturnValue({
+      data: { stale_count: 0, oldest_stale_age_ms: null },
+    });
+    render(
+      <TooltipProvider>
+        <Sidebar />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("Claims")).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 });

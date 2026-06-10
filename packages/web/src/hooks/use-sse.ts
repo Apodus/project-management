@@ -9,6 +9,7 @@ import { taskKeys } from "./use-tasks";
 import { epicKeys } from "./use-epics";
 import { trainKeys } from "./use-train";
 import { noteKeys } from "./use-notes";
+import { claimKeys } from "./use-claims";
 import { useConnectionStore } from "@/stores/connection-store";
 
 // ─── SSE event payload shape ─────────────────────────────────────
@@ -32,12 +33,15 @@ export function getInvalidationKeys(
   switch (prefix) {
     case "project":
       return [projectKeys.all, activityKeys.all];
+    // task/epic/proposal lifecycle also refreshes the claims panel (Campaign
+    // C3): claim/release/assign/handoff all surface as entity events, and the
+    // panel's rows derive from those holders.
     case "proposal":
-      return [proposalKeys.all, activityKeys.all];
+      return [proposalKeys.all, activityKeys.all, claimKeys.all];
     case "task":
-      return [taskKeys.all, activityKeys.all];
+      return [taskKeys.all, activityKeys.all, claimKeys.all];
     case "epic":
-      return [epicKeys.all, activityKeys.all];
+      return [epicKeys.all, activityKeys.all, claimKeys.all];
     case "comment":
       // Comments affect both task and proposal detail queries
       return [taskKeys.all, proposalKeys.all, activityKeys.all];

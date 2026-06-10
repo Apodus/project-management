@@ -22,6 +22,7 @@ import { SetupPage } from "@/pages/setup-page";
 import { TaskDetailPage } from "@/pages/task-detail-page";
 import { TaskListPage } from "@/pages/task-list-page";
 import { BoardPage } from "@/pages/board-page";
+import { ClaimsPage } from "@/pages/claims-page";
 import { TrainDashboardPage } from "@/pages/train-dashboard-page";
 import { TrainAuditPage } from "@/pages/train-audit-page";
 import { MergeRequestTimelinePage } from "@/pages/merge-request-timeline-page";
@@ -219,6 +220,13 @@ const projectMilestonesRoute = createRoute({
   component: MilestonesPage,
 });
 
+// /projects/$projectId/claims — claims operations panel (Campaign C3)
+const projectClaimsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/claims",
+  component: ClaimsPage,
+});
+
 // /projects/$projectId/train — merge train dashboard
 const projectTrainRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -341,6 +349,7 @@ const routeTree = rootRoute.addChildren([
       projectEpicListRoute,
       projectRoadmapRoute,
       projectActivityRoute,
+      projectClaimsRoute,
       projectMilestonesRoute,
       projectTrainRoute,
       projectTrainAuditRoute,

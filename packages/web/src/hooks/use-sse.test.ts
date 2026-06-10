@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getInvalidationKeys } from "./use-sse";
 import { trainKeys } from "./use-train";
 import { noteKeys } from "./use-notes";
+import { claimKeys } from "./use-claims";
 
 describe("getInvalidationKeys — merge-train wiring", () => {
   it("invalidates trainKeys on train.* alert events", () => {
@@ -68,5 +69,26 @@ describe("getInvalidationKeys — merge-train wiring", () => {
   // An unknown note subtype still maps via the "note" prefix → noteKeys.all.
   it("maps an unknown note subtype via prefix to noteKeys.all", () => {
     expect(getInvalidationKeys("note.xyz")).toEqual([noteKeys.all]);
+  });
+
+  // Campaign C3 (claims surface) — task/epic/proposal lifecycle events also
+  // refresh the claims panel: claim/release/assign/handoff all surface as
+  // entity events, and the panel's rows derive from those holders.
+  it("invalidates claimKeys on task.* / epic.* / proposal.* events", () => {
+    expect(getInvalidationKeys("task.updated")).toContainEqual(claimKeys.all);
+    expect(getInvalidationKeys("task.assigned")).toContainEqual(claimKeys.all);
+    expect(getInvalidationKeys("epic.updated")).toContainEqual(claimKeys.all);
+    expect(getInvalidationKeys("proposal.transitioned")).toContainEqual(
+      claimKeys.all,
+    );
+  });
+
+  it("does NOT invalidate claimKeys on unrelated prefixes", () => {
+    expect(getInvalidationKeys("merge.request.landed")).not.toContainEqual(
+      claimKeys.all,
+    );
+    expect(getInvalidationKeys("note.created")).not.toContainEqual(
+      claimKeys.all,
+    );
   });
 });

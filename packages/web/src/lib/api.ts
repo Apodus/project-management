@@ -29,6 +29,8 @@ export type TrainInFlight = components["schemas"]["TrainInFlight"];
 export type IntegratorHealth = components["schemas"]["IntegratorHealth"];
 export type TrainState = components["schemas"]["TrainState"];
 export type ClaimsHealth = components["schemas"]["ClaimsHealth"];
+export type ProjectClaims = components["schemas"]["ProjectClaims"];
+export type ClaimItem = ProjectClaims["items"][number];
 export type MergeRequest = components["schemas"]["MergeRequest"];
 export type MergeRequestTimeline = components["schemas"]["MergeRequestTimeline"];
 export type MergeRequestTimelineEvent = components["schemas"]["MergeRequestTimelineEvent"];
@@ -978,6 +980,17 @@ export async function getTrainMetrics(projectId: string, resource?: string): Pro
  */
 export async function getClaimsHealth(projectId: string): Promise<ClaimsHealth> {
   return apiFetch<ClaimsHealth>(`/projects/${projectId}/claims-health`);
+}
+
+/**
+ * Every ACTIVE claim in the project (tasks/epics/proposals with a holder and a
+ * non-terminal status), each with its identity-masked claim_state relative to
+ * the caller, the resolved holder {id, name, type}, and the nullable
+ * lease-layer claimedAt (null for legacy pre-C2 claims). Pure read — no alert
+ * side effect (that belongs to getClaimsHealth).
+ */
+export async function getProjectClaims(projectId: string): Promise<ProjectClaims> {
+  return apiFetch<ProjectClaims>(`/projects/${projectId}/claims`);
 }
 
 export async function getTrainInFlight(
