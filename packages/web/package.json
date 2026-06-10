@@ -40,11 +40,11 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",
-    "@vitest/expect": "^3.2.4",
+    "@vitest/expect": "^4.1.7",
     "jsdom": "^26.0.0",
     "openapi-typescript": "^7.13.0",
     "typescript": "^5",
     "vite": "^6",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.7"
   }
 }
