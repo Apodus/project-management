@@ -413,9 +413,19 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
     // If a throw escaped the fire-and-forget drain it would surface as an
     // unhandled rejection; the test simply asserting clean settle covers it.
     pool.enqueue(baseJob("res-onout"));
-    await new Promise((r) => setTimeout(r, 800));
-
+    // Bounded poll (waitForOutcomes idiom) — a fixed wall-clock sleep raced
+    // the real-git materializeConflict on slow hosts.
+    const start = Date.now();
+    while (!sawOutcome && Date.now() - start < 30000) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
     expect(sawOutcome).toBe(true);
+    // Brief settle: the slot is released in the same drain tick right after
+    // onOutcome's throw is swallowed.
+    const settleStart = Date.now();
+    while (pool.leasedCount !== 0 && Date.now() - settleStart < 5000) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
     expect(pool.leasedCount).toBe(0);
   });
 
