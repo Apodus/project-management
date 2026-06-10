@@ -196,6 +196,50 @@ export async function createNoteViaAPI(
 }
 
 /**
+ * Helper to create a user via the API directly (Campaign C3 — claims surface).
+ * Requires an ADMIN session on `page`. Defaults to an ai_agent member (the
+ * worker shape the claims panel cares about). Returns the created user.
+ */
+export async function createUserViaAPI(
+  page: Page,
+  data: {
+    username: string;
+    displayName: string;
+    role?: string;
+    type?: string;
+  },
+): Promise<{ id: string; username: string; displayName: string; type: string }> {
+  const response = await page.request.post("/api/v1/users", {
+    data: {
+      role: "member",
+      type: "ai_agent",
+      ...data,
+    },
+  });
+
+  expect(response.ok()).toBeTruthy();
+  const json = await response.json();
+  return json.data;
+}
+
+/**
+ * Helper to assign a task via the API (PATCH assigneeId). The server keeps the
+ * claim lease in sync with a direct assignee PATCH — the lease is acquired AS
+ * the assignee (task.service update fold-in), so this is the E2E stale-claim
+ * injection primitive: assign, then let the env-shortened TTL+grace lapse.
+ */
+export async function assignTaskViaAPI(
+  page: Page,
+  taskId: string,
+  assigneeId: string,
+): Promise<void> {
+  const response = await page.request.patch(`/api/v1/tasks/${taskId}`, {
+    data: { assigneeId },
+  });
+  expect(response.ok()).toBeTruthy();
+}
+
+/**
  * Wait for the page to settle after navigation (avoid networkidle with SSE).
  */
 export async function waitForPageReady(page: Page): Promise<void> {
