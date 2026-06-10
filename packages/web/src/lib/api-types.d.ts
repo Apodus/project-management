@@ -13019,6 +13019,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active claims
+         * @description List every ACTIVE claim in the project (tasks/epics/proposals with a holder and a non-terminal status), each with its identity-masked claim_state (relative to the caller), the holder (id/name/type), and the nullable lease-layer claimedAt. Pure read — no alert side effect.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Active claims for the project */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["ProjectClaims"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -14849,6 +14920,26 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             createdAt: string;
+        };
+        ProjectClaims: {
+            items: {
+                /** @enum {string} */
+                entityType: "task" | "epic" | "proposal";
+                id: string;
+                title: string;
+                status: string;
+                /** @enum {string} */
+                claimState: "unclaimed" | "live" | "stale" | "yours";
+                holder: {
+                    id: string;
+                    name: string;
+                    /** @enum {string} */
+                    type: "human" | "ai_agent";
+                };
+                claimedAt: string | null;
+                updatedAt: string;
+            }[];
+            total: number;
         };
     };
     responses: never;
