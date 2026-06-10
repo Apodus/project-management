@@ -181,10 +181,35 @@ game_one `submodule update` fatal), exports the inner repo's **nested submodules
 populated, `.git`-less dir at a real 160000 gitlink is removed). **Verify contract:** the outer verify
 command must NOT `submodule update --init` the gitlink path (unfetchable pre-land; the train provides
 those sources) â€” see `docs/integrator-deployment.md` Â§14.8 for the detection idiom. Worker MCP tools:
-`pm_request_merge_group` (accepts an atomic `members` form â€”
-members born group-bound, never single-repo-pickable â€” or the legacy `member_request_ids`),
+`pm_request_merge_group` (accepts an atomic `members` form — ≥2 specs, or ONE inner spec +
+`synthesize_outer: true` (see the inner-only blurb below); members born group-bound, never
+single-repo-pickable — or the legacy `member_request_ids`),
 `pm_get_merge_group`, `pm_list_merge_incidents`, `pm_get_merge_incident`. Full spec:
 `docs/design/phase-7.3-design.md`.
+
+**Inner-only merge groups (2026-06-10).** A change that lives entirely in the inner repo submits ONE
+member: `pm_request_merge_group(members: [<inner spec>], synthesize_outer: true)`. The flag is strict
+(`=== true`; `false` behaves like absent; a 1-member array without it stays a 400) and requires
+`settings.integrator.linked_repos` to declare exactly one inner + one outer (else 400). PM mints a
+**synthetic** outer member (migration 0027: `merge_requests.synthetic` + nullable refs; born
+group-bound; views gain an additive `synthetic: false` on real members — the legacy ≥2-member and
+`member_request_ids` forms stay byte-identical) and the integrator synthesizes the outer candidate at
+assembly: live outer `main` + gitlink commit → `Ri`, the outer rebase **skipped**, the synthetic
+member being the outer **by construction** (never ref-resolved) — so the stale-bump `outer_conflict`
+rejection class is **structurally impossible** for inner-only groups (no worker-minted bump branch
+exists to go stale; workers must never mint gitlink-bump-only outer branches). The synthetic member's
+verify is the project default `verify_command` in the **outer** worktree; land fills its
+`landedSha = Ro`; a rejected inner-only group is resubmitted by resubmitting the ONE inner member
+(re-synthesis against the then-current outer main is automatic). Binding guard: the real member must
+bind to the INNER repo — an outer-binding member rejects from `forming` with "outer-only changes
+don't need a group; submit a plain merge request". `updateSubmoduleGitlink` no-change idempotence is
+now explicit/contractual (assembly skips the gitlink commit when unchanged — never an empty bump
+commit; the land's FF push is then a natural no-op). Rendering: timeline badge "synthetic gitlink
+bump"; `pm_get_merge_group` shows "(synthetic gitlink bump — outer candidate synthesized at
+integration)". **Scope limit:** only the declared `linked_repos` gitlink is synthesized — game_one's
+second gitlink `tools/rynx-treegen` still needs a real outer member; >2-repo topologies and
+auto-cancel of duplicate stale submissions are out of scope. Worker doc: `docs/worker-pm-workflow.md`
+(cross-repo section); operator: `docs/integrator-deployment.md` §14.7/§14.9.
 
 **Observability + break-glass (Phase 7.4).** The train is legible, accountable, recoverable, and
 self-alerting. A human-facing **dashboard** (`/projects/{id}/train`), a **per-request timeline**

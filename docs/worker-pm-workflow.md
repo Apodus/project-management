@@ -172,11 +172,35 @@ A rejection is **ordinary new work**, not a failure state to halt on. It arrives
 
 ## Cross-repo changes: merge groups (rynx inner + outer)
 
-game_one is a cross-repo setup: the **rynx** inner Rust workspace is embedded in the outer game repo as a gitlink (submodule). A change that spans both must land as a unit or not at all — otherwise the outer gitlink points at an inner SHA that isn't on inner's main. Use a **merge group**:
+game_one is a cross-repo setup: the **rynx** inner Rust workspace is embedded in the outer game repo as a gitlink (submodule). A change that spans repos must land as a unit or not at all — otherwise the outer gitlink points at an inner SHA that isn't on inner's main. Use a **merge group**, and pick the form by where your change actually lives. The takeaway up front: **never mint gitlink-bump-only outer branches** — the train synthesizes the bump for you.
+
+### Inner-only changes (the common case): ONE member + `synthesize_outer` — RECOMMENDED
 
 ```
-1. Commit the inner (rynx) change and the outer (gitlink-bump) change on their branches.
-2. Submit + group in ONE atomic call (PREFERRED — race-free):
+1. Commit the inner (rynx) change on its branch. Do NOT create an outer branch.
+2. Submit:
+     pm_request_merge_group(project_id,
+       members=[{ branch="rynx/feat-x", task_id=... }],
+       synthesize_outer=true)
+3. Walk away. Subscribe to merge.group.landed / merge.group.rejected,
+   or poll pm_get_merge_group(group_id).
+```
+
+PM records your inner member plus a **synthetic** outer member (no branch/commit — `pm_get_merge_group` shows it as "(synthetic gitlink bump — outer candidate synthesized at integration)"; the web timeline badges it "synthetic gitlink bump"). At integration the integrator synthesizes the outer candidate against **live outer main** — outer main plus a gitlink commit pointing at your rebased inner SHA. There is no outer branch to rebase, so the stale-bump `outer_conflict` rejection **cannot happen, structurally**.
+
+- **Why this form exists.** A worker-minted gitlink-bump branch goes stale the moment anything else lands on outer main — the rebase hits a both-sides-modified gitlink and the whole group rejects (`outer_conflict`). The bump branch was always ceremony anyway: assembly overwrites the gitlink to the rebased inner SHA regardless of what your bump said.
+- **Strict flag and shape.** `synthesize_outer` must be exactly `true`, with exactly ONE member spec; `settings.integrator.linked_repos` must declare exactly one inner + one outer repo (else 400); it cannot combine with `member_request_ids`.
+- **The real member must resolve in the INNER repo.** A member whose ref binds to the outer repo rejects from `forming` with "outer-only changes don't need a group; submit a plain merge request" — outer-only changes go through `pm_request_merge` like any single-repo change.
+- **Verify.** Your inner member verifies as usual; the synthetic member runs the project default `verify_command` in the **outer** worktree against the assembled state — identical to what a real bump member got.
+- **Rejected group?** Resubmit the same ONE-member call. Re-synthesis against the then-current outer main is automatic; there is nothing outer-side to re-mint.
+
+### Real outer changes: the ≥2-member form
+
+Use this form ONLY when the outer repo carries real content changes, or you're bumping a gitlink NOT declared in `linked_repos` (only `rynx` is synthesized; a `tools/rynx-treegen` bump still needs a real outer member):
+
+```
+1. Commit the inner (rynx) change and the outer change on their branches.
+2. Submit + group in ONE atomic call (race-free):
      pm_request_merge_group(project_id, members=[
        { branch="rynx/feat-x",  task_id=... },
        { branch="outer/bump-x", task_id=... },
@@ -186,7 +210,11 @@ game_one is a cross-repo setup: the **rynx** inner Rust workspace is embedded in
    or poll pm_get_merge_group(group_id).
 ```
 
-- `pm_request_merge_group(project_id, members[] | member_request_ids[], resource?)` — submit ≥2 requests as one atomic cross-repo unit. **Provide exactly one form.** Prefer `members` (each `{ branch and/or commit_sha, task_id?, verify_cmd? }`) — PM submits AND groups in a single call, race-free. `member_request_ids` is the legacy form: bind ≥2 requests you already queued via `pm_request_merge`. The integrator lands the whole group atomically (inner first, then the outer gitlink) — **every member lands together or none does**.
+A bump-only outer branch in this form recreates the failure class — it is stale at submit time, and assembly overwrites the bump anyway. Use the inner-only form instead. An outer branch with real content AND a gitlink bump is fine (the bump is simply overwritten).
+
+### Both forms
+
+- `pm_request_merge_group(project_id, members[] | member_request_ids[], synthesize_outer?, resource?)` — **provide exactly one of `members` / `member_request_ids`**; `member_request_ids` cannot combine with `synthesize_outer`. Prefer `members` (each `{ branch and/or commit_sha, task_id?, verify_cmd? }`) — PM submits AND groups in a single call, race-free. The integrator lands the whole group atomically (inner first, then the outer gitlink) — **every member lands together or none does**.
 - `pm_get_merge_group(group_id)` — member statuses + whether the group has landed/rejected/is still forming.
 - **Per-member verify.** EVERY member's verify runs against the assembled state and ALL must pass. A member with no `verify_cmd` runs the project default in **its own repo's** worktree — so the default must exist in that repo (rynx now carries its own `pm-verify.bat`; before it did, every defaulted inner member failed instantly with `'pm-verify.bat' is not recognized`). Only pass `verify_cmd` for a deliberate one-off override.
 - **Don't `submodule update` the gitlink path in an outer verify script.** In the assembled state the train materializes the inner sources (plus its nested submodules and LFS binaries) at the gitlink path — populated, but not a git repo. The outer `pm-verify.bat` already detects this and skips `rynx` in its submodule init; keep that guard if you touch the script (operator doc §14.8 has the contract).
