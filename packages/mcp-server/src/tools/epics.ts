@@ -4,6 +4,7 @@ import {
   claimEpic,
   forceClaimEpic,
   getEpic,
+  getEpicGraph,
   listEpics,
   releaseEpic,
   releaseEpicTo,
@@ -17,6 +18,11 @@ import {
   releaseToResultText,
   requestTakeoverResultText,
 } from "./claim-display.js";
+
+// Render caps for pm_get_epic_graph — the count header always carries the FULL
+// totals, so truncation is never silent.
+const EPIC_GRAPH_NODE_CAP = 200;
+const EPIC_GRAPH_EDGE_CAP = 400;
 
 export function registerEpicTools(server: McpServer): void {
   // ---- pm_list_epics ----
@@ -87,7 +93,7 @@ export function registerEpicTools(server: McpServer): void {
 
   server.tool(
     "pm_get_epic",
-    "Get full epic details with task summary. Includes claim_status (whether the epic is available to claim, claimed for you, or claimed by another agent).",
+    "Get full epic details with task summary. Includes claim_status (whether the epic is available to claim, claimed for you, or claimed by another agent). For dependency topology, use pm_get_epic_graph.",
     {
       epic_id: z.string().describe("The epic ID to retrieve"),
     },
@@ -130,6 +136,82 @@ export function registerEpicTools(server: McpServer): void {
           {
             type: "text" as const,
             text: sections.join("\n"),
+          },
+        ],
+      };
+    },
+  );
+
+  // ---- pm_get_epic_graph ----
+
+  server.tool(
+    "pm_get_epic_graph",
+    "Read the epic dependency graph for a project: every epic (id, name, status, health, claim liveness, task progress) plus all dependency edges (prerequisite -> dependent) and any detected cycles. Call this BEFORE pm_link_epic_dependency to see existing topology and avoid duplicate or cyclic edges.",
+    {
+      project_id: z.string().describe("The project ID to read the epic graph for"),
+    },
+    async ({ project_id }) => {
+      const graph = await getEpicGraph(project_id);
+      const nodeCount = graph.nodes.length;
+      const edgeCount = graph.edges.length;
+
+      const header = `Epic graph for project ${project_id}: ${nodeCount} epic(s), ${edgeCount} edge(s).`;
+
+      if (nodeCount === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `${header} No epics yet.`,
+            },
+          ],
+        };
+      }
+
+      const lines: string[] = [header];
+      if (graph.hasCycle) {
+        lines.push("⚠ CYCLE DETECTED — see Cycles section before adding edges.");
+      }
+
+      const shownNodes = graph.nodes.slice(0, EPIC_GRAPH_NODE_CAP);
+      lines.push("", "Epics (id | name | status | health | claim | tasks):");
+      for (const n of shownNodes) {
+        const category = n.category ? ` [${n.category}]` : "";
+        lines.push(
+          `- ${n.id}  "${n.name}"${category} — ${n.status} | ${n.health} | ${claimStateLabel(n.claimState)} | tasks ${n.taskSummary.done}/${n.taskSummary.total}`,
+        );
+      }
+
+      const shownEdges = graph.edges.slice(0, EPIC_GRAPH_EDGE_CAP);
+      if (edgeCount > 0) {
+        lines.push("", "Edges (prerequisite -> dependent):");
+        for (const e of shownEdges) {
+          lines.push(`- ${e.from} -> ${e.to}  (${e.dependency_type}, ${e.provenance})`);
+        }
+      }
+
+      // The service omits `cycles` when empty — guard with `?? []`.
+      const cycles = graph.cycles ?? [];
+      if (graph.hasCycle && cycles.length > 0) {
+        lines.push("", "Cycles:");
+        for (const cycle of cycles) {
+          const closed = cycle.length > 0 ? [...cycle, cycle[0]] : cycle;
+          lines.push(`- ${closed.join(" -> ")}`);
+        }
+      }
+
+      if (nodeCount > EPIC_GRAPH_NODE_CAP || edgeCount > EPIC_GRAPH_EDGE_CAP) {
+        lines.push(
+          "",
+          `⚠ Truncated: showing ${shownNodes.length} of ${nodeCount} epics, ${shownEdges.length} of ${edgeCount} edges.`,
+        );
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: lines.join("\n"),
           },
         ],
       };

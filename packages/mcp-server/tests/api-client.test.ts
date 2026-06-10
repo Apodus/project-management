@@ -4,6 +4,7 @@ import {
   ApiError,
   claimAgent,
   createNote,
+  getEpicGraph,
   promoteNoteToProposal,
   releaseAgent,
   getAgentIdentity,
@@ -189,6 +190,74 @@ describe("apiRequest", () => {
 
     const [url] = fetchMock.mock.calls[0];
     expect(url).toBe("http://test-server:9999/api/v1/projects");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Epic graph — getEpicGraph (C5.P1)
+// ---------------------------------------------------------------------------
+
+describe("getEpicGraph", () => {
+  beforeEach(() => {
+    process.env.PM_API_URL = "http://test-server:9999";
+    process.env.PM_API_TOKEN = "test-token-123";
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.PM_API_URL;
+    delete process.env.PM_API_TOKEN;
+  });
+
+  const sampleGraph = {
+    nodes: [
+      {
+        id: "epic_a",
+        project_id: "proj 001",
+        name: "Epic A",
+        status: "active",
+        priority: "high",
+        target_date: null,
+        category: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        taskSummary: { total: 1, done: 0, byStatus: { ready: 1 } },
+        claimState: "unclaimed",
+        health: "on_track",
+        activity_recency: "2026-01-01T00:00:00Z",
+        time_window: { start: "2026-01-01T00:00:00Z", end: null },
+      },
+    ],
+    edges: [],
+    hasCycle: false,
+  };
+
+  it("GETs the URL-encoded epic-graph path with the Bearer token", async () => {
+    const fetchMock = mockFetch({
+      status: 200,
+      ok: true,
+      body: { data: sampleGraph },
+    });
+
+    await getEpicGraph("proj 001");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(
+      "http://test-server:9999/api/v1/projects/proj%20001/epic-graph",
+    );
+    expect(init.method).toBe("GET");
+    // A claimed token from a prior test can leak via module state; assert the
+    // Bearer scheme is present rather than a specific token value.
+    expect(init.headers.Authorization).toMatch(/^Bearer .+/);
+  });
+
+  it("unwraps the { data } envelope to the graph object", async () => {
+    mockFetch({ status: 200, ok: true, body: { data: sampleGraph } });
+
+    const result = await getEpicGraph("proj_001");
+
+    expect(result).toEqual(sampleGraph);
+    expect(result.cycles).toBeUndefined();
   });
 });
 

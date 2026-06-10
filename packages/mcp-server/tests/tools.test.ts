@@ -30,6 +30,8 @@ vi.mock("../src/api-client.js", () => ({
   createEpic: vi.fn(),
   listEpics: vi.fn(),
   getEpic: vi.fn(),
+  getEpicGraph: vi.fn(),
+  listLabels: vi.fn(),
   getAgentIdentity: vi.fn(),
   listTasks: vi.fn(),
   getTask: vi.fn(),
@@ -91,6 +93,7 @@ const mockCreateProposal = vi.mocked(apiClient.createProposal);
 const mockCreateEpic = vi.mocked(apiClient.createEpic);
 const mockListEpics = vi.mocked(apiClient.listEpics);
 const mockGetEpic = vi.mocked(apiClient.getEpic);
+const mockGetEpicGraph = vi.mocked(apiClient.getEpicGraph);
 const mockGetAgentIdentity = vi.mocked(apiClient.getAgentIdentity);
 const mockListTasks = vi.mocked(apiClient.listTasks);
 const mockGetTask = vi.mocked(apiClient.getTask);
@@ -2288,6 +2291,198 @@ describe("MCP Tools", () => {
       expect(text).toContain("Epic dependency removed");
       expect(text).toContain("epicdep_001");
       expect(mockRemoveEpicDependency).toHaveBeenCalledWith("epic_b", "epicdep_001", "proj_001");
+    });
+  });
+
+  // ---- pm_get_epic_graph (C5.P1) ----
+
+  describe("pm_get_epic_graph", () => {
+    function graphNode(
+      id: string,
+      overrides: Partial<apiClient.EpicGraphNode> = {},
+    ): apiClient.EpicGraphNode {
+      return {
+        id,
+        project_id: "proj_001",
+        name: `Epic ${id}`,
+        status: "active",
+        priority: "high",
+        target_date: null,
+        category: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        taskSummary: { total: 4, done: 2, byStatus: { done: 2, ready: 2 } },
+        claimState: "unclaimed" as const,
+        health: "on_track",
+        activity_recency: "2026-01-01T00:00:00Z",
+        time_window: { start: "2026-01-01T00:00:00Z", end: null },
+        ...overrides,
+      };
+    }
+
+    it("renders nodes, edges, and the full-count header", async () => {
+      mockGetEpicGraph.mockResolvedValue({
+        nodes: [
+          graphNode("epic_a", {
+            category: "P1-2",
+            claimState: "live",
+            health: "at_risk",
+            taskSummary: { total: 5, done: 3, byStatus: {} },
+          }),
+          graphNode("epic_b", { claimState: "stale" }),
+        ],
+        edges: [
+          {
+            from: "epic_a",
+            to: "epic_b",
+            dependency_type: "blocks",
+            provenance: "explicit",
+          },
+        ],
+        hasCycle: false,
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_epic_graph",
+        arguments: { project_id: "proj_001" },
+      });
+
+      expect(mockGetEpicGraph).toHaveBeenCalledWith("proj_001");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain(
+        "Epic graph for project proj_001: 2 epic(s), 1 edge(s).",
+      );
+      expect(text).toContain('"Epic epic_a" [P1-2]');
+      expect(text).toContain("at_risk");
+      expect(text).toContain("live (actively worked)");
+      expect(text).toContain("stale (claim lease lapsed — may be abandoned)");
+      expect(text).toContain("tasks 3/5");
+      expect(text).toContain("- epic_a -> epic_b  (blocks, explicit)");
+      // No cycle → no warning, no Cycles section, no truncation trailer.
+      expect(text).not.toContain("CYCLE DETECTED");
+      expect(text).not.toContain("Cycles:");
+      expect(text).not.toContain("Truncated");
+    });
+
+    it("renders the cycle warning and closed cycle paths when hasCycle", async () => {
+      mockGetEpicGraph.mockResolvedValue({
+        nodes: [graphNode("epic_a"), graphNode("epic_b")],
+        edges: [
+          { from: "epic_a", to: "epic_b", dependency_type: "blocks", provenance: "derived" },
+          { from: "epic_b", to: "epic_a", dependency_type: "blocks", provenance: "derived" },
+        ],
+        hasCycle: true,
+        cycles: [["epic_a", "epic_b"]],
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_epic_graph",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("⚠ CYCLE DETECTED — see Cycles section before adding edges.");
+      expect(text).toContain("Cycles:");
+      expect(text).toContain("- epic_a -> epic_b -> epic_a");
+    });
+
+    it("tolerates an omitted cycles key even when hasCycle is true (cycles ?? [] guard)", async () => {
+      mockGetEpicGraph.mockResolvedValue({
+        nodes: [graphNode("epic_a")],
+        edges: [],
+        hasCycle: true,
+        // `cycles` intentionally absent — the service omits the key when empty.
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_epic_graph",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("⚠ CYCLE DETECTED");
+      expect(text).not.toContain("Cycles:");
+    });
+
+    it("appends the truncation trailer over the 200-epic cap, header keeps full totals", async () => {
+      const nodes = Array.from({ length: 201 }, (_, i) => graphNode(`epic_${i}`));
+      mockGetEpicGraph.mockResolvedValue({
+        nodes,
+        edges: [],
+        hasCycle: false,
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_epic_graph",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Epic graph for project proj_001: 201 epic(s), 0 edge(s).");
+      expect(text).toContain("⚠ Truncated: showing 200 of 201 epics, 0 of 0 edges.");
+      expect(text).toContain("epic_199");
+      expect(text).not.toContain('"Epic epic_200"');
+    });
+
+    it("stays trailer-free under the caps", async () => {
+      mockGetEpicGraph.mockResolvedValue({
+        nodes: Array.from({ length: 200 }, (_, i) => graphNode(`epic_${i}`)),
+        edges: [],
+        hasCycle: false,
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_epic_graph",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).not.toContain("Truncated");
+    });
+
+    it("renders the empty-graph text", async () => {
+      mockGetEpicGraph.mockResolvedValue({
+        nodes: [],
+        edges: [],
+        hasCycle: false,
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_epic_graph",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain(
+        "Epic graph for project proj_001: 0 epic(s), 0 edge(s). No epics yet.",
+      );
+    });
+
+    it("renders claim liveness via the masked label, never any holder id", async () => {
+      mockGetEpicGraph.mockResolvedValue({
+        nodes: [
+          graphNode("epic_yours", { claimState: "yours" }),
+          graphNode("epic_live", { claimState: "live" }),
+          graphNode("epic_stale", { claimState: "stale" }),
+          graphNode("epic_free", { claimState: "unclaimed" }),
+        ],
+        edges: [],
+        hasCycle: false,
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_epic_graph",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("yours (you hold this)");
+      expect(text).toContain("live (actively worked)");
+      expect(text).toContain("stale (claim lease lapsed — may be abandoned)");
+      expect(text).toContain("unclaimed (free to pick up)");
+      // Tripwire: the graph node carries no holder id, and the render must not
+      // invent one.
+      expect(text).not.toContain("user_secret");
     });
   });
 

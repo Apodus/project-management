@@ -661,6 +661,62 @@ export async function removeEpicDependency(
 }
 
 // ---------------------------------------------------------------------------
+// Typed API functions — Epic Graph (C5.P1)
+// ---------------------------------------------------------------------------
+//
+// Mirrors @pm/shared epicGraphSchema EXACTLY, including the MIXED casing on
+// the wire: snake_case project_id/target_date/category/created_at/updated_at/
+// activity_recency/time_window, camelCase taskSummary/claimState. Do not
+// "normalize" — the server emits these keys as-is.
+
+export interface EpicGraphTaskSummary {
+  total: number;
+  done: number;
+  byStatus: Record<string, number>;
+}
+
+export interface EpicGraphNode {
+  id: string;
+  project_id: string;
+  name: string;
+  status: string;
+  priority: string;
+  target_date?: string | null;
+  category?: string | null;
+  created_at: string;
+  updated_at: string;
+  taskSummary: EpicGraphTaskSummary;
+  // Identity-masked liveness view of the claim (C3) — required on graph nodes.
+  claimState: ClaimState;
+  health: string;
+  activity_recency: string;
+  time_window: { start: string; end: string | null };
+}
+
+export interface EpicGraphEdge {
+  from: string; // prerequisite (depends_on_epic_id)
+  to: string; // dependent (epic_id)
+  dependency_type: string;
+  provenance: "derived" | "explicit";
+}
+
+export interface EpicGraphData {
+  nodes: EpicGraphNode[];
+  edges: EpicGraphEdge[];
+  hasCycle: boolean;
+  // The service omits the key entirely when the cycle list is empty — guard
+  // with `cycles ?? []` at every consumer.
+  cycles?: string[][];
+}
+
+export async function getEpicGraph(projectId: string): Promise<EpicGraphData> {
+  return apiRequest<EpicGraphData>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/epic-graph`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Typed API functions — Create / Update Tasks
 // ---------------------------------------------------------------------------
 
