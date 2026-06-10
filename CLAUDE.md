@@ -449,6 +449,14 @@ pnpm --filter @pm/server db:generate
 
 Migration files are stored in `packages/server/src/db/migrations/`.
 
+`db:generate` works again: the snapshot history was rebuilt to a single baseline
+`meta/0026_snapshot.json` (after a historical hand-copied-snapshot collision — `0005`/`0006`
+were byte-identical, which broke drizzle-kit's snapshot diffing). Under this one-baseline model,
+a future `db:generate` diffs the current `schema.ts` against that baseline and emits `0027_*`
+automatically — the `.sql`, its `meta/0027_snapshot.json`, and the `_journal.json` entry are all
+written for you. Hand-authored migrations remain possible, but each must append its own
+`_journal.json` entry — migrations apply by journal order, not by `.sql` glob.
+
 ### Backup
 
 The database is a single SQLite file (default: `./data/pm.db`). To back up:
