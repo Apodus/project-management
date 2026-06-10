@@ -188,6 +188,8 @@ game_one is a cross-repo setup: the **rynx** inner Rust workspace is embedded in
 
 - `pm_request_merge_group(project_id, members[] | member_request_ids[], resource?)` — submit ≥2 requests as one atomic cross-repo unit. **Provide exactly one form.** Prefer `members` (each `{ branch and/or commit_sha, task_id?, verify_cmd? }`) — PM submits AND groups in a single call, race-free. `member_request_ids` is the legacy form: bind ≥2 requests you already queued via `pm_request_merge`. The integrator lands the whole group atomically (inner first, then the outer gitlink) — **every member lands together or none does**.
 - `pm_get_merge_group(group_id)` — member statuses + whether the group has landed/rejected/is still forming.
+- **Per-member verify.** EVERY member's verify runs against the assembled state and ALL must pass. A member with no `verify_cmd` runs the project default in **its own repo's** worktree — so the default must exist in that repo (rynx now carries its own `pm-verify.bat`; before it did, every defaulted inner member failed instantly with `'pm-verify.bat' is not recognized`). Only pass `verify_cmd` for a deliberate one-off override.
+- **Don't `submodule update` the gitlink path in an outer verify script.** In the assembled state the train materializes the inner sources (plus its nested submodules and LFS binaries) at the gitlink path — populated, but not a git repo. The outer `pm-verify.bat` already detects this and skips `rynx` in its submodule init; keep that guard if you touch the script (operator doc §14.8 has the contract).
 
 ### When a cross-repo land half-fails: incidents
 
