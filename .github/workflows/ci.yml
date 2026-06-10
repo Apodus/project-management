@@ -62,8 +62,10 @@ jobs:
       # verify children) starves the train's timing-sensitive E2E flows into
       # spurious rejections. Serial costs a few minutes of wall clock and
       # removes the oversubscription entirely. Local `pnpm test` stays parallel.
+      # (pnpm passes script args verbatim — no `--`, which would make turbo
+      # forward the flag into each package's vitest invocation instead.)
       - name: Test
-        run: pnpm test -- --concurrency=1
+        run: pnpm test --concurrency=1
 
       - name: Build
         run: pnpm build
