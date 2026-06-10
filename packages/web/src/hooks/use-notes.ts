@@ -147,7 +147,11 @@ export function usePromoteNoteToProposal() {
       queryClient.invalidateQueries({
         queryKey: noteKeys.health(variables.projectId),
       });
-      queryClient.invalidateQueries({ queryKey: proposalKeys.lists() });
+      // Project-scoped (C3 P5): only the promoted-into project's proposal
+      // lists refresh — not every project's.
+      queryClient.invalidateQueries({
+        queryKey: proposalKeys.listsFor(variables.projectId),
+      });
     },
     onError: (err: Error) => {
       toast.error(err.message);
@@ -176,7 +180,11 @@ export function usePromoteNoteToTask() {
       queryClient.invalidateQueries({
         queryKey: noteKeys.health(variables.projectId),
       });
-      queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
+      // Project-scoped (C3 P5): only the promoted-into project's task lists
+      // refresh — not every project's.
+      queryClient.invalidateQueries({
+        queryKey: taskKeys.listsFor(variables.projectId),
+      });
     },
     onError: (err: Error) => {
       toast.error(err.message);

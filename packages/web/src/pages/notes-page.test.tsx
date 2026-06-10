@@ -1,6 +1,38 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { createContext, useContext, type ReactNode } from "react";
 import type { Note, NoteFilters } from "@/lib/api";
+
+// ── Radix Select mock (C3 P5 — the epic picker) ───────────────────
+// Radix portals its content only when open (pointer-event driven — hostile in
+// jsdom), so the file swaps the Select family for an inline clickable list:
+// every SelectItem renders as a button that pushes its value through context.
+// The page's FILTER selects render the same way — harmless (no test opens them).
+const SelectCtx = createContext<(v: string) => void>(() => {});
+
+vi.mock("@/components/ui/select", () => ({
+  Select: ({
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange: (v: string) => void;
+    children?: ReactNode;
+  }) => <SelectCtx.Provider value={onValueChange}>{children}</SelectCtx.Provider>,
+  SelectTrigger: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  SelectValue: ({ placeholder }: { placeholder?: string }) => (
+    <span>{placeholder}</span>
+  ),
+  SelectContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  SelectItem: ({ value, children }: { value: string; children?: ReactNode }) => {
+    const onSelect = useContext(SelectCtx);
+    return (
+      <button type="button" onClick={() => onSelect(value)}>
+        {children}
+      </button>
+    );
+  },
+}));
 
 // ── Capture the useNotes filter arg ────────────────────────────────
 const useNotesSpy = vi.fn();
@@ -89,7 +121,13 @@ vi.mock("@/hooks/use-tasks", () => ({
 }));
 
 vi.mock("@/hooks/use-epics", () => ({
-  useEpics: () => ({ data: [{ id: "epic-1", name: "Alpha epic" }] }),
+  useEpics: () => ({
+    data: [
+      { id: "epic-1", name: "Alpha epic", status: "active" },
+      { id: "epic-done", name: "Done epic", status: "completed" },
+      { id: "epic-dead", name: "Dead epic", status: "cancelled" },
+    ],
+  }),
 }));
 
 vi.mock("@/hooks/use-proposals", () => ({
@@ -301,6 +339,62 @@ describe("NotesPage", () => {
           projectId: "proj-1",
           title: "Bug to fix",
         }),
+      ),
+    );
+  });
+
+  // ── Epic picker in the promote-to-task dialog (C3 P5) ───────────
+
+  it("epic picker lists non-terminal epics only (completed/cancelled excluded)", () => {
+    notesData = [
+      makeNote({ id: "n1", projectId: "proj-1", title: "Bug to fix", status: "open" }),
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Promote to task" }));
+
+    expect(screen.getByRole("button", { name: "Alpha epic" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "No epic" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Done epic" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Dead epic" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("picking an epic submits its id", async () => {
+    notesData = [
+      makeNote({ id: "n1", projectId: "proj-1", title: "Bug to fix", status: "open" }),
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Promote to task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha epic" }));
+
+    const submit = screen
+      .getAllByRole("button", { name: "Promote" })
+      .find((b) => b.closest("[data-slot='dialog-content']"))!;
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(promoteTaskMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "n1", epicId: "epic-1" }),
+      ),
+    );
+  });
+
+  it("leaving the picker on No-epic submits epicId undefined", async () => {
+    notesData = [
+      makeNote({ id: "n1", projectId: "proj-1", title: "Bug to fix", status: "open" }),
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Promote to task" }));
+
+    const submit = screen
+      .getAllByRole("button", { name: "Promote" })
+      .find((b) => b.closest("[data-slot='dialog-content']"))!;
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(promoteTaskMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "n1", epicId: undefined }),
       ),
     );
   });

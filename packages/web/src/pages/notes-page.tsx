@@ -320,6 +320,12 @@ function PromoteToProposalDialog({
   );
 }
 
+// Sentinel for "no epic" — Radix Select items cannot carry an empty value.
+const NO_EPIC = "__none__";
+
+// Terminal epic statuses — a closed epic is not offered as a promote target.
+const TERMINAL_EPIC_STATUSES = new Set(["completed", "cancelled"]);
+
 function PromoteToTaskDialog({
   note,
   open,
@@ -331,13 +337,21 @@ function PromoteToTaskDialog({
 }) {
   const [title, setTitle] = useState(note.title);
   const [description, setDescription] = useState("");
-  const [epicId, setEpicId] = useState("");
+  const [epicId, setEpicId] = useState(NO_EPIC);
   const promoteMutation = usePromoteNoteToTask();
+
+  // Fetched INSIDE the dialog so only an opened promote dialog pays for the
+  // epics query. Deviation from the spec's "combobox": the house pattern is a
+  // Radix Select (no combobox primitive exists in this codebase) — deliberate.
+  const { data: epics } = useEpics(note.projectId);
+  const epicChoices = (epics ?? []).filter(
+    (e) => !TERMINAL_EPIC_STATUSES.has(e.status),
+  );
 
   function reset() {
     setTitle(note.title);
     setDescription("");
-    setEpicId("");
+    setEpicId(NO_EPIC);
     promoteMutation.reset();
   }
 
@@ -356,7 +370,7 @@ function PromoteToTaskDialog({
         projectId: note.projectId,
         title: title.trim(),
         description: description.trim() || undefined,
-        epicId: epicId.trim() || undefined,
+        epicId: epicId === NO_EPIC ? undefined : epicId,
       });
       toast.success("Promoted to task");
       handleOpenChange(false);
@@ -394,14 +408,20 @@ function PromoteToTaskDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="promote-task-epic">Epic ID (optional)</Label>
-            <Input
-              id="promote-task-epic"
-              placeholder="epic-…"
-              value={epicId}
-              onChange={(e) => setEpicId(e.target.value)}
-              className="font-mono"
-            />
+            <Label htmlFor="promote-task-epic">Epic (optional)</Label>
+            <Select value={epicId} onValueChange={setEpicId}>
+              <SelectTrigger id="promote-task-epic" className="w-full">
+                <SelectValue placeholder="No epic" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_EPIC}>No epic</SelectItem>
+                {epicChoices.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>

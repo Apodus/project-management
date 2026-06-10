@@ -15,6 +15,11 @@ import {
 export const proposalKeys = {
   all: ["proposals"] as const,
   lists: () => [...proposalKeys.all, "list"] as const,
+  // Project-scoped list prefix (Campaign C3 P5): TanStack v5 partial object
+  // matching — invalidating [..., "list", {projectId}] matches every list()
+  // key whose trailing object contains that projectId, and no other project's.
+  listsFor: (projectId: string) =>
+    [...proposalKeys.lists(), { projectId }] as const,
   list: (projectId: string, status?: string) =>
     [...proposalKeys.lists(), { projectId, status }] as const,
   details: () => [...proposalKeys.all, "detail"] as const,
