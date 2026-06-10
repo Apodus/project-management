@@ -294,7 +294,7 @@ export interface BatchDeps {
 // predecessor verifies. This matches the established non-fatal-I/O pattern
 // (heartbeat / onBatchEvent .catch in index.ts; releaseLock catch ~1027).
 export async function maybeOpenResolution(
-  deps: Pick<BatchDeps, "resolver" | "logger">,
+  deps: Pick<BatchDeps, "resolver" | "logger" | "pmClient">,
   args: {
     projectId: string;
     resource: string;
@@ -319,6 +319,35 @@ export async function maybeOpenResolution(
       "origin is itself a resolution product (resolved_from set); skipping resolution (no-recursion)",
     );
     return;
+  }
+  // C2: the snapshot above is the fast-path (non-null ⇒ skip, no fetch). When
+  // the snapshot is null, RE-READ the request so the no-recursion invariant is
+  // snapshot-independent — a resolved_from written mid-flight (between the
+  // member snapshot and this seam) still blocks a second resolution. A fetch
+  // error skips CONSERVATIVELY (warn + no resolution; the origin is already
+  // cleanly rejected `conflict`) and never escapes — the drain-loop safety
+  // contract. A client without getMergeRequest (legacy/fake test clients)
+  // keeps the snapshot-only behavior.
+  if (typeof deps.pmClient?.getMergeRequest === "function") {
+    try {
+      const fresh = await deps.pmClient.getMergeRequest(args.originRequestId);
+      if (fresh.resolvedFrom != null) {
+        deps.logger.info(
+          {
+            originRequestId: args.originRequestId,
+            resolvedFrom: fresh.resolvedFrom,
+          },
+          "fresh re-read shows resolved_from set (written mid-flight); skipping resolution (no-recursion)",
+        );
+        return;
+      }
+    } catch (err) {
+      deps.logger.warn(
+        { err: errMessage(err), originRequestId: args.originRequestId },
+        "resolved_from re-read failed; skipping resolution conservatively (origin stays rejected-conflict)",
+      );
+      return;
+    }
   }
   try {
     const resolutionId = await deps.resolver.openAndEnqueue({
