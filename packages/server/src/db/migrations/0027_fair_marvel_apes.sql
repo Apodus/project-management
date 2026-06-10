@@ -1,0 +1,1 @@
+ALTER TABLE `merge_requests` ADD `synthetic` integer DEFAULT false NOT NULL;

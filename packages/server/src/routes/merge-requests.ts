@@ -35,6 +35,7 @@ const mergeRequestSchema = z
     submittedBy: z.string(),
     taskId: z.string().nullable(),
     resolvedFrom: z.string().nullable(),
+    synthetic: z.boolean(),
     branch: z.string().nullable(),
     commitSha: z.string().nullable(),
     verifyCmd: z.string().nullable(),

@@ -61,6 +61,10 @@ export const mergeRequestSchema = z.object({
   // Phase 7.6 lineage: on a resolved request this holds the origin request
   // id; null on every normal request (docs/design/phase-7.6-design.md §4.1).
   resolvedFrom: z.string().nullable(),
+  // Inner-only groups (campaign 2026-06-10): true on the server-minted outer
+  // member of a synthesizeOuter group — born with no branch/commit; the
+  // integrator synthesizes the outer candidate at assembly. false elsewhere.
+  synthetic: z.boolean(),
   branch: z.string().nullable(),
   commitSha: z.string().nullable(),
   verifyCmd: z.string().nullable(),

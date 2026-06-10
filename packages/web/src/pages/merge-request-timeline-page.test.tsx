@@ -43,8 +43,7 @@ import { MergeRequestTimelinePage } from "./merge-request-timeline-page";
 // ── Fixtures ─────────────────────────────────────────────────────
 
 function seededTimeline(): MergeRequestTimeline {
-  const t = (mins: number) =>
-    new Date(Date.now() - mins * 60_000).toISOString();
+  const t = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString();
   return {
     request: {
       id: "mr-1111-2222",
@@ -53,6 +52,7 @@ function seededTimeline(): MergeRequestTimeline {
       submittedBy: "user-1",
       taskId: "task-aaaa",
       resolvedFrom: null,
+      synthetic: false,
       branch: "feature/x",
       commitSha: "deadbeef",
       verifyCmd: "pnpm verify",
@@ -289,9 +289,7 @@ describe("MergeRequestTimelinePage — seeded multi-attempt", () => {
     expect(screen.getByText("Force Land")).toBeInTheDocument();
     expect(screen.getAllByText("Override").length).toBeGreaterThan(0);
     expect(screen.getByText("alice")).toBeInTheDocument();
-    expect(
-      screen.getByText(/reason: hotfix — verify flaky on CI/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/reason: hotfix — verify flaky on CI/)).toBeInTheDocument();
   });
 });
 
@@ -323,9 +321,7 @@ describe("MergeRequestTimelinePage — null-safe", () => {
     expect(document.body.textContent).not.toContain("NaN");
     expect(document.body.textContent).not.toContain("undefined");
     // no log link rendered
-    expect(
-      screen.queryByRole("link", { name: /view verify log/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /view verify log/i })).not.toBeInTheDocument();
   });
 });
 
@@ -341,45 +337,55 @@ describe("MergeRequestTimelinePage — resolution lineage (Phase 7.6)", () => {
     expect(screen.getByText("src/conflicted.ts")).toBeInTheDocument();
     // forward link to the resolved request's own timeline.
     const link = screen.getByRole("link", { name: /view resolved request/i });
-    expect(link).toHaveAttribute(
-      "href",
-      "/merge-requests/mr-resolved-5555/timeline",
-    );
+    expect(link).toHaveAttribute("href", "/merge-requests/mr-resolved-5555/timeline");
   });
 
   it("renders the resolution_origin back-link on the resolved request", () => {
-    mocks.useMergeRequestTimeline.mockReturnValue(
-      q(resolutionOriginTimeline()),
-    );
+    mocks.useMergeRequestTimeline.mockReturnValue(q(resolutionOriginTimeline()));
     render(<MergeRequestTimelinePage />);
 
     expect(screen.getByText("Resolved from origin")).toBeInTheDocument();
     const link = screen.getByRole("link", { name: /view origin request/i });
-    expect(link).toHaveAttribute(
-      "href",
-      "/merge-requests/mr-origin-9999/timeline",
+    expect(link).toHaveAttribute("href", "/merge-requests/mr-origin-9999/timeline");
+  });
+});
+
+describe("MergeRequestTimelinePage — synthetic member (inner-only groups)", () => {
+  it("renders the synthetic gitlink bump badge for a ref-less synthetic request", () => {
+    const base = seededTimeline();
+    mocks.useMergeRequestTimeline.mockReturnValue(
+      q({
+        request: {
+          ...base.request,
+          synthetic: true,
+          branch: null,
+          commitSha: null,
+        },
+        events: [{ at: new Date().toISOString(), kind: "queued" }],
+      } satisfies MergeRequestTimeline),
     );
+    render(<MergeRequestTimelinePage />);
+    expect(screen.getByText("synthetic gitlink bump")).toBeInTheDocument();
+  });
+
+  it("does NOT render the badge on a normal request", () => {
+    render(<MergeRequestTimelinePage />);
+    expect(screen.queryByText("synthetic gitlink bump")).not.toBeInTheDocument();
   });
 });
 
 describe("MergeRequestTimelinePage — loading / error", () => {
   it("renders a skeleton while loading", () => {
-    mocks.useMergeRequestTimeline.mockReturnValue(
-      q(undefined, { isLoading: true }),
-    );
+    mocks.useMergeRequestTimeline.mockReturnValue(q(undefined, { isLoading: true }));
     const { container } = render(<MergeRequestTimelinePage />);
     // skeleton uses animate-pulse
     expect(container.querySelector(".animate-pulse")).toBeTruthy();
   });
 
   it("renders an error state when the query errors", () => {
-    mocks.useMergeRequestTimeline.mockReturnValue(
-      q(undefined, { isError: true }),
-    );
+    mocks.useMergeRequestTimeline.mockReturnValue(q(undefined, { isError: true }));
     render(<MergeRequestTimelinePage />);
-    expect(
-      screen.getByText(/could not load this merge request timeline/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/could not load this merge request timeline/i)).toBeInTheDocument();
   });
 });
 

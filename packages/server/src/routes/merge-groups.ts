@@ -30,6 +30,7 @@ const mergeGroupMemberSchema = z
     submittedBy: z.string(),
     taskId: z.string().nullable(),
     resolvedFrom: z.string().nullable(),
+    synthetic: z.boolean(),
     branch: z.string().nullable(),
     commitSha: z.string().nullable(),
     verifyCmd: z.string().nullable(),
@@ -63,20 +64,29 @@ const errorEnvelope = z.object({
 
 // ─── Param + query schemas ────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const groupIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01JE7KQXZJ9P3M4GROUP000X1Y",
-});
+const groupIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01JE7KQXZJ9P3M4GROUP000X1Y",
+  });
 
-const requestIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01JE7KQXZJ9P3M4ABCDEF0X1Y2",
-});
+const requestIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01JE7KQXZJ9P3M4ABCDEF0X1Y2",
+  });
 
 const listQuery = z.object({
   state: z.enum(MERGE_GROUP_STATES).optional(),
@@ -110,7 +120,13 @@ const createGroupBody = z
   .object({
     resource: z.string().min(1).default("main"),
     memberRequestIds: z.array(z.string().min(1)).min(2).optional(),
-    members: z.array(mergeGroupMemberSpecBody).min(2).optional(),
+    // min(1): a single spec is valid ONLY with synthesizeOuter: true — the
+    // superRefine below keeps the ≥2 floor for the plain atomic form.
+    members: z.array(mergeGroupMemberSpecBody).min(1).optional(),
+    // Inner-only cross-repo form: with EXACTLY ONE member spec (the inner
+    // change), PM also records a synthetic outer member. STRICT === true
+    // semantics — an explicit false behaves exactly like absent.
+    synthesizeOuter: z.boolean().optional(),
   })
   .superRefine((v, ctx) => {
     const hasIds = v.memberRequestIds !== undefined;
@@ -119,6 +135,31 @@ const createGroupBody = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Provide exactly one of memberRequestIds or members.",
+      });
+      return;
+    }
+    if (v.synthesizeOuter === true) {
+      if (hasIds) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["synthesizeOuter"],
+          message:
+            "synthesizeOuter cannot be combined with memberRequestIds; provide members with exactly one inner member spec.",
+        });
+      } else if (v.members!.length !== 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["members"],
+          message:
+            "synthesizeOuter requires exactly one member spec (the inner change); the outer member is synthesized at integration time.",
+        });
+      }
+    } else if (hasSpecs && v.members!.length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["members"],
+        message:
+          "A merge group requires at least 2 member specs (or exactly one with synthesizeOuter: true).",
       });
     }
   })
@@ -172,17 +213,32 @@ const createGroupRoute = createRoute({
   tags: ["Merge Groups"],
   summary: "Create a merge group (bind existing, or atomic submit-and-group)",
   description:
-    "Create a 'forming' merge group of >=2 members two ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping). The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.",
+    "Create a 'forming' merge group three ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping); (c) members with exactly ONE spec + synthesizeOuter: true — inner-only cross-repo form: PM records the real inner member plus a synthetic outer member (no branch/commit); the integrator synthesizes the outer gitlink-bump candidate at integration and fills its landedSha at land. Requires settings.integrator.linked_repos to declare exactly one inner and one outer repo. The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     body: { content: { "application/json": { schema: createGroupBody } }, required: true },
   },
   responses: {
-    201: { description: "Forming group with members", content: { "application/json": { schema: mergeGroupDetailEnvelope } } },
-    400: { description: "Validation error (e.g. <2 members)", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project or member request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "A member is not queued or is already grouped", content: { "application/json": { schema: errorEnvelope } } },
+    201: {
+      description: "Forming group with members",
+      content: { "application/json": { schema: mergeGroupDetailEnvelope } },
+    },
+    400: {
+      description: "Validation error (e.g. <2 members)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project or member request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "A member is not queued or is already grouped",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -194,9 +250,18 @@ const getGroupRoute = createRoute({
   description: "Returns the group plus all member requests (ordered by enqueuedAt asc).",
   request: { params: z.object({ id: groupIdParam }) },
   responses: {
-    200: { description: "Group + members", content: { "application/json": { schema: mergeGroupDetailEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Group not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Group + members",
+      content: { "application/json": { schema: mergeGroupDetailEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Group not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -205,12 +270,22 @@ const listGroupsRoute = createRoute({
   path: "/api/v1/projects/{projectId}/merge-groups",
   tags: ["Merge Groups"],
   summary: "List merge groups in a project",
-  description: "Returns groups for the project ordered by createdAt asc. Optional filters: state, resource.",
+  description:
+    "Returns groups for the project ordered by createdAt asc. Optional filters: state, resource.",
   request: { params: z.object({ projectId: projectIdParam }), query: listQuery },
   responses: {
-    200: { description: "Filtered list", content: { "application/json": { schema: mergeGroupListEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Filtered list",
+      content: { "application/json": { schema: mergeGroupListEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -226,11 +301,26 @@ const pickupGroupRoute = createRoute({
     body: { content: { "application/json": { schema: markIntegratingBody } }, required: false },
   },
   responses: {
-    200: { description: "Picked up", content: { "application/json": { schema: mergeGroupDetailEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Group not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Group not in 'forming' state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Picked up",
+      content: { "application/json": { schema: mergeGroupDetailEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Group not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Group not in 'forming' state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -246,11 +336,26 @@ const resetGroupRoute = createRoute({
     body: { content: { "application/json": { schema: resetGroupBody } }, required: false },
   },
   responses: {
-    200: { description: "Reset to forming", content: { "application/json": { schema: mergeGroupDetailEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Group not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Group not integrating, or has an open incident (corruption fence)", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Reset to forming",
+      content: { "application/json": { schema: mergeGroupDetailEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Group not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Group not integrating, or has an open incident (corruption fence)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -266,12 +371,30 @@ const landGroupRoute = createRoute({
     body: { content: { "application/json": { schema: landGroupBody } }, required: true },
   },
   responses: {
-    200: { description: "Landed", content: { "application/json": { schema: mergeGroupDetailEnvelope } } },
-    400: { description: "Validation error (e.g. member not in group)", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Group or member not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Group not in 'integrating' state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Landed",
+      content: { "application/json": { schema: mergeGroupDetailEnvelope } },
+    },
+    400: {
+      description: "Validation error (e.g. member not in group)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Group or member not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Group not in 'integrating' state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -287,12 +410,30 @@ const rejectGroupRoute = createRoute({
     body: { content: { "application/json": { schema: rejectGroupBody } }, required: true },
   },
   responses: {
-    200: { description: "Rejected", content: { "application/json": { schema: mergeGroupDetailEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Only the submitter, an admin, or the integrator", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Group not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Invalid transition from current state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Rejected",
+      content: { "application/json": { schema: mergeGroupDetailEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Only the submitter, an admin, or the integrator",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Group not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Invalid transition from current state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -308,12 +449,30 @@ const partiallyLandGroupRoute = createRoute({
     body: { content: { "application/json": { schema: markPartiallyLandedBody } }, required: true },
   },
   responses: {
-    200: { description: "Partially landed", content: { "application/json": { schema: mergeGroupDetailEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Group not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Group not in 'integrating' state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Partially landed",
+      content: { "application/json": { schema: mergeGroupDetailEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Group not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Group not in 'integrating' state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -329,12 +488,30 @@ const orphanRequestRoute = createRoute({
     body: { content: { "application/json": { schema: markInnerOrphanedBody } }, required: true },
   },
   responses: {
-    200: { description: "Orphaned member", content: { "application/json": { schema: mergeGroupMemberDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Request not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Request not a group member or not 'integrating'", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Orphaned member",
+      content: { "application/json": { schema: mergeGroupMemberDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Request not a group member or not 'integrating'",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -363,13 +540,14 @@ export function createMergeGroupRoutes(): OpenAPIHono<{
     const user = requireUser(c.get("currentUser") as AuthUser | null);
     const body = c.req.valid("json");
     // Dispatch on which arm the exactly-one-of guard admitted: `members`
-    // present → atomic submit-and-group; else the back-compat ids arm.
+    // present → atomic submit-and-group (with synthesizeOuter threaded for
+    // the inner-only form); else the back-compat ids arm.
     const detail = groupSvc.createGroup({
       projectId,
       resource: body.resource,
       submittedBy: user.id,
       ...(body.members !== undefined
-        ? { members: body.members }
+        ? { members: body.members, synthesizeOuter: body.synthesizeOuter }
         : { memberRequestIds: body.memberRequestIds }),
     });
     return c.json({ data: detail }, 201);

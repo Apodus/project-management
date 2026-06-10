@@ -13,10 +13,30 @@ import {
 const resourceDesc =
   "Lock resource name (default: 'main'). Names the train lane. Use 'main' unless told otherwise.";
 
-const INCIDENT_STATE_FILTER_VALUES = [
-  ...MERGE_INCIDENT_STATES,
-  "all",
-] as const;
+const INCIDENT_STATE_FILTER_VALUES = [...MERGE_INCIDENT_STATES, "all"] as const;
+
+/**
+ * Render a member's landable ref for the group views. A SYNTHETIC member
+ * (inner-only groups) has no branch/commit by design — the integrator
+ * synthesizes the outer candidate at integration time. `synthetic` is
+ * optional so pre-campaign responses without the field still render.
+ */
+function memberRef(m: {
+  branch: string | null;
+  commitSha: string | null;
+  synthetic?: boolean;
+}): string {
+  if (m.synthetic === true) {
+    return "(synthetic gitlink bump — outer candidate synthesized at integration)";
+  }
+  return m.branch && m.commitSha
+    ? `${m.branch} @ ${m.commitSha}`
+    : m.branch
+      ? m.branch
+      : m.commitSha
+        ? m.commitSha
+        : "(no branch/commit recorded)";
+}
 
 export function registerMergeGroupTools(server: McpServer): void {
   // ── pm_request_merge_group ────────────────────────────────────────────────
@@ -33,10 +53,7 @@ export function registerMergeGroupTools(server: McpServer): void {
               .string()
               .optional()
               .describe("Branch to land. At least one of branch / commit_sha."),
-            commit_sha: z
-              .string()
-              .optional()
-              .describe("Specific commit SHA to land."),
+            commit_sha: z.string().optional().describe("Specific commit SHA to land."),
             verify_cmd: z
               .string()
               .optional()
@@ -59,11 +76,7 @@ export function registerMergeGroupTools(server: McpServer): void {
         .describe(
           "LEGACY form: IDs of >=2 already-queued, ungrouped merge requests to bind into this group (submit each via pm_request_merge first). Provide EITHER this OR members, not both.",
         ),
-      resource: z
-        .string()
-        .optional()
-        .default("main")
-        .describe(resourceDesc),
+      resource: z.string().optional().default("main").describe(resourceDesc),
     },
     async ({ project_id, members, member_request_ids, resource }) => {
       const resolvedResource = resource ?? "main";
@@ -91,20 +104,10 @@ export function registerMergeGroupTools(server: McpServer): void {
       lines.push("");
       lines.push(`  Members (${group.members.length}):`);
       for (const m of group.members) {
-        const ref =
-          m.branch && m.commitSha
-            ? `${m.branch} @ ${m.commitSha}`
-            : m.branch
-              ? m.branch
-              : m.commitSha
-                ? m.commitSha
-                : "(no branch/commit recorded)";
-        lines.push(`    - ${m.id}   ${ref}`);
+        lines.push(`    - ${m.id}   ${memberRef(m)}`);
       }
       lines.push("");
-      lines.push(
-        `Subscribe to SSE events for "merge.group.landed" / "merge.group.rejected"`,
-      );
+      lines.push(`Subscribe to SSE events for "merge.group.landed" / "merge.group.rejected"`);
       lines.push(`with entityId ${group.id} to learn the outcome.`);
       return { content: [{ type: "text" as const, text: lines.join("\n") }] };
     },
@@ -138,16 +141,8 @@ export function registerMergeGroupTools(server: McpServer): void {
       lines.push("");
       lines.push(`  Members (${group.members.length}):`);
       for (const m of group.members) {
-        const ref =
-          m.branch && m.commitSha
-            ? `${m.branch} @ ${m.commitSha}`
-            : m.branch
-              ? m.branch
-              : m.commitSha
-                ? m.commitSha
-                : "(no branch/commit recorded)";
         const landed = m.landedSha ? ` -> ${m.landedSha}` : "";
-        lines.push(`    - ${m.id}   ${m.status}   ${ref}${landed}`);
+        lines.push(`    - ${m.id}   ${m.status}   ${memberRef(m)}${landed}`);
       }
 
       return { content: [{ type: "text" as const, text: lines.join("\n") }] };
@@ -170,8 +165,7 @@ export function registerMergeGroupTools(server: McpServer): void {
         ),
     },
     async ({ project_id, state }) => {
-      const stateFilter =
-        state === "all" || state === undefined ? undefined : state;
+      const stateFilter = state === "all" || state === undefined ? undefined : state;
 
       const rows = await listMergeIncidents(project_id, { state: stateFilter });
 
@@ -186,10 +180,7 @@ export function registerMergeGroupTools(server: McpServer): void {
         };
       }
 
-      const out: string[] = [
-        `${rows.length} merge incident(s) in ${project_id}:`,
-        "",
-      ];
+      const out: string[] = [`${rows.length} merge incident(s) in ${project_id}:`, ""];
       rows.forEach((r, i) => {
         out.push(
           `  ${i + 1}. ${r.id}   ${r.state}`,
@@ -236,9 +227,7 @@ export function registerMergeGroupTools(server: McpServer): void {
           lines.push(`    Outer landed SHA: ${incident.resolution.outerLandedSha}`);
         }
         if (incident.resolution.resolvedByGroupId) {
-          lines.push(
-            `    Resolved by group: ${incident.resolution.resolvedByGroupId}`,
-          );
+          lines.push(`    Resolved by group: ${incident.resolution.resolvedByGroupId}`);
         }
         if (incident.resolution.note) {
           lines.push(`    Note: ${incident.resolution.note}`);

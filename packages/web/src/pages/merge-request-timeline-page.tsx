@@ -14,20 +14,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMergeRequestTimeline } from "@/hooks/use-train";
-import {
-  formatDurationMs,
-  formatRelativeTime,
-  formatStatus,
-  getStatusColor,
-} from "@/lib/format";
+import { formatDurationMs, formatRelativeTime, formatStatus, getStatusColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { MergeRequest, MergeRequestTimelineEvent } from "@/lib/api";
 
@@ -65,8 +55,7 @@ function kindVisual(event: MergeRequestTimelineEvent): {
         label: "Verify attempt",
       };
     case "audit": {
-      const override =
-        event.action === "force_land" || event.action === "force_reject";
+      const override = event.action === "force_land" || event.action === "force_reject";
       return {
         icon: override ? ShieldAlert : Flag,
         accent: override ? "text-red-500" : "text-muted-foreground",
@@ -118,14 +107,9 @@ function AttemptBody({ event }: { event: MergeRequestTimelineEvent }) {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium">
-          Attempt {event.attemptNumber ?? "—"}
-        </span>
+        <span className="text-sm font-medium">Attempt {event.attemptNumber ?? "—"}</span>
         {event.status && (
-          <Badge
-            variant="secondary"
-            className={cn("text-[10px]", getStatusColor(event.status))}
-          >
+          <Badge variant="secondary" className={cn("text-[10px]", getStatusColor(event.status))}>
             {formatStatus(event.status)}
           </Badge>
         )}
@@ -139,7 +123,7 @@ function AttemptBody({ event }: { event: MergeRequestTimelineEvent }) {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
         <span className="font-mono">base {shortSha(event.baseSha)}</span>
         <span className="font-mono">tree {shortSha(event.treeSha)}</span>
       </div>
@@ -151,13 +135,8 @@ function AttemptBody({ event }: { event: MergeRequestTimelineEvent }) {
           {event.steps.map((step) => {
             const passed = step.outcome === "pass";
             return (
-              <div
-                key={step.stepId}
-                className="flex flex-wrap items-center gap-2 text-xs"
-              >
-                <span className="font-mono text-muted-foreground">
-                  {step.stepId}
-                </span>
+              <div key={step.stepId} className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground font-mono">{step.stepId}</span>
                 <Badge
                   variant="secondary"
                   className={cn(
@@ -174,7 +153,7 @@ function AttemptBody({ event }: { event: MergeRequestTimelineEvent }) {
                     hit
                   </Badge>
                 )}
-                <span className="tabular-nums text-muted-foreground/70">
+                <span className="text-muted-foreground/70 tabular-nums">
                   {formatDurationMs(step.durationMs)}
                 </span>
                 {step.logUrl && (
@@ -207,10 +186,10 @@ function AttemptBody({ event }: { event: MergeRequestTimelineEvent }) {
         </a>
       ) : event.logExcerpt ? (
         <details className="text-xs">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+          <summary className="text-muted-foreground hover:text-foreground cursor-pointer">
             Log excerpt
           </summary>
-          <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap">
+          <pre className="bg-muted mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded p-2 font-mono text-[11px]">
             {event.logExcerpt}
           </pre>
         </details>
@@ -221,18 +200,12 @@ function AttemptBody({ event }: { event: MergeRequestTimelineEvent }) {
 
 function AuditBody({ event }: { event: MergeRequestTimelineEvent }) {
   const action = event.action ?? "action";
-  const isOverride =
-    event.action === "force_land" || event.action === "force_reject";
+  const isOverride = event.action === "force_land" || event.action === "force_reject";
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={cn(
-            "text-sm font-medium",
-            isOverride && "text-red-600 dark:text-red-400",
-          )}
-        >
+        <span className={cn("text-sm font-medium", isOverride && "text-red-600 dark:text-red-400")}>
           {formatStatus(action)}
         </span>
         {isOverride && (
@@ -245,11 +218,8 @@ function AuditBody({ event }: { event: MergeRequestTimelineEvent }) {
         )}
       </div>
       {/* The override accountability line: who + why. */}
-      <p className="text-xs text-muted-foreground">
-        by{" "}
-        <span className="font-medium text-foreground">
-          {event.actorId ?? "unknown"}
-        </span>
+      <p className="text-muted-foreground text-xs">
+        by <span className="text-foreground font-medium">{event.actorId ?? "unknown"}</span>
         {event.reason ? (
           <>
             {" — "}
@@ -277,18 +247,12 @@ function IncidentBody({ event }: { event: MergeRequestTimelineEvent }) {
           </Badge>
         )}
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
         {event.orphanedSha && (
-          <span className="font-mono">
-            orphaned {shortSha(event.orphanedSha)}
-          </span>
+          <span className="font-mono">orphaned {shortSha(event.orphanedSha)}</span>
         )}
-        {event.resolvedAt && (
-          <span>resolved {safeRelative(event.resolvedAt)}</span>
-        )}
-        {event.resolution != null && (
-          <span>resolution: {String(event.resolution)}</span>
-        )}
+        {event.resolvedAt && <span>resolved {safeRelative(event.resolvedAt)}</span>}
+        {event.resolution != null && <span>resolution: {String(event.resolution)}</span>}
       </div>
     </div>
   );
@@ -311,9 +275,7 @@ function resolutionStateBadgeClass(state: string | undefined): string {
 function ResolutionBody({ event }: { event: MergeRequestTimelineEvent }) {
   const state = event.resolutionState;
   const inFlight =
-    state === "pending" ||
-    state === "resolving" ||
-    (!event.attemptEndedAt && state !== "resolved");
+    state === "pending" || state === "resolving" || (!event.attemptEndedAt && state !== "resolved");
   const files = event.conflictingFiles ?? [];
   return (
     <div className="space-y-2">
@@ -341,7 +303,7 @@ function ResolutionBody({ event }: { event: MergeRequestTimelineEvent }) {
       </div>
 
       {files.length > 0 && (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <div className="text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs">
           {files.map((f) => (
             <span key={f} className="font-mono">
               {f}
@@ -351,9 +313,7 @@ function ResolutionBody({ event }: { event: MergeRequestTimelineEvent }) {
       )}
 
       {event.detail?.escalationReason && (
-        <p className="text-xs text-muted-foreground italic">
-          {event.detail.escalationReason}
-        </p>
+        <p className="text-muted-foreground text-xs italic">{event.detail.escalationReason}</p>
       )}
 
       {event.resolvedRequestId && (
@@ -372,11 +332,7 @@ function ResolutionBody({ event }: { event: MergeRequestTimelineEvent }) {
 
 // Resolved-branch event: THIS request was itself resubmitted by a resolver —
 // a back-link to the origin request that conflicted.
-function ResolutionOriginBody({
-  event,
-}: {
-  event: MergeRequestTimelineEvent;
-}) {
+function ResolutionOriginBody({ event }: { event: MergeRequestTimelineEvent }) {
   return (
     <div className="space-y-1">
       <span className="text-sm font-medium">Resolved from origin</span>
@@ -400,22 +356,16 @@ function TerminalBody({ event }: { event: MergeRequestTimelineEvent }) {
   if (event.kind === "landed") {
     return (
       <div className="space-y-1">
-        <span className="text-sm font-medium text-green-600 dark:text-green-400">
-          Landed
-        </span>
-        <p className="font-mono text-xs text-muted-foreground">
-          {shortSha(event.landedSha)}
-        </p>
+        <span className="text-sm font-medium text-green-600 dark:text-green-400">Landed</span>
+        <p className="text-muted-foreground font-mono text-xs">{shortSha(event.landedSha)}</p>
       </div>
     );
   }
   if (event.kind === "rejected") {
     return (
       <div className="space-y-1">
-        <span className="text-sm font-medium text-red-600 dark:text-red-400">
-          Rejected
-        </span>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span className="text-sm font-medium text-red-600 dark:text-red-400">Rejected</span>
+        <div className="text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs">
           {event.rejectCategory && (
             <Badge
               variant="secondary"
@@ -429,16 +379,12 @@ function TerminalBody({ event }: { event: MergeRequestTimelineEvent }) {
       </div>
     );
   }
-  return (
-    <span className="text-sm font-medium text-muted-foreground">Abandoned</span>
-  );
+  return <span className="text-muted-foreground text-sm font-medium">Abandoned</span>;
 }
 
 function MilestoneBody({ event }: { event: MergeRequestTimelineEvent }) {
   const visual = kindVisual(event);
-  return (
-    <span className="text-sm font-medium">{visual.label}</span>
-  );
+  return <span className="text-sm font-medium">{visual.label}</span>;
 }
 
 function EventBody({ event }: { event: MergeRequestTimelineEvent }) {
@@ -467,27 +413,21 @@ function EventBody({ event }: { event: MergeRequestTimelineEvent }) {
 
 // ─── Timeline row ────────────────────────────────────────────────
 
-function TimelineRow({
-  event,
-  isLast,
-}: {
-  event: MergeRequestTimelineEvent;
-  isLast: boolean;
-}) {
+function TimelineRow({ event, isLast }: { event: MergeRequestTimelineEvent; isLast: boolean }) {
   const { icon: Icon, accent } = kindVisual(event);
   return (
     <li className="relative flex gap-4 pb-6 last:pb-0">
       {/* Connector line (drawn for all but the last node). */}
       {!isLast && (
         <span
-          className="absolute top-8 left-[15px] h-[calc(100%-2rem)] w-px bg-border"
+          className="bg-border absolute left-[15px] top-8 h-[calc(100%-2rem)] w-px"
           aria-hidden
         />
       )}
       {/* Node */}
       <span
         className={cn(
-          "relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border bg-background",
+          "bg-background relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border",
           accent,
         )}
       >
@@ -496,9 +436,7 @@ function TimelineRow({
       {/* Body */}
       <div className="min-w-0 flex-1 pt-1">
         <EventBody event={event} />
-        <p className="mt-1 text-[11px] text-muted-foreground/70">
-          {safeRelative(event.at)}
-        </p>
+        <p className="text-muted-foreground/70 mt-1 text-[11px]">{safeRelative(event.at)}</p>
       </div>
     </li>
   );
@@ -506,30 +444,26 @@ function TimelineRow({
 
 // ─── Request header ──────────────────────────────────────────────
 
-function RequestHeader({
-  request,
-  projectId,
-}: {
-  request: MergeRequest;
-  projectId?: string;
-}) {
+function RequestHeader({ request, projectId }: { request: MergeRequest; projectId?: string }) {
   return (
     <Card className="py-4">
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center gap-3">
-          <GitMerge className="size-5 text-muted-foreground" />
-          <CardTitle className="font-mono text-base">
-            {request.id.slice(0, 12)}
-          </CardTitle>
-          <Badge
-            variant="secondary"
-            className={cn("text-[10px]", getStatusColor(request.status))}
-          >
+          <GitMerge className="text-muted-foreground size-5" />
+          <CardTitle className="font-mono text-base">{request.id.slice(0, 12)}</CardTitle>
+          <Badge variant="secondary" className={cn("text-[10px]", getStatusColor(request.status))}>
             {formatStatus(request.status)}
           </Badge>
+          {/* Inner-only groups: a synthetic member has no branch/commit — the
+              integrator synthesizes the outer gitlink-bump candidate. */}
+          {request.synthetic && (
+            <Badge variant="secondary" className="text-[10px]">
+              synthetic gitlink bump
+            </Badge>
+          )}
         </div>
       </CardHeader>
-      <CardContent className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+      <CardContent className="text-muted-foreground flex flex-wrap gap-x-6 gap-y-1 text-xs">
         <span>resource: {request.resource}</span>
         {request.branch && <span>branch: {request.branch}</span>}
         {request.taskId && (
@@ -544,9 +478,7 @@ function RequestHeader({
         {request.landedSha && (
           <span className="font-mono">landed {shortSha(request.landedSha)}</span>
         )}
-        {request.rejectCategory && (
-          <span>rejected: {formatStatus(request.rejectCategory)}</span>
-        )}
+        {request.rejectCategory && <span>rejected: {formatStatus(request.rejectCategory)}</span>}
         {projectId && (
           <Link
             to="/projects/$projectId/train"
@@ -583,8 +515,8 @@ export function MergeRequestTimelinePage() {
     return (
       <Card className="py-4">
         <CardContent className="flex flex-col items-center py-10">
-          <AlertTriangle className="mb-2 size-8 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">
+          <AlertTriangle className="text-muted-foreground/40 mb-2 size-8" />
+          <p className="text-muted-foreground text-sm">
             Could not load this merge request timeline.
           </p>
         </CardContent>
@@ -605,17 +537,13 @@ export function MergeRequestTimelinePage() {
 
       <Card className="py-4">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Events
-          </CardTitle>
+          <CardTitle className="text-muted-foreground text-sm font-medium">Events</CardTitle>
         </CardHeader>
         <CardContent>
           {events.length === 0 ? (
             <div className="flex flex-col items-center py-6">
-              <CircleDot className="mb-2 size-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">
-                No timeline events yet
-              </p>
+              <CircleDot className="text-muted-foreground/40 mb-2 size-8" />
+              <p className="text-muted-foreground text-sm">No timeline events yet</p>
             </div>
           ) : (
             <ol className="m-0 list-none p-0">

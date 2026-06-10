@@ -4349,6 +4349,9 @@
             "type": "string",
             "nullable": true
           },
+          "synthetic": {
+            "type": "boolean"
+          },
           "branch": {
             "type": "string",
             "nullable": true
@@ -4438,6 +4441,7 @@
           "submittedBy",
           "taskId",
           "resolvedFrom",
+          "synthetic",
           "branch",
           "commitSha",
           "verifyCmd",
@@ -5244,6 +5248,9 @@
             "type": "string",
             "nullable": true
           },
+          "synthetic": {
+            "type": "boolean"
+          },
           "branch": {
             "type": "string",
             "nullable": true
@@ -5315,6 +5322,7 @@
           "submittedBy",
           "taskId",
           "resolvedFrom",
+          "synthetic",
           "branch",
           "commitSha",
           "verifyCmd",
@@ -5429,7 +5437,10 @@
                 }
               }
             },
-            "minItems": 2
+            "minItems": 1
+          },
+          "synthesizeOuter": {
+            "type": "boolean"
           }
         }
       },
@@ -23183,7 +23194,7 @@
           "Merge Groups"
         ],
         "summary": "Create a merge group (bind existing, or atomic submit-and-group)",
-        "description": "Create a 'forming' merge group of >=2 members two ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping). The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.",
+        "description": "Create a 'forming' merge group three ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping); (c) members with exactly ONE spec + synthesizeOuter: true — inner-only cross-repo form: PM records the real inner member plus a synthetic outer member (no branch/commit); the integrator synthesizes the outer gitlink-bump candidate at integration and fills its landedSha at land. Requires settings.integrator.linked_repos to declare exactly one inner and one outer repo. The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.",
         "parameters": [
           {
             "schema": {

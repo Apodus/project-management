@@ -75,9 +75,7 @@ describe("mergeRequestGroupSchema", () => {
   });
 
   it("rejects unknown state", () => {
-    expect(() =>
-      mergeRequestGroupSchema.parse({ ...validGroup, state: "in_progress" }),
-    ).toThrow();
+    expect(() => mergeRequestGroupSchema.parse({ ...validGroup, state: "in_progress" })).toThrow();
   });
 
   it("rejects missing projectId", () => {
@@ -118,21 +116,15 @@ describe("createMergeGroupSchema", () => {
   });
 
   it("rejects fewer than 2 memberRequestIds", () => {
-    expect(() =>
-      createMergeGroupSchema.parse({ memberRequestIds: [VALID_ULID] }),
-    ).toThrow();
+    expect(() => createMergeGroupSchema.parse({ memberRequestIds: [VALID_ULID] })).toThrow();
   });
 
   it("rejects empty memberRequestIds", () => {
-    expect(() =>
-      createMergeGroupSchema.parse({ memberRequestIds: [] }),
-    ).toThrow();
+    expect(() => createMergeGroupSchema.parse({ memberRequestIds: [] })).toThrow();
   });
 
   it("rejects an empty-string member id", () => {
-    expect(() =>
-      createMergeGroupSchema.parse({ memberRequestIds: [VALID_ULID, ""] }),
-    ).toThrow();
+    expect(() => createMergeGroupSchema.parse({ memberRequestIds: [VALID_ULID, ""] })).toThrow();
   });
 
   it("rejects empty-string resource", () => {
@@ -175,9 +167,7 @@ describe("createMergeGroupSchema", () => {
   });
 
   it("REJECTS a body with NEITHER memberRequestIds nor members", () => {
-    expect(() => createMergeGroupSchema.parse({ resource: "main" })).toThrow(
-      /exactly one/i,
-    );
+    expect(() => createMergeGroupSchema.parse({ resource: "main" })).toThrow(/exactly one/i);
   });
 
   it("rejects a member spec with no branch and no commitSha", () => {
@@ -189,9 +179,68 @@ describe("createMergeGroupSchema", () => {
   });
 
   it("rejects fewer than 2 members", () => {
+    expect(() => createMergeGroupSchema.parse({ members: [validSpec] })).toThrow();
+  });
+
+  // ── Inner-only form: synthesizeOuter (campaign 2026-06-10) ──────────
+  it("accepts exactly ONE member spec with synthesizeOuter: true (inner-only form)", () => {
+    const parsed = createMergeGroupSchema.parse({
+      members: [validSpec],
+      synthesizeOuter: true,
+    });
+    expect(parsed.members).toHaveLength(1);
+    expect(parsed.synthesizeOuter).toBe(true);
+  });
+
+  it("REJECTS one member spec without the flag (no accidental semantics change)", () => {
+    expect(() => createMergeGroupSchema.parse({ members: [validSpec] })).toThrow(
+      /at least 2 member specs/,
+    );
+  });
+
+  it("REJECTS one member spec with an EXPLICIT synthesizeOuter: false (strict === true)", () => {
     expect(() =>
-      createMergeGroupSchema.parse({ members: [validSpec] }),
-    ).toThrow();
+      createMergeGroupSchema.parse({
+        members: [validSpec],
+        synthesizeOuter: false,
+      }),
+    ).toThrow(/at least 2 member specs/);
+  });
+
+  it("REJECTS synthesizeOuter: true with 2 member specs", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({
+        members: [validSpec, validSpec2],
+        synthesizeOuter: true,
+      }),
+    ).toThrow(/exactly one member spec/);
+  });
+
+  it("REJECTS synthesizeOuter: true combined with memberRequestIds", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({
+        memberRequestIds: [VALID_ULID, VALID_ULID],
+        synthesizeOuter: true,
+      }),
+    ).toThrow(/cannot be combined with memberRequestIds/);
+  });
+
+  it("REJECTS synthesizeOuter: true with a spec missing branch+commitSha", () => {
+    expect(() =>
+      createMergeGroupSchema.parse({
+        members: [{ verifyCmd: "x" }],
+        synthesizeOuter: true,
+      }),
+    ).toThrow(/branch \/ commitSha/);
+  });
+
+  it("accepts synthesizeOuter: false with >=2 members (behaves like absent)", () => {
+    const parsed = createMergeGroupSchema.parse({
+      members: [validSpec, validSpec2],
+      synthesizeOuter: false,
+    });
+    expect(parsed.members).toHaveLength(2);
+    expect(parsed.synthesizeOuter).toBe(false);
   });
 });
 
@@ -221,9 +270,9 @@ describe("mergeGroupMemberSpecSchema", () => {
   });
 
   it("rejects a spec with neither branch nor commitSha", () => {
-    expect(() =>
-      mergeGroupMemberSpecSchema.parse({ verifyCmd: "pnpm test" }),
-    ).toThrow(/branch \/ commitSha/);
+    expect(() => mergeGroupMemberSpecSchema.parse({ verifyCmd: "pnpm test" })).toThrow(
+      /branch \/ commitSha/,
+    );
   });
 
   it("rejects an empty spec", () => {

@@ -12,6 +12,7 @@ import * as attemptSvc from "../../src/services/merge-attempt.service.js";
 import * as trainSvc from "../../src/services/train.service.js";
 import * as incidentSvc from "../../src/services/merge-incident.service.js";
 import * as resolutionSvc from "../../src/services/merge-resolution.service.js";
+import * as groupSvc from "../../src/services/merge-group.service.js";
 
 describe("merge-request timeline (design §5.7)", () => {
   let testApp: TestApp;
@@ -67,11 +68,7 @@ describe("merge-request timeline (design §5.7)", () => {
 
     // attempt 2: start + pass
     const a2 = attemptSvc.startAttempt(r.id, { baseSha: "base2" }, actor);
-    attemptSvc.completeAttempt(
-      a2.id,
-      { status: "passed", treeSha: "tree2" },
-      actor,
-    );
+    attemptSvc.completeAttempt(a2.id, { status: "passed", treeSha: "tree2" }, actor);
 
     // land
     requestSvc.land(r.id, { landedSha: "landedsha2" }, actor);
@@ -99,9 +96,7 @@ describe("merge-request timeline (design §5.7)", () => {
     expect(passed!.treeSha).toBe("tree2");
 
     // the land audit row carries actor + before/after
-    const landAudit = timeline.events.find(
-      (e) => e.kind === "audit" && e.action === "land",
-    );
+    const landAudit = timeline.events.find((e) => e.kind === "audit" && e.action === "land");
     expect(landAudit).toBeDefined();
     expect(landAudit!.actorId).toBe(actor.id);
     expect(landAudit!.metadataBefore).toMatchObject({ status: "integrating" });
@@ -155,11 +150,7 @@ describe("merge-request timeline (design §5.7)", () => {
         stepConfigSha: "cfg-unit",
       },
     ];
-    attemptSvc.completeAttempt(
-      a1.id,
-      { status: "passed", treeSha: "treeA", steps },
-      actor,
-    );
+    attemptSvc.completeAttempt(a1.id, { status: "passed", treeSha: "treeA", steps }, actor);
 
     // a second attempt WITHOUT steps stays degraded-to-7.4 (steps null)
     const a2 = attemptSvc.startAttempt(r.id, { baseSha: "base2" }, actor);
@@ -372,6 +363,33 @@ describe("merge-request timeline (design §5.7)", () => {
     const back = timeline.events.find((e) => e.kind === "resolution_origin");
     expect(back).toBeDefined();
     expect(back!.originRequestId).toBe(origin.id);
+  });
+
+  it("inner-only group: a SYNTHETIC member's timeline carries request.synthetic + the standard queued milestone", () => {
+    const project = createTestProject(testApp.db, {
+      settings: {
+        integrator: {
+          linked_repos: [
+            { name: "rynx", path: "../rynx", role: "inner" },
+            { name: "game", path: ".", role: "outer", gitlink_path: "rynx" },
+          ],
+        },
+      },
+    });
+    const submitter = createTestUser(testApp.db);
+
+    const g = groupSvc.createGroup({
+      projectId: project.id,
+      submittedBy: submitter.id,
+      members: [{ branch: "feat/inner" }],
+      synthesizeOuter: true,
+    });
+    const synthetic = g.members.find((m) => m.synthetic)!;
+
+    const timeline = requestSvc.getTimeline(synthetic.id);
+    assertAscending(timeline.events);
+    expect(timeline.request.synthetic).toBe(true);
+    expect(timeline.events.some((e) => e.kind === "queued")).toBe(true);
   });
 
   it("404 for an unknown request id", () => {

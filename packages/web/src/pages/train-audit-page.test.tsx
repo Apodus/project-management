@@ -58,10 +58,18 @@ function q<T>(data: T | undefined, isLoading = false) {
 }
 
 function mutation() {
-  return { mutate: vi.fn(), mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() };
+  return {
+    mutate: vi.fn(),
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+    reset: vi.fn(),
+  };
 }
 
-function seededAudit(): { data: AuditLogEntry[]; pagination: { total: number; page: number; perPage: number } } {
+function seededAudit(): {
+  data: AuditLogEntry[];
+  pagination: { total: number; page: number; perPage: number };
+} {
   return {
     data: [
       {
@@ -102,6 +110,7 @@ function seededRequest(id: string, branch: string): MergeRequest {
     submittedBy: "user-worker-1",
     taskId: null,
     resolvedFrom: null,
+    synthetic: false,
     branch,
     commitSha: null,
     verifyCmd: null,
@@ -220,9 +229,7 @@ describe("TrainAuditPage — force-land dialog", () => {
     fireEvent.click(screen.getByText("Force-land…"));
 
     // Warning block renders.
-    expect(
-      screen.getByText(/bypasses the verify gate/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/bypasses the verify gate/i)).toBeInTheDocument();
 
     const submit = screen.getByRole("button", { name: "Force-land" });
     expect(submit).toBeDisabled();
@@ -236,9 +243,7 @@ describe("TrainAuditPage — force-land dialog", () => {
     });
     // Selecting closes the listbox + shows the chosen label on the trigger.
     expect(
-      within(
-        screen.getByRole("combobox", { name: "Merge request" }),
-      ).getByText(/feat\/force-land/),
+      within(screen.getByRole("combobox", { name: "Merge request" })).getByText(/feat\/force-land/),
     ).toBeInTheDocument();
 
     // Still disabled — sha + reason missing.
@@ -285,9 +290,9 @@ describe("TrainAuditPage — force-reject dialog", () => {
       fireEvent.click(screen.getByRole("option", { name: /feat\/force-reject/ }));
     });
     expect(
-      within(
-        screen.getByRole("combobox", { name: "Merge request" }),
-      ).getByText(/feat\/force-reject/),
+      within(screen.getByRole("combobox", { name: "Merge request" })).getByText(
+        /feat\/force-reject/,
+      ),
     ).toBeInTheDocument();
     // Still disabled — reason missing.
     expect(submit).toBeDisabled();
@@ -321,9 +326,7 @@ describe("TrainAuditPage — pause/resume", () => {
   });
 
   it("paused state → renders Resume and calls useResumeTrain", () => {
-    trainMocks.useTrainState.mockReturnValue(
-      q({ state: "paused", reason: "maintenance" }),
-    );
+    trainMocks.useTrainState.mockReturnValue(q({ state: "paused", reason: "maintenance" }));
     render(<TrainAuditPage />);
     expect(screen.queryByText("Pause train")).toBeNull();
     const resumeBtn = screen.getByText("Resume train");

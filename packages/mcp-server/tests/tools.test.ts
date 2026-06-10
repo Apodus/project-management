@@ -148,10 +148,7 @@ async function createTestClient(): Promise<Client> {
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
-  await Promise.all([
-    client.connect(clientTransport),
-    server.connect(serverTransport),
-  ]);
+  await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
 
   return client;
 }
@@ -602,9 +599,7 @@ describe("MCP Tools", () => {
 
     it("surfaces a clean message when the API rejects with CLAIM_DENIED", async () => {
       const { ApiError } = await import("../src/api-client.js");
-      mockAddProposalComment.mockRejectedValue(
-        new ApiError(409, "CLAIM_DENIED", "Not your claim"),
-      );
+      mockAddProposalComment.mockRejectedValue(new ApiError(409, "CLAIM_DENIED", "Not your claim"));
 
       const result = await client.callTool({
         name: "pm_discuss_proposal",
@@ -805,11 +800,7 @@ describe("MCP Tools", () => {
         },
       });
 
-      expect(mockReleaseTaskTo).toHaveBeenCalledWith(
-        "task_001",
-        "handing off",
-        "user_target_B",
-      );
+      expect(mockReleaseTaskTo).toHaveBeenCalledWith("task_001", "handing off", "user_target_B");
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("Handed off");
       // identity-masked: neither holder id appears.
@@ -828,11 +819,7 @@ describe("MCP Tools", () => {
         name: "pm_release_epic_to",
         arguments: { epic_id: "epic_001", reason: "handing off", target: "user_target_B" },
       });
-      expect(mockReleaseEpicTo).toHaveBeenCalledWith(
-        "epic_001",
-        "handing off",
-        "user_target_B",
-      );
+      expect(mockReleaseEpicTo).toHaveBeenCalledWith("epic_001", "handing off", "user_target_B");
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).not.toContain("user_secret_A");
       expect(text).not.toContain("user_target_B");
@@ -875,10 +862,7 @@ describe("MCP Tools", () => {
         name: "pm_request_takeover_task",
         arguments: { task_id: "task_001", reason: "holder went dark" },
       });
-      expect(mockRequestTakeoverTask).toHaveBeenCalledWith(
-        "task_001",
-        "holder went dark",
-      );
+      expect(mockRequestTakeoverTask).toHaveBeenCalledWith("task_001", "holder went dark");
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("Taken over");
       expect(text).not.toContain("user_secret_A");
@@ -1233,12 +1217,9 @@ describe("MCP Tools", () => {
       expect(text).toContain("Open questions");
       expect(text).toContain("Should we add rate limiting?");
 
-      expect(mockAddTaskComment).toHaveBeenCalledWith(
-        "task_001",
-        "Done.",
-        "handoff",
-        { open_questions: ["Should we add rate limiting?"] },
-      );
+      expect(mockAddTaskComment).toHaveBeenCalledWith("task_001", "Done.", "handoff", {
+        open_questions: ["Should we add rate limiting?"],
+      });
     });
 
     it("passes null metadata when no extras provided", async () => {
@@ -1264,12 +1245,7 @@ describe("MCP Tools", () => {
         },
       });
 
-      expect(mockAddTaskComment).toHaveBeenCalledWith(
-        "task_001",
-        "All done.",
-        "handoff",
-        null,
-      );
+      expect(mockAddTaskComment).toHaveBeenCalledWith("task_001", "All done.", "handoff", null);
     });
   });
 
@@ -1372,11 +1348,7 @@ describe("MCP Tools", () => {
       expect(text).toContain("Review requested");
       expect(text).not.toContain("Review notes");
 
-      expect(mockAddTaskComment).toHaveBeenCalledWith(
-        "task_001",
-        "Simple review.",
-        "review_note",
-      );
+      expect(mockAddTaskComment).toHaveBeenCalledWith("task_001", "Simple review.", "review_note");
     });
   });
 
@@ -1454,11 +1426,7 @@ describe("MCP Tools", () => {
       expect(text).toContain("Task marked as blocked");
       expect(text).toContain("**Blocked by:** task_002");
 
-      expect(mockAddTaskDependency).toHaveBeenCalledWith(
-        "task_001",
-        "task_002",
-        "blocks",
-      );
+      expect(mockAddTaskDependency).toHaveBeenCalledWith("task_001", "task_002", "blocks");
 
       // Comment body should mention the blocking task
       const commentBody = mockAddTaskComment.mock.calls[0][1];
@@ -1589,9 +1557,7 @@ describe("MCP Tools", () => {
 
     it("surfaces a clean message when CLAIM_DENIED", async () => {
       const { ApiError } = await import("../src/api-client.js");
-      mockCreateEpic.mockRejectedValue(
-        new ApiError(409, "CLAIM_DENIED", "Not your claim"),
-      );
+      mockCreateEpic.mockRejectedValue(new ApiError(409, "CLAIM_DENIED", "Not your claim"));
 
       const result = await client.callTool({
         name: "pm_create_epic",
@@ -2212,12 +2178,7 @@ describe("MCP Tools", () => {
       expect(text).toContain("epicdep_001");
       expect(text).toContain("epic_b");
       expect(text).toContain("epic_a");
-      expect(mockAddEpicDependency).toHaveBeenCalledWith(
-        "epic_b",
-        "epic_a",
-        "proj_001",
-        undefined,
-      );
+      expect(mockAddEpicDependency).toHaveBeenCalledWith("epic_b", "epic_a", "proj_001", undefined);
     });
 
     it("passes the dependency_type through", async () => {
@@ -2326,11 +2287,7 @@ describe("MCP Tools", () => {
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("Epic dependency removed");
       expect(text).toContain("epicdep_001");
-      expect(mockRemoveEpicDependency).toHaveBeenCalledWith(
-        "epic_b",
-        "epicdep_001",
-        "proj_001",
-      );
+      expect(mockRemoveEpicDependency).toHaveBeenCalledWith("epic_b", "epicdep_001", "proj_001");
     });
   });
 
@@ -2480,10 +2437,7 @@ describe("MCP Tools", () => {
         arguments: { project_id: "proj_001", template_type: "task" },
       });
 
-      expect(mockApiRequest).toHaveBeenCalledWith(
-        "GET",
-        expect.stringContaining("/templates"),
-      );
+      expect(mockApiRequest).toHaveBeenCalledWith("GET", expect.stringContaining("/templates"));
       const callUrl = mockApiRequest.mock.calls[0][1];
       expect(callUrl).toContain("project_id=proj_001");
       expect(callUrl).toContain("template_type=task");
@@ -2541,15 +2495,11 @@ describe("MCP Tools", () => {
       expect(text).toContain("Template instantiated successfully");
       expect(text).toContain("proj_new");
 
-      expect(mockApiRequest).toHaveBeenCalledWith(
-        "POST",
-        "/templates/tpl_002/instantiate",
-        {
-          workspace_id: "ws_001",
-          name: "My Feature",
-          overrides: { description: "Custom description" },
-        },
-      );
+      expect(mockApiRequest).toHaveBeenCalledWith("POST", "/templates/tpl_002/instantiate", {
+        workspace_id: "ws_001",
+        name: "My Feature",
+        overrides: { description: "Custom description" },
+      });
     });
   });
 
@@ -2557,9 +2507,7 @@ describe("MCP Tools", () => {
 
   describe("error handling", () => {
     it("returns error when API call fails", async () => {
-      mockGetTask.mockRejectedValue(
-        new apiClient.ApiError(404, "NOT_FOUND", "Task not found"),
-      );
+      mockGetTask.mockRejectedValue(new apiClient.ApiError(404, "NOT_FOUND", "Task not found"));
 
       const result = await client.callTool({
         name: "pm_get_task",
@@ -2971,10 +2919,7 @@ describe("MCP Tools", () => {
         arguments: { request_id: "mreq_001", reason: "superseded by newer branch" },
       });
 
-      expect(mockCancelMergeRequest).toHaveBeenCalledWith(
-        "mreq_001",
-        "superseded by newer branch",
-      );
+      expect(mockCancelMergeRequest).toHaveBeenCalledWith("mreq_001", "superseded by newer branch");
     });
   });
 
@@ -3075,10 +3020,7 @@ describe("MCP Tools", () => {
         ],
       });
       // The atomic form must NOT send memberRequestIds.
-      const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<
-        string,
-        unknown
-      >;
+      const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<string, unknown>;
       expect(callArg.memberRequestIds).toBeUndefined();
     });
 
@@ -3093,10 +3035,7 @@ describe("MCP Tools", () => {
         },
       });
 
-      const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<
-        string,
-        unknown
-      >;
+      const callArg = mockRequestMergeGroup.mock.calls[0][1] as Record<string, unknown>;
       expect(callArg.memberRequestIds).toEqual(["mreq_A", "mreq_B"]);
       expect(callArg.members).toBeUndefined();
     });
@@ -3122,6 +3061,38 @@ describe("MCP Tools", () => {
       expect(text).toContain("LANDED");
       expect(text).toContain("mreq_A");
       expect(text).toContain("land-mreq_A");
+    });
+
+    it("pm_get_merge_group renders a synthetic member distinctly and stays undefined-tolerant on legacy members", async () => {
+      mockGetMergeGroup.mockResolvedValue({
+        ...sampleGroupDetail,
+        members: [
+          // The real inner member — pre-campaign shape WITHOUT the synthetic
+          // field (undefined-tolerant: renders the branch/sha cascade).
+          { ...sampleMergeRequest, id: "mreq_inner", branch: "feat/inner" },
+          // The server-minted synthetic outer member: ref-less + flagged.
+          {
+            ...sampleMergeRequest,
+            id: "mreq_synth",
+            branch: null,
+            commitSha: null,
+            synthetic: true,
+          },
+        ],
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_group",
+        arguments: { group_id: "grp_001" },
+      });
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain(
+        "(synthetic gitlink bump — outer candidate synthesized at integration)",
+      );
+      expect(text).toContain("feat/inner");
+      // The legacy member must NOT pick up the synthetic rendering.
+      expect(text).not.toContain("(no branch/commit recorded)");
     });
 
     it("pm_list_merge_incidents renders one line per incident and maps all→undefined", async () => {

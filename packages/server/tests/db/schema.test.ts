@@ -136,6 +136,17 @@ describe("Database schema", () => {
       expect(names).toContain("promoted_task_id");
     });
 
+    it("migration 0027: merge_requests has the additive synthetic column (NOT NULL, default false)", () => {
+      const db = setupDb();
+      const cols = db.all<{ name: string; notnull: number; dflt_value: string | null }>(
+        sql`PRAGMA table_info(merge_requests)`,
+      );
+      const synthetic = (cols as any[]).find((c: any) => c.name === "synthetic");
+      expect(synthetic).toBeDefined();
+      expect(synthetic.notnull).toBe(1);
+      expect(synthetic.dflt_value).toBe("false");
+    });
+
     it("migration 0025: proposals and tasks have the additive source_note_id column", () => {
       const db = setupDb();
       const proposalCols = (
@@ -1192,11 +1203,7 @@ describe("Database schema", () => {
       const ts = now();
       db.insert(claimsAlertState).values({ id, projectId, createdAt: ts, updatedAt: ts }).run();
 
-      const result = db
-        .select()
-        .from(claimsAlertState)
-        .where(eq(claimsAlertState.id, id))
-        .get();
+      const result = db.select().from(claimsAlertState).where(eq(claimsAlertState.id, id)).get();
       expect(result).toBeDefined();
       expect(result!.projectId).toBe(projectId);
       expect(result!.staleClaimsNotified).toBe(false);

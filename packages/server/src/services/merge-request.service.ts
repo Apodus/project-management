@@ -93,6 +93,7 @@ interface MergeRequestRow {
   submittedBy: string;
   taskId: string | null;
   resolvedFrom: string | null;
+  synthetic: boolean;
   branch: string | null;
   commitSha: string | null;
   verifyCmd: string | null;
@@ -355,6 +356,7 @@ function toView(row: MergeRequestRow): MergeRequestView {
     submittedBy: row.submittedBy,
     taskId: row.taskId,
     resolvedFrom: row.resolvedFrom,
+    synthetic: row.synthetic,
     branch: row.branch,
     commitSha: row.commitSha,
     verifyCmd: row.verifyCmd,
@@ -397,6 +399,8 @@ export interface InsertRequestRowParams {
   verifyCmd?: string | null;
   worktreePath?: string | null;
   resolvedFrom?: string | null;
+  /** Defaults to false; only the inner-only group form sets true (the server-minted outer member). */
+  synthetic?: boolean;
   /** Defaults to "queued". The atomic group-create path passes "queued" explicitly. */
   status?: string;
   /** Defaults to null. The atomic group-create path passes the forming group id. */
@@ -428,6 +432,7 @@ export function insertRequestRow(dbOrTx: DbOrTx, params: InsertRequestRowParams)
       verifyCmd: params.verifyCmd ?? null,
       worktreePath: params.worktreePath ?? null,
       resolvedFrom: params.resolvedFrom ?? null,
+      synthetic: params.synthetic ?? false,
       status: params.status ?? "queued",
       groupId: params.groupId ?? null,
       enqueuedAt: now,

@@ -1,17 +1,7 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import type {
-  MergeGroupMemberSpec,
-  MergeRequestGroupView,
-  MergeRequestView,
-} from "@pm/shared";
-import {
-  getDb,
-  mergeIncidents,
-  mergeRequestGroups,
-  mergeRequests,
-  projects,
-} from "../db/index.js";
+import type { MergeGroupMemberSpec, MergeRequestGroupView, MergeRequestView } from "@pm/shared";
+import { getDb, mergeIncidents, mergeRequestGroups, mergeRequests, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
 import {
@@ -21,11 +11,7 @@ import {
   validateTaskBelongsToProject,
   type Actor,
 } from "./merge-request.service.js";
-import {
-  emitAuditRecorded,
-  record as recordAudit,
-  type AuditLogView,
-} from "./audit.service.js";
+import { emitAuditRecorded, record as recordAudit, type AuditLogView } from "./audit.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -46,6 +32,15 @@ export interface CreateGroupParams {
    * members are born group-bound (closes the submit/group pickup race).
    */
   members?: MergeGroupMemberSpec[];
+  /**
+   * Inner-only cross-repo form (campaign 2026-06-10): with EXACTLY ONE member
+   * spec (the inner change), PM also inserts a SYNTHETIC outer member (no
+   * branch/commit) in the same txn; the integrator synthesizes the outer
+   * gitlink-bump candidate at integration time. STRICT `=== true` semantics —
+   * an explicit false behaves exactly like absent. Requires
+   * settings.integrator.linked_repos to declare exactly one inner + one outer.
+   */
+  synthesizeOuter?: boolean;
 }
 
 export interface GroupWithMembers extends MergeRequestGroupView {
@@ -85,6 +80,7 @@ interface MergeRequestRow {
   submittedBy: string;
   taskId: string | null;
   resolvedFrom: string | null;
+  synthetic: boolean;
   branch: string | null;
   commitSha: string | null;
   verifyCmd: string | null;
@@ -120,11 +116,7 @@ function ensureProjectExists(projectId: string): void {
 
 function readGroup(id: string): MergeGroupRow | null {
   const db = getDb();
-  const row = db
-    .select()
-    .from(mergeRequestGroups)
-    .where(eq(mergeRequestGroups.id, id))
-    .get();
+  const row = db.select().from(mergeRequestGroups).where(eq(mergeRequestGroups.id, id)).get();
   return (row as MergeGroupRow | undefined) ?? null;
 }
 
@@ -138,11 +130,7 @@ function readGroupOrThrow(id: string): MergeGroupRow {
 
 function readRequest(id: string): MergeRequestRow | null {
   const db = getDb();
-  const row = db
-    .select()
-    .from(mergeRequests)
-    .where(eq(mergeRequests.id, id))
-    .get();
+  const row = db.select().from(mergeRequests).where(eq(mergeRequests.id, id)).get();
   return (row as MergeRequestRow | undefined) ?? null;
 }
 
@@ -280,6 +268,7 @@ function toMemberView(row: MergeRequestRow): MergeRequestView {
     submittedBy: row.submittedBy,
     taskId: row.taskId,
     resolvedFrom: row.resolvedFrom,
+    synthetic: row.synthetic,
     branch: row.branch,
     commitSha: row.commitSha,
     verifyCmd: row.verifyCmd,
@@ -309,8 +298,75 @@ function withMembers(row: MergeGroupRow): GroupWithMembers {
 // ─── Public API ───────────────────────────────────────────────────
 
 /**
- * Create a merge group two ways (exactly one arm; the route + shared schema
- * enforce exactly-one-of, the service double-checks):
+ * The classified create-group form. Discriminates which arm of the submit
+ * surface a CreateGroupParams selects — the single owner of the form matrix
+ * (createGroup dispatches on it; the route/shared Zod tiers pre-validate the
+ * same matrix on the wire, the service re-classifies defensively).
+ */
+export type CreateForm = { kind: "bind" } | { kind: "atomic" } | { kind: "inner_only" };
+
+/**
+ * Classify a create-group call into its form, owning the ENTIRE form matrix:
+ *
+ *  - exactly one of `memberRequestIds` | `members` (both/neither → 400);
+ *  - `synthesizeOuter === true` (STRICT — an explicit false behaves exactly
+ *    like absent) requires the members arm with EXACTLY ONE spec → inner_only;
+ *  - otherwise the legacy floors hold: ids arm ≥2 → bind, members arm ≥2 →
+ *    atomic (each <2 → 400 with the exact legacy message).
+ */
+export function classifyCreateForm(params: CreateGroupParams): CreateForm {
+  const hasIds = params.memberRequestIds !== undefined;
+  const hasSpecs = params.members !== undefined;
+  if (hasIds === hasSpecs) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "Provide exactly one of memberRequestIds or members.",
+    );
+  }
+
+  if (params.synthesizeOuter === true) {
+    if (hasIds) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "synthesizeOuter cannot be combined with memberRequestIds; provide members with exactly one inner member spec.",
+      );
+    }
+    if (params.members!.length !== 1) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "synthesizeOuter requires exactly one member spec (the inner change); the outer member is synthesized at integration time.",
+      );
+    }
+    return { kind: "inner_only" };
+  }
+
+  if (hasSpecs) {
+    if (params.members!.length < 2) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "A merge group requires at least 2 member specs.",
+      );
+    }
+    return { kind: "atomic" };
+  }
+
+  if (params.memberRequestIds!.length < 2) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "A merge group requires at least 2 member requests.",
+    );
+  }
+  return { kind: "bind" };
+}
+
+/**
+ * Create a merge group three ways (exactly one form; classifyCreateForm owns
+ * the form matrix, the route + shared schema pre-validate it on the wire):
  *
  *  - `memberRequestIds` (back-compat): bind >=2 existing queued, ungrouped
  *    requests (§3.2). ATOMICALLY claims the members inside one db.transaction
@@ -324,21 +380,27 @@ function withMembers(row: MergeGroupRow): GroupWithMembers {
  *    mid-grouping; Part B's transitionToIntegrating guard is the structural
  *    backstop).
  *
- * No event on create either way — merge.group.started fires at markIntegrating
- * (§10.2), and the atomic arm emits ZERO per-member MERGE_REQUEST_QUEUED so a
- * born-grouped member is never advertised as individually pickable.
+ *  - `members` (exactly one) + `synthesizeOuter: true` (inner-only cross-repo,
+ *    campaign 2026-06-10): submit the ONE real inner member AND a server-minted
+ *    SYNTHETIC outer member (no branch/commit) in the same txn — the integrator
+ *    synthesizes the outer gitlink-bump candidate at integration time, so a
+ *    worker never mints (and never goes stale on) an outer bump branch.
+ *
+ * No event on create any way — merge.group.started fires at markIntegrating
+ * (§10.2), and the submit-and-group arms emit ZERO per-member
+ * MERGE_REQUEST_QUEUED so a born-grouped member is never advertised as
+ * individually pickable.
  */
 export function createGroup(params: CreateGroupParams): GroupWithMembers {
-  const hasIds = params.memberRequestIds !== undefined;
-  const hasSpecs = params.members !== undefined;
-  if (hasIds === hasSpecs) {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "Provide exactly one of memberRequestIds or members.",
-    );
+  const form = classifyCreateForm(params);
+  switch (form.kind) {
+    case "bind":
+      return createGroupFromIds(params);
+    case "atomic":
+      return createGroupFromSpecs(params);
+    case "inner_only":
+      return createGroupInnerOnly(params, params.members![0]);
   }
-  return hasSpecs ? createGroupFromSpecs(params) : createGroupFromIds(params);
 }
 
 /**
@@ -351,15 +413,8 @@ function createGroupFromSpecs(params: CreateGroupParams): GroupWithMembers {
   ensureProjectExists(params.projectId);
   ensureUserExists(params.submittedBy);
 
+  // ≥2-specs floor already enforced by classifyCreateForm (the form-matrix owner).
   const specs = params.members!;
-  if (specs.length < 2) {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "A merge group requires at least 2 member specs.",
-    );
-  }
-
   const resource = params.resource ?? "main";
 
   // Pre-txn validation (no rows written yet, so a throw leaves nothing behind).
@@ -413,20 +468,124 @@ function createGroupFromSpecs(params: CreateGroupParams): GroupWithMembers {
 }
 
 /**
+ * Inner-only cross-repo arm (campaign 2026-06-10). Validates the ONE real
+ * inner spec + the project's inner/outer topology, then in ONE txn inserts the
+ * forming group row, the real inner member, and a server-minted SYNTHETIC
+ * outer member (no branch/commit/verifyCmd/taskId; synthetic = true) — the
+ * integrator synthesizes the outer gitlink-bump candidate at integration time
+ * and fills the synthetic member's landedSha at land. Real-then-synthetic
+ * insert order. Like the other arms: no events, no audit rows on create.
+ */
+function createGroupInnerOnly(
+  params: CreateGroupParams,
+  innerSpec: MergeGroupMemberSpec,
+): GroupWithMembers {
+  ensureProjectExists(params.projectId);
+  ensureUserExists(params.submittedBy);
+
+  // Pre-txn validation (no rows written yet, so a throw leaves nothing behind).
+  if (!innerSpec.branch && !innerSpec.commitSha) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "Each member spec needs at least one of branch / commitSha.",
+    );
+  }
+  validateTaskBelongsToProject(params.projectId, innerSpec.taskId ?? null);
+  assertInnerOuterTopology(params.projectId);
+
+  const resource = params.resource ?? "main";
+  const db = getDb();
+  const now = new Date().toISOString();
+  const groupId = createId();
+
+  db.transaction((tx) => {
+    tx.insert(mergeRequestGroups)
+      .values({
+        id: groupId,
+        projectId: params.projectId,
+        resource,
+        state: "forming",
+        submittedBy: params.submittedBy,
+        integratorId: null,
+        resolvedAt: null,
+        resolutionReason: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    // The real inner member, born group-bound (same shape as the atomic arm).
+    insertRequestRow(tx, {
+      projectId: params.projectId,
+      resource,
+      submittedBy: params.submittedBy,
+      taskId: innerSpec.taskId ?? null,
+      branch: innerSpec.branch ?? null,
+      commitSha: innerSpec.commitSha ?? null,
+      verifyCmd: innerSpec.verifyCmd ?? null,
+      status: "queued",
+      groupId,
+    });
+
+    // The synthetic outer member: no refs to land (the integrator synthesizes
+    // the candidate), no task (the inner member carries the work linkage).
+    insertRequestRow(tx, {
+      projectId: params.projectId,
+      resource,
+      submittedBy: params.submittedBy,
+      taskId: null,
+      branch: null,
+      commitSha: null,
+      verifyCmd: null,
+      status: "queued",
+      groupId,
+      synthetic: true,
+    });
+  });
+
+  return withMembers(readGroupOrThrow(groupId));
+}
+
+/**
+ * Topology gate for the inner-only form: the project must declare EXACTLY one
+ * inner and one outer repo in settings.integrator.linked_repos, else the
+ * integrator cannot know which gitlink to bump. Settings are read tolerantly
+ * as plain JSON (the metrics.service idiom) — a missing/odd shape counts as
+ * zero declared repos, never a crash.
+ */
+function assertInnerOuterTopology(projectId: string): void {
+  const db = getDb();
+  const row = db
+    .select({ settings: projects.settings })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .get();
+  const settings = (row?.settings ?? null) as {
+    integrator?: { linked_repos?: unknown };
+  } | null;
+  const linkedRepos = Array.isArray(settings?.integrator?.linked_repos)
+    ? (settings!.integrator!.linked_repos as Array<{ role?: unknown }>)
+    : [];
+  const innerCount = linkedRepos.filter((r) => r?.role === "inner").length;
+  const outerCount = linkedRepos.filter((r) => r?.role === "outer").length;
+  if (innerCount !== 1 || outerCount !== 1) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      `synthesizeOuter requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found ${innerCount} inner / ${outerCount} outer.`,
+    );
+  }
+}
+
+/**
  * Back-compat bind-existing arm (§3.2). Unchanged from the original createGroup.
  */
 function createGroupFromIds(params: CreateGroupParams): GroupWithMembers {
   ensureProjectExists(params.projectId);
 
+  // ≥2-ids floor already enforced by classifyCreateForm (the form-matrix owner).
   const memberRequestIds = params.memberRequestIds!;
-  if (memberRequestIds.length < 2) {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "A merge group requires at least 2 member requests.",
-    );
-  }
-
   const resource = params.resource ?? "main";
 
   // Pre-txn validation (re-checked atomically by the rowcount guard below).
@@ -525,10 +684,7 @@ export function getById(id: string): GroupWithMembers {
  * List groups for a project, optionally filtered by state/resource,
  * ordered by createdAt asc. 404 if the project is missing.
  */
-export function list(
-  projectId: string,
-  params: ListGroupsParams = {},
-): MergeRequestGroupView[] {
+export function list(projectId: string, params: ListGroupsParams = {}): MergeRequestGroupView[] {
   ensureProjectExists(projectId);
   const db = getDb();
 
@@ -588,12 +744,7 @@ export function markIntegrating(
 
     tx.update(mergeRequests)
       .set({ status: "integrating", pickedUpAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(mergeRequests.groupId, id),
-          eq(mergeRequests.status, "queued"),
-        ),
-      )
+      .where(and(eq(mergeRequests.groupId, id), eq(mergeRequests.status, "queued")))
       .run();
   });
 
@@ -666,12 +817,7 @@ export function resetGroup(
   const openIncident = db
     .select({ id: mergeIncidents.id })
     .from(mergeIncidents)
-    .where(
-      and(
-        eq(mergeIncidents.groupId, id),
-        eq(mergeIncidents.state, "open"),
-      ),
-    )
+    .where(and(eq(mergeIncidents.groupId, id), eq(mergeIncidents.state, "open")))
     .get();
   if (openIncident) {
     throw new AppError(
@@ -697,12 +843,7 @@ export function resetGroup(
     // group + members reset together (the §9-finding-2 invariant).
     tx.update(mergeRequests)
       .set({ status: "queued", pickedUpAt: null, updatedAt: now })
-      .where(
-        and(
-          eq(mergeRequests.groupId, id),
-          eq(mergeRequests.status, "integrating"),
-        ),
-      )
+      .where(and(eq(mergeRequests.groupId, id), eq(mergeRequests.status, "integrating")))
       .run();
   });
 
@@ -762,11 +903,7 @@ export function landGroup(
         .where(eq(mergeRequests.id, m.requestId))
         .get() as MergeRequestRow | undefined;
       if (!member) {
-        throw new AppError(
-          404,
-          "NOT_FOUND",
-          `Merge request not found: ${m.requestId}`,
-        );
+        throw new AppError(404, "NOT_FOUND", `Merge request not found: ${m.requestId}`);
       }
       if (member.groupId !== id) {
         throw new AppError(
@@ -910,10 +1047,7 @@ export function rejectGroup(
     .select()
     .from(mergeRequests)
     .where(
-      and(
-        eq(mergeRequests.groupId, id),
-        inArray(mergeRequests.status, ["queued", "integrating"]),
-      ),
+      and(eq(mergeRequests.groupId, id), inArray(mergeRequests.status, ["queued", "integrating"])),
     )
     .all() as MergeRequestRow[];
   const auditViews: AuditLogView[] = [];
@@ -1069,11 +1203,7 @@ export function markInnerOrphaned(
 
   const row = readRequest(innerRequestId);
   if (!row) {
-    throw new AppError(
-      404,
-      "NOT_FOUND",
-      `Merge request not found: ${innerRequestId}`,
-    );
+    throw new AppError(404, "NOT_FOUND", `Merge request not found: ${innerRequestId}`);
   }
   if (row.groupId === null) {
     throw new AppError(

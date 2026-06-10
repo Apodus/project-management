@@ -552,6 +552,11 @@ export const mergeRequests = sqliteTable(
     resolvedFrom: text("resolved_from").references((): AnySQLiteColumn => mergeRequests.id, {
       onDelete: "set null",
     }),
+    // Inner-only groups (campaign 2026-06-10): a SYNTHETIC member is born with no
+    // branch/commit — the integrator synthesizes the outer candidate (live outer
+    // main + gitlink commit → Ri) at assembly and fills landedSha at land. Only
+    // ever created server-side by the synthesizeOuter group form; never via submit.
+    synthetic: integer("synthetic", { mode: "boolean" }).notNull().default(false),
     // status enum lives in @pm/shared (MERGE_REQUEST_STATUSES) — added in
     // Step 3. Default "queued" matches the initial-state convention.
     status: text("status").notNull().default("queued"),

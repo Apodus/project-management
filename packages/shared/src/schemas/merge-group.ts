@@ -64,13 +64,23 @@ export type MergeGroupMemberSpec = z.infer<typeof mergeGroupMemberSpecSchema>;
 //   - members: the atomic form — submit >=2 NEW member requests AND form the
 //     group in one call, so members are born group-bound and a single-repo
 //     pickup can never grab one mid-grouping (closes the submit/group race).
+//   - members (exactly one) + synthesizeOuter: true: the inner-only cross-repo
+//     form — PM records the real inner member plus a synthetic outer member.
 export const createMergeGroupSchema = z
   .object({
     resource: z.string().min(1).default("main"),
-    // Minimum-viable-group constraint: a cross-repo group is always ≥2
-    // members (inner + outer), so an empty/singleton group is meaningless.
+    // Minimum-viable-group constraint: the ids arm is always ≥2 members
+    // (inner + outer), so an empty/singleton group is meaningless. The
+    // members arm allows ONE spec only with synthesizeOuter: true (the
+    // superRefine below enforces the ≥2 floor for the plain atomic form).
     memberRequestIds: z.array(z.string().min(1)).min(2).optional(),
-    members: z.array(mergeGroupMemberSpecSchema).min(2).optional(),
+    members: z.array(mergeGroupMemberSpecSchema).min(1).optional(),
+    // Inner-only cross-repo form (campaign 2026-06-10): with EXACTLY ONE
+    // member spec (the inner change), PM also records a synthetic outer
+    // member (no branch/commit) and the integrator synthesizes the outer
+    // gitlink-bump candidate at integration time. STRICT === true semantics:
+    // an explicit false behaves exactly like absent.
+    synthesizeOuter: z.boolean().optional(),
   })
   .superRefine((v, ctx) => {
     const hasIds = v.memberRequestIds !== undefined;
@@ -79,6 +89,31 @@ export const createMergeGroupSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Provide exactly one of memberRequestIds or members.",
+      });
+      return;
+    }
+    if (v.synthesizeOuter === true) {
+      if (hasIds) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["synthesizeOuter"],
+          message:
+            "synthesizeOuter cannot be combined with memberRequestIds; provide members with exactly one inner member spec.",
+        });
+      } else if (v.members!.length !== 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["members"],
+          message:
+            "synthesizeOuter requires exactly one member spec (the inner change); the outer member is synthesized at integration time.",
+        });
+      }
+    } else if (hasSpecs && v.members!.length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["members"],
+        message:
+          "A merge group requires at least 2 member specs (or exactly one with synthesizeOuter: true).",
       });
     }
   });

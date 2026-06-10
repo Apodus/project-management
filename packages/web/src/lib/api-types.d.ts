@@ -4,14949 +4,14997 @@
  */
 
 export interface paths {
-    "/api/v1/auth/setup/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Check if setup is needed
-         * @description Returns whether the system needs initial setup (no users exist).
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Setup status */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                needsSetup: boolean;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/setup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Initial setup
-         * @description Creates the first admin user. Only works if no users exist in the database.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        username: string;
-                        displayName: string;
-                        password: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Admin user created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["AuthUser"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Setup already completed */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Login
-         * @description Authenticates a user with username and password, creates a session.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        username: string;
-                        password: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Login successful */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["AuthUser"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid credentials */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Logout
-         * @description Ends the current session and clears the session cookie.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Logout successful */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Not authenticated */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get current user
-         * @description Returns the currently authenticated user.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Current user */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["AuthUser"];
-                        };
-                    };
-                };
-                /** @description Not authenticated */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/agent-pools": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all agent pools
-         * @description List all pools with summary (agent count, claimed count). Admin only.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Pool list */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                id: string;
-                                name: string;
-                                description: string | null;
-                                createdAt: string;
-                                updatedAt: string;
-                                createdBy: string | null;
-                                agentCount: number;
-                                claimedCount: number;
-                                availableCount: number;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create a new agent pool
-         * @description Create a named agent pool with its own secret. Admin only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name: string;
-                        secret: string;
-                        description?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Pool created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                id: string;
-                                name: string;
-                                description: string | null;
-                                createdAt: string;
-                                updatedAt: string;
-                                createdBy: string | null;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Pool name already exists */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/agent-pools/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get pool details with agent list
-         * @description Get pool details with full agent list. Admin only.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Pool details */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                pool: {
-                                    id: string;
-                                    name: string;
-                                    description: string | null;
-                                    createdAt: string;
-                                    updatedAt: string;
-                                    createdBy: string | null;
-                                };
-                                agents: {
-                                    user: {
-                                        id: string;
-                                        username: string;
-                                        displayName: string;
-                                        type: string;
-                                        isActive: boolean;
-                                        poolId: string | null;
-                                    };
-                                    claimed: boolean;
-                                    claimedAt: string | null;
-                                    expiresAt: string | null;
-                                    heartbeatAt: string | null;
-                                }[];
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Pool not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /**
-         * Delete a pool
-         * @description Delete pool and deactivate its agents. Admin only.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Pool deleted */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Pool not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Update pool name/description
-         * @description Update pool name and/or description. Admin only.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name?: string;
-                        description?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Pool updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                id: string;
-                                name: string;
-                                description: string | null;
-                                createdAt: string;
-                                updatedAt: string;
-                                createdBy: string | null;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Pool not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/auth/agent-pools/{id}/secret": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Update pool secret
-         * @description Update the secret for a specific pool. Admin only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        secret: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Secret updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Pool not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/agent-pools/{id}/agents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create agents in a pool
-         * @description Create N AI agent users in a specific pool. Admin only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        count: number;
-                        namePrefix?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Agents created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                id: string;
-                                username: string;
-                                displayName: string;
-                                role: string;
-                                type: string;
-                                poolId: string;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Pool not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/agent-pools/{id}/agents/{userId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove agent from pool
-         * @description Remove an agent from a pool. If the agent has existing activity (comments, tasks, etc.), it will be deactivated and removed from the pool instead of deleted. Admin only.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                    userId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Agent removed or deactivated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                deleted: boolean;
-                                deactivated: boolean;
-                                reason?: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Agent does not belong to this pool */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description User not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/agent-claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Claim an agent from a pool
-         * @description Authenticate with pool name and secret to claim an available AI agent. Returns user info and a fresh API token.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        poolName: string;
-                        poolSecret: string;
-                        workerKey?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Agent claimed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                user: {
-                                    id: string;
-                                    username: string;
-                                    displayName: string;
-                                    role: string;
-                                    type: string;
-                                };
-                                token: string;
-                                bindHandle?: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid pool secret */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No agents available or pool not configured */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/agent-release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Release agent claim
-         * @description Release the current user's agent claim, making them available for others.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Agent released */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Not authenticated */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/agent-heartbeat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Heartbeat for agent claim
-         * @description Extend the TTL of the current user's agent claim.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Heartbeat acknowledged */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Not authenticated */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No active claim */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/agent-pool": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get all pools (backward compat)
-         * @description Get all pools with summary. Admin only. Redirects to list.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Pool list */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                id: string;
-                                name: string;
-                                description: string | null;
-                                createdAt: string;
-                                updatedAt: string;
-                                createdBy: string | null;
-                                agentCount: number;
-                                claimedCount: number;
-                                availableCount: number;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/agent-pool/force-release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Force release an agent claim
-         * @description Force-release an agent's claim by admin. Takes the agent user ID.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        userId: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Agent released */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin role required */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all users
-         * @description Returns all users. Admin only.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description User list */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["User"][];
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create a user
-         * @description Creates a new user. For AI agent users, returns the API token (shown once). Admin only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        username: string;
-                        displayName: string;
-                        email?: string | null;
-                        password?: string;
-                        role: string;
-                        type: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description User created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["UserWithToken"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Duplicate username */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Update a user
-         * @description Updates user fields. Admin only.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        username?: string;
-                        displayName?: string;
-                        email?: string | null;
-                        role?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description User updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["User"];
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description User not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Duplicate username */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/users/{id}/rotate-token": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rotate API token
-         * @description Regenerates the API token for a user. Returns the new raw token. Admin only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description New token generated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                apiToken: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description User not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/{id}/deactivate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Deactivate a user
-         * @description Sets the user as inactive. Admin only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description User deactivated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["User"];
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description User not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/{id}/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Activate a user
-         * @description Sets the user as active. Admin only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description User activated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["User"];
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description User not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List projects
-         * @description List all projects with optional status filter.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    status?: "active" | "paused" | "archived" | "completed";
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of projects */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Project"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create project
-         * @description Create a new project. A slug is auto-generated from the name.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateProject"];
-                };
-            };
-            responses: {
-                /** @description Project created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Project"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get project
-         * @description Get a project by ID.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Project details */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Project"];
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /**
-         * Archive project
-         * @description Soft-delete a project by setting its status to archived.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Project archived */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Project"];
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Update project
-         * @description Update project fields.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateProject"];
-                };
-            };
-            responses: {
-                /** @description Project updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Project"];
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/projects/{id}/stats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Project statistics
-         * @description Get task counts by status, epic count, and proposal count for a project.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Project statistics */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ProjectStats"];
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/proposals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List proposals
-         * @description List proposals for a project with optional status and claim filters.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    status?: "open" | "discussing" | "accepted" | "in_progress" | "completed" | "rejected";
-                    claim?: "available" | "mine" | "all";
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of proposals */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Proposal"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create proposal
-         * @description Create a new proposal for a project.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateProposal"];
-                };
-            };
-            responses: {
-                /** @description Proposal created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Proposal"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get proposal
-         * @description Get a proposal by ID with comments and linked work items.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Proposal details with comments and work items */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ProposalDetail"];
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Update proposal
-         * @description Update proposal title or description.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateProposal"];
-                };
-            };
-            responses: {
-                /** @description Proposal updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Proposal"];
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}/transitions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Transition proposal status
-         * @description Change proposal status with role enforcement. AI agents must hold the claim. Terminal transitions clear the claim.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["ProposalTransition"];
-                };
-            };
-            responses: {
-                /** @description Proposal transitioned */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Proposal"];
-                        };
-                    };
-                };
-                /** @description Invalid transition */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden — actor type not allowed for this transition */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Claim denied — proposal claimed by another agent or unclaimed */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}/comments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List proposal comments
-         * @description List all comments on a proposal.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of comments */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Comment"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Add comment
-         * @description Add a comment to a proposal. AI agents must hold the claim. If proposal is open and commenter is an AI agent, auto-transitions to discussing.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["AddProposalComment"];
-                };
-            };
-            responses: {
-                /** @description Comment added */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Comment"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Claim denied — proposal claimed by another agent or unclaimed */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}/work-items": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List work items
-         * @description List epics and tasks spawned from this proposal.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Work items linked to this proposal */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                epics: components["schemas"]["ProposalEpic"][];
-                                tasks: components["schemas"]["ProposalTask"][];
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}/implement": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Implement proposal
-         * @description Atomically create epics and tasks from a proposal, transitioning it to in_progress. AI agents must hold the claim.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["ImplementProposal"];
-                };
-            };
-            responses: {
-                /** @description Proposal moved to in_progress and work items created */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Proposal"];
-                        };
-                    };
-                };
-                /** @description Invalid status — proposal is already in_progress, completed, or rejected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Claim denied — proposal claimed by another agent or unclaimed */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}/claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Claim proposal
-         * @description Atomically claim a proposal for the caller. Returns a structured result without leaking other claimants' IDs.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Claim attempt outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ClaimResult"];
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}/force-claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Force-claim proposal (takeover)
-         * @description Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["ForceClaimProposal"];
-                };
-            };
-            responses: {
-                /** @description Force-claim outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                                /** @enum {string} */
-                                status: "force_claimed";
-                                previousHolder: string;
-                                newHolder: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error (empty reason) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden (non-human targeting another agent) */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal or target user not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal closed / not associated with a project */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}/release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Release proposal claim
-         * @description Release the caller's claim on a proposal. Humans can release any claim; AI agents only their own.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Release attempt outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ClaimResult"];
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}/release-to": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Release proposal claim to a named worker (handoff)
-         * @description Hand this proposal's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["ReleaseProposal"];
-                };
-            };
-            responses: {
-                /** @description Release-to outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                                /** @enum {string} */
-                                status: "force_claimed";
-                                previousHolder: string;
-                                newHolder: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error (empty reason / missing target) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden (non-holder agent) */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal or target user not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal closed / not associated with a project */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/proposals/{id}/request-takeover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Request takeover of a proposal claim (stomp-safe)
-         * @description Ask to take over this proposal's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["RequestTakeoverProposal"];
-                };
-            };
-            responses: {
-                /** @description Takeover-request outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                                /** @enum {string} */
-                                status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
-                                previousHolder?: string;
-                                newHolder?: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error (empty reason) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Proposal not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/notes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List notes
-         * @description List notes for a project, newest first, with optional filters.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    kind?: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
-                    status?: "open" | "triaged";
-                    anchorType?: "task" | "epic" | "proposal";
-                    anchorId?: string;
-                    severity?: "low" | "medium" | "high";
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of notes */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Note"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create note
-         * @description Capture a new note (bug/question/idea/tech_debt/wtf/observation) for a project.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateNote"];
-                };
-            };
-            responses: {
-                /** @description Note created (with advisory `similar` open-note candidates) */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Note"];
-                            similar: {
-                                id: string;
-                                title: string;
-                                /** @enum {string} */
-                                kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
-                            }[];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notes/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get note
-         * @description Get a single note by ID.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Note */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Note"];
-                        };
-                    };
-                };
-                /** @description Note not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Update note
-         * @description Update an OPEN note's fields. A triaged note is immutable in C1 (409). Status is not patchable.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["PatchNote"];
-                };
-            };
-            responses: {
-                /** @description Note updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Note"];
-                        };
-                    };
-                };
-                /** @description Note not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Note is not open and cannot be edited */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/notes/{id}/dismiss": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Dismiss note
-         * @description Terminally dismiss an OPEN note (triage outcome `dismissed`). Anti-signal-burying: only the note's author OR a human may dismiss.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["DismissNote"];
-                };
-            };
-            responses: {
-                /** @description Note dismissed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Note"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Caller is not allowed to dismiss this note */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Note not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Note is not open and cannot be dismissed */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notes/{id}/promote-to-proposal": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Promote note to proposal
-         * @description Terminally promote an OPEN note to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["PromoteNoteToProposal"];
-                };
-            };
-            responses: {
-                /** @description Note promoted; proposal created */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Note"];
-                            proposal: components["schemas"]["PromotedProposal"];
-                        };
-                    };
-                };
-                /** @description Note not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Note is not open and cannot be promoted */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notes/{id}/promote-to-task": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Promote note to task
-         * @description HUMAN-ONLY escape hatch: terminally promote an OPEN note directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["PromoteNoteToTask"];
-                };
-            };
-            responses: {
-                /** @description Note promoted; task created */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Note"];
-                            task: components["schemas"]["PromotedTask"];
-                        };
-                    };
-                };
-                /** @description Caller is not allowed to promote this note to a task (human-only) */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Note not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Note is not open and cannot be promoted */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/notes/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Notes backlog health
-         * @description Read the project's notes-backlog health (open-note count + oldest-open age). SIDE EFFECT: fires the edge-triggered `note.backlog_alert` (SSE + Discord) exactly ONCE per backlog episode when an open note ages past the backlog threshold; the latch re-arms when the backlog clears.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Notes backlog health */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["NotesHealth"];
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/epics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List epics
-         * @description List all epics for a project with optional status, milestone, and claim filters.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    status?: "draft" | "active" | "completed" | "cancelled";
-                    milestone?: string;
-                    claim?: "available" | "mine" | "all";
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of epics */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Epic"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create epic
-         * @description Create a new epic in a project.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateEpic"];
-                };
-            };
-            responses: {
-                /** @description Epic created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Epic"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/epics/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get epic
-         * @description Get an epic by ID with task summary and claim_status.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Epic details */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Epic"];
-                        };
-                    };
-                };
-                /** @description Epic not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /**
-         * Archive epic
-         * @description Soft-delete an epic by setting its status to cancelled. AI agents must hold the claim.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Epic archived */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Epic"];
-                        };
-                    };
-                };
-                /** @description Epic not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Claim denied — epic claimed by another agent or unclaimed */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Update epic
-         * @description Update epic fields. AI agents must hold the claim. Transitioning to a terminal status (completed/cancelled) clears the claim.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateEpic"];
-                };
-            };
-            responses: {
-                /** @description Epic updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Epic"];
-                        };
-                    };
-                };
-                /** @description Epic not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Claim denied — epic claimed by another agent or unclaimed */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/epics/{id}/claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Claim epic
-         * @description Atomically claim an epic for the caller. Returns a structured result without leaking other claimants' IDs.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Claim attempt outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["EpicClaimResult"];
-                        };
-                    };
-                };
-                /** @description Epic not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/epics/{id}/force-claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Force-claim epic (takeover)
-         * @description Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["ForceClaimEpic"];
-                };
-            };
-            responses: {
-                /** @description Force-claim outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                                /** @enum {string} */
-                                status: "force_claimed";
-                                previousHolder: string;
-                                newHolder: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error (empty reason) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden (non-human targeting another agent) */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Epic or target user not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Epic closed / not associated with a project */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/epics/{id}/release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Release epic claim
-         * @description Release the caller's claim on an epic. Humans can release any claim; AI agents only their own.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Release attempt outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["EpicClaimResult"];
-                        };
-                    };
-                };
-                /** @description Epic not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/epics/{id}/release-to": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Release epic claim to a named worker (handoff)
-         * @description Hand this epic's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["ReleaseEpic"];
-                };
-            };
-            responses: {
-                /** @description Release-to outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                                /** @enum {string} */
-                                status: "force_claimed";
-                                previousHolder: string;
-                                newHolder: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error (empty reason / missing target) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden (non-holder agent) */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Epic or target user not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Epic closed / not associated with a project */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/epics/{id}/request-takeover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Request takeover of an epic claim (stomp-safe)
-         * @description Ask to take over this epic's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["RequestTakeoverEpic"];
-                };
-            };
-            responses: {
-                /** @description Takeover-request outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                                /** @enum {string} */
-                                status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
-                                previousHolder?: string;
-                                newHolder?: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error (empty reason) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Epic not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/epic-graph": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get epic graph
-         * @description Get the epic dependency graph for a project: nodes (epics + task summary) and derived blocks edges rolled up from the task dependency graph.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Epic graph */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["EpicGraph"];
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/epics/{epicId}/dependencies": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Add explicit epic dependency
-         * @description Add an explicit planning-time dependency: epicId depends on dependsOnEpicId. Both epics must belong to the project. Self-dependencies and duplicates are rejected.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                    epicId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["AddEpicDependency"];
-                };
-            };
-            responses: {
-                /** @description Epic dependency created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["EpicDependency"];
-                        };
-                    };
-                };
-                /** @description Validation error, self-dependency, or cross-project */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Epic not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Epic dependency already exists */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/epics/{epicId}/dependencies/{depId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove explicit epic dependency
-         * @description Remove an explicit epic dependency by its ID.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                    epicId: string;
-                    depId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Epic dependency removed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["EpicDependency"];
-                        };
-                    };
-                };
-                /** @description Epic dependency not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/epics/{epicId}/task-graph": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get task graph
-         * @description Get the intra-epic task dependency graph for an epic: nodes (the epic's tasks) and edges (their internal task dependencies, cross-epic deps excluded).
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                    epicId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Task graph */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TaskGraph"];
-                        };
-                    };
-                };
-                /** @description Epic not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/tasks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List tasks
-         * @description List tasks for a project with rich filtering, sorting, and pagination.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    status?: string;
-                    priority?: "critical" | "high" | "medium" | "low";
-                    type?: "feature" | "bug" | "chore" | "spike" | "design" | "research";
-                    assignee?: string;
-                    epic?: string;
-                    search?: string;
-                    label?: string;
-                    label_name?: string;
-                    claim?: "available" | "mine" | "all";
-                    is_blocked?: "true" | "false";
-                    sortBy?: "priority" | "created_at" | "updated_at" | "due_date" | "sort_order";
-                    order?: "asc" | "desc";
-                    page?: number;
-                    perPage?: number;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of tasks */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Task"][];
-                            pagination: {
-                                page: number;
-                                perPage: number;
-                                total: number;
-                                totalPages: number;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create task
-         * @description Create a new task in a project.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateTask"];
-                };
-            };
-            responses: {
-                /** @description Task created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Task"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get task
-         * @description Get a task by ID with full details.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Task details */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Task"];
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /**
-         * Archive task
-         * @description Soft-delete a task by setting its status to cancelled.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Task archived */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Task"];
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Update task
-         * @description Update task fields. Context JSON is merged with existing context.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateTask"];
-                };
-            };
-            responses: {
-                /** @description Task updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Task"];
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/subtasks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List subtasks
-         * @description List all subtasks of a task.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of subtasks */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Task"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Parent task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create subtask
-         * @description Create a subtask of a given task. Inherits the parent's project.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateSubtask"];
-                };
-            };
-            responses: {
-                /** @description Subtask created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Task"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Parent task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/pick-next": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Pick next task
-         * @description Find and atomically claim the highest-priority ready task. Returns the claimed task or 404 if nothing available.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["PickNextTask"];
-                };
-            };
-            responses: {
-                /** @description Task claimed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Task"];
-                        };
-                    };
-                };
-                /** @description Guardrail blocked or max concurrent tasks reached */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No task available */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/transitions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Transition task status
-         * @description Change a task's status using validated workflow transitions. Optionally add a comment.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["TransitionTask"];
-                };
-            };
-            responses: {
-                /** @description Task transitioned */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Task"];
-                        };
-                    };
-                };
-                /** @description Invalid transition */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Claim task
-         * @description Atomically claim a task for the caller. Sets the caller as assignee. Returns a structured result without leaking other claimants' IDs.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Claim outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TaskClaimResult"];
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/force-claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Force-claim task (takeover)
-         * @description Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["ForceClaimTask"];
-                };
-            };
-            responses: {
-                /** @description Force-claim outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                                /** @enum {string} */
-                                status: "force_claimed";
-                                previousHolder: string;
-                                newHolder: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error (empty reason) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden (non-human targeting another agent) */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task or target user not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task closed / not associated with a project */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Release task claim
-         * @description Release the caller's claim. Humans can release any claim; AI agents only their own.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Release outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TaskClaimResult"];
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/release-to": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Release task claim to a named worker (handoff)
-         * @description Hand this task's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target. Never stomps a live claim — it directly transfers the holder's own claim.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["ReleaseTask"];
-                };
-            };
-            responses: {
-                /** @description Release-to outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                                /** @enum {string} */
-                                status: "force_claimed";
-                                previousHolder: string;
-                                newHolder: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error (empty reason / missing target) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Forbidden (non-holder agent) */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task or target user not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task closed / not associated with a project */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/request-takeover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Request takeover of a task claim (stomp-safe)
-         * @description Ask to take over this task's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["RequestTakeoverTask"];
-                };
-            };
-            responses: {
-                /** @description Takeover-request outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                                /** @enum {string} */
-                                status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
-                                previousHolder?: string;
-                                newHolder?: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error (empty reason) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/awareness": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Subsystem awareness check
-         * @description Return in-flight tasks for a project, optionally filtered to a label name. Used as a boundary-time check before touching a subsystem.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    label?: string;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description In-flight summary */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Awareness"];
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{taskId}/comments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List task comments
-         * @description List all comments on a task, in chronological order.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    taskId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of comments */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TaskComment"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Add task comment
-         * @description Add a comment to a task.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    taskId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateTaskComment"];
-                };
-            };
-            responses: {
-                /** @description Comment created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TaskComment"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/comments/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete comment
-         * @description Delete a comment.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Comment deleted */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TaskComment"];
-                        };
-                    };
-                };
-                /** @description Comment not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Edit comment
-         * @description Update a comment's body or metadata.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateComment"];
-                };
-            };
-            responses: {
-                /** @description Comment updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TaskComment"];
-                        };
-                    };
-                };
-                /** @description Comment not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/labels": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List labels
-         * @description List all labels for a project.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of labels */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Label"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create label
-         * @description Create a new label for a project. Name must be unique within the project.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateLabel"];
-                };
-            };
-            responses: {
-                /** @description Label created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Label"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Label name already exists in this project */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/labels/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete label
-         * @description Delete a label and all its task associations.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Label deleted */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Label"];
-                        };
-                    };
-                };
-                /** @description Label not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Update label
-         * @description Update a label's name, color, or description.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateLabel"];
-                };
-            };
-            responses: {
-                /** @description Label updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Label"];
-                        };
-                    };
-                };
-                /** @description Label not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Label name already exists in this project */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/labels": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Attach label to task
-         * @description Attach a label to a task.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["AttachLabel"];
-                };
-            };
-            responses: {
-                /** @description Label attached */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                taskId: string;
-                                labelId: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task or label not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Label already attached to this task */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/labels/{labelId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove label from task
-         * @description Remove a label from a task.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                    labelId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Label detached */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                taskId: string;
-                                labelId: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Label not attached to this task */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/dependencies": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Add dependency
-         * @description Add a dependency between tasks. Performs cycle detection to prevent circular dependencies.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["AddDependency"];
-                };
-            };
-            responses: {
-                /** @description Dependency created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TaskDependency"];
-                        };
-                    };
-                };
-                /** @description Validation error or cycle detected */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Dependency already exists */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/dependencies/{depId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove dependency
-         * @description Remove a dependency between tasks.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                    depId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Dependency removed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TaskDependency"];
-                        };
-                    };
-                };
-                /** @description Dependency not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Full-text search
-         * @description Search across proposals, tasks, comments, and notes using FTS5 full-text search.
-         */
-        get: {
-            parameters: {
-                query: {
-                    q: string;
-                    project_id?: string;
-                    entity_type?: "proposal" | "task" | "comment" | "note";
-                    limit?: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Search results */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["SearchResult"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Project activity feed
-         * @description Get paginated activity feed for a project, with optional filters.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    entity_type?: string;
-                    actor_id?: string;
-                    since?: string;
-                    exclude_actor?: string;
-                    page?: number;
-                    per_page?: number;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Activity feed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ActivityLogEntry"][];
-                            pagination: {
-                                page: number;
-                                perPage: number;
-                                total: number;
-                                totalPages: number;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/activity/updates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Check for recent updates
-         * @description Returns recent activity by other users since a given timestamp. Designed for agents polling for human input between work steps.
-         */
-        get: {
-            parameters: {
-                query: {
-                    since: string;
-                    project_id?: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Recent updates */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            has_updates: boolean;
-                            count: number;
-                            data: components["schemas"]["ActivityLogEntry"][];
-                        };
-                    };
-                };
-                /** @description Missing required parameter */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{taskId}/activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Task activity history
-         * @description Get activity history for a specific task.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    page?: number;
-                    per_page?: number;
-                };
-                header?: never;
-                path: {
-                    taskId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Task activity history */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ActivityLogEntry"][];
-                            pagination: {
-                                page: number;
-                                perPage: number;
-                                total: number;
-                                totalPages: number;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/milestones": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List milestones
-         * @description List all milestones for a project.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of milestones */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Milestone"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create milestone
-         * @description Create a new milestone for a project.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateMilestone"];
-                };
-            };
-            responses: {
-                /** @description Milestone created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Milestone"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/milestones/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete milestone
-         * @description Delete a milestone.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Milestone deleted */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Milestone"];
-                        };
-                    };
-                };
-                /** @description Milestone not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Update milestone
-         * @description Update milestone fields.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateMilestone"];
-                };
-            };
-            responses: {
-                /** @description Milestone updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Milestone"];
-                        };
-                    };
-                };
-                /** @description Milestone not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/tasks/{taskId}/git-refs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List git refs for task
-         * @description List all git refs (branches, commits, PRs) linked to a task.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    taskId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of git refs */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["GitRef"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Add git ref
-         * @description Add a git ref (branch, commit, or pull request) to a task.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    taskId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateGitRef"];
-                };
-            };
-            responses: {
-                /** @description Git ref created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["GitRef"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/git-refs/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove git ref
-         * @description Remove a git ref from a task.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Git ref deleted */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["GitRef"];
-                        };
-                    };
-                };
-                /** @description Git ref not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Update git ref
-         * @description Update a git ref (e.g., PR status).
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateGitRef"];
-                };
-            };
-            responses: {
-                /** @description Git ref updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["GitRef"];
-                        };
-                    };
-                };
-                /** @description Git ref not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/webhooks/git": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Git webhook
-         * @description Public webhook endpoint for git events. Accepts branch creation and commit push events to auto-link branches and commits to tasks based on naming conventions.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["GitWebhookPayload"];
-                };
-            };
-            responses: {
-                /** @description Webhook processed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                linked: boolean;
-                                refs: {
-                                    id: string;
-                                    taskId: string;
-                                    refType: string;
-                                    refValue: string;
-                                    url: string | null;
-                                    title: string | null;
-                                    status: string | null;
-                                    metadata?: unknown;
-                                    createdAt: string;
-                                }[];
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid webhook payload */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{id}/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Export project
-         * @description Export a complete project and all related data as JSON. Optionally include the activity log.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    include_activity?: string;
-                };
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Project exported as JSON */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            version: string;
-                            exported_at: string;
-                            project: {
-                                [key: string]: unknown;
-                            };
-                            proposals: {
-                                [key: string]: unknown;
-                            }[];
-                            epics: {
-                                [key: string]: unknown;
-                            }[];
-                            milestones: {
-                                [key: string]: unknown;
-                            }[];
-                            tasks: {
-                                [key: string]: unknown;
-                            }[];
-                            comments: {
-                                [key: string]: unknown;
-                            }[];
-                            labels: {
-                                [key: string]: unknown;
-                            }[];
-                            task_labels: {
-                                [key: string]: unknown;
-                            }[];
-                            task_dependencies: {
-                                [key: string]: unknown;
-                            }[];
-                            git_refs: {
-                                [key: string]: unknown;
-                            }[];
-                            activity_log?: {
-                                [key: string]: unknown;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import project
-         * @description Import a project from previously exported JSON. Creates new IDs for all entities.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        version: string;
-                        exported_at: string;
-                        project: {
-                            [key: string]: unknown;
-                        };
-                        proposals: {
-                            [key: string]: unknown;
-                        }[];
-                        epics: {
-                            [key: string]: unknown;
-                        }[];
-                        milestones: {
-                            [key: string]: unknown;
-                        }[];
-                        tasks: {
-                            [key: string]: unknown;
-                        }[];
-                        comments: {
-                            [key: string]: unknown;
-                        }[];
-                        labels: {
-                            [key: string]: unknown;
-                        }[];
-                        task_labels: {
-                            [key: string]: unknown;
-                        }[];
-                        task_dependencies: {
-                            [key: string]: unknown;
-                        }[];
-                        git_refs: {
-                            [key: string]: unknown;
-                        }[];
-                        activity_log?: {
-                            [key: string]: unknown;
-                        }[];
-                    };
-                };
-            };
-            responses: {
-                /** @description Project imported */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                id: string;
-                                workspaceId: string;
-                                name: string;
-                                slug: string;
-                                description: string | null;
-                                status: string;
-                                gitRepoUrl: string | null;
-                                settings?: unknown;
-                                sortOrder: number;
-                                createdAt: string;
-                                updatedAt: string;
-                                createdBy: string | null;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid import data */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/backup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Backup database
-         * @description Create a backup of the SQLite database file.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Backup created */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                path: string;
-                                size: number;
-                                timestamp: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Backup error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/automation-rules": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List automation rules
-         * @description List all automation rules for a project.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of automation rules */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["AutomationRule"][];
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create automation rule
-         * @description Create a new automation rule for a project.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateAutomationRule"];
-                };
-            };
-            responses: {
-                /** @description Rule created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["AutomationRule"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/automation-rules/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete automation rule
-         * @description Delete an automation rule.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Rule deleted */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                deleted: boolean;
-                            };
-                        };
-                    };
-                };
-                /** @description Rule not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Update automation rule
-         * @description Update an automation rule.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateAutomationRule"];
-                };
-            };
-            responses: {
-                /** @description Rule updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["AutomationRule"];
-                        };
-                    };
-                };
-                /** @description Rule not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/automation-rules/{id}/toggle": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Toggle automation rule
-         * @description Enable or disable an automation rule.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["ToggleAutomationRule"];
-                };
-            };
-            responses: {
-                /** @description Rule toggled */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["AutomationRule"];
-                        };
-                    };
-                };
-                /** @description Rule not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List templates
-         * @description List templates with optional filters for project_id and template_type.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    project_id?: string;
-                    template_type?: "task" | "project";
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of templates */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Template"][];
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create template
-         * @description Create a new task or project template.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateTemplate"];
-                };
-            };
-            responses: {
-                /** @description Template created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Template"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/templates/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete template
-         * @description Delete a template.
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Template deleted */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Template"];
-                        };
-                    };
-                };
-                /** @description Template not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /**
-         * Update template
-         * @description Update a template's name, description, or template_data.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateTemplate"];
-                };
-            };
-            responses: {
-                /** @description Template updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Template"];
-                        };
-                    };
-                };
-                /** @description Template not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/templates/{id}/instantiate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Instantiate template
-         * @description Create a task or project from a template. For task templates, provide project_id. For project templates, provide workspace_id and name.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["InstantiateTemplate"];
-                };
-            };
-            responses: {
-                /** @description Template instantiated */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data?: unknown;
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Template not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tasks/{id}/create-template": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create template from task
-         * @description Snapshot a task (with subtasks) as a task template.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateTemplateFromTask"];
-                };
-            };
-            responses: {
-                /** @description Template created from task */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["Template"];
-                        };
-                    };
-                };
-                /** @description Task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-locks/{resource}/acquire": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Acquire merge lock
-         * @description Atomically acquire the named lock for the caller, or join the FIFO queue if held. Idempotent for the current holder. Optionally attach landing intent (taskId / branch / commitSha / verifyCmd / worktreePath) — all optional, used for observability while held or queued.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                    resource: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["MergeLockAcquire"];
-                };
-            };
-            responses: {
-                /** @description Acquire outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeLockAcquireResult"];
-                        };
-                    };
-                };
-                /** @description Validation error (e.g. taskId not in this project) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project or referenced task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-locks/{resource}/heartbeat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh merge lock lease
-         * @description Refresh the holder's lease. Returns not_holder if the caller doesn't currently hold the lock (e.g. lease already swept).
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                    resource: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Heartbeat outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeLockHeartbeatResult"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-locks/{resource}/release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Release merge lock
-         * @description Release the lock and promote the queue head. If landedSha is provided, the release event carries it as the 'main moved' announcement. If landedSha is omitted and a reason is given, the release is an abandon — the reason is stored on the lock so the next holder can see why main hasn't moved (e.g. 'verify failed: skinned_renderer.cpp API drift').
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                    resource: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["MergeLockRelease"];
-                };
-            };
-            responses: {
-                /** @description Release outcome */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeLockReleaseResult"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-locks/{resource}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get merge lock state
-         * @description Return the current state of the lock. Holder identity is reported relative to the caller as 'you' / 'someone_else' / 'none'.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                    resource: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Current lock state */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeLock"];
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-locks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List merge locks
-         * @description List all known locks for a project (one per resource name).
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of locks */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeLock"][];
-                            pagination: {
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List merge requests in a project
-         * @description Returns requests for the project ordered by enqueuedAt ASC. Optional filters: resource, status, taskId. Paginated.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    resource?: string;
-                    status?: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "orphaned";
-                    taskId?: string;
-                    resolvedFrom?: string;
-                    ungrouped?: "true" | "false";
-                    page?: number;
-                    perPage?: number;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Filtered list */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequest"][];
-                            pagination: {
-                                total: number;
-                                page: number;
-                                perPage: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Submit a merge request
-         * @description Worker submits a request to land branch/commitSha into the named lane (defaults to 'main'). Returns the queued row. The integrator process picks it up asynchronously; subscribe to merge.request.* SSE events for the outcome.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeRequestSubmit"];
-                };
-            };
-            responses: {
-                /** @description Queued request */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequest"];
-                        };
-                    };
-                };
-                /** @description Validation error (e.g. taskId not in this project) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project or task not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a merge request with attempts
-         * @description Returns the request plus all attempts (most-recent first).
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Request + attempts */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequestDetail"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/timeline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a merge request's ordered timeline
-         * @description Returns the request plus its chronological state history (design §5.7): the queued/integrating/terminal milestones, every attempt with its log pointers + failureCategory, the land/reject/force_land/force_reject audit rows, and any orphaned-inner incident. Events are ordered ascending by timestamp. Any authenticated user may read.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Request + ordered events */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequestTimeline"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel a queued or integrating merge request
-         * @description Any authenticated user cancels a request from queued OR integrating (queued|integrating → abandoned) — collaborative env, no ownership gate. An integrating-cancel interrupts the in-flight integration (the integrator discovers it via 409 on its next land/reject/completeAttempt) and is recorded in the audit log (action `cancel`, optional reason). A grouped (cross-repo) member can NOT be cancelled individually → 409 GROUPED_MEMBER (reject the group instead). Optional `reason` body (back-compat: no body is accepted). 409 INVALID_TRANSITION if already terminal (landed/rejected); abandoned → abandoned is the idempotent no-op.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["MergeRequestCancel"];
-                };
-            };
-            responses: {
-                /** @description Abandoned */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequest"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid transition (terminal) or GROUPED_MEMBER (cancel via the group) */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/pickup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator picks up a queued request
-         * @description queued → integrating. Sets pickedUpAt and emits merge.request.integrating. Integrator (ai_agent) only. 409 from any non-queued state (no idempotent case — re-pickup throws). Optional batchId/speculativePosition tag the emitted SSE frame.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["MergeRequestPickup"];
-                };
-            };
-            responses: {
-                /** @description Picked up */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequest"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not in 'queued' state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/reset-to-queued": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator resets a stuck integrating request back to queued
-         * @description integrating → queued. Used for crash recovery and post-verify push-race retry. Cancels any open attempts. Integrator (ai_agent) only. Returns 409 if not in 'integrating'.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeRequestResetToQueued"];
-                };
-            };
-            responses: {
-                /** @description Re-queued */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequest"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not in 'integrating' state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/force-cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Admin force-cancel any non-terminal request
-         * @description Admin override: forces queued OR integrating → abandoned. The integrator discovers this on its next land/reject/completeAttempt call (which returns 409 INVALID_TRANSITION).
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["MergeRequestForceCancel"];
-                };
-            };
-            responses: {
-                /** @description Abandoned */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequest"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admins only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid transition (terminal) */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/attempts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator starts a new attempt
-         * @description Records baseSha and creates a running attempt row.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeAttemptStart"];
-                };
-            };
-            responses: {
-                /** @description Attempt started */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeAttempt"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not in 'integrating' state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-attempts/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Integrator completes an attempt
-         * @description Discriminated on status: passed requires treeSha; failed requires failureCategory + failureReason; cancelled requires only status.
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeAttemptComplete"];
-                };
-            };
-            responses: {
-                /** @description Attempt completed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeAttempt"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Attempt not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Attempt not in 'running' state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/land": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator lands the request
-         * @description integrating → landed. Transactionally creates a git_refs row of type 'landed_sha' if the request is linked to a task. Idempotent on landed → landed.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeRequestLand"];
-                };
-            };
-            responses: {
-                /** @description Landed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequest"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not in 'integrating' state, or it is a grouped member that must land via its group (GROUPED_MEMBER) */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator rejects the request
-         * @description integrating → rejected. Transactionally creates a 'merge_rejection' comment on the linked task with structured metadata. Idempotent on rejected → rejected.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeRequestReject"];
-                };
-            };
-            responses: {
-                /** @description Rejected */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeRequest"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not in 'integrating' state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-batches/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator relays a batch-marker event
-         * @description Thin relay (design §13.2): the integrator POSTs one of four batch markers (started / member_landed / member_invalidated / completed); PM re-emits it on the merge.batch.* SSE stream and persists NOTHING. Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeBatchEvent"];
-                };
-            };
-            responses: {
-                /** @description Accepted and re-emitted */
-                202: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-groups": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List merge groups in a project
-         * @description Returns groups for the project ordered by createdAt asc. Optional filters: state, resource.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    state?: "forming" | "integrating" | "landed" | "rejected" | "partially_landed";
-                    resource?: string;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Filtered list */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeGroup"][];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Create a merge group (bind existing, or atomic submit-and-group)
-         * @description Create a 'forming' merge group of >=2 members two ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping). The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeGroupCreate"];
-                };
-            };
-            responses: {
-                /** @description Forming group with members */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeGroupDetail"];
-                        };
-                    };
-                };
-                /** @description Validation error (e.g. <2 members) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project or member request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description A member is not queued or is already grouped */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-groups/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a merge group with members
-         * @description Returns the group plus all member requests (ordered by enqueuedAt asc).
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Group + members */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeGroupDetail"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-groups/{id}/pickup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator picks up a forming group
-         * @description forming → integrating. Flips every queued member to integrating in one txn and emits merge.group.started. Integrator (ai_agent) only. 409 from any non-forming state.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["MergeGroupPickup"];
-                };
-            };
-            responses: {
-                /** @description Picked up */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeGroupDetail"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group not in 'forming' state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-groups/{id}/reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator resets a stranded integrating group
-         * @description integrating → forming (stranded-group recovery, §9 finding 2 / §6.4). Atomically resets the group to forming AND every integrating member back to queued. Integrator (ai_agent) only. REFUSES a group that is not integrating (409) or that has an open incident (409, the corruption fence — a real orphan is recovered by rollforward, not reset). Idempotent on forming → forming.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["MergeGroupReset"];
-                };
-            };
-            responses: {
-                /** @description Reset to forming */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeGroupDetail"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group not integrating, or has an open incident (corruption fence) */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-groups/{id}/land": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator atomically lands the whole group
-         * @description integrating → landed. Lands every member (status landed, landedSha, landed_sha git_ref per linked task) and the group in one txn. Integrator (ai_agent) only. Idempotent on landed → landed.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeGroupLand"];
-                };
-            };
-            responses: {
-                /** @description Landed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeGroupDetail"];
-                        };
-                    };
-                };
-                /** @description Validation error (e.g. member not in group) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group or member not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group not in 'integrating' state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-groups/{id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reject the whole group
-         * @description forming → rejected OR integrating → rejected. Rejects every non-terminal member in one txn. Integrator (ai_agent), an admin, or the submitter may reject. Idempotent on rejected → rejected.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeGroupReject"];
-                };
-            };
-            responses: {
-                /** @description Rejected */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeGroupDetail"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Only the submitter, an admin, or the integrator */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid transition from current state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-groups/{id}/partially-land": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator marks the group partially landed
-         * @description integrating → partially_landed. Outer-push-fail-after-inner-land: sets the group row only (member states are set by the orphan + outer reject). Integrator (ai_agent) only. Idempotent on partially_landed.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeGroupPartiallyLand"];
-                };
-            };
-            responses: {
-                /** @description Partially landed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeGroupDetail"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Group not in 'integrating' state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/orphan": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator orphans an inner group member
-         * @description member integrating → orphaned. Sets the inner member to the 'orphaned' outcome (the inner main landed but the outer gitlink was not updated). Integrator (ai_agent) only. 409 if the request is not a group member or not integrating.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeRequestOrphan"];
-                };
-            };
-            responses: {
-                /** @description Orphaned member */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeGroupMember"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Request not a group member or not 'integrating' */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-incidents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List merge incidents in a project
-         * @description Returns incidents for the project ordered by openedAt asc. Optional filters: state, type, groupId.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    state?: "open" | "auto_resolved" | "human_resolved";
-                    type?: "orphaned_inner";
-                    groupId?: string;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Filtered list */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeIncident"][];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Integrator opens an orphaned-inner incident
-         * @description Durable PM record that inner main landed at orphanedSha but the outer gitlink was NOT updated. Atomically inserts the incident (state 'open') and, when taskId is set, a merge_incident comment. Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeIncidentOpen"];
-                };
-            };
-            responses: {
-                /** @description Opened incident */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeIncident"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-incidents/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a merge incident
-         * @description Returns the incident row including its resolution (null while open).
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Incident */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeIncident"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Incident not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-incidents/{id}/resolve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resolve a merge incident
-         * @description open → auto_resolved (auto-rollforward, ai_agent only) OR open → human_resolved (manual, admin only). The authz split is deliberate. Idempotent on same-terminal resolve.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeIncidentResolve"];
-                };
-            };
-            responses: {
-                /** @description Resolved */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeIncident"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description auto requires ai_agent; human requires admin */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Incident not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid transition from current state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-resolutions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List merge resolutions in a project
-         * @description Returns resolutions for the project ordered by createdAt asc. Optional filters: state, resource. Any authenticated user (debug + dashboard).
-         */
-        get: {
-            parameters: {
-                query?: {
-                    state?: "pending" | "resolving" | "resolved" | "escalated" | "failed";
-                    resource?: string;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Filtered list */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeResolution"][];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /**
-         * Integrator opens a conflict resolution
-         * @description Durable PM record that the integrator hit a textual rebase conflict and (resolver enabled) spun a bounded resolution off-lane for an origin request. Inserts the resolution at state 'pending'. Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeResolutionOpen"];
-                };
-            };
-            responses: {
-                /** @description Opened resolution */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeResolution"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-resolutions/{id}/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start a resolution (pending → resolving)
-         * @description The resolver built the worktree and spawned the headless agent. Sets attemptStartedAt. Legal only from 'pending'. Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Now resolving */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeResolution"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Resolution not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid transition from current state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-resolutions/{id}/resolved": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Record a resolved resolution (resolving → resolved)
-         * @description The resolver produced a clean, locally-verified tree and resubmitted it as a new request. Records resolvedRequestId + attemptEndedAt. Legal only from 'resolving'. The resolved request still passes the real verify gate before landing. Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeResolutionResolved"];
-                };
-            };
-            responses: {
-                /** @description Now resolved */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeResolution"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Resolution not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid transition from current state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-resolutions/{id}/escalate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Escalate a resolution (resolving → escalated | failed)
-         * @description The resolver couldn't land a clean tree. 'escalated' = verify-fail / budget / agent-can't; 'failed' = infra error (tagged distinctly). Sets escalationTarget + attemptEndedAt + detail.escalationReason. Legal only from 'resolving'. Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["MergeResolutionEscalate"];
-                };
-            };
-            responses: {
-                /** @description Now escalated/failed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeResolution"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Resolution not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid transition from current state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-resolutions/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a merge resolution
-         * @description Returns the resolution row including its detail and lineage (originRequestId, resolvedRequestId). Any authenticated user.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Resolution */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["MergeResolution"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Resolution not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/resolver/defaults": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the default resolver configuration
-         * @description Returns the built-in defaults for settings.integrator.resolver (incl. the default reconcile prompt), so a UI can pre-fill fields and offer a 'revert to defaults' action. token_budget null = unlimited. Any authenticated user.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Resolver defaults */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ResolverDefaults"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/integrator/heartbeat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator posts a liveness heartbeat
-         * @description The integrator POSTs a periodic heartbeat (status + worktree-pool utilization + in-flight counts + version) for a (project, resource) lane; PM upserts the integrator_health row (design §3.5). Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["IntegratorHeartbeat"];
-                };
-            };
-            responses: {
-                /** @description Heartbeat recorded */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["IntegratorHealth"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/integrator/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read a lane's integrator health
-         * @description Returns the on-read integrator health for a (project, resource) lane: derived staleness_ms + healthy flag + the denormalized heartbeat payload (design §3.4). This read fires the train.integrator_unhealthy edge when the lane is stale. Any authenticated user.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    resource?: string;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The lane health view */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["IntegratorHealth"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/train/pause": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Pause the train (admin break-glass)
-         * @description Admin override: stop the integrator admitting NEW work for a (project, resource) lane; in-flight members finish cleanly (design §4.3.1). Idempotent no-op (no duplicate audit) when already paused. Writes one `pause` audit row.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["TrainPause"];
-                };
-            };
-            responses: {
-                /** @description Train paused */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TrainState"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/train/resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resume the train (admin break-glass)
-         * @description Admin override: re-enable NEW pickups for a (project, resource) lane (design §4.3.2). Idempotent no-op (no audit) when already running. Writes one `resume` audit row.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["TrainResume"];
-                };
-            };
-            responses: {
-                /** @description Train resumed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TrainState"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/merge-locks/{resource}/force-release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Force-release a stuck merge lock (admin break-glass)
-         * @description Admin override: HARD-clear a stuck lane lock without waiting for the lease TTL sweep (design §4.3.3). Does NOT promote the queue head and does NOT touch in-flight merge_requests. Writes one `force_release_lock` audit row + emits merge.lock.released.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                    resource: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["ForceReleaseLock"];
-                };
-            };
-            responses: {
-                /** @description Lock force-released */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ForceReleaseResult"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/force-land": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Force-land a request without verify (admin break-glass — THE R1 override)
-         * @description Admin override: land an `integrating` request WITHOUT verify (design §4.3.4) — the deliberate, recorded human bypass of the verify-gate. Admin-only, reason-required (both 400 if absent/empty). Grouped members → 409. Records the operator-asserted landedSha; does NOT run git (PM-state vs git-remote divergence is by design). Writes one prominently-recorded `force_land` audit row.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["ForceLand"];
-                };
-            };
-            responses: {
-                /** @description Force-landed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ForceMergeRequest"];
-                        };
-                    };
-                };
-                /** @description Validation error (missing/empty reason or landedSha) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Merge request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Grouped member or invalid transition */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/merge-requests/{id}/force-reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Force-reject a stuck request (admin break-glass)
-         * @description Admin override: reject a stuck `integrating` request on policy grounds (design §4.3.5). Admin-only, reason-required (400 if empty). Writes the merge_rejection comment + one `force_reject` audit row.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
+  "/api/v1/auth/setup/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Check if setup is needed
+     * @description Returns whether the system needs initial setup (no users exist).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Setup status */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                needsSetup: boolean;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/setup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Initial setup
+     * @description Creates the first admin user. Only works if no users exist in the database.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            username: string;
+            displayName: string;
+            password: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Admin user created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["AuthUser"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Setup already completed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/login": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Login
+     * @description Authenticates a user with username and password, creates a session.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            username: string;
+            password: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Login successful */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["AuthUser"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid credentials */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/logout": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Logout
+     * @description Ends the current session and clears the session cookie.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Logout successful */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Not authenticated */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/me": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get current user
+     * @description Returns the currently authenticated user.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Current user */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["AuthUser"];
+            };
+          };
+        };
+        /** @description Not authenticated */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/agent-pools": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List all agent pools
+     * @description List all pools with summary (agent count, claimed count). Admin only.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Pool list */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                id: string;
+                name: string;
+                description: string | null;
+                createdAt: string;
+                updatedAt: string;
+                createdBy: string | null;
+                agentCount: number;
+                claimedCount: number;
+                availableCount: number;
+              }[];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create a new agent pool
+     * @description Create a named agent pool with its own secret. Admin only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name: string;
+            secret: string;
+            description?: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Pool created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                id: string;
+                name: string;
+                description: string | null;
+                createdAt: string;
+                updatedAt: string;
+                createdBy: string | null;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Pool name already exists */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/agent-pools/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get pool details with agent list
+     * @description Get pool details with full agent list. Admin only.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Pool details */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                pool: {
+                  id: string;
+                  name: string;
+                  description: string | null;
+                  createdAt: string;
+                  updatedAt: string;
+                  createdBy: string | null;
+                };
+                agents: {
+                  user: {
                     id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["ForceReject"];
-                };
-            };
-            responses: {
-                /** @description Force-rejected */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ForceMergeRequest"];
-                        };
-                    };
-                };
-                /** @description Validation error (missing/empty reason) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Merge request not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid transition */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/train/state": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read a lane's train (pause/resume) state
-         * @description Returns the (project, resource) lane's running/paused control state (design §4.1). Lazy-creates the row defaulting to running. Any authenticated user.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    resource?: string;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The train state */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TrainState"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/train/metrics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read the on-read metric bundle for a lane
-         * @description Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability).
-         */
-        get: {
-            parameters: {
-                query?: {
-                    resource?: string;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The metric bundle */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TrainMetrics"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/train/in-flight": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read the in-flight composition for a lane
-         * @description Returns the lane's `integrating` merge requests with each one's latest attempt + groupId, plus the forming/integrating group rows (design §5.3). The server does NOT compute speculativePosition/batchId — the dashboard enriches those from the SSE stream. Any authenticated user.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    resource?: string;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The in-flight composition */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["TrainInFlight"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/claims-health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read the stale-claim health for a project
-         * @description Returns the project's stale-claim aggregate (Campaign C3 §P5a): the number of work items claimed but inactive past the lease TTL+grace, plus the elapsed time since the oldest stale claim lapsed. Computing this fires the edge-triggered `claim.stale_alert` once per stale episode (in-app SSE banner + Discord), mirroring train.stuck — so the dashboard's always-open poll keeps the alert live. IDENTITY-MASKED: no holder id is surfaced. Any authenticated user (read-only observability).
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The stale-claim health aggregate */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ClaimsHealth"];
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/verify-cache": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List recent verify-cache rows (debug / dashboard)
-         * @description Returns the project's verify_cache rows, newest-first by created_at, paginated (page/perPage, default 1/50, max 200), with optional resource/step_id/result filters (design §8.4). Any authenticated user — a cache row is operational telemetry (a tree SHA + a verdict + hit counts), NOT admin-tier accountability data, so it parallels the metrics GET (requireAuth), not the audit log (requireAdmin).
-         */
-        get: {
-            parameters: {
-                query?: {
-                    resource?: string;
-                    step_id?: string;
-                    result?: "pass" | "fail";
-                    page?: number;
-                    perPage?: number;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The verify-cache page */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["VerifyCacheList"];
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/verify-cache/lookup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator probes the verify cache (strict 5-tuple)
-         * @description The integrator probes the exact (project, resource, tree_sha, step_id, step_config_sha) key BEFORE running a step (design §3.2/§8.5). A HIT bumps hit_count/last_hit_at server-side (PM-owned, §8.5) and returns the cached verdict; a MISS returns data:null. Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["VerifyCacheLookup"];
-                };
-            };
-            responses: {
-                /** @description The cached row (hit) or null (miss) */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["VerifyCacheRow"] & unknown;
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/verify-cache/record": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator records a verify verdict (write-or-update)
-         * @description The integrator records the verdict for a (project, resource, tree_sha, step_id, step_config_sha) key AFTER running a step — an upsert on the unique key that PRESERVES hit_count/last_hit_at/created_at on a re-record (the shadow self-heal, §8.5/§4.4). Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["VerifyCacheRecord"];
-                };
-            };
-            responses: {
-                /** @description The recorded row */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["VerifyCacheRow"];
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/verify-cache/mismatch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Integrator relays a shadow-mode cache mismatch
-         * @description Thin relay (design §9): in shadow mode, when the real run disagrees with a cached verdict, the integrator POSTs the mismatch; PM re-emits it on the verify.cache_mismatch SSE stream and persists NOTHING (the durable record is the re-recorded corrected row + the metric count, §4.4/§9). Integrator (ai_agent) only.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["VerifyCacheMismatch"];
-                };
-            };
-            responses: {
-                /** @description Accepted and re-emitted */
-                202: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: {
-                                ok: boolean;
-                            };
-                        };
-                    };
-                };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Integrator (ai_agent) only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/audit-log": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Query the break-glass audit log (admin-only)
-         * @description Returns the project's append-only audit log — who did what to the train and why (design §2 / §8.4). Filterable by actor (userId), action, targetType, targetId, and a from/to createdAt window; ordered newest-first, paginated (page/perPage, default 1/50, max 200). Admin-only: audit records operator/admin-tier accountability data.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    userId?: string;
-                    action?: "pause" | "resume" | "force_release_lock" | "force_land" | "force_reject" | "force_cancel" | "land" | "reject" | "requeue" | "cancel" | "force_claim" | "claim_reclaimed";
-                    targetType?: "merge_request" | "merge_group" | "merge_lock" | "train" | "task" | "epic" | "proposal";
-                    targetId?: string;
-                    from?: string;
-                    to?: string;
-                    page?: number;
-                    perPage?: number;
-                };
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The audit log page */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["AuditLogList"];
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Admin only */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/claims": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List active claims
-         * @description List every ACTIVE claim in the project (tasks/epics/proposals with a holder and a non-terminal status), each with its identity-masked claim_state (relative to the caller), the holder (id/name/type), and the nullable lease-layer claimedAt. Pure read — no alert side effect.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Active claims for the project */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data: components["schemas"]["ProjectClaims"];
-                        };
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Project not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health check
-         * @description Returns the server health status and current timestamp.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Server is healthy */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @example ok */
-                            status: string;
-                            /** @example 2026-01-01T00:00:00.000Z */
-                            timestamp: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
+                    username: string;
+                    displayName: string;
+                    type: string;
+                    isActive: boolean;
+                    poolId: string | null;
+                  };
+                  claimed: boolean;
+                  claimedAt: string | null;
+                  expiresAt: string | null;
+                  heartbeatAt: string | null;
+                }[];
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Pool not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    /**
+     * Delete a pool
+     * @description Delete pool and deactivate its agents. Admin only.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Pool deleted */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Pool not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Update pool name/description
+     * @description Update pool name and/or description. Admin only.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name?: string;
+            description?: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Pool updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                id: string;
+                name: string;
+                description: string | null;
+                createdAt: string;
+                updatedAt: string;
+                createdBy: string | null;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Pool not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/auth/agent-pools/{id}/secret": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Update pool secret
+     * @description Update the secret for a specific pool. Admin only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            secret: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Secret updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Pool not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/agent-pools/{id}/agents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create agents in a pool
+     * @description Create N AI agent users in a specific pool. Admin only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            count: number;
+            namePrefix?: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Agents created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                id: string;
+                username: string;
+                displayName: string;
+                role: string;
+                type: string;
+                poolId: string;
+              }[];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Pool not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/agent-pools/{id}/agents/{userId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove agent from pool
+     * @description Remove an agent from a pool. If the agent has existing activity (comments, tasks, etc.), it will be deactivated and removed from the pool instead of deleted. Admin only.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+          userId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Agent removed or deactivated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                deleted: boolean;
+                deactivated: boolean;
+                reason?: string;
+              };
+            };
+          };
+        };
+        /** @description Agent does not belong to this pool */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description User not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/agent-claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Claim an agent from a pool
+     * @description Authenticate with pool name and secret to claim an available AI agent. Returns user info and a fresh API token.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            poolName: string;
+            poolSecret: string;
+            workerKey?: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Agent claimed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                user: {
+                  id: string;
+                  username: string;
+                  displayName: string;
+                  role: string;
+                  type: string;
+                };
+                token: string;
+                bindHandle?: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid pool secret */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No agents available or pool not configured */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/agent-release": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Release agent claim
+     * @description Release the current user's agent claim, making them available for others.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Agent released */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Not authenticated */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/agent-heartbeat": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Heartbeat for agent claim
+     * @description Extend the TTL of the current user's agent claim.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Heartbeat acknowledged */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Not authenticated */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No active claim */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/agent-pool": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get all pools (backward compat)
+     * @description Get all pools with summary. Admin only. Redirects to list.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Pool list */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                id: string;
+                name: string;
+                description: string | null;
+                createdAt: string;
+                updatedAt: string;
+                createdBy: string | null;
+                agentCount: number;
+                claimedCount: number;
+                availableCount: number;
+              }[];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/agent-pool/force-release": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Force release an agent claim
+     * @description Force-release an agent's claim by admin. Takes the agent user ID.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            userId: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Agent released */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin role required */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/users": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List all users
+     * @description Returns all users. Admin only.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description User list */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["User"][];
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create a user
+     * @description Creates a new user. For AI agent users, returns the API token (shown once). Admin only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            username: string;
+            displayName: string;
+            email?: string | null;
+            password?: string;
+            role: string;
+            type: string;
+          };
+        };
+      };
+      responses: {
+        /** @description User created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["UserWithToken"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Duplicate username */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/users/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update a user
+     * @description Updates user fields. Admin only.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            username?: string;
+            displayName?: string;
+            email?: string | null;
+            role?: string;
+          };
+        };
+      };
+      responses: {
+        /** @description User updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["User"];
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description User not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Duplicate username */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/users/{id}/rotate-token": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Rotate API token
+     * @description Regenerates the API token for a user. Returns the new raw token. Admin only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description New token generated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                apiToken: string;
+              };
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description User not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/users/{id}/deactivate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Deactivate a user
+     * @description Sets the user as inactive. Admin only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description User deactivated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["User"];
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description User not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/users/{id}/activate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Activate a user
+     * @description Sets the user as active. Admin only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description User activated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["User"];
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description User not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List projects
+     * @description List all projects with optional status filter.
+     */
+    get: {
+      parameters: {
+        query?: {
+          status?: "active" | "paused" | "archived" | "completed";
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of projects */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Project"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create project
+     * @description Create a new project. A slug is auto-generated from the name.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateProject"];
+        };
+      };
+      responses: {
+        /** @description Project created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Project"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get project
+     * @description Get a project by ID.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Project details */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Project"];
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    /**
+     * Archive project
+     * @description Soft-delete a project by setting its status to archived.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Project archived */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Project"];
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Update project
+     * @description Update project fields.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateProject"];
+        };
+      };
+      responses: {
+        /** @description Project updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Project"];
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/projects/{id}/stats": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project statistics
+     * @description Get task counts by status, epic count, and proposal count for a project.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Project statistics */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ProjectStats"];
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/proposals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List proposals
+     * @description List proposals for a project with optional status and claim filters.
+     */
+    get: {
+      parameters: {
+        query?: {
+          status?: "open" | "discussing" | "accepted" | "in_progress" | "completed" | "rejected";
+          claim?: "available" | "mine" | "all";
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of proposals */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Proposal"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create proposal
+     * @description Create a new proposal for a project.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateProposal"];
+        };
+      };
+      responses: {
+        /** @description Proposal created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Proposal"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get proposal
+     * @description Get a proposal by ID with comments and linked work items.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Proposal details with comments and work items */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ProposalDetail"];
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update proposal
+     * @description Update proposal title or description.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateProposal"];
+        };
+      };
+      responses: {
+        /** @description Proposal updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Proposal"];
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/transitions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Transition proposal status
+     * @description Change proposal status with role enforcement. AI agents must hold the claim. Terminal transitions clear the claim.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ProposalTransition"];
+        };
+      };
+      responses: {
+        /** @description Proposal transitioned */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Proposal"];
+            };
+          };
+        };
+        /** @description Invalid transition */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden — actor type not allowed for this transition */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Claim denied — proposal claimed by another agent or unclaimed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/comments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List proposal comments
+     * @description List all comments on a proposal.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of comments */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Comment"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Add comment
+     * @description Add a comment to a proposal. AI agents must hold the claim. If proposal is open and commenter is an AI agent, auto-transitions to discussing.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AddProposalComment"];
+        };
+      };
+      responses: {
+        /** @description Comment added */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Comment"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Claim denied — proposal claimed by another agent or unclaimed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/work-items": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List work items
+     * @description List epics and tasks spawned from this proposal.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Work items linked to this proposal */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                epics: components["schemas"]["ProposalEpic"][];
+                tasks: components["schemas"]["ProposalTask"][];
+              };
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/implement": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Implement proposal
+     * @description Atomically create epics and tasks from a proposal, transitioning it to in_progress. AI agents must hold the claim.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ImplementProposal"];
+        };
+      };
+      responses: {
+        /** @description Proposal moved to in_progress and work items created */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Proposal"];
+            };
+          };
+        };
+        /** @description Invalid status — proposal is already in_progress, completed, or rejected */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Claim denied — proposal claimed by another agent or unclaimed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Claim proposal
+     * @description Atomically claim a proposal for the caller. Returns a structured result without leaking other claimants' IDs.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Claim attempt outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ClaimResult"];
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/force-claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Force-claim proposal (takeover)
+     * @description Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["ForceClaimProposal"];
+        };
+      };
+      responses: {
+        /** @description Force-claim outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+                /** @enum {string} */
+                status: "force_claimed";
+                previousHolder: string;
+                newHolder: string;
+              };
+            };
+          };
+        };
+        /** @description Validation error (empty reason) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden (non-human targeting another agent) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Proposal or target user not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Proposal closed / not associated with a project */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/release": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Release proposal claim
+     * @description Release the caller's claim on a proposal. Humans can release any claim; AI agents only their own.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Release attempt outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ClaimResult"];
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/release-to": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Release proposal claim to a named worker (handoff)
+     * @description Hand this proposal's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["ReleaseProposal"];
+        };
+      };
+      responses: {
+        /** @description Release-to outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+                /** @enum {string} */
+                status: "force_claimed";
+                previousHolder: string;
+                newHolder: string;
+              };
+            };
+          };
+        };
+        /** @description Validation error (empty reason / missing target) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden (non-holder agent) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Proposal or target user not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Proposal closed / not associated with a project */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/request-takeover": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Request takeover of a proposal claim (stomp-safe)
+     * @description Ask to take over this proposal's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["RequestTakeoverProposal"];
+        };
+      };
+      responses: {
+        /** @description Takeover-request outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+                /** @enum {string} */
+                status:
+                  | "claimed_by_you"
+                  | "already_claimed_by_you"
+                  | "claimed_by_another_agent"
+                  | "released"
+                  | "not_held"
+                  | "closed"
+                  | "force_claimed"
+                  | "notified_holder";
+                previousHolder?: string;
+                newHolder?: string;
+              };
+            };
+          };
+        };
+        /** @description Validation error (empty reason) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Proposal not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/notes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List notes
+     * @description List notes for a project, newest first, with optional filters.
+     */
+    get: {
+      parameters: {
+        query?: {
+          kind?: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+          status?: "open" | "triaged";
+          anchorType?: "task" | "epic" | "proposal";
+          anchorId?: string;
+          severity?: "low" | "medium" | "high";
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of notes */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Note"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create note
+     * @description Capture a new note (bug/question/idea/tech_debt/wtf/observation) for a project.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateNote"];
+        };
+      };
+      responses: {
+        /** @description Note created (with advisory `similar` open-note candidates) */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Note"];
+              similar: {
+                id: string;
+                title: string;
+                /** @enum {string} */
+                kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+              }[];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notes/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get note
+     * @description Get a single note by ID.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Note */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Note"];
+            };
+          };
+        };
+        /** @description Note not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update note
+     * @description Update an OPEN note's fields. A triaged note is immutable in C1 (409). Status is not patchable.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["PatchNote"];
+        };
+      };
+      responses: {
+        /** @description Note updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Note"];
+            };
+          };
+        };
+        /** @description Note not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Note is not open and cannot be edited */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/notes/{id}/dismiss": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Dismiss note
+     * @description Terminally dismiss an OPEN note (triage outcome `dismissed`). Anti-signal-burying: only the note's author OR a human may dismiss.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DismissNote"];
+        };
+      };
+      responses: {
+        /** @description Note dismissed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Note"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Caller is not allowed to dismiss this note */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Note not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Note is not open and cannot be dismissed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notes/{id}/promote-to-proposal": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Promote note to proposal
+     * @description Terminally promote an OPEN note to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["PromoteNoteToProposal"];
+        };
+      };
+      responses: {
+        /** @description Note promoted; proposal created */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Note"];
+              proposal: components["schemas"]["PromotedProposal"];
+            };
+          };
+        };
+        /** @description Note not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Note is not open and cannot be promoted */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notes/{id}/promote-to-task": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Promote note to task
+     * @description HUMAN-ONLY escape hatch: terminally promote an OPEN note directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["PromoteNoteToTask"];
+        };
+      };
+      responses: {
+        /** @description Note promoted; task created */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Note"];
+              task: components["schemas"]["PromotedTask"];
+            };
+          };
+        };
+        /** @description Caller is not allowed to promote this note to a task (human-only) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Note not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Note is not open and cannot be promoted */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/notes/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Notes backlog health
+     * @description Read the project's notes-backlog health (open-note count + oldest-open age). SIDE EFFECT: fires the edge-triggered `note.backlog_alert` (SSE + Discord) exactly ONCE per backlog episode when an open note ages past the backlog threshold; the latch re-arms when the backlog clears.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Notes backlog health */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["NotesHealth"];
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/epics": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List epics
+     * @description List all epics for a project with optional status, milestone, and claim filters.
+     */
+    get: {
+      parameters: {
+        query?: {
+          status?: "draft" | "active" | "completed" | "cancelled";
+          milestone?: string;
+          claim?: "available" | "mine" | "all";
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of epics */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Epic"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create epic
+     * @description Create a new epic in a project.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateEpic"];
+        };
+      };
+      responses: {
+        /** @description Epic created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Epic"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/epics/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get epic
+     * @description Get an epic by ID with task summary and claim_status.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Epic details */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Epic"];
+            };
+          };
+        };
+        /** @description Epic not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    /**
+     * Archive epic
+     * @description Soft-delete an epic by setting its status to cancelled. AI agents must hold the claim.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Epic archived */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Epic"];
+            };
+          };
+        };
+        /** @description Epic not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Claim denied — epic claimed by another agent or unclaimed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Update epic
+     * @description Update epic fields. AI agents must hold the claim. Transitioning to a terminal status (completed/cancelled) clears the claim.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateEpic"];
+        };
+      };
+      responses: {
+        /** @description Epic updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Epic"];
+            };
+          };
+        };
+        /** @description Epic not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Claim denied — epic claimed by another agent or unclaimed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/epics/{id}/claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Claim epic
+     * @description Atomically claim an epic for the caller. Returns a structured result without leaking other claimants' IDs.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Claim attempt outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["EpicClaimResult"];
+            };
+          };
+        };
+        /** @description Epic not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/epics/{id}/force-claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Force-claim epic (takeover)
+     * @description Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["ForceClaimEpic"];
+        };
+      };
+      responses: {
+        /** @description Force-claim outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+                /** @enum {string} */
+                status: "force_claimed";
+                previousHolder: string;
+                newHolder: string;
+              };
+            };
+          };
+        };
+        /** @description Validation error (empty reason) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden (non-human targeting another agent) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Epic or target user not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Epic closed / not associated with a project */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/epics/{id}/release": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Release epic claim
+     * @description Release the caller's claim on an epic. Humans can release any claim; AI agents only their own.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Release attempt outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["EpicClaimResult"];
+            };
+          };
+        };
+        /** @description Epic not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/epics/{id}/release-to": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Release epic claim to a named worker (handoff)
+     * @description Hand this epic's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["ReleaseEpic"];
+        };
+      };
+      responses: {
+        /** @description Release-to outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+                /** @enum {string} */
+                status: "force_claimed";
+                previousHolder: string;
+                newHolder: string;
+              };
+            };
+          };
+        };
+        /** @description Validation error (empty reason / missing target) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden (non-holder agent) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Epic or target user not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Epic closed / not associated with a project */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/epics/{id}/request-takeover": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Request takeover of an epic claim (stomp-safe)
+     * @description Ask to take over this epic's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["RequestTakeoverEpic"];
+        };
+      };
+      responses: {
+        /** @description Takeover-request outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+                /** @enum {string} */
+                status:
+                  | "claimed_by_you"
+                  | "already_claimed_by_you"
+                  | "claimed_by_another_agent"
+                  | "released"
+                  | "not_held"
+                  | "closed"
+                  | "force_claimed"
+                  | "notified_holder";
+                previousHolder?: string;
+                newHolder?: string;
+              };
+            };
+          };
+        };
+        /** @description Validation error (empty reason) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Epic not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/epic-graph": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get epic graph
+     * @description Get the epic dependency graph for a project: nodes (epics + task summary) and derived blocks edges rolled up from the task dependency graph.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Epic graph */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["EpicGraph"];
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/epics/{epicId}/dependencies": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add explicit epic dependency
+     * @description Add an explicit planning-time dependency: epicId depends on dependsOnEpicId. Both epics must belong to the project. Self-dependencies and duplicates are rejected.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          epicId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AddEpicDependency"];
+        };
+      };
+      responses: {
+        /** @description Epic dependency created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["EpicDependency"];
+            };
+          };
+        };
+        /** @description Validation error, self-dependency, or cross-project */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Epic not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Epic dependency already exists */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/epics/{epicId}/dependencies/{depId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove explicit epic dependency
+     * @description Remove an explicit epic dependency by its ID.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          epicId: string;
+          depId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Epic dependency removed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["EpicDependency"];
+            };
+          };
+        };
+        /** @description Epic dependency not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/epics/{epicId}/task-graph": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get task graph
+     * @description Get the intra-epic task dependency graph for an epic: nodes (the epic's tasks) and edges (their internal task dependencies, cross-epic deps excluded).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          epicId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Task graph */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TaskGraph"];
+            };
+          };
+        };
+        /** @description Epic not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/tasks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List tasks
+     * @description List tasks for a project with rich filtering, sorting, and pagination.
+     */
+    get: {
+      parameters: {
+        query?: {
+          status?: string;
+          priority?: "critical" | "high" | "medium" | "low";
+          type?: "feature" | "bug" | "chore" | "spike" | "design" | "research";
+          assignee?: string;
+          epic?: string;
+          search?: string;
+          label?: string;
+          label_name?: string;
+          claim?: "available" | "mine" | "all";
+          is_blocked?: "true" | "false";
+          sortBy?: "priority" | "created_at" | "updated_at" | "due_date" | "sort_order";
+          order?: "asc" | "desc";
+          page?: number;
+          perPage?: number;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of tasks */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Task"][];
+              pagination: {
+                page: number;
+                perPage: number;
+                total: number;
+                totalPages: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create task
+     * @description Create a new task in a project.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateTask"];
+        };
+      };
+      responses: {
+        /** @description Task created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Task"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get task
+     * @description Get a task by ID with full details.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Task details */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Task"];
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    /**
+     * Archive task
+     * @description Soft-delete a task by setting its status to cancelled.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Task archived */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Task"];
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Update task
+     * @description Update task fields. Context JSON is merged with existing context.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateTask"];
+        };
+      };
+      responses: {
+        /** @description Task updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Task"];
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/subtasks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List subtasks
+     * @description List all subtasks of a task.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of subtasks */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Task"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+        /** @description Parent task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create subtask
+     * @description Create a subtask of a given task. Inherits the parent's project.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateSubtask"];
+        };
+      };
+      responses: {
+        /** @description Subtask created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Task"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Parent task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/pick-next": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Pick next task
+     * @description Find and atomically claim the highest-priority ready task. Returns the claimed task or 404 if nothing available.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["PickNextTask"];
+        };
+      };
+      responses: {
+        /** @description Task claimed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Task"];
+            };
+          };
+        };
+        /** @description Guardrail blocked or max concurrent tasks reached */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No task available */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/transitions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Transition task status
+     * @description Change a task's status using validated workflow transitions. Optionally add a comment.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["TransitionTask"];
+        };
+      };
+      responses: {
+        /** @description Task transitioned */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Task"];
+            };
+          };
+        };
+        /** @description Invalid transition */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Claim task
+     * @description Atomically claim a task for the caller. Sets the caller as assignee. Returns a structured result without leaking other claimants' IDs.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Claim outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TaskClaimResult"];
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/force-claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Force-claim task (takeover)
+     * @description Take over an existing claim (reason required, audited). Self-recovery when a session identity changed. Targeting another agent requires a human director.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["ForceClaimTask"];
+        };
+      };
+      responses: {
+        /** @description Force-claim outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+                /** @enum {string} */
+                status: "force_claimed";
+                previousHolder: string;
+                newHolder: string;
+              };
+            };
+          };
+        };
+        /** @description Validation error (empty reason) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden (non-human targeting another agent) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Task or target user not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Task closed / not associated with a project */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/release": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Release task claim
+     * @description Release the caller's claim. Humans can release any claim; AI agents only their own.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Release outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TaskClaimResult"];
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/release-to": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Release task claim to a named worker (handoff)
+     * @description Hand this task's claim to a named target worker (reason required, audited). The current holder (or a human director) may release; the lease transfers to the target. Never stomps a live claim — it directly transfers the holder's own claim.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["ReleaseTask"];
+        };
+      };
+      responses: {
+        /** @description Release-to outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+                /** @enum {string} */
+                status: "force_claimed";
+                previousHolder: string;
+                newHolder: string;
+              };
+            };
+          };
+        };
+        /** @description Validation error (empty reason / missing target) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Forbidden (non-holder agent) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Task or target user not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Task closed / not associated with a project */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/request-takeover": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Request takeover of a task claim (stomp-safe)
+     * @description Ask to take over this task's claim. A stale (lease-lapsed) claim is auto-granted to the caller; a LIVE claim is NEVER mutated — the holder is notified and the result is notified_holder.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["RequestTakeoverTask"];
+        };
+      };
+      responses: {
+        /** @description Takeover-request outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+                /** @enum {string} */
+                status:
+                  | "claimed_by_you"
+                  | "already_claimed_by_you"
+                  | "claimed_by_another_agent"
+                  | "released"
+                  | "not_held"
+                  | "closed"
+                  | "force_claimed"
+                  | "notified_holder";
+                previousHolder?: string;
+                newHolder?: string;
+              };
+            };
+          };
+        };
+        /** @description Validation error (empty reason) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/awareness": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Subsystem awareness check
+     * @description Return in-flight tasks for a project, optionally filtered to a label name. Used as a boundary-time check before touching a subsystem.
+     */
+    get: {
+      parameters: {
+        query?: {
+          label?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description In-flight summary */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Awareness"];
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{taskId}/comments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List task comments
+     * @description List all comments on a task, in chronological order.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          taskId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of comments */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TaskComment"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Add task comment
+     * @description Add a comment to a task.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          taskId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateTaskComment"];
+        };
+      };
+      responses: {
+        /** @description Comment created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TaskComment"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/comments/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete comment
+     * @description Delete a comment.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Comment deleted */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TaskComment"];
+            };
+          };
+        };
+        /** @description Comment not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Edit comment
+     * @description Update a comment's body or metadata.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateComment"];
+        };
+      };
+      responses: {
+        /** @description Comment updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TaskComment"];
+            };
+          };
+        };
+        /** @description Comment not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/labels": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List labels
+     * @description List all labels for a project.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of labels */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Label"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create label
+     * @description Create a new label for a project. Name must be unique within the project.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateLabel"];
+        };
+      };
+      responses: {
+        /** @description Label created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Label"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Label name already exists in this project */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/labels/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete label
+     * @description Delete a label and all its task associations.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Label deleted */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Label"];
+            };
+          };
+        };
+        /** @description Label not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Update label
+     * @description Update a label's name, color, or description.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateLabel"];
+        };
+      };
+      responses: {
+        /** @description Label updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Label"];
+            };
+          };
+        };
+        /** @description Label not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Label name already exists in this project */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/labels": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Attach label to task
+     * @description Attach a label to a task.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AttachLabel"];
+        };
+      };
+      responses: {
+        /** @description Label attached */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                taskId: string;
+                labelId: string;
+              };
+            };
+          };
+        };
+        /** @description Task or label not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Label already attached to this task */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/labels/{labelId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove label from task
+     * @description Remove a label from a task.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+          labelId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Label detached */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                taskId: string;
+                labelId: string;
+              };
+            };
+          };
+        };
+        /** @description Label not attached to this task */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/dependencies": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add dependency
+     * @description Add a dependency between tasks. Performs cycle detection to prevent circular dependencies.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AddDependency"];
+        };
+      };
+      responses: {
+        /** @description Dependency created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TaskDependency"];
+            };
+          };
+        };
+        /** @description Validation error or cycle detected */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Dependency already exists */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/dependencies/{depId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove dependency
+     * @description Remove a dependency between tasks.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+          depId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Dependency removed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TaskDependency"];
+            };
+          };
+        };
+        /** @description Dependency not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/search": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Full-text search
+     * @description Search across proposals, tasks, comments, and notes using FTS5 full-text search.
+     */
+    get: {
+      parameters: {
+        query: {
+          q: string;
+          project_id?: string;
+          entity_type?: "proposal" | "task" | "comment" | "note";
+          limit?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Search results */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["SearchResult"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/activity": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project activity feed
+     * @description Get paginated activity feed for a project, with optional filters.
+     */
+    get: {
+      parameters: {
+        query?: {
+          entity_type?: string;
+          actor_id?: string;
+          since?: string;
+          exclude_actor?: string;
+          page?: number;
+          per_page?: number;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Activity feed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ActivityLogEntry"][];
+              pagination: {
+                page: number;
+                perPage: number;
+                total: number;
+                totalPages: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/activity/updates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Check for recent updates
+     * @description Returns recent activity by other users since a given timestamp. Designed for agents polling for human input between work steps.
+     */
+    get: {
+      parameters: {
+        query: {
+          since: string;
+          project_id?: string;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Recent updates */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              has_updates: boolean;
+              count: number;
+              data: components["schemas"]["ActivityLogEntry"][];
+            };
+          };
+        };
+        /** @description Missing required parameter */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{taskId}/activity": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Task activity history
+     * @description Get activity history for a specific task.
+     */
+    get: {
+      parameters: {
+        query?: {
+          page?: number;
+          per_page?: number;
+        };
+        header?: never;
+        path: {
+          taskId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Task activity history */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ActivityLogEntry"][];
+              pagination: {
+                page: number;
+                perPage: number;
+                total: number;
+                totalPages: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/milestones": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List milestones
+     * @description List all milestones for a project.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of milestones */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Milestone"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create milestone
+     * @description Create a new milestone for a project.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateMilestone"];
+        };
+      };
+      responses: {
+        /** @description Milestone created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Milestone"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/milestones/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete milestone
+     * @description Delete a milestone.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Milestone deleted */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Milestone"];
+            };
+          };
+        };
+        /** @description Milestone not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Update milestone
+     * @description Update milestone fields.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateMilestone"];
+        };
+      };
+      responses: {
+        /** @description Milestone updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Milestone"];
+            };
+          };
+        };
+        /** @description Milestone not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/tasks/{taskId}/git-refs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List git refs for task
+     * @description List all git refs (branches, commits, PRs) linked to a task.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          taskId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of git refs */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["GitRef"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Add git ref
+     * @description Add a git ref (branch, commit, or pull request) to a task.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          taskId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateGitRef"];
+        };
+      };
+      responses: {
+        /** @description Git ref created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["GitRef"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/git-refs/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove git ref
+     * @description Remove a git ref from a task.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Git ref deleted */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["GitRef"];
+            };
+          };
+        };
+        /** @description Git ref not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Update git ref
+     * @description Update a git ref (e.g., PR status).
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateGitRef"];
+        };
+      };
+      responses: {
+        /** @description Git ref updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["GitRef"];
+            };
+          };
+        };
+        /** @description Git ref not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/webhooks/git": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Git webhook
+     * @description Public webhook endpoint for git events. Accepts branch creation and commit push events to auto-link branches and commits to tasks based on naming conventions.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["GitWebhookPayload"];
+        };
+      };
+      responses: {
+        /** @description Webhook processed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                linked: boolean;
+                refs: {
+                  id: string;
+                  taskId: string;
+                  refType: string;
+                  refValue: string;
+                  url: string | null;
+                  title: string | null;
+                  status: string | null;
+                  metadata?: unknown;
+                  createdAt: string;
+                }[];
+              };
+            };
+          };
+        };
+        /** @description Invalid webhook payload */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{id}/export": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Export project
+     * @description Export a complete project and all related data as JSON. Optionally include the activity log.
+     */
+    get: {
+      parameters: {
+        query?: {
+          include_activity?: string;
+        };
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Project exported as JSON */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              version: string;
+              exported_at: string;
+              project: {
+                [key: string]: unknown;
+              };
+              proposals: {
+                [key: string]: unknown;
+              }[];
+              epics: {
+                [key: string]: unknown;
+              }[];
+              milestones: {
+                [key: string]: unknown;
+              }[];
+              tasks: {
+                [key: string]: unknown;
+              }[];
+              comments: {
+                [key: string]: unknown;
+              }[];
+              labels: {
+                [key: string]: unknown;
+              }[];
+              task_labels: {
+                [key: string]: unknown;
+              }[];
+              task_dependencies: {
+                [key: string]: unknown;
+              }[];
+              git_refs: {
+                [key: string]: unknown;
+              }[];
+              activity_log?: {
+                [key: string]: unknown;
+              }[];
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import project
+     * @description Import a project from previously exported JSON. Creates new IDs for all entities.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            version: string;
+            exported_at: string;
+            project: {
+              [key: string]: unknown;
+            };
+            proposals: {
+              [key: string]: unknown;
+            }[];
+            epics: {
+              [key: string]: unknown;
+            }[];
+            milestones: {
+              [key: string]: unknown;
+            }[];
+            tasks: {
+              [key: string]: unknown;
+            }[];
+            comments: {
+              [key: string]: unknown;
+            }[];
+            labels: {
+              [key: string]: unknown;
+            }[];
+            task_labels: {
+              [key: string]: unknown;
+            }[];
+            task_dependencies: {
+              [key: string]: unknown;
+            }[];
+            git_refs: {
+              [key: string]: unknown;
+            }[];
+            activity_log?: {
+              [key: string]: unknown;
+            }[];
+          };
+        };
+      };
+      responses: {
+        /** @description Project imported */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                id: string;
+                workspaceId: string;
+                name: string;
+                slug: string;
+                description: string | null;
+                status: string;
+                gitRepoUrl: string | null;
+                settings?: unknown;
+                sortOrder: number;
+                createdAt: string;
+                updatedAt: string;
+                createdBy: string | null;
+              };
+            };
+          };
+        };
+        /** @description Invalid import data */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/backup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Backup database
+     * @description Create a backup of the SQLite database file.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Backup created */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                path: string;
+                size: number;
+                timestamp: string;
+              };
+            };
+          };
+        };
+        /** @description Backup error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/automation-rules": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List automation rules
+     * @description List all automation rules for a project.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of automation rules */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["AutomationRule"][];
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create automation rule
+     * @description Create a new automation rule for a project.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateAutomationRule"];
+        };
+      };
+      responses: {
+        /** @description Rule created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["AutomationRule"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/automation-rules/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete automation rule
+     * @description Delete an automation rule.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Rule deleted */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                deleted: boolean;
+              };
+            };
+          };
+        };
+        /** @description Rule not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Update automation rule
+     * @description Update an automation rule.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateAutomationRule"];
+        };
+      };
+      responses: {
+        /** @description Rule updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["AutomationRule"];
+            };
+          };
+        };
+        /** @description Rule not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/automation-rules/{id}/toggle": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Toggle automation rule
+     * @description Enable or disable an automation rule.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ToggleAutomationRule"];
+        };
+      };
+      responses: {
+        /** @description Rule toggled */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["AutomationRule"];
+            };
+          };
+        };
+        /** @description Rule not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/templates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List templates
+     * @description List templates with optional filters for project_id and template_type.
+     */
+    get: {
+      parameters: {
+        query?: {
+          project_id?: string;
+          template_type?: "task" | "project";
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of templates */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Template"][];
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create template
+     * @description Create a new task or project template.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateTemplate"];
+        };
+      };
+      responses: {
+        /** @description Template created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Template"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/templates/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete template
+     * @description Delete a template.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Template deleted */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Template"];
+            };
+          };
+        };
+        /** @description Template not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /**
+     * Update template
+     * @description Update a template's name, description, or template_data.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateTemplate"];
+        };
+      };
+      responses: {
+        /** @description Template updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Template"];
+            };
+          };
+        };
+        /** @description Template not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/templates/{id}/instantiate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Instantiate template
+     * @description Create a task or project from a template. For task templates, provide project_id. For project templates, provide workspace_id and name.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["InstantiateTemplate"];
+        };
+      };
+      responses: {
+        /** @description Template instantiated */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data?: unknown;
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Template not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{id}/create-template": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create template from task
+     * @description Snapshot a task (with subtasks) as a task template.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateTemplateFromTask"];
+        };
+      };
+      responses: {
+        /** @description Template created from task */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Template"];
+            };
+          };
+        };
+        /** @description Task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-locks/{resource}/acquire": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Acquire merge lock
+     * @description Atomically acquire the named lock for the caller, or join the FIFO queue if held. Idempotent for the current holder. Optionally attach landing intent (taskId / branch / commitSha / verifyCmd / worktreePath) — all optional, used for observability while held or queued.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          resource: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["MergeLockAcquire"];
+        };
+      };
+      responses: {
+        /** @description Acquire outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeLockAcquireResult"];
+            };
+          };
+        };
+        /** @description Validation error (e.g. taskId not in this project) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project or referenced task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-locks/{resource}/heartbeat": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Refresh merge lock lease
+     * @description Refresh the holder's lease. Returns not_holder if the caller doesn't currently hold the lock (e.g. lease already swept).
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          resource: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Heartbeat outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeLockHeartbeatResult"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-locks/{resource}/release": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Release merge lock
+     * @description Release the lock and promote the queue head. If landedSha is provided, the release event carries it as the 'main moved' announcement. If landedSha is omitted and a reason is given, the release is an abandon — the reason is stored on the lock so the next holder can see why main hasn't moved (e.g. 'verify failed: skinned_renderer.cpp API drift').
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          resource: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["MergeLockRelease"];
+        };
+      };
+      responses: {
+        /** @description Release outcome */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeLockReleaseResult"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-locks/{resource}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get merge lock state
+     * @description Return the current state of the lock. Holder identity is reported relative to the caller as 'you' / 'someone_else' / 'none'.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          resource: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Current lock state */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeLock"];
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-locks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List merge locks
+     * @description List all known locks for a project (one per resource name).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of locks */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeLock"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-requests": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List merge requests in a project
+     * @description Returns requests for the project ordered by enqueuedAt ASC. Optional filters: resource, status, taskId. Paginated.
+     */
+    get: {
+      parameters: {
+        query?: {
+          resource?: string;
+          status?: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "orphaned";
+          taskId?: string;
+          resolvedFrom?: string;
+          ungrouped?: "true" | "false";
+          page?: number;
+          perPage?: number;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Filtered list */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"][];
+              pagination: {
+                total: number;
+                page: number;
+                perPage: number;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Submit a merge request
+     * @description Worker submits a request to land branch/commitSha into the named lane (defaults to 'main'). Returns the queued row. The integrator process picks it up asynchronously; subscribe to merge.request.* SSE events for the outcome.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestSubmit"];
+        };
+      };
+      responses: {
+        /** @description Queued request */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"];
+            };
+          };
+        };
+        /** @description Validation error (e.g. taskId not in this project) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project or task not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a merge request with attempts
+     * @description Returns the request plus all attempts (most-recent first).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Request + attempts */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequestDetail"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a merge request's ordered timeline
+     * @description Returns the request plus its chronological state history (design §5.7): the queued/integrating/terminal milestones, every attempt with its log pointers + failureCategory, the land/reject/force_land/force_reject audit rows, and any orphaned-inner incident. Events are ordered ascending by timestamp. Any authenticated user may read.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Request + ordered events */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequestTimeline"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel a queued or integrating merge request
+     * @description Any authenticated user cancels a request from queued OR integrating (queued|integrating → abandoned) — collaborative env, no ownership gate. An integrating-cancel interrupts the in-flight integration (the integrator discovers it via 409 on its next land/reject/completeAttempt) and is recorded in the audit log (action `cancel`, optional reason). A grouped (cross-repo) member can NOT be cancelled individually → 409 GROUPED_MEMBER (reject the group instead). Optional `reason` body (back-compat: no body is accepted). 409 INVALID_TRANSITION if already terminal (landed/rejected); abandoned → abandoned is the idempotent no-op.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestCancel"];
+        };
+      };
+      responses: {
+        /** @description Abandoned */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid transition (terminal) or GROUPED_MEMBER (cancel via the group) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/pickup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator picks up a queued request
+     * @description queued → integrating. Sets pickedUpAt and emits merge.request.integrating. Integrator (ai_agent) only. 409 from any non-queued state (no idempotent case — re-pickup throws). Optional batchId/speculativePosition tag the emitted SSE frame.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestPickup"];
+        };
+      };
+      responses: {
+        /** @description Picked up */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not in 'queued' state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/reset-to-queued": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator resets a stuck integrating request back to queued
+     * @description integrating → queued. Used for crash recovery and post-verify push-race retry. Cancels any open attempts. Integrator (ai_agent) only. Returns 409 if not in 'integrating'.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestResetToQueued"];
+        };
+      };
+      responses: {
+        /** @description Re-queued */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not in 'integrating' state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/force-cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Admin force-cancel any non-terminal request
+     * @description Admin override: forces queued OR integrating → abandoned. The integrator discovers this on its next land/reject/completeAttempt call (which returns 409 INVALID_TRANSITION).
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestForceCancel"];
+        };
+      };
+      responses: {
+        /** @description Abandoned */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admins only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid transition (terminal) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/attempts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator starts a new attempt
+     * @description Records baseSha and creates a running attempt row.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeAttemptStart"];
+        };
+      };
+      responses: {
+        /** @description Attempt started */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeAttempt"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not in 'integrating' state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-attempts/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Integrator completes an attempt
+     * @description Discriminated on status: passed requires treeSha; failed requires failureCategory + failureReason; cancelled requires only status.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeAttemptComplete"];
+        };
+      };
+      responses: {
+        /** @description Attempt completed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeAttempt"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Attempt not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Attempt not in 'running' state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/land": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator lands the request
+     * @description integrating → landed. Transactionally creates a git_refs row of type 'landed_sha' if the request is linked to a task. Idempotent on landed → landed.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestLand"];
+        };
+      };
+      responses: {
+        /** @description Landed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not in 'integrating' state, or it is a grouped member that must land via its group (GROUPED_MEMBER) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator rejects the request
+     * @description integrating → rejected. Transactionally creates a 'merge_rejection' comment on the linked task with structured metadata. Idempotent on rejected → rejected.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestReject"];
+        };
+      };
+      responses: {
+        /** @description Rejected */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not in 'integrating' state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-batches/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator relays a batch-marker event
+     * @description Thin relay (design §13.2): the integrator POSTs one of four batch markers (started / member_landed / member_invalidated / completed); PM re-emits it on the merge.batch.* SSE stream and persists NOTHING. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeBatchEvent"];
+        };
+      };
+      responses: {
+        /** @description Accepted and re-emitted */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+              };
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-groups": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List merge groups in a project
+     * @description Returns groups for the project ordered by createdAt asc. Optional filters: state, resource.
+     */
+    get: {
+      parameters: {
+        query?: {
+          state?: "forming" | "integrating" | "landed" | "rejected" | "partially_landed";
+          resource?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Filtered list */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeGroup"][];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Create a merge group (bind existing, or atomic submit-and-group)
+     * @description Create a 'forming' merge group three ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping); (c) members with exactly ONE spec + synthesizeOuter: true — inner-only cross-repo form: PM records the real inner member plus a synthetic outer member (no branch/commit); the integrator synthesizes the outer gitlink-bump candidate at integration and fills its landedSha at land. Requires settings.integrator.linked_repos to declare exactly one inner and one outer repo. The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeGroupCreate"];
+        };
+      };
+      responses: {
+        /** @description Forming group with members */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeGroupDetail"];
+            };
+          };
+        };
+        /** @description Validation error (e.g. <2 members) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project or member request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description A member is not queued or is already grouped */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-groups/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a merge group with members
+     * @description Returns the group plus all member requests (ordered by enqueuedAt asc).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Group + members */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeGroupDetail"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-groups/{id}/pickup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator picks up a forming group
+     * @description forming → integrating. Flips every queued member to integrating in one txn and emits merge.group.started. Integrator (ai_agent) only. 409 from any non-forming state.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["MergeGroupPickup"];
+        };
+      };
+      responses: {
+        /** @description Picked up */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeGroupDetail"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group not in 'forming' state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-groups/{id}/reset": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator resets a stranded integrating group
+     * @description integrating → forming (stranded-group recovery, §9 finding 2 / §6.4). Atomically resets the group to forming AND every integrating member back to queued. Integrator (ai_agent) only. REFUSES a group that is not integrating (409) or that has an open incident (409, the corruption fence — a real orphan is recovered by rollforward, not reset). Idempotent on forming → forming.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["MergeGroupReset"];
+        };
+      };
+      responses: {
+        /** @description Reset to forming */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeGroupDetail"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group not integrating, or has an open incident (corruption fence) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-groups/{id}/land": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator atomically lands the whole group
+     * @description integrating → landed. Lands every member (status landed, landedSha, landed_sha git_ref per linked task) and the group in one txn. Integrator (ai_agent) only. Idempotent on landed → landed.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeGroupLand"];
+        };
+      };
+      responses: {
+        /** @description Landed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeGroupDetail"];
+            };
+          };
+        };
+        /** @description Validation error (e.g. member not in group) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group or member not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group not in 'integrating' state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-groups/{id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Reject the whole group
+     * @description forming → rejected OR integrating → rejected. Rejects every non-terminal member in one txn. Integrator (ai_agent), an admin, or the submitter may reject. Idempotent on rejected → rejected.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeGroupReject"];
+        };
+      };
+      responses: {
+        /** @description Rejected */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeGroupDetail"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Only the submitter, an admin, or the integrator */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid transition from current state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-groups/{id}/partially-land": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator marks the group partially landed
+     * @description integrating → partially_landed. Outer-push-fail-after-inner-land: sets the group row only (member states are set by the orphan + outer reject). Integrator (ai_agent) only. Idempotent on partially_landed.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeGroupPartiallyLand"];
+        };
+      };
+      responses: {
+        /** @description Partially landed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeGroupDetail"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Group not in 'integrating' state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/orphan": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator orphans an inner group member
+     * @description member integrating → orphaned. Sets the inner member to the 'orphaned' outcome (the inner main landed but the outer gitlink was not updated). Integrator (ai_agent) only. 409 if the request is not a group member or not integrating.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestOrphan"];
+        };
+      };
+      responses: {
+        /** @description Orphaned member */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeGroupMember"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not a group member or not 'integrating' */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-incidents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List merge incidents in a project
+     * @description Returns incidents for the project ordered by openedAt asc. Optional filters: state, type, groupId.
+     */
+    get: {
+      parameters: {
+        query?: {
+          state?: "open" | "auto_resolved" | "human_resolved";
+          type?: "orphaned_inner";
+          groupId?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Filtered list */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeIncident"][];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Integrator opens an orphaned-inner incident
+     * @description Durable PM record that inner main landed at orphanedSha but the outer gitlink was NOT updated. Atomically inserts the incident (state 'open') and, when taskId is set, a merge_incident comment. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeIncidentOpen"];
+        };
+      };
+      responses: {
+        /** @description Opened incident */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeIncident"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-incidents/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a merge incident
+     * @description Returns the incident row including its resolution (null while open).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Incident */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeIncident"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Incident not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-incidents/{id}/resolve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve a merge incident
+     * @description open → auto_resolved (auto-rollforward, ai_agent only) OR open → human_resolved (manual, admin only). The authz split is deliberate. Idempotent on same-terminal resolve.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeIncidentResolve"];
+        };
+      };
+      responses: {
+        /** @description Resolved */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeIncident"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description auto requires ai_agent; human requires admin */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Incident not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid transition from current state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-resolutions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List merge resolutions in a project
+     * @description Returns resolutions for the project ordered by createdAt asc. Optional filters: state, resource. Any authenticated user (debug + dashboard).
+     */
+    get: {
+      parameters: {
+        query?: {
+          state?: "pending" | "resolving" | "resolved" | "escalated" | "failed";
+          resource?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Filtered list */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeResolution"][];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Integrator opens a conflict resolution
+     * @description Durable PM record that the integrator hit a textual rebase conflict and (resolver enabled) spun a bounded resolution off-lane for an origin request. Inserts the resolution at state 'pending'. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeResolutionOpen"];
+        };
+      };
+      responses: {
+        /** @description Opened resolution */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeResolution"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-resolutions/{id}/start": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start a resolution (pending → resolving)
+     * @description The resolver built the worktree and spawned the headless agent. Sets attemptStartedAt. Legal only from 'pending'. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Now resolving */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeResolution"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Resolution not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid transition from current state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-resolutions/{id}/resolved": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Record a resolved resolution (resolving → resolved)
+     * @description The resolver produced a clean, locally-verified tree and resubmitted it as a new request. Records resolvedRequestId + attemptEndedAt. Legal only from 'resolving'. The resolved request still passes the real verify gate before landing. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeResolutionResolved"];
+        };
+      };
+      responses: {
+        /** @description Now resolved */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeResolution"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Resolution not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid transition from current state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-resolutions/{id}/escalate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Escalate a resolution (resolving → escalated | failed)
+     * @description The resolver couldn't land a clean tree. 'escalated' = verify-fail / budget / agent-can't; 'failed' = infra error (tagged distinctly). Sets escalationTarget + attemptEndedAt + detail.escalationReason. Legal only from 'resolving'. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeResolutionEscalate"];
+        };
+      };
+      responses: {
+        /** @description Now escalated/failed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeResolution"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Resolution not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid transition from current state */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-resolutions/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a merge resolution
+     * @description Returns the resolution row including its detail and lineage (originRequestId, resolvedRequestId). Any authenticated user.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Resolution */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeResolution"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Resolution not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/resolver/defaults": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get the default resolver configuration
+     * @description Returns the built-in defaults for settings.integrator.resolver (incl. the default reconcile prompt), so a UI can pre-fill fields and offer a 'revert to defaults' action. token_budget null = unlimited. Any authenticated user.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Resolver defaults */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ResolverDefaults"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/integrator/heartbeat": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator posts a liveness heartbeat
+     * @description The integrator POSTs a periodic heartbeat (status + worktree-pool utilization + in-flight counts + version) for a (project, resource) lane; PM upserts the integrator_health row (design §3.5). Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["IntegratorHeartbeat"];
+        };
+      };
+      responses: {
+        /** @description Heartbeat recorded */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["IntegratorHealth"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/integrator/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read a lane's integrator health
+     * @description Returns the on-read integrator health for a (project, resource) lane: derived staleness_ms + healthy flag + the denormalized heartbeat payload (design §3.4). This read fires the train.integrator_unhealthy edge when the lane is stale. Any authenticated user.
+     */
+    get: {
+      parameters: {
+        query?: {
+          resource?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The lane health view */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["IntegratorHealth"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/train/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Pause the train (admin break-glass)
+     * @description Admin override: stop the integrator admitting NEW work for a (project, resource) lane; in-flight members finish cleanly (design §4.3.1). Idempotent no-op (no duplicate audit) when already paused. Writes one `pause` audit row.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["TrainPause"];
+        };
+      };
+      responses: {
+        /** @description Train paused */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TrainState"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/train/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resume the train (admin break-glass)
+     * @description Admin override: re-enable NEW pickups for a (project, resource) lane (design §4.3.2). Idempotent no-op (no audit) when already running. Writes one `resume` audit row.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["TrainResume"];
+        };
+      };
+      responses: {
+        /** @description Train resumed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TrainState"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/merge-locks/{resource}/force-release": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Force-release a stuck merge lock (admin break-glass)
+     * @description Admin override: HARD-clear a stuck lane lock without waiting for the lease TTL sweep (design §4.3.3). Does NOT promote the queue head and does NOT touch in-flight merge_requests. Writes one `force_release_lock` audit row + emits merge.lock.released.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          resource: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          "application/json": components["schemas"]["ForceReleaseLock"];
+        };
+      };
+      responses: {
+        /** @description Lock force-released */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ForceReleaseResult"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/force-land": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Force-land a request without verify (admin break-glass — THE R1 override)
+     * @description Admin override: land an `integrating` request WITHOUT verify (design §4.3.4) — the deliberate, recorded human bypass of the verify-gate. Admin-only, reason-required (both 400 if absent/empty). Grouped members → 409. Records the operator-asserted landedSha; does NOT run git (PM-state vs git-remote divergence is by design). Writes one prominently-recorded `force_land` audit row.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ForceLand"];
+        };
+      };
+      responses: {
+        /** @description Force-landed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ForceMergeRequest"];
+            };
+          };
+        };
+        /** @description Validation error (missing/empty reason or landedSha) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Merge request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Grouped member or invalid transition */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/force-reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Force-reject a stuck request (admin break-glass)
+     * @description Admin override: reject a stuck `integrating` request on policy grounds (design §4.3.5). Admin-only, reason-required (400 if empty). Writes the merge_rejection comment + one `force_reject` audit row.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ForceReject"];
+        };
+      };
+      responses: {
+        /** @description Force-rejected */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ForceMergeRequest"];
+            };
+          };
+        };
+        /** @description Validation error (missing/empty reason) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Merge request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid transition */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/train/state": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read a lane's train (pause/resume) state
+     * @description Returns the (project, resource) lane's running/paused control state (design §4.1). Lazy-creates the row defaulting to running. Any authenticated user.
+     */
+    get: {
+      parameters: {
+        query?: {
+          resource?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The train state */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TrainState"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/train/metrics": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the on-read metric bundle for a lane
+     * @description Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability).
+     */
+    get: {
+      parameters: {
+        query?: {
+          resource?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The metric bundle */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TrainMetrics"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/train/in-flight": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the in-flight composition for a lane
+     * @description Returns the lane's `integrating` merge requests with each one's latest attempt + groupId, plus the forming/integrating group rows (design §5.3). The server does NOT compute speculativePosition/batchId — the dashboard enriches those from the SSE stream. Any authenticated user.
+     */
+    get: {
+      parameters: {
+        query?: {
+          resource?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The in-flight composition */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TrainInFlight"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/claims-health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the stale-claim health for a project
+     * @description Returns the project's stale-claim aggregate (Campaign C3 §P5a): the number of work items claimed but inactive past the lease TTL+grace, plus the elapsed time since the oldest stale claim lapsed. Computing this fires the edge-triggered `claim.stale_alert` once per stale episode (in-app SSE banner + Discord), mirroring train.stuck — so the dashboard's always-open poll keeps the alert live. IDENTITY-MASKED: no holder id is surfaced. Any authenticated user (read-only observability).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The stale-claim health aggregate */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["ClaimsHealth"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/verify-cache": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List recent verify-cache rows (debug / dashboard)
+     * @description Returns the project's verify_cache rows, newest-first by created_at, paginated (page/perPage, default 1/50, max 200), with optional resource/step_id/result filters (design §8.4). Any authenticated user — a cache row is operational telemetry (a tree SHA + a verdict + hit counts), NOT admin-tier accountability data, so it parallels the metrics GET (requireAuth), not the audit log (requireAdmin).
+     */
+    get: {
+      parameters: {
+        query?: {
+          resource?: string;
+          step_id?: string;
+          result?: "pass" | "fail";
+          page?: number;
+          perPage?: number;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The verify-cache page */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["VerifyCacheList"];
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/verify-cache/lookup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator probes the verify cache (strict 5-tuple)
+     * @description The integrator probes the exact (project, resource, tree_sha, step_id, step_config_sha) key BEFORE running a step (design §3.2/§8.5). A HIT bumps hit_count/last_hit_at server-side (PM-owned, §8.5) and returns the cached verdict; a MISS returns data:null. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["VerifyCacheLookup"];
+        };
+      };
+      responses: {
+        /** @description The cached row (hit) or null (miss) */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["VerifyCacheRow"] & unknown;
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/verify-cache/record": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator records a verify verdict (write-or-update)
+     * @description The integrator records the verdict for a (project, resource, tree_sha, step_id, step_config_sha) key AFTER running a step — an upsert on the unique key that PRESERVES hit_count/last_hit_at/created_at on a re-record (the shadow self-heal, §8.5/§4.4). Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["VerifyCacheRecord"];
+        };
+      };
+      responses: {
+        /** @description The recorded row */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["VerifyCacheRow"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/verify-cache/mismatch": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator relays a shadow-mode cache mismatch
+     * @description Thin relay (design §9): in shadow mode, when the real run disagrees with a cached verdict, the integrator POSTs the mismatch; PM re-emits it on the verify.cache_mismatch SSE stream and persists NOTHING (the durable record is the re-recorded corrected row + the metric count, §4.4/§9). Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["VerifyCacheMismatch"];
+        };
+      };
+      responses: {
+        /** @description Accepted and re-emitted */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                ok: boolean;
+              };
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/audit-log": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Query the break-glass audit log (admin-only)
+     * @description Returns the project's append-only audit log — who did what to the train and why (design §2 / §8.4). Filterable by actor (userId), action, targetType, targetId, and a from/to createdAt window; ordered newest-first, paginated (page/perPage, default 1/50, max 200). Admin-only: audit records operator/admin-tier accountability data.
+     */
+    get: {
+      parameters: {
+        query?: {
+          userId?: string;
+          action?:
+            | "pause"
+            | "resume"
+            | "force_release_lock"
+            | "force_land"
+            | "force_reject"
+            | "force_cancel"
+            | "land"
+            | "reject"
+            | "requeue"
+            | "cancel"
+            | "force_claim"
+            | "claim_reclaimed";
+          targetType?:
+            | "merge_request"
+            | "merge_group"
+            | "merge_lock"
+            | "train"
+            | "task"
+            | "epic"
+            | "proposal";
+          targetId?: string;
+          from?: string;
+          to?: string;
+          page?: number;
+          perPage?: number;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The audit log page */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["AuditLogList"];
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Admin only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Health check
+     * @description Returns the server health status and current timestamp.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Server is healthy */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @example ok */
+              status: string;
+              /** @example 2026-01-01T00:00:00.000Z */
+              timestamp: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        AuthUser: {
-            id: string;
-            username: string;
-            displayName: string;
-            email: string | null;
-            role: string;
-            type: string;
-            avatarUrl: string | null;
-            poolId: string | null;
-            isActive: boolean;
-            createdAt: string;
-            updatedAt: string;
-        };
-        User: {
-            id: string;
-            username: string;
-            displayName: string;
-            email: string | null;
-            role: string;
-            type: string;
-            avatarUrl: string | null;
-            poolId: string | null;
-            isActive: boolean;
-            createdAt: string;
-            updatedAt: string;
-        };
-        UserWithToken: components["schemas"]["User"] & {
-            apiToken?: string;
-        };
-        Project: {
-            id: string;
-            workspaceId: string;
-            name: string;
-            slug: string;
-            description: string | null;
-            status: string;
-            gitRepoUrl: string | null;
-            settings?: unknown;
-            sortOrder: number;
-            createdAt: string;
-            updatedAt: string;
-            createdBy: string | null;
-        };
-        CreateProject: {
-            name: string;
-            description?: string | null;
-            gitRepoUrl?: string | null;
-            /** @enum {string} */
-            status?: "active" | "paused" | "archived" | "completed";
-            settings?: {
-                ai_autonomy?: {
-                    can_self_assign?: boolean;
-                    can_create_subtasks?: boolean;
-                    can_create_tasks?: boolean;
-                    can_change_priority?: boolean;
-                    can_close_epics?: boolean;
-                    max_concurrent_tasks?: number;
-                };
-                workflow?: {
-                    statuses?: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
-                };
-                git?: {
-                    branch_prefix?: string;
-                    auto_link_branches?: boolean;
-                };
-                integrator?: {
-                    /** @default false */
-                    enabled: boolean;
-                    verify_command?: string;
-                    /** @default 600 */
-                    verify_timeout_sec: number;
-                    worktree_root?: string;
-                    /** @default origin */
-                    git_remote: string;
-                    /** @default main */
-                    git_main_branch: string;
-                    worktree_name?: string;
-                    /** @default 1 */
-                    parallelism: number;
-                    /** @default [] */
-                    linked_repos: {
-                        name: string;
-                        path: string;
-                        /** @enum {string} */
-                        role: "inner" | "outer";
-                        gitlink_parent?: string;
-                        gitlink_path?: string;
-                    }[];
-                    /** @default 30 */
-                    heartbeat_interval_sec: number;
-                    /** @default false */
-                    cache_enabled: boolean;
-                    /**
-                     * @default off
-                     * @enum {string}
-                     */
-                    cache_mode: "off" | "on" | "shadow";
-                    /** @default [] */
-                    verify_steps: {
-                        id: string;
-                        command: string;
-                        /** @default [] */
-                        depends_on: string[];
-                        /** @default [] */
-                        cache_key_inputs: string[];
-                        timeout_sec?: number;
-                    }[];
-                    /** @default [] */
-                    clean_keep: string[];
-                    slo?: {
-                        target_p95_time_to_land_sec?: number;
-                        target_verify_success_rate?: number;
-                        target_abandon_rate?: number;
-                    };
-                    /** @default {} */
-                    resolver: {
-                        /** @default false */
-                        enabled: boolean;
-                        /** @default 1 */
-                        max_concurrent: number;
-                        /** @default 3600 */
-                        time_budget_sec: number;
-                        token_budget?: number;
-                        command?: string;
-                        prompt?: string;
-                    };
-                };
-                webhooks?: {
-                    /** Format: uri */
-                    discord_url?: string;
-                    alerts_enabled?: boolean;
-                };
-                epic_categories?: {
-                    name: string;
-                    color: string;
-                    sort_order: number;
-                }[];
-            } | null;
-            sortOrder?: number;
-        };
-        UpdateProject: {
-            name?: string;
-            description?: string | null;
-            gitRepoUrl?: string | null;
-            /** @enum {string} */
-            status?: "active" | "paused" | "archived" | "completed";
-            settings?: {
-                ai_autonomy?: {
-                    can_self_assign?: boolean;
-                    can_create_subtasks?: boolean;
-                    can_create_tasks?: boolean;
-                    can_change_priority?: boolean;
-                    can_close_epics?: boolean;
-                    max_concurrent_tasks?: number;
-                };
-                workflow?: {
-                    statuses?: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
-                };
-                git?: {
-                    branch_prefix?: string;
-                    auto_link_branches?: boolean;
-                };
-                integrator?: {
-                    /** @default false */
-                    enabled: boolean;
-                    verify_command?: string;
-                    /** @default 600 */
-                    verify_timeout_sec: number;
-                    worktree_root?: string;
-                    /** @default origin */
-                    git_remote: string;
-                    /** @default main */
-                    git_main_branch: string;
-                    worktree_name?: string;
-                    /** @default 1 */
-                    parallelism: number;
-                    /** @default [] */
-                    linked_repos: {
-                        name: string;
-                        path: string;
-                        /** @enum {string} */
-                        role: "inner" | "outer";
-                        gitlink_parent?: string;
-                        gitlink_path?: string;
-                    }[];
-                    /** @default 30 */
-                    heartbeat_interval_sec: number;
-                    /** @default false */
-                    cache_enabled: boolean;
-                    /**
-                     * @default off
-                     * @enum {string}
-                     */
-                    cache_mode: "off" | "on" | "shadow";
-                    /** @default [] */
-                    verify_steps: {
-                        id: string;
-                        command: string;
-                        /** @default [] */
-                        depends_on: string[];
-                        /** @default [] */
-                        cache_key_inputs: string[];
-                        timeout_sec?: number;
-                    }[];
-                    /** @default [] */
-                    clean_keep: string[];
-                    slo?: {
-                        target_p95_time_to_land_sec?: number;
-                        target_verify_success_rate?: number;
-                        target_abandon_rate?: number;
-                    };
-                    /** @default {} */
-                    resolver: {
-                        /** @default false */
-                        enabled: boolean;
-                        /** @default 1 */
-                        max_concurrent: number;
-                        /** @default 3600 */
-                        time_budget_sec: number;
-                        token_budget?: number;
-                        command?: string;
-                        prompt?: string;
-                    };
-                };
-                webhooks?: {
-                    /** Format: uri */
-                    discord_url?: string;
-                    alerts_enabled?: boolean;
-                };
-                epic_categories?: {
-                    name: string;
-                    color: string;
-                    sort_order: number;
-                }[];
-            } | null;
-            sortOrder?: number;
-        };
-        ProjectStats: {
-            tasksByStatus: {
-                [key: string]: number;
-            };
-            totalTasks: number;
-            epicCount: number;
-            proposalCount: number;
-        };
-        Proposal: {
-            id: string;
-            projectId: string | null;
-            title: string;
-            description: string | null;
-            status: string;
-            createdBy: string;
-            claimedBy: string | null;
-            /** @enum {string} */
-            claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
-            /** @enum {string} */
-            claimState: "unclaimed" | "live" | "stale" | "yours";
-            resolvedBy: string | null;
-            resolvedAt: string | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        CreateProposal: {
-            title: string;
-            description?: string | null;
-            createdBy?: string;
-        };
-        ProposalDetail: components["schemas"]["Proposal"] & {
-            comments: components["schemas"]["Comment"][];
-            workItems: {
-                epics: components["schemas"]["ProposalEpic"][];
-                tasks: components["schemas"]["ProposalTask"][];
-            };
-        };
-        Comment: {
-            id: string;
-            taskId: string | null;
-            proposalId: string | null;
-            authorId: string;
-            body: string;
-            commentType: string;
-            metadata?: unknown;
-            createdAt: string;
-            updatedAt: string;
-        };
-        ProposalEpic: {
-            id: string;
-            projectId: string;
-            proposalId: string | null;
-            milestoneId: string | null;
-            name: string;
-            description: string | null;
-            status: string;
-            priority: string;
-            targetDate: string | null;
-            sortOrder: number;
-            createdAt: string;
-            updatedAt: string;
-            createdBy: string | null;
-        };
-        ProposalTask: {
-            id: string;
-            projectId: string;
-            proposalId: string | null;
-            epicId: string | null;
-            parentTaskId: string | null;
-            title: string;
-            description: string | null;
-            status: string;
-            priority: string;
-            type: string;
-            assigneeId: string | null;
-            reporterId: string;
-            estimatedEffort: string | null;
-            dueDate: string | null;
-            sortOrder: number;
-            context?: unknown;
-            gitBranch: string | null;
-            createdAt: string;
-            updatedAt: string;
-            startedAt: string | null;
-            completedAt: string | null;
-        };
-        UpdateProposal: {
-            title?: string;
-            description?: string | null;
-        };
-        ProposalTransition: {
-            /** @enum {string} */
-            toStatus: "open" | "discussing" | "accepted" | "in_progress" | "completed" | "rejected";
-        };
-        AddProposalComment: {
-            body: string;
-            /** @enum {string} */
-            commentType?: "comment" | "progress_update" | "decision" | "question" | "handoff" | "review_note" | "design_discussion" | "merge_rejection" | "merge_incident";
-        };
-        ImplementProposal: {
-            /** @default [] */
-            epics: {
-                name: string;
-                description?: string | null;
-                priority?: string;
-                status?: string;
-            }[];
-            /** @default [] */
-            tasks: {
-                title: string;
-                description?: string | null;
-                priority?: string;
-                type?: string;
-                epicIndex?: number;
-            }[];
-        };
-        ClaimResult: {
-            ok: boolean;
-            /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
-        };
-        ForceClaimProposal: {
-            reason: string;
-            newAssigneeId?: string;
-        };
-        ReleaseProposal: {
-            reason: string;
-            targetId: string;
-        };
-        RequestTakeoverProposal: {
-            reason: string;
-        };
-        Note: {
-            id: string;
-            projectId: string;
-            /** @enum {string} */
-            kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
-            /** @enum {string} */
-            status: "open" | "triaged";
-            title: string;
-            body: string | null;
-            /** @enum {string|null} */
-            anchorType: "task" | "epic" | "proposal" | null;
-            anchorId: string | null;
-            codeLocator: {
-                path: string;
-                line?: number;
-                commitSha?: string;
-            } | null;
-            /** @enum {string|null} */
-            severity: "low" | "medium" | "high" | null;
-            authorId: string;
-            createdAt: string;
-            updatedAt: string;
-            triagedAt: string | null;
-            triagedBy: string | null;
-            /** @enum {string|null} */
-            triageOutcome: "promoted" | "dismissed" | null;
-            triageReason: string | null;
-            promotedProposalId: string | null;
-            promotedTaskId: string | null;
-        };
-        CreateNote: {
-            /** @enum {string} */
-            kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
-            title: string;
-            body?: string | null;
-            /** @enum {string|null} */
-            anchorType?: "task" | "epic" | "proposal" | null;
-            anchorId?: string | null;
-            codeLocator?: {
-                path: string;
-                line?: number;
-                commitSha?: string;
-            } | null;
-            /** @enum {string|null} */
-            severity?: "low" | "medium" | "high" | null;
-        };
-        PatchNote: {
-            /** @enum {string} */
-            kind?: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
-            title?: string;
-            body?: string | null;
-            /** @enum {string|null} */
-            anchorType?: "task" | "epic" | "proposal" | null;
-            anchorId?: string | null;
-            codeLocator?: {
-                path: string;
-                line?: number;
-                commitSha?: string;
-            } | null;
-            /** @enum {string|null} */
-            severity?: "low" | "medium" | "high" | null;
-        };
-        DismissNote: {
-            reason: string;
-        };
-        PromotedProposal: {
-            id: string;
-            projectId: string | null;
-            title: string;
-            description: string | null;
-            status: string;
-            createdBy: string;
-            sourceNoteId: string | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        PromoteNoteToProposal: {
-            title?: string;
-            description?: string;
-        };
-        PromotedTask: {
-            id: string;
-            projectId: string;
-            title: string;
-            description: string | null;
-            status: string;
-            priority: string;
-            type: string;
-            reporterId: string;
-            epicId: string | null;
-            sourceNoteId: string | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        PromoteNoteToTask: {
-            title?: string;
-            description?: string;
-            epicId?: string;
-        };
-        NotesHealth: {
-            open_count: number;
-            oldest_untriaged_age_ms: number | null;
-        };
-        Epic: {
-            id: string;
-            projectId: string;
-            proposalId: string | null;
-            milestoneId: string | null;
-            assigneeId: string | null;
-            /** @enum {string} */
-            claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
-            /** @enum {string} */
-            claimState: "unclaimed" | "live" | "stale" | "yours";
-            name: string;
-            description: string | null;
-            status: string;
-            priority: string;
-            targetDate: string | null;
-            category: string | null;
-            sortOrder: number;
-            createdAt: string;
-            updatedAt: string;
-            createdBy: string | null;
-            taskSummary: {
-                total: number;
-                done: number;
-                byStatus: {
-                    [key: string]: number;
-                };
-            };
-        };
-        CreateEpic: {
-            name: string;
-            description?: string | null;
-            /** @enum {string} */
-            status?: "draft" | "active" | "completed" | "cancelled";
-            /** @enum {string} */
-            priority?: "critical" | "high" | "medium" | "low";
-            proposalId?: string | null;
-            milestoneId?: string | null;
-            targetDate?: string | null;
-            category?: string | null;
-            sortOrder?: number;
-            createdBy?: string;
-        };
-        UpdateEpic: {
-            name?: string;
-            description?: string | null;
-            /** @enum {string} */
-            status?: "draft" | "active" | "completed" | "cancelled";
-            /** @enum {string} */
-            priority?: "critical" | "high" | "medium" | "low";
-            proposalId?: string | null;
-            milestoneId?: string | null;
-            targetDate?: string | null;
-            category?: string | null;
-            sortOrder?: number;
-        };
-        EpicClaimResult: {
-            ok: boolean;
-            /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
-        };
-        ForceClaimEpic: {
-            reason: string;
-            newAssigneeId?: string;
-        };
-        ReleaseEpic: {
-            reason: string;
-            targetId: string;
-        };
-        RequestTakeoverEpic: {
-            reason: string;
-        };
-        EpicGraph: {
-            nodes: components["schemas"]["EpicGraphNode"][];
-            edges: components["schemas"]["EpicGraphEdge"][];
-            hasCycle: boolean;
-            cycles?: string[][];
-        };
-        EpicGraphNode: {
-            id: string;
-            project_id: string;
-            name: string;
-            status: string;
-            priority: string;
-            target_date?: string | null;
-            category?: string | null;
-            created_at: string;
-            updated_at: string;
-            taskSummary: {
-                total: number;
-                done: number;
-                byStatus: {
-                    [key: string]: number;
-                };
-            };
-            /** @enum {string} */
-            claimState: "unclaimed" | "live" | "stale" | "yours";
-            /** @enum {string} */
-            health: "not_started" | "on_track" | "at_risk" | "blocked" | "done";
-            activity_recency: string;
-            time_window: {
-                start: string;
-                end: string | null;
-            };
-        };
-        EpicGraphEdge: {
-            from: string;
-            to: string;
-            /** @enum {string} */
-            dependency_type: "blocks" | "relates_to";
-            /** @enum {string} */
-            provenance: "derived" | "explicit";
-        };
-        EpicDependency: {
-            id: string;
-            projectId: string;
-            epicId: string;
-            dependsOnEpicId: string;
-            dependencyType: string;
-            createdAt: string;
-            createdBy: string | null;
-        };
-        AddEpicDependency: {
-            dependsOnEpicId: string;
-            /** @enum {string} */
-            dependencyType?: "blocks" | "relates_to";
-        };
-        TaskGraph: {
-            nodes: components["schemas"]["TaskGraphNode"][];
-            edges: components["schemas"]["TaskGraphEdge"][];
-            hasCycle: boolean;
-            cycles?: string[][];
-        };
-        TaskGraphNode: {
-            id: string;
-            title: string;
-            status: string;
-            priority: string;
-            type: string;
-            assignee_id: string | null;
-            done: boolean;
-        };
-        TaskGraphEdge: {
-            from: string;
-            to: string;
-            /** @enum {string} */
-            dependency_type: "blocks" | "relates_to";
-            /** @enum {string} */
-            provenance: "derived" | "explicit";
-        };
-        Task: {
-            id: string;
-            projectId: string;
-            proposalId: string | null;
-            epicId: string | null;
-            parentTaskId: string | null;
-            title: string;
-            description: string | null;
-            status: string;
-            priority: string;
-            type: string;
-            assigneeId: string | null;
-            reporterId: string;
-            estimatedEffort: string | null;
-            dueDate: string | null;
-            sortOrder: number;
-            context?: unknown;
-            gitBranch: string | null;
-            createdAt: string;
-            updatedAt: string;
-            startedAt: string | null;
-            completedAt: string | null;
-            epicName: string | null;
-            projectName: string | null;
-            parentTaskTitle: string | null;
-            assigneeName: string | null;
-            assigneeType: string | null;
-            reporterName: string | null;
-            reporterType: string | null;
-            /** @enum {string} */
-            claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
-            /** @enum {string} */
-            claimState: "unclaimed" | "live" | "stale" | "yours";
-        };
-        CreateTask: {
-            title: string;
-            description?: string | null;
-            /** @enum {string} */
-            status?: "backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled";
-            /** @enum {string} */
-            priority?: "critical" | "high" | "medium" | "low";
-            /** @enum {string} */
-            type?: "feature" | "bug" | "chore" | "spike" | "design" | "research";
-            assigneeId?: string | null;
-            reporterId?: string;
-            epicId?: string | null;
-            proposalId?: string | null;
-            /** @enum {string|null} */
-            estimatedEffort?: "xs" | "s" | "m" | "l" | "xl" | null;
-            dueDate?: string | null;
-            sortOrder?: number;
-            context?: {
-                relevant_files?: string[];
-                codebase_areas?: string[];
-                acceptance_criteria?: string[];
-                design_references?: string[];
-                notes?: string;
-                implementation_hints?: string;
-            } | null;
-            gitBranch?: string | null;
-        };
-        UpdateTask: {
-            title?: string;
-            description?: string | null;
-            /** @enum {string} */
-            priority?: "critical" | "high" | "medium" | "low";
-            /** @enum {string} */
-            type?: "feature" | "bug" | "chore" | "spike" | "design" | "research";
-            assigneeId?: string | null;
-            reporterId?: string;
-            epicId?: string | null;
-            proposalId?: string | null;
-            /** @enum {string|null} */
-            estimatedEffort?: "xs" | "s" | "m" | "l" | "xl" | null;
-            dueDate?: string | null;
-            sortOrder?: number;
-            context?: {
-                relevant_files?: string[];
-                codebase_areas?: string[];
-                acceptance_criteria?: string[];
-                design_references?: string[];
-                notes?: string;
-                implementation_hints?: string;
-            } | null;
-            gitBranch?: string | null;
-            startedAt?: string | null;
-            completedAt?: string | null;
-        };
-        CreateSubtask: {
-            title: string;
-            description?: string | null;
-            /** @enum {string} */
-            status?: "backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled";
-            /** @enum {string} */
-            priority?: "critical" | "high" | "medium" | "low";
-            /** @enum {string} */
-            type?: "feature" | "bug" | "chore" | "spike" | "design" | "research";
-            assigneeId?: string | null;
-            reporterId?: string;
-            epicId?: string | null;
-            proposalId?: string | null;
-            /** @enum {string|null} */
-            estimatedEffort?: "xs" | "s" | "m" | "l" | "xl" | null;
-            dueDate?: string | null;
-            sortOrder?: number;
-            context?: {
-                relevant_files?: string[];
-                codebase_areas?: string[];
-                acceptance_criteria?: string[];
-                design_references?: string[];
-                notes?: string;
-                implementation_hints?: string;
-            } | null;
-            gitBranch?: string | null;
-        };
-        PickNextTask: {
-            project_id?: string;
-            epic_id?: string;
-            task_types?: ("feature" | "bug" | "chore" | "spike" | "design" | "research")[];
-            /** @enum {string} */
-            max_effort?: "xs" | "s" | "m" | "l" | "xl";
-        };
-        TransitionTask: {
-            /** @enum {string} */
-            to_status: "backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled";
-            comment?: string;
-        };
-        TaskClaimResult: {
-            ok: boolean;
-            /** @enum {string} */
-            status: "claimed_by_you" | "already_claimed_by_you" | "claimed_by_another_agent" | "released" | "not_held" | "closed" | "force_claimed" | "notified_holder";
-        };
-        ForceClaimTask: {
-            reason: string;
-            newAssigneeId?: string;
-        };
-        ReleaseTask: {
-            reason: string;
-            targetId: string;
-        };
-        RequestTakeoverTask: {
-            reason: string;
-        };
-        Awareness: {
-            label: string | null;
-            inFlight: {
-                taskId: string;
-                title: string;
-                assignee: {
-                    id: string;
-                    name: string | null;
-                    type: string | null;
-                } | null;
-                gitBranch: string | null;
-                startedAt: string | null;
-                /** @enum {string} */
-                claimState: "unclaimed" | "live" | "stale" | "yours";
-            }[];
-            total: number;
-        };
-        TaskComment: {
-            id: string;
-            taskId: string | null;
-            proposalId: string | null;
-            authorId: string;
-            body: string;
-            commentType: string;
-            metadata?: unknown;
-            createdAt: string;
-            updatedAt: string;
-        };
-        CreateTaskComment: {
-            body: string;
-            /** @enum {string} */
-            commentType?: "comment" | "progress_update" | "decision" | "question" | "handoff" | "review_note" | "design_discussion" | "merge_rejection" | "merge_incident";
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        UpdateComment: {
-            body?: string;
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        Label: {
-            id: string;
-            projectId: string;
-            name: string;
-            color: string | null;
-            description: string | null;
-        };
-        CreateLabel: {
-            name: string;
-            color?: string | null;
-            description?: string | null;
-        };
-        UpdateLabel: {
-            name?: string;
-            color?: string | null;
-            description?: string | null;
-        };
-        AttachLabel: {
-            labelId: string;
-        };
-        TaskDependency: {
-            id: string;
-            taskId: string;
-            dependsOnTaskId: string;
-            dependencyType: string;
-            createdAt: string;
-        };
-        AddDependency: {
-            dependsOnTaskId: string;
-            /** @enum {string} */
-            type?: "blocks" | "relates_to";
-        };
-        SearchResult: {
-            entityType: string;
-            entityId: string;
-            title: string;
-            excerpt: string;
-            rank: number;
-            projectId: string | null;
-        };
-        ActivityLogEntry: {
-            id: string;
-            entityType: string;
-            entityId: string;
-            projectId: string | null;
-            actorId: string | null;
-            action: string;
-            changes?: unknown;
-            createdAt: string;
-            entityTitle?: string | null;
-            epicName?: string | null;
-            actorName?: string | null;
-            actorType?: string | null;
-        };
-        Milestone: {
-            id: string;
-            projectId: string;
-            name: string;
-            description: string | null;
-            targetDate: string | null;
-            status: string;
-            sortOrder: number;
-            createdAt: string;
-            updatedAt: string;
-        };
-        CreateMilestone: {
-            name: string;
-            description?: string | null;
-            targetDate?: string | null;
-            /** @enum {string} */
-            status?: "open" | "closed";
-            sortOrder?: number;
-        };
-        UpdateMilestone: {
-            name?: string;
-            description?: string | null;
-            targetDate?: string | null;
-            /** @enum {string} */
-            status?: "open" | "closed";
-            sortOrder?: number;
-        };
-        GitRef: {
-            id: string;
-            taskId: string;
-            refType: string;
-            refValue: string;
-            url: string | null;
-            title: string | null;
-            status: string | null;
-            metadata?: unknown;
-            createdAt: string;
-        };
-        CreateGitRef: {
-            /** @enum {string} */
-            refType: "branch" | "commit" | "pull_request" | "landed_sha";
-            refValue: string;
-            url?: string | null;
-            title?: string | null;
-            /** @enum {string|null} */
-            status?: "open" | "merged" | "closed" | null;
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        UpdateGitRef: {
-            /** @enum {string} */
-            refType?: "branch" | "commit" | "pull_request" | "landed_sha";
-            refValue?: string;
-            url?: string | null;
-            title?: string | null;
-            /** @enum {string|null} */
-            status?: "open" | "merged" | "closed" | null;
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        GitWebhookPayload: {
-            /** @enum {string} */
-            event: "branch_created" | "commit_pushed";
-            ref: string;
-            project_id: string;
-            url?: string;
-            title?: string;
-        };
-        AutomationRule: {
-            id: string;
-            projectId: string;
-            name: string;
-            description: string | null;
-            triggerEvent: string;
-            conditions?: unknown;
-            actionType: string;
-            actionConfig?: unknown;
-            isActive: boolean;
-            createdAt: string;
-            updatedAt: string;
-            createdBy: string | null;
-        };
-        CreateAutomationRule: {
-            name: string;
-            description?: string | null;
-            triggerEvent: string;
-            conditions?: {
-                field: string;
-                /** @enum {string} */
-                operator: "eq" | "neq" | "in" | "not_in" | "contains";
-                value?: unknown;
-            }[] | null;
-            actionType: string;
-            actionConfig?: {
-                [key: string]: unknown;
-            } | null;
-            isActive?: boolean;
-        };
-        UpdateAutomationRule: {
-            name?: string;
-            description?: string | null;
-            triggerEvent?: string;
-            conditions?: {
-                field: string;
-                /** @enum {string} */
-                operator: "eq" | "neq" | "in" | "not_in" | "contains";
-                value?: unknown;
-            }[] | null;
-            actionType?: string;
-            actionConfig?: {
-                [key: string]: unknown;
-            } | null;
-            isActive?: boolean;
-        };
-        ToggleAutomationRule: {
-            active: boolean;
-        };
-        Template: {
-            id: string;
-            projectId: string | null;
-            name: string;
-            description: string | null;
-            templateType: string;
-            templateData?: unknown;
-            createdAt: string;
-            updatedAt: string;
-            createdBy: string | null;
-        };
-        CreateTemplate: {
-            name: string;
-            description?: string | null;
-            project_id?: string | null;
-            /** @enum {string} */
-            template_type: "task" | "project";
-            template_data: {
-                [key: string]: unknown;
-            };
-            created_by?: string | null;
-        };
-        UpdateTemplate: {
-            name?: string;
-            description?: string | null;
-            template_data?: {
-                [key: string]: unknown;
-            };
-        };
-        InstantiateTemplate: {
-            project_id?: string;
-            workspace_id?: string;
-            name?: string;
-            overrides?: {
-                [key: string]: unknown;
-            };
-        };
-        CreateTemplateFromTask: {
-            name: string;
-            description?: string;
-        };
-        MergeLockAcquireResult: {
-            ok: boolean;
-            /** @enum {string} */
-            status: "held" | "queued" | "already_held";
-            position?: number | null;
-            expiresAt?: string | null;
-        };
-        MergeLockAcquire: {
-            taskId?: string | null;
-            branch?: string | null;
-            commitSha?: string | null;
-            verifyCmd?: string | null;
-            worktreePath?: string | null;
-        };
-        MergeLockHeartbeatResult: {
-            ok: boolean;
-            /** @enum {string} */
-            status: "refreshed" | "not_holder";
-            expiresAt?: string | null;
-        };
-        MergeLockReleaseResult: {
-            ok: boolean;
-            /** @enum {string} */
-            status: "released" | "not_held" | "not_holder";
-            grantedTo?: string | null;
-        };
-        MergeLockRelease: {
-            /** @example abc1234 */
-            landedSha?: string | null;
-            /** @example verify failed: skinned_renderer.cpp API drift */
-            reason?: string | null;
-        };
-        MergeLock: {
-            id: string;
-            projectId: string;
-            resource: string;
-            /** @enum {string} */
-            holder: "you" | "someone_else" | "none";
-            holderId: string | null;
-            acquiredAt: string | null;
-            heartbeatAt: string | null;
-            expiresAt: string | null;
-            landedSha: string | null;
-            landedAt: string | null;
-            taskId: string | null;
-            branch: string | null;
-            commitSha: string | null;
-            verifyCmd: string | null;
-            worktreePath: string | null;
-            abandonReason: string | null;
-            queueLength: number;
-            yourPosition: number | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        MergeRequest: {
-            id: string;
-            projectId: string;
-            resource: string;
-            submittedBy: string;
-            taskId: string | null;
-            resolvedFrom: string | null;
-            branch: string | null;
-            commitSha: string | null;
-            verifyCmd: string | null;
-            worktreePath: string | null;
-            /** @enum {string} */
-            status: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "orphaned";
-            enqueuedAt: string;
-            pickedUpAt: string | null;
-            resolvedAt: string | null;
-            landedSha: string | null;
-            /** @enum {string|null} */
-            rejectCategory: "conflict" | "build_failed" | "test_failed" | "lint_failed" | "verify_timeout" | "policy" | "other" | null;
-            rejectReason: string | null;
-            failedFiles: string[] | null;
-            logExcerpt: string | null;
-            logUrl: string | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        MergeRequestSubmit: {
-            /** @default main */
-            resource: string;
-            taskId?: string | null;
-            branch?: string | null;
-            commitSha?: string | null;
-            verifyCmd?: string | null;
-            worktreePath?: string | null;
-            resolvedFrom?: string | null;
-        };
-        MergeRequestDetail: components["schemas"]["MergeRequest"] & {
-            attempts: components["schemas"]["MergeAttempt"][];
-        };
-        MergeAttempt: {
-            id: string;
-            requestId: string;
-            attemptNumber: number;
-            baseSha: string;
-            treeSha: string | null;
-            /** @enum {string} */
-            status: "pending" | "running" | "passed" | "failed" | "cancelled";
-            startedAt: string | null;
-            completedAt: string | null;
-            verifyDurationMs: number | null;
-            /** @enum {string|null} */
-            failureCategory: "conflict" | "build_failed" | "test_failed" | "lint_failed" | "verify_timeout" | "policy" | "other" | null;
-            failureReason: string | null;
-            failedFiles: string[] | null;
-            logExcerpt: string | null;
-            logUrl: string | null;
-            steps?: components["schemas"]["VerifyStepResult"][] | null;
-            createdAt: string;
-        };
-        VerifyStepResult: {
-            stepId: string;
-            /** @enum {string} */
-            outcome: "pass" | "fail";
-            cached: boolean;
-            durationMs: number;
-            treeSha: string;
-            stepConfigSha: string;
-            logUrl?: string;
-        };
-        MergeRequestTimeline: {
-            request: components["schemas"]["MergeRequest"];
-            events: components["schemas"]["MergeRequestTimelineEvent"][];
-        };
-        MergeRequestTimelineEvent: {
-            at: string;
-            /** @enum {string} */
-            kind: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "attempt" | "audit" | "incident" | "resolution" | "resolution_origin";
-            attemptNumber?: number;
-            baseSha?: string | null;
-            treeSha?: string | null;
-            status?: string;
-            startedAt?: string | null;
-            completedAt?: string | null;
-            failureCategory?: string | null;
-            logExcerpt?: string | null;
-            logUrl?: string | null;
-            steps?: components["schemas"]["VerifyStepResult"][] | null;
-            landedSha?: string | null;
-            rejectCategory?: string | null;
-            rejectReason?: string | null;
-            action?: string;
-            actorId?: string;
-            reason?: string | null;
-            metadataBefore?: {
-                [key: string]: unknown;
-            } | null;
-            metadataAfter?: {
-                [key: string]: unknown;
-            } | null;
-            type?: string;
-            orphanedSha?: string;
-            state?: string;
-            openedAt?: string;
-            resolvedAt?: string | null;
-            resolution?: unknown;
-            resolutionId?: string;
-            resolutionState?: string;
-            originRequestId?: string;
-            resolvedRequestId?: string | null;
-            conflictingFiles?: string[] | null;
-            /** @enum {string|null} */
-            escalationTarget?: "author" | "human" | null;
-            attemptStartedAt?: string | null;
-            attemptEndedAt?: string | null;
-            detail?: {
-                budgetConsumedSec?: number;
-                tokensConsumed?: number;
-                /** @enum {string} */
-                verifyVerdict?: "pass" | "fail";
-                escalationReason?: string;
-                logUrl?: string;
-            } | null;
-        };
-        MergeRequestCancel: {
-            reason?: string;
-        };
-        MergeRequestPickup: {
-            batchId?: string;
-            speculativePosition?: number;
-        };
-        MergeRequestResetToQueued: {
-            reason: string;
-        };
-        MergeRequestForceCancel: {
-            reason?: string;
-        };
-        MergeAttemptStart: {
-            baseSha: string;
-            batchId?: string;
-            speculativePosition?: number;
-        };
-        MergeAttemptComplete: {
-            /** @enum {string} */
-            status: "passed";
-            treeSha: string;
-            steps?: components["schemas"]["VerifyStepResult"][];
-        } | {
-            /** @enum {string} */
-            status: "failed";
-            /** @enum {string} */
-            failureCategory: "conflict" | "build_failed" | "test_failed" | "lint_failed" | "verify_timeout" | "policy" | "other";
-            failureReason: string;
-            failedFiles?: string[];
-            logExcerpt?: string;
-            logUrl?: string;
-            steps?: components["schemas"]["VerifyStepResult"][];
-        } | {
-            /** @enum {string} */
-            status: "cancelled";
-        };
-        MergeRequestLand: {
-            landedSha: string;
-        };
-        MergeRequestReject: {
-            /** @enum {string} */
-            category: "conflict" | "build_failed" | "test_failed" | "lint_failed" | "verify_timeout" | "policy" | "other";
-            reason: string;
-            failedFiles?: string[];
-            logExcerpt?: string;
-            logUrl?: string;
-        };
-        MergeBatchEvent: {
-            /** @enum {string} */
-            type: "started";
-            batchId: string;
-            resource: string;
-            memberCount: number;
-            memberRequestIds: string[];
-        } | {
-            /** @enum {string} */
-            type: "member_landed";
-            batchId: string;
-            requestId: string;
-            speculativePosition: number;
-            landedSha: string;
-        } | {
-            /** @enum {string} */
-            type: "member_invalidated";
-            batchId: string;
-            requestId: string;
-            speculativePosition: number;
-            reason: string;
-            failedPredecessorRequestId: string;
-        } | {
-            /** @enum {string} */
-            type: "completed";
-            batchId: string;
-            landed: number;
-            rejected: number;
-            invalidated: number;
-        };
-        MergeGroupDetail: components["schemas"]["MergeGroup"] & {
-            members: components["schemas"]["MergeGroupMember"][];
-        };
-        MergeGroupMember: {
-            id: string;
-            projectId: string;
-            resource: string;
-            submittedBy: string;
-            taskId: string | null;
-            resolvedFrom: string | null;
-            branch: string | null;
-            commitSha: string | null;
-            verifyCmd: string | null;
-            worktreePath: string | null;
-            status: string;
-            enqueuedAt: string;
-            pickedUpAt: string | null;
-            resolvedAt: string | null;
-            landedSha: string | null;
-            rejectCategory: string | null;
-            rejectReason: string | null;
-            failedFiles: string[] | null;
-            logExcerpt: string | null;
-            logUrl: string | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        MergeGroup: {
-            id: string;
-            projectId: string;
-            resource: string;
-            /** @enum {string} */
-            state: "forming" | "integrating" | "landed" | "rejected" | "partially_landed";
-            submittedBy: string;
-            integratorId: string | null;
-            resolvedAt: string | null;
-            resolutionReason: string | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        MergeGroupCreate: {
-            /** @default main */
-            resource: string;
-            memberRequestIds?: string[];
-            members?: {
-                branch?: string;
-                commitSha?: string;
-                verifyCmd?: string;
-                taskId?: string;
-            }[];
-        };
-        MergeGroupPickup: {
-            integratorId?: string;
-        };
-        MergeGroupReset: {
-            reason?: string;
-        };
-        MergeGroupLand: {
-            members: {
-                requestId: string;
-                landedSha: string;
-                role?: string;
-            }[];
-        };
-        MergeGroupReject: {
-            reason: string;
-            category?: string;
-        };
-        MergeGroupPartiallyLand: {
-            reason: string;
-            incidentId?: string;
-        };
-        MergeRequestOrphan: {
-            orphanedSha: string;
-        };
-        MergeIncident: {
-            id: string;
-            projectId: string;
-            groupId: string | null;
-            /** @enum {string} */
-            type: "orphaned_inner";
-            innerRepo: string;
-            orphanedSha: string;
-            outerRepo: string;
-            innerRequestId: string | null;
-            taskId: string | null;
-            /** @enum {string} */
-            state: "open" | "auto_resolved" | "human_resolved";
-            openedAt: string;
-            resolvedAt: string | null;
-            resolution: {
-                /** @enum {string} */
-                mode: "auto_rollforward" | "human";
-                outerLandedSha?: string;
-                resolvedByGroupId?: string;
-                note?: string;
-            } | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        MergeIncidentOpen: {
-            /**
-             * @default orphaned_inner
-             * @enum {string}
-             */
-            type: "orphaned_inner";
-            innerRepo: string;
-            orphanedSha: string;
-            outerRepo: string;
-            groupId?: string | null;
-            innerRequestId?: string | null;
-            taskId?: string | null;
-        };
-        MergeIncidentResolve: {
-            /** @enum {string} */
-            mode: "auto_rollforward" | "human";
-            outerLandedSha?: string;
-            resolvedByGroupId?: string;
-            note?: string;
-        };
-        MergeResolution: {
-            id: string;
-            projectId: string;
-            resource: string;
-            originRequestId: string | null;
-            resolvedRequestId: string | null;
-            /** @enum {string} */
-            state: "pending" | "resolving" | "resolved" | "escalated" | "failed";
-            conflictingFiles: string[] | null;
-            attemptStartedAt: string | null;
-            attemptEndedAt: string | null;
-            /** @enum {string|null} */
-            escalationTarget: "author" | "human" | null;
-            detail: {
-                budgetConsumedSec?: number;
-                tokensConsumed?: number;
-                /** @enum {string} */
-                verifyVerdict?: "pass" | "fail";
-                escalationReason?: string;
-                logUrl?: string;
-            } | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        MergeResolutionOpen: {
-            originRequestId: string;
-            /** @default main */
-            resource: string;
-            conflictingFiles?: string[] | null;
-        };
-        MergeResolutionResolved: {
-            resolvedRequestId: string;
-            detail?: {
-                budgetConsumedSec?: number;
-                tokensConsumed?: number;
-                /** @enum {string} */
-                verifyVerdict?: "pass" | "fail";
-                escalationReason?: string;
-                logUrl?: string;
-            } | null;
-        };
-        MergeResolutionEscalate: {
-            /**
-             * @default escalated
-             * @enum {string}
-             */
-            state: "escalated" | "failed";
-            /** @enum {string} */
-            target: "author" | "human";
-            reason: string;
-            detail?: {
-                budgetConsumedSec?: number;
-                tokensConsumed?: number;
-                /** @enum {string} */
-                verifyVerdict?: "pass" | "fail";
-                escalationReason?: string;
-                logUrl?: string;
-            } | null;
-        };
-        ResolverDefaults: {
-            enabled: boolean;
-            max_concurrent: number;
-            time_budget_sec: number;
-            token_budget: number | null;
-            command: string | null;
-            prompt: string;
-        };
-        IntegratorHealth: {
-            resource: string;
-            status: string;
-            healthy: boolean;
-            last_seen_at: string | null;
-            staleness_ms: number | null;
-            pool_size: number | null;
-            pool_leased: number | null;
-            in_flight_requests: number;
-            in_flight_batches: number;
-            in_flight_groups: number;
-            version: string | null;
-            integrator_id: string | null;
-        };
-        IntegratorHeartbeat: {
-            /** @default main */
-            resource: string;
-            /** @enum {string} */
-            status: "idle" | "integrating";
-            pool_utilization: {
-                size: number;
-                leased: number;
-            };
-            /**
-             * @default {
-             *       "requests": 0,
-             *       "batches": 0,
-             *       "groups": 0
-             *     }
-             */
-            in_flight: {
-                /** @default 0 */
-                requests: number;
-                /** @default 0 */
-                batches: number;
-                /** @default 0 */
-                groups: number;
-            };
-            version: string;
-        };
-        TrainState: {
-            id: string;
-            projectId: string;
-            resource: string;
-            state: string;
-            changedBy: string | null;
-            reason: string | null;
-            changedAt: string | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        TrainPause: {
-            /** @default main */
-            resource: string;
-            reason?: string | null;
-        };
-        TrainResume: {
-            /** @default main */
-            resource: string;
-            reason?: string | null;
-        };
-        ForceReleaseResult: {
-            ok: boolean;
-            resource: string;
-            priorHolderId: string | null;
-        };
-        ForceReleaseLock: {
-            reason?: string | null;
-        };
-        ForceMergeRequest: {
-            id: string;
-            projectId: string;
-            resource: string;
-            submittedBy: string;
-            taskId: string | null;
-            branch: string | null;
-            commitSha: string | null;
-            verifyCmd: string | null;
-            worktreePath: string | null;
-            status: string;
-            enqueuedAt: string;
-            pickedUpAt: string | null;
-            resolvedAt: string | null;
-            landedSha: string | null;
-            rejectCategory: string | null;
-            rejectReason: string | null;
-            failedFiles: string[] | null;
-            logExcerpt: string | null;
-            logUrl: string | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        ForceLand: {
-            /** @example abc1234 */
-            landedSha: string;
-            /** @example hotfix for prod outage; verify infra down */
-            reason: string;
-        };
-        ForceReject: {
-            /** @example obsoleted by a newer request; clearing the lane */
-            reason: string;
-        };
-        TrainMetrics: {
-            resource: string;
-            queue_depth: number;
-            in_flight: number;
-            time_to_land: {
-                p50_ms: number | null;
-                p95_ms: number | null;
-                p99_ms: number | null;
-                sample_size: number;
-            };
-            verify_success_rate: {
-                ratio: number | null;
-                passed: number;
-                total: number;
-            };
-            abandon_rate: {
-                ratio: number | null;
-                abandoned: number;
-                resolved: number;
-            };
-            pool_utilization: {
-                size: number | null;
-                leased: number | null;
-                ratio: number | null;
-            };
-            health: {
-                resource: string;
-                status: string;
-                healthy: boolean;
-                last_seen_at: string | null;
-                staleness_ms: number | null;
-                pool_size: number | null;
-                pool_leased: number | null;
-                in_flight_requests: number;
-                in_flight_batches: number;
-                in_flight_groups: number;
-                version: string | null;
-                integrator_id: string | null;
-            };
-            slo: {
-                p95_time_to_land?: {
-                    target_sec?: number;
-                    target?: number;
-                    measured_ms?: number | null;
-                    measured?: number | null;
-                    compliant: boolean;
-                };
-                verify_success_rate?: {
-                    target_sec?: number;
-                    target?: number;
-                    measured_ms?: number | null;
-                    measured?: number | null;
-                    compliant: boolean;
-                };
-                abandon_rate?: {
-                    target_sec?: number;
-                    target?: number;
-                    measured_ms?: number | null;
-                    measured?: number | null;
-                    compliant: boolean;
-                };
-                overall_compliant: boolean | null;
-            };
-            verify: {
-                cache_enabled: boolean;
-                cache_mode: string;
-                cache_hit_rate: {
-                    ratio: number | null;
-                    hits: number;
-                    lookups: number;
-                };
-                time_saved_ms: number;
-                per_step: {
-                    step_id: string;
-                    runs: number;
-                    cached: number;
-                    pass_rate: number | null;
-                    avg_duration_ms: number | null;
-                    fail_count: number;
-                }[];
-                cache_mismatches: number;
-            };
-            resolution: {
-                attempts: number;
-                auto_resolve_success_rate: {
-                    ratio: number | null;
-                    resolved_and_landed: number;
-                    attempts: number;
-                };
-                escalation_rate: {
-                    ratio: number | null;
-                    escalated: number;
-                    attempts: number;
-                };
-                mean_wall_clock_ms: number | null;
-                mean_session_sec: number | null;
-                reclaimed_count: number;
-                budget_utilization: {
-                    ratio: number | null;
-                    mean_consumed_sec: number | null;
-                    budget_sec: number;
-                };
-            };
-            window_hours: number;
-            computed_at: string;
-        };
-        TrainInFlight: {
-            groups: {
-                id: string;
-                project_id: string;
-                resource: string;
-                state: string;
-                submitted_by: string;
-                integrator_id: string | null;
-                resolved_at: string | null;
-                resolution_reason: string | null;
-                created_at: string;
-                updated_at: string;
-            }[];
-            members: {
-                id: string;
-                group_id: string | null;
-                status: string;
-                enqueued_at: string;
-                picked_up_at: string | null;
-                attempt: {
-                    status: string;
-                    base_sha: string;
-                    tree_sha: string | null;
-                    started_at: string | null;
-                } | null;
-            }[];
-        };
-        ClaimsHealth: {
-            stale_count: number;
-            oldest_stale_age_ms: number | null;
-        };
-        VerifyCacheList: {
-            data: components["schemas"]["VerifyCacheRow"][];
-            pagination: {
-                total: number;
-                page: number;
-                perPage: number;
-            };
-        };
-        VerifyCacheRow: {
-            id: string;
-            projectId: string;
-            resource: string;
-            treeSha: string;
-            stepId: string;
-            stepConfigSha: string;
-            /** @enum {string} */
-            result: "pass" | "fail";
-            durationMs: number | null;
-            logExcerpt: string | null;
-            logUrl: string | null;
-            createdAt: string;
-            lastHitAt: string | null;
-            hitCount: number;
-            updatedAt: string;
-        };
-        VerifyCacheLookup: {
-            /** @default main */
-            resource: string;
-            treeSha: string;
-            stepId: string;
-            stepConfigSha: string;
-        };
-        VerifyCacheRecord: {
-            /** @default main */
-            resource: string;
-            treeSha: string;
-            stepId: string;
-            stepConfigSha: string;
-            /** @enum {string} */
-            result: "pass" | "fail";
-            durationMs?: number | null;
-            logExcerpt?: string | null;
-            logUrl?: string | null;
-        };
-        VerifyCacheMismatch: {
-            /** @default main */
-            resource: string;
-            treeSha: string;
-            stepId: string;
-            stepConfigSha: string;
-            /** @enum {string} */
-            cachedResult: "pass" | "fail";
-            /** @enum {string} */
-            realResult: "pass" | "fail";
-            requestId?: string;
-            attemptId?: string;
-        };
-        AuditLogList: {
-            data: components["schemas"]["AuditLogEntry"][];
-            pagination: {
-                total: number;
-                page: number;
-                perPage: number;
-            };
-        };
-        AuditLogEntry: {
-            id: string;
-            projectId: string;
-            actorId: string;
-            action: string;
-            targetType: string;
-            targetId: string;
-            reason: string | null;
-            metadataBefore: {
-                [key: string]: unknown;
-            } | null;
-            metadataAfter: {
-                [key: string]: unknown;
-            } | null;
-            createdAt: string;
-        };
-        ProjectClaims: {
-            items: {
-                /** @enum {string} */
-                entityType: "task" | "epic" | "proposal";
-                id: string;
-                title: string;
-                status: string;
-                /** @enum {string} */
-                claimState: "unclaimed" | "live" | "stale" | "yours";
-                holder: {
-                    id: string;
-                    name: string;
-                    /** @enum {string} */
-                    type: "human" | "ai_agent";
-                };
-                claimedAt: string | null;
-                updatedAt: string;
-            }[];
-            total: number;
-        };
+  schemas: {
+    AuthUser: {
+      id: string;
+      username: string;
+      displayName: string;
+      email: string | null;
+      role: string;
+      type: string;
+      avatarUrl: string | null;
+      poolId: string | null;
+      isActive: boolean;
+      createdAt: string;
+      updatedAt: string;
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    User: {
+      id: string;
+      username: string;
+      displayName: string;
+      email: string | null;
+      role: string;
+      type: string;
+      avatarUrl: string | null;
+      poolId: string | null;
+      isActive: boolean;
+      createdAt: string;
+      updatedAt: string;
+    };
+    UserWithToken: components["schemas"]["User"] & {
+      apiToken?: string;
+    };
+    Project: {
+      id: string;
+      workspaceId: string;
+      name: string;
+      slug: string;
+      description: string | null;
+      status: string;
+      gitRepoUrl: string | null;
+      settings?: unknown;
+      sortOrder: number;
+      createdAt: string;
+      updatedAt: string;
+      createdBy: string | null;
+    };
+    CreateProject: {
+      name: string;
+      description?: string | null;
+      gitRepoUrl?: string | null;
+      /** @enum {string} */
+      status?: "active" | "paused" | "archived" | "completed";
+      settings?: {
+        ai_autonomy?: {
+          can_self_assign?: boolean;
+          can_create_subtasks?: boolean;
+          can_create_tasks?: boolean;
+          can_change_priority?: boolean;
+          can_close_epics?: boolean;
+          max_concurrent_tasks?: number;
+        };
+        workflow?: {
+          statuses?: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
+        };
+        git?: {
+          branch_prefix?: string;
+          auto_link_branches?: boolean;
+        };
+        integrator?: {
+          /** @default false */
+          enabled: boolean;
+          verify_command?: string;
+          /** @default 600 */
+          verify_timeout_sec: number;
+          worktree_root?: string;
+          /** @default origin */
+          git_remote: string;
+          /** @default main */
+          git_main_branch: string;
+          worktree_name?: string;
+          /** @default 1 */
+          parallelism: number;
+          /** @default [] */
+          linked_repos: {
+            name: string;
+            path: string;
+            /** @enum {string} */
+            role: "inner" | "outer";
+            gitlink_parent?: string;
+            gitlink_path?: string;
+          }[];
+          /** @default 30 */
+          heartbeat_interval_sec: number;
+          /** @default false */
+          cache_enabled: boolean;
+          /**
+           * @default off
+           * @enum {string}
+           */
+          cache_mode: "off" | "on" | "shadow";
+          /** @default [] */
+          verify_steps: {
+            id: string;
+            command: string;
+            /** @default [] */
+            depends_on: string[];
+            /** @default [] */
+            cache_key_inputs: string[];
+            timeout_sec?: number;
+          }[];
+          /** @default [] */
+          clean_keep: string[];
+          slo?: {
+            target_p95_time_to_land_sec?: number;
+            target_verify_success_rate?: number;
+            target_abandon_rate?: number;
+          };
+          /** @default {} */
+          resolver: {
+            /** @default false */
+            enabled: boolean;
+            /** @default 1 */
+            max_concurrent: number;
+            /** @default 3600 */
+            time_budget_sec: number;
+            token_budget?: number;
+            command?: string;
+            prompt?: string;
+          };
+        };
+        webhooks?: {
+          /** Format: uri */
+          discord_url?: string;
+          alerts_enabled?: boolean;
+        };
+        epic_categories?: {
+          name: string;
+          color: string;
+          sort_order: number;
+        }[];
+      } | null;
+      sortOrder?: number;
+    };
+    UpdateProject: {
+      name?: string;
+      description?: string | null;
+      gitRepoUrl?: string | null;
+      /** @enum {string} */
+      status?: "active" | "paused" | "archived" | "completed";
+      settings?: {
+        ai_autonomy?: {
+          can_self_assign?: boolean;
+          can_create_subtasks?: boolean;
+          can_create_tasks?: boolean;
+          can_change_priority?: boolean;
+          can_close_epics?: boolean;
+          max_concurrent_tasks?: number;
+        };
+        workflow?: {
+          statuses?: ("backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled")[];
+        };
+        git?: {
+          branch_prefix?: string;
+          auto_link_branches?: boolean;
+        };
+        integrator?: {
+          /** @default false */
+          enabled: boolean;
+          verify_command?: string;
+          /** @default 600 */
+          verify_timeout_sec: number;
+          worktree_root?: string;
+          /** @default origin */
+          git_remote: string;
+          /** @default main */
+          git_main_branch: string;
+          worktree_name?: string;
+          /** @default 1 */
+          parallelism: number;
+          /** @default [] */
+          linked_repos: {
+            name: string;
+            path: string;
+            /** @enum {string} */
+            role: "inner" | "outer";
+            gitlink_parent?: string;
+            gitlink_path?: string;
+          }[];
+          /** @default 30 */
+          heartbeat_interval_sec: number;
+          /** @default false */
+          cache_enabled: boolean;
+          /**
+           * @default off
+           * @enum {string}
+           */
+          cache_mode: "off" | "on" | "shadow";
+          /** @default [] */
+          verify_steps: {
+            id: string;
+            command: string;
+            /** @default [] */
+            depends_on: string[];
+            /** @default [] */
+            cache_key_inputs: string[];
+            timeout_sec?: number;
+          }[];
+          /** @default [] */
+          clean_keep: string[];
+          slo?: {
+            target_p95_time_to_land_sec?: number;
+            target_verify_success_rate?: number;
+            target_abandon_rate?: number;
+          };
+          /** @default {} */
+          resolver: {
+            /** @default false */
+            enabled: boolean;
+            /** @default 1 */
+            max_concurrent: number;
+            /** @default 3600 */
+            time_budget_sec: number;
+            token_budget?: number;
+            command?: string;
+            prompt?: string;
+          };
+        };
+        webhooks?: {
+          /** Format: uri */
+          discord_url?: string;
+          alerts_enabled?: boolean;
+        };
+        epic_categories?: {
+          name: string;
+          color: string;
+          sort_order: number;
+        }[];
+      } | null;
+      sortOrder?: number;
+    };
+    ProjectStats: {
+      tasksByStatus: {
+        [key: string]: number;
+      };
+      totalTasks: number;
+      epicCount: number;
+      proposalCount: number;
+    };
+    Proposal: {
+      id: string;
+      projectId: string | null;
+      title: string;
+      description: string | null;
+      status: string;
+      createdBy: string;
+      claimedBy: string | null;
+      /** @enum {string} */
+      claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
+      /** @enum {string} */
+      claimState: "unclaimed" | "live" | "stale" | "yours";
+      resolvedBy: string | null;
+      resolvedAt: string | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    CreateProposal: {
+      title: string;
+      description?: string | null;
+      createdBy?: string;
+    };
+    ProposalDetail: components["schemas"]["Proposal"] & {
+      comments: components["schemas"]["Comment"][];
+      workItems: {
+        epics: components["schemas"]["ProposalEpic"][];
+        tasks: components["schemas"]["ProposalTask"][];
+      };
+    };
+    Comment: {
+      id: string;
+      taskId: string | null;
+      proposalId: string | null;
+      authorId: string;
+      body: string;
+      commentType: string;
+      metadata?: unknown;
+      createdAt: string;
+      updatedAt: string;
+    };
+    ProposalEpic: {
+      id: string;
+      projectId: string;
+      proposalId: string | null;
+      milestoneId: string | null;
+      name: string;
+      description: string | null;
+      status: string;
+      priority: string;
+      targetDate: string | null;
+      sortOrder: number;
+      createdAt: string;
+      updatedAt: string;
+      createdBy: string | null;
+    };
+    ProposalTask: {
+      id: string;
+      projectId: string;
+      proposalId: string | null;
+      epicId: string | null;
+      parentTaskId: string | null;
+      title: string;
+      description: string | null;
+      status: string;
+      priority: string;
+      type: string;
+      assigneeId: string | null;
+      reporterId: string;
+      estimatedEffort: string | null;
+      dueDate: string | null;
+      sortOrder: number;
+      context?: unknown;
+      gitBranch: string | null;
+      createdAt: string;
+      updatedAt: string;
+      startedAt: string | null;
+      completedAt: string | null;
+    };
+    UpdateProposal: {
+      title?: string;
+      description?: string | null;
+    };
+    ProposalTransition: {
+      /** @enum {string} */
+      toStatus: "open" | "discussing" | "accepted" | "in_progress" | "completed" | "rejected";
+    };
+    AddProposalComment: {
+      body: string;
+      /** @enum {string} */
+      commentType?:
+        | "comment"
+        | "progress_update"
+        | "decision"
+        | "question"
+        | "handoff"
+        | "review_note"
+        | "design_discussion"
+        | "merge_rejection"
+        | "merge_incident";
+    };
+    ImplementProposal: {
+      /** @default [] */
+      epics: {
+        name: string;
+        description?: string | null;
+        priority?: string;
+        status?: string;
+      }[];
+      /** @default [] */
+      tasks: {
+        title: string;
+        description?: string | null;
+        priority?: string;
+        type?: string;
+        epicIndex?: number;
+      }[];
+    };
+    ClaimResult: {
+      ok: boolean;
+      /** @enum {string} */
+      status:
+        | "claimed_by_you"
+        | "already_claimed_by_you"
+        | "claimed_by_another_agent"
+        | "released"
+        | "not_held"
+        | "closed"
+        | "force_claimed"
+        | "notified_holder";
+    };
+    ForceClaimProposal: {
+      reason: string;
+      newAssigneeId?: string;
+    };
+    ReleaseProposal: {
+      reason: string;
+      targetId: string;
+    };
+    RequestTakeoverProposal: {
+      reason: string;
+    };
+    Note: {
+      id: string;
+      projectId: string;
+      /** @enum {string} */
+      kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+      /** @enum {string} */
+      status: "open" | "triaged";
+      title: string;
+      body: string | null;
+      /** @enum {string|null} */
+      anchorType: "task" | "epic" | "proposal" | null;
+      anchorId: string | null;
+      codeLocator: {
+        path: string;
+        line?: number;
+        commitSha?: string;
+      } | null;
+      /** @enum {string|null} */
+      severity: "low" | "medium" | "high" | null;
+      authorId: string;
+      createdAt: string;
+      updatedAt: string;
+      triagedAt: string | null;
+      triagedBy: string | null;
+      /** @enum {string|null} */
+      triageOutcome: "promoted" | "dismissed" | null;
+      triageReason: string | null;
+      promotedProposalId: string | null;
+      promotedTaskId: string | null;
+    };
+    CreateNote: {
+      /** @enum {string} */
+      kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+      title: string;
+      body?: string | null;
+      /** @enum {string|null} */
+      anchorType?: "task" | "epic" | "proposal" | null;
+      anchorId?: string | null;
+      codeLocator?: {
+        path: string;
+        line?: number;
+        commitSha?: string;
+      } | null;
+      /** @enum {string|null} */
+      severity?: "low" | "medium" | "high" | null;
+    };
+    PatchNote: {
+      /** @enum {string} */
+      kind?: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
+      title?: string;
+      body?: string | null;
+      /** @enum {string|null} */
+      anchorType?: "task" | "epic" | "proposal" | null;
+      anchorId?: string | null;
+      codeLocator?: {
+        path: string;
+        line?: number;
+        commitSha?: string;
+      } | null;
+      /** @enum {string|null} */
+      severity?: "low" | "medium" | "high" | null;
+    };
+    DismissNote: {
+      reason: string;
+    };
+    PromotedProposal: {
+      id: string;
+      projectId: string | null;
+      title: string;
+      description: string | null;
+      status: string;
+      createdBy: string;
+      sourceNoteId: string | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    PromoteNoteToProposal: {
+      title?: string;
+      description?: string;
+    };
+    PromotedTask: {
+      id: string;
+      projectId: string;
+      title: string;
+      description: string | null;
+      status: string;
+      priority: string;
+      type: string;
+      reporterId: string;
+      epicId: string | null;
+      sourceNoteId: string | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    PromoteNoteToTask: {
+      title?: string;
+      description?: string;
+      epicId?: string;
+    };
+    NotesHealth: {
+      open_count: number;
+      oldest_untriaged_age_ms: number | null;
+    };
+    Epic: {
+      id: string;
+      projectId: string;
+      proposalId: string | null;
+      milestoneId: string | null;
+      assigneeId: string | null;
+      /** @enum {string} */
+      claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
+      /** @enum {string} */
+      claimState: "unclaimed" | "live" | "stale" | "yours";
+      name: string;
+      description: string | null;
+      status: string;
+      priority: string;
+      targetDate: string | null;
+      category: string | null;
+      sortOrder: number;
+      createdAt: string;
+      updatedAt: string;
+      createdBy: string | null;
+      taskSummary: {
+        total: number;
+        done: number;
+        byStatus: {
+          [key: string]: number;
+        };
+      };
+    };
+    CreateEpic: {
+      name: string;
+      description?: string | null;
+      /** @enum {string} */
+      status?: "draft" | "active" | "completed" | "cancelled";
+      /** @enum {string} */
+      priority?: "critical" | "high" | "medium" | "low";
+      proposalId?: string | null;
+      milestoneId?: string | null;
+      targetDate?: string | null;
+      category?: string | null;
+      sortOrder?: number;
+      createdBy?: string;
+    };
+    UpdateEpic: {
+      name?: string;
+      description?: string | null;
+      /** @enum {string} */
+      status?: "draft" | "active" | "completed" | "cancelled";
+      /** @enum {string} */
+      priority?: "critical" | "high" | "medium" | "low";
+      proposalId?: string | null;
+      milestoneId?: string | null;
+      targetDate?: string | null;
+      category?: string | null;
+      sortOrder?: number;
+    };
+    EpicClaimResult: {
+      ok: boolean;
+      /** @enum {string} */
+      status:
+        | "claimed_by_you"
+        | "already_claimed_by_you"
+        | "claimed_by_another_agent"
+        | "released"
+        | "not_held"
+        | "closed"
+        | "force_claimed"
+        | "notified_holder";
+    };
+    ForceClaimEpic: {
+      reason: string;
+      newAssigneeId?: string;
+    };
+    ReleaseEpic: {
+      reason: string;
+      targetId: string;
+    };
+    RequestTakeoverEpic: {
+      reason: string;
+    };
+    EpicGraph: {
+      nodes: components["schemas"]["EpicGraphNode"][];
+      edges: components["schemas"]["EpicGraphEdge"][];
+      hasCycle: boolean;
+      cycles?: string[][];
+    };
+    EpicGraphNode: {
+      id: string;
+      project_id: string;
+      name: string;
+      status: string;
+      priority: string;
+      target_date?: string | null;
+      category?: string | null;
+      created_at: string;
+      updated_at: string;
+      taskSummary: {
+        total: number;
+        done: number;
+        byStatus: {
+          [key: string]: number;
+        };
+      };
+      /** @enum {string} */
+      claimState: "unclaimed" | "live" | "stale" | "yours";
+      /** @enum {string} */
+      health: "not_started" | "on_track" | "at_risk" | "blocked" | "done";
+      activity_recency: string;
+      time_window: {
+        start: string;
+        end: string | null;
+      };
+    };
+    EpicGraphEdge: {
+      from: string;
+      to: string;
+      /** @enum {string} */
+      dependency_type: "blocks" | "relates_to";
+      /** @enum {string} */
+      provenance: "derived" | "explicit";
+    };
+    EpicDependency: {
+      id: string;
+      projectId: string;
+      epicId: string;
+      dependsOnEpicId: string;
+      dependencyType: string;
+      createdAt: string;
+      createdBy: string | null;
+    };
+    AddEpicDependency: {
+      dependsOnEpicId: string;
+      /** @enum {string} */
+      dependencyType?: "blocks" | "relates_to";
+    };
+    TaskGraph: {
+      nodes: components["schemas"]["TaskGraphNode"][];
+      edges: components["schemas"]["TaskGraphEdge"][];
+      hasCycle: boolean;
+      cycles?: string[][];
+    };
+    TaskGraphNode: {
+      id: string;
+      title: string;
+      status: string;
+      priority: string;
+      type: string;
+      assignee_id: string | null;
+      done: boolean;
+    };
+    TaskGraphEdge: {
+      from: string;
+      to: string;
+      /** @enum {string} */
+      dependency_type: "blocks" | "relates_to";
+      /** @enum {string} */
+      provenance: "derived" | "explicit";
+    };
+    Task: {
+      id: string;
+      projectId: string;
+      proposalId: string | null;
+      epicId: string | null;
+      parentTaskId: string | null;
+      title: string;
+      description: string | null;
+      status: string;
+      priority: string;
+      type: string;
+      assigneeId: string | null;
+      reporterId: string;
+      estimatedEffort: string | null;
+      dueDate: string | null;
+      sortOrder: number;
+      context?: unknown;
+      gitBranch: string | null;
+      createdAt: string;
+      updatedAt: string;
+      startedAt: string | null;
+      completedAt: string | null;
+      epicName: string | null;
+      projectName: string | null;
+      parentTaskTitle: string | null;
+      assigneeName: string | null;
+      assigneeType: string | null;
+      reporterName: string | null;
+      reporterType: string | null;
+      /** @enum {string} */
+      claimStatus: "unclaimed" | "claimed_by_you" | "claimed_by_other";
+      /** @enum {string} */
+      claimState: "unclaimed" | "live" | "stale" | "yours";
+    };
+    CreateTask: {
+      title: string;
+      description?: string | null;
+      /** @enum {string} */
+      status?: "backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled";
+      /** @enum {string} */
+      priority?: "critical" | "high" | "medium" | "low";
+      /** @enum {string} */
+      type?: "feature" | "bug" | "chore" | "spike" | "design" | "research";
+      assigneeId?: string | null;
+      reporterId?: string;
+      epicId?: string | null;
+      proposalId?: string | null;
+      /** @enum {string|null} */
+      estimatedEffort?: "xs" | "s" | "m" | "l" | "xl" | null;
+      dueDate?: string | null;
+      sortOrder?: number;
+      context?: {
+        relevant_files?: string[];
+        codebase_areas?: string[];
+        acceptance_criteria?: string[];
+        design_references?: string[];
+        notes?: string;
+        implementation_hints?: string;
+      } | null;
+      gitBranch?: string | null;
+    };
+    UpdateTask: {
+      title?: string;
+      description?: string | null;
+      /** @enum {string} */
+      priority?: "critical" | "high" | "medium" | "low";
+      /** @enum {string} */
+      type?: "feature" | "bug" | "chore" | "spike" | "design" | "research";
+      assigneeId?: string | null;
+      reporterId?: string;
+      epicId?: string | null;
+      proposalId?: string | null;
+      /** @enum {string|null} */
+      estimatedEffort?: "xs" | "s" | "m" | "l" | "xl" | null;
+      dueDate?: string | null;
+      sortOrder?: number;
+      context?: {
+        relevant_files?: string[];
+        codebase_areas?: string[];
+        acceptance_criteria?: string[];
+        design_references?: string[];
+        notes?: string;
+        implementation_hints?: string;
+      } | null;
+      gitBranch?: string | null;
+      startedAt?: string | null;
+      completedAt?: string | null;
+    };
+    CreateSubtask: {
+      title: string;
+      description?: string | null;
+      /** @enum {string} */
+      status?: "backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled";
+      /** @enum {string} */
+      priority?: "critical" | "high" | "medium" | "low";
+      /** @enum {string} */
+      type?: "feature" | "bug" | "chore" | "spike" | "design" | "research";
+      assigneeId?: string | null;
+      reporterId?: string;
+      epicId?: string | null;
+      proposalId?: string | null;
+      /** @enum {string|null} */
+      estimatedEffort?: "xs" | "s" | "m" | "l" | "xl" | null;
+      dueDate?: string | null;
+      sortOrder?: number;
+      context?: {
+        relevant_files?: string[];
+        codebase_areas?: string[];
+        acceptance_criteria?: string[];
+        design_references?: string[];
+        notes?: string;
+        implementation_hints?: string;
+      } | null;
+      gitBranch?: string | null;
+    };
+    PickNextTask: {
+      project_id?: string;
+      epic_id?: string;
+      task_types?: ("feature" | "bug" | "chore" | "spike" | "design" | "research")[];
+      /** @enum {string} */
+      max_effort?: "xs" | "s" | "m" | "l" | "xl";
+    };
+    TransitionTask: {
+      /** @enum {string} */
+      to_status: "backlog" | "ready" | "in_progress" | "in_review" | "done" | "cancelled";
+      comment?: string;
+    };
+    TaskClaimResult: {
+      ok: boolean;
+      /** @enum {string} */
+      status:
+        | "claimed_by_you"
+        | "already_claimed_by_you"
+        | "claimed_by_another_agent"
+        | "released"
+        | "not_held"
+        | "closed"
+        | "force_claimed"
+        | "notified_holder";
+    };
+    ForceClaimTask: {
+      reason: string;
+      newAssigneeId?: string;
+    };
+    ReleaseTask: {
+      reason: string;
+      targetId: string;
+    };
+    RequestTakeoverTask: {
+      reason: string;
+    };
+    Awareness: {
+      label: string | null;
+      inFlight: {
+        taskId: string;
+        title: string;
+        assignee: {
+          id: string;
+          name: string | null;
+          type: string | null;
+        } | null;
+        gitBranch: string | null;
+        startedAt: string | null;
+        /** @enum {string} */
+        claimState: "unclaimed" | "live" | "stale" | "yours";
+      }[];
+      total: number;
+    };
+    TaskComment: {
+      id: string;
+      taskId: string | null;
+      proposalId: string | null;
+      authorId: string;
+      body: string;
+      commentType: string;
+      metadata?: unknown;
+      createdAt: string;
+      updatedAt: string;
+    };
+    CreateTaskComment: {
+      body: string;
+      /** @enum {string} */
+      commentType?:
+        | "comment"
+        | "progress_update"
+        | "decision"
+        | "question"
+        | "handoff"
+        | "review_note"
+        | "design_discussion"
+        | "merge_rejection"
+        | "merge_incident";
+      metadata?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    UpdateComment: {
+      body?: string;
+      metadata?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    Label: {
+      id: string;
+      projectId: string;
+      name: string;
+      color: string | null;
+      description: string | null;
+    };
+    CreateLabel: {
+      name: string;
+      color?: string | null;
+      description?: string | null;
+    };
+    UpdateLabel: {
+      name?: string;
+      color?: string | null;
+      description?: string | null;
+    };
+    AttachLabel: {
+      labelId: string;
+    };
+    TaskDependency: {
+      id: string;
+      taskId: string;
+      dependsOnTaskId: string;
+      dependencyType: string;
+      createdAt: string;
+    };
+    AddDependency: {
+      dependsOnTaskId: string;
+      /** @enum {string} */
+      type?: "blocks" | "relates_to";
+    };
+    SearchResult: {
+      entityType: string;
+      entityId: string;
+      title: string;
+      excerpt: string;
+      rank: number;
+      projectId: string | null;
+    };
+    ActivityLogEntry: {
+      id: string;
+      entityType: string;
+      entityId: string;
+      projectId: string | null;
+      actorId: string | null;
+      action: string;
+      changes?: unknown;
+      createdAt: string;
+      entityTitle?: string | null;
+      epicName?: string | null;
+      actorName?: string | null;
+      actorType?: string | null;
+    };
+    Milestone: {
+      id: string;
+      projectId: string;
+      name: string;
+      description: string | null;
+      targetDate: string | null;
+      status: string;
+      sortOrder: number;
+      createdAt: string;
+      updatedAt: string;
+    };
+    CreateMilestone: {
+      name: string;
+      description?: string | null;
+      targetDate?: string | null;
+      /** @enum {string} */
+      status?: "open" | "closed";
+      sortOrder?: number;
+    };
+    UpdateMilestone: {
+      name?: string;
+      description?: string | null;
+      targetDate?: string | null;
+      /** @enum {string} */
+      status?: "open" | "closed";
+      sortOrder?: number;
+    };
+    GitRef: {
+      id: string;
+      taskId: string;
+      refType: string;
+      refValue: string;
+      url: string | null;
+      title: string | null;
+      status: string | null;
+      metadata?: unknown;
+      createdAt: string;
+    };
+    CreateGitRef: {
+      /** @enum {string} */
+      refType: "branch" | "commit" | "pull_request" | "landed_sha";
+      refValue: string;
+      url?: string | null;
+      title?: string | null;
+      /** @enum {string|null} */
+      status?: "open" | "merged" | "closed" | null;
+      metadata?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    UpdateGitRef: {
+      /** @enum {string} */
+      refType?: "branch" | "commit" | "pull_request" | "landed_sha";
+      refValue?: string;
+      url?: string | null;
+      title?: string | null;
+      /** @enum {string|null} */
+      status?: "open" | "merged" | "closed" | null;
+      metadata?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    GitWebhookPayload: {
+      /** @enum {string} */
+      event: "branch_created" | "commit_pushed";
+      ref: string;
+      project_id: string;
+      url?: string;
+      title?: string;
+    };
+    AutomationRule: {
+      id: string;
+      projectId: string;
+      name: string;
+      description: string | null;
+      triggerEvent: string;
+      conditions?: unknown;
+      actionType: string;
+      actionConfig?: unknown;
+      isActive: boolean;
+      createdAt: string;
+      updatedAt: string;
+      createdBy: string | null;
+    };
+    CreateAutomationRule: {
+      name: string;
+      description?: string | null;
+      triggerEvent: string;
+      conditions?:
+        | {
+            field: string;
+            /** @enum {string} */
+            operator: "eq" | "neq" | "in" | "not_in" | "contains";
+            value?: unknown;
+          }[]
+        | null;
+      actionType: string;
+      actionConfig?: {
+        [key: string]: unknown;
+      } | null;
+      isActive?: boolean;
+    };
+    UpdateAutomationRule: {
+      name?: string;
+      description?: string | null;
+      triggerEvent?: string;
+      conditions?:
+        | {
+            field: string;
+            /** @enum {string} */
+            operator: "eq" | "neq" | "in" | "not_in" | "contains";
+            value?: unknown;
+          }[]
+        | null;
+      actionType?: string;
+      actionConfig?: {
+        [key: string]: unknown;
+      } | null;
+      isActive?: boolean;
+    };
+    ToggleAutomationRule: {
+      active: boolean;
+    };
+    Template: {
+      id: string;
+      projectId: string | null;
+      name: string;
+      description: string | null;
+      templateType: string;
+      templateData?: unknown;
+      createdAt: string;
+      updatedAt: string;
+      createdBy: string | null;
+    };
+    CreateTemplate: {
+      name: string;
+      description?: string | null;
+      project_id?: string | null;
+      /** @enum {string} */
+      template_type: "task" | "project";
+      template_data: {
+        [key: string]: unknown;
+      };
+      created_by?: string | null;
+    };
+    UpdateTemplate: {
+      name?: string;
+      description?: string | null;
+      template_data?: {
+        [key: string]: unknown;
+      };
+    };
+    InstantiateTemplate: {
+      project_id?: string;
+      workspace_id?: string;
+      name?: string;
+      overrides?: {
+        [key: string]: unknown;
+      };
+    };
+    CreateTemplateFromTask: {
+      name: string;
+      description?: string;
+    };
+    MergeLockAcquireResult: {
+      ok: boolean;
+      /** @enum {string} */
+      status: "held" | "queued" | "already_held";
+      position?: number | null;
+      expiresAt?: string | null;
+    };
+    MergeLockAcquire: {
+      taskId?: string | null;
+      branch?: string | null;
+      commitSha?: string | null;
+      verifyCmd?: string | null;
+      worktreePath?: string | null;
+    };
+    MergeLockHeartbeatResult: {
+      ok: boolean;
+      /** @enum {string} */
+      status: "refreshed" | "not_holder";
+      expiresAt?: string | null;
+    };
+    MergeLockReleaseResult: {
+      ok: boolean;
+      /** @enum {string} */
+      status: "released" | "not_held" | "not_holder";
+      grantedTo?: string | null;
+    };
+    MergeLockRelease: {
+      /** @example abc1234 */
+      landedSha?: string | null;
+      /** @example verify failed: skinned_renderer.cpp API drift */
+      reason?: string | null;
+    };
+    MergeLock: {
+      id: string;
+      projectId: string;
+      resource: string;
+      /** @enum {string} */
+      holder: "you" | "someone_else" | "none";
+      holderId: string | null;
+      acquiredAt: string | null;
+      heartbeatAt: string | null;
+      expiresAt: string | null;
+      landedSha: string | null;
+      landedAt: string | null;
+      taskId: string | null;
+      branch: string | null;
+      commitSha: string | null;
+      verifyCmd: string | null;
+      worktreePath: string | null;
+      abandonReason: string | null;
+      queueLength: number;
+      yourPosition: number | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    MergeRequest: {
+      id: string;
+      projectId: string;
+      resource: string;
+      submittedBy: string;
+      taskId: string | null;
+      resolvedFrom: string | null;
+      synthetic: boolean;
+      branch: string | null;
+      commitSha: string | null;
+      verifyCmd: string | null;
+      worktreePath: string | null;
+      /** @enum {string} */
+      status: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "orphaned";
+      enqueuedAt: string;
+      pickedUpAt: string | null;
+      resolvedAt: string | null;
+      landedSha: string | null;
+      /** @enum {string|null} */
+      rejectCategory:
+        | "conflict"
+        | "build_failed"
+        | "test_failed"
+        | "lint_failed"
+        | "verify_timeout"
+        | "policy"
+        | "other"
+        | null;
+      rejectReason: string | null;
+      failedFiles: string[] | null;
+      logExcerpt: string | null;
+      logUrl: string | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    MergeRequestSubmit: {
+      /** @default main */
+      resource: string;
+      taskId?: string | null;
+      branch?: string | null;
+      commitSha?: string | null;
+      verifyCmd?: string | null;
+      worktreePath?: string | null;
+      resolvedFrom?: string | null;
+    };
+    MergeRequestDetail: components["schemas"]["MergeRequest"] & {
+      attempts: components["schemas"]["MergeAttempt"][];
+    };
+    MergeAttempt: {
+      id: string;
+      requestId: string;
+      attemptNumber: number;
+      baseSha: string;
+      treeSha: string | null;
+      /** @enum {string} */
+      status: "pending" | "running" | "passed" | "failed" | "cancelled";
+      startedAt: string | null;
+      completedAt: string | null;
+      verifyDurationMs: number | null;
+      /** @enum {string|null} */
+      failureCategory:
+        | "conflict"
+        | "build_failed"
+        | "test_failed"
+        | "lint_failed"
+        | "verify_timeout"
+        | "policy"
+        | "other"
+        | null;
+      failureReason: string | null;
+      failedFiles: string[] | null;
+      logExcerpt: string | null;
+      logUrl: string | null;
+      steps?: components["schemas"]["VerifyStepResult"][] | null;
+      createdAt: string;
+    };
+    VerifyStepResult: {
+      stepId: string;
+      /** @enum {string} */
+      outcome: "pass" | "fail";
+      cached: boolean;
+      durationMs: number;
+      treeSha: string;
+      stepConfigSha: string;
+      logUrl?: string;
+    };
+    MergeRequestTimeline: {
+      request: components["schemas"]["MergeRequest"];
+      events: components["schemas"]["MergeRequestTimelineEvent"][];
+    };
+    MergeRequestTimelineEvent: {
+      at: string;
+      /** @enum {string} */
+      kind:
+        | "queued"
+        | "integrating"
+        | "landed"
+        | "rejected"
+        | "abandoned"
+        | "attempt"
+        | "audit"
+        | "incident"
+        | "resolution"
+        | "resolution_origin";
+      attemptNumber?: number;
+      baseSha?: string | null;
+      treeSha?: string | null;
+      status?: string;
+      startedAt?: string | null;
+      completedAt?: string | null;
+      failureCategory?: string | null;
+      logExcerpt?: string | null;
+      logUrl?: string | null;
+      steps?: components["schemas"]["VerifyStepResult"][] | null;
+      landedSha?: string | null;
+      rejectCategory?: string | null;
+      rejectReason?: string | null;
+      action?: string;
+      actorId?: string;
+      reason?: string | null;
+      metadataBefore?: {
+        [key: string]: unknown;
+      } | null;
+      metadataAfter?: {
+        [key: string]: unknown;
+      } | null;
+      type?: string;
+      orphanedSha?: string;
+      state?: string;
+      openedAt?: string;
+      resolvedAt?: string | null;
+      resolution?: unknown;
+      resolutionId?: string;
+      resolutionState?: string;
+      originRequestId?: string;
+      resolvedRequestId?: string | null;
+      conflictingFiles?: string[] | null;
+      /** @enum {string|null} */
+      escalationTarget?: "author" | "human" | null;
+      attemptStartedAt?: string | null;
+      attemptEndedAt?: string | null;
+      detail?: {
+        budgetConsumedSec?: number;
+        tokensConsumed?: number;
+        /** @enum {string} */
+        verifyVerdict?: "pass" | "fail";
+        escalationReason?: string;
+        logUrl?: string;
+      } | null;
+    };
+    MergeRequestCancel: {
+      reason?: string;
+    };
+    MergeRequestPickup: {
+      batchId?: string;
+      speculativePosition?: number;
+    };
+    MergeRequestResetToQueued: {
+      reason: string;
+    };
+    MergeRequestForceCancel: {
+      reason?: string;
+    };
+    MergeAttemptStart: {
+      baseSha: string;
+      batchId?: string;
+      speculativePosition?: number;
+    };
+    MergeAttemptComplete:
+      | {
+          /** @enum {string} */
+          status: "passed";
+          treeSha: string;
+          steps?: components["schemas"]["VerifyStepResult"][];
+        }
+      | {
+          /** @enum {string} */
+          status: "failed";
+          /** @enum {string} */
+          failureCategory:
+            | "conflict"
+            | "build_failed"
+            | "test_failed"
+            | "lint_failed"
+            | "verify_timeout"
+            | "policy"
+            | "other";
+          failureReason: string;
+          failedFiles?: string[];
+          logExcerpt?: string;
+          logUrl?: string;
+          steps?: components["schemas"]["VerifyStepResult"][];
+        }
+      | {
+          /** @enum {string} */
+          status: "cancelled";
+        };
+    MergeRequestLand: {
+      landedSha: string;
+    };
+    MergeRequestReject: {
+      /** @enum {string} */
+      category:
+        | "conflict"
+        | "build_failed"
+        | "test_failed"
+        | "lint_failed"
+        | "verify_timeout"
+        | "policy"
+        | "other";
+      reason: string;
+      failedFiles?: string[];
+      logExcerpt?: string;
+      logUrl?: string;
+    };
+    MergeBatchEvent:
+      | {
+          /** @enum {string} */
+          type: "started";
+          batchId: string;
+          resource: string;
+          memberCount: number;
+          memberRequestIds: string[];
+        }
+      | {
+          /** @enum {string} */
+          type: "member_landed";
+          batchId: string;
+          requestId: string;
+          speculativePosition: number;
+          landedSha: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "member_invalidated";
+          batchId: string;
+          requestId: string;
+          speculativePosition: number;
+          reason: string;
+          failedPredecessorRequestId: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "completed";
+          batchId: string;
+          landed: number;
+          rejected: number;
+          invalidated: number;
+        };
+    MergeGroupDetail: components["schemas"]["MergeGroup"] & {
+      members: components["schemas"]["MergeGroupMember"][];
+    };
+    MergeGroupMember: {
+      id: string;
+      projectId: string;
+      resource: string;
+      submittedBy: string;
+      taskId: string | null;
+      resolvedFrom: string | null;
+      synthetic: boolean;
+      branch: string | null;
+      commitSha: string | null;
+      verifyCmd: string | null;
+      worktreePath: string | null;
+      status: string;
+      enqueuedAt: string;
+      pickedUpAt: string | null;
+      resolvedAt: string | null;
+      landedSha: string | null;
+      rejectCategory: string | null;
+      rejectReason: string | null;
+      failedFiles: string[] | null;
+      logExcerpt: string | null;
+      logUrl: string | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    MergeGroup: {
+      id: string;
+      projectId: string;
+      resource: string;
+      /** @enum {string} */
+      state: "forming" | "integrating" | "landed" | "rejected" | "partially_landed";
+      submittedBy: string;
+      integratorId: string | null;
+      resolvedAt: string | null;
+      resolutionReason: string | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    MergeGroupCreate: {
+      /** @default main */
+      resource: string;
+      memberRequestIds?: string[];
+      members?: {
+        branch?: string;
+        commitSha?: string;
+        verifyCmd?: string;
+        taskId?: string;
+      }[];
+      synthesizeOuter?: boolean;
+    };
+    MergeGroupPickup: {
+      integratorId?: string;
+    };
+    MergeGroupReset: {
+      reason?: string;
+    };
+    MergeGroupLand: {
+      members: {
+        requestId: string;
+        landedSha: string;
+        role?: string;
+      }[];
+    };
+    MergeGroupReject: {
+      reason: string;
+      category?: string;
+    };
+    MergeGroupPartiallyLand: {
+      reason: string;
+      incidentId?: string;
+    };
+    MergeRequestOrphan: {
+      orphanedSha: string;
+    };
+    MergeIncident: {
+      id: string;
+      projectId: string;
+      groupId: string | null;
+      /** @enum {string} */
+      type: "orphaned_inner";
+      innerRepo: string;
+      orphanedSha: string;
+      outerRepo: string;
+      innerRequestId: string | null;
+      taskId: string | null;
+      /** @enum {string} */
+      state: "open" | "auto_resolved" | "human_resolved";
+      openedAt: string;
+      resolvedAt: string | null;
+      resolution: {
+        /** @enum {string} */
+        mode: "auto_rollforward" | "human";
+        outerLandedSha?: string;
+        resolvedByGroupId?: string;
+        note?: string;
+      } | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    MergeIncidentOpen: {
+      /**
+       * @default orphaned_inner
+       * @enum {string}
+       */
+      type: "orphaned_inner";
+      innerRepo: string;
+      orphanedSha: string;
+      outerRepo: string;
+      groupId?: string | null;
+      innerRequestId?: string | null;
+      taskId?: string | null;
+    };
+    MergeIncidentResolve: {
+      /** @enum {string} */
+      mode: "auto_rollforward" | "human";
+      outerLandedSha?: string;
+      resolvedByGroupId?: string;
+      note?: string;
+    };
+    MergeResolution: {
+      id: string;
+      projectId: string;
+      resource: string;
+      originRequestId: string | null;
+      resolvedRequestId: string | null;
+      /** @enum {string} */
+      state: "pending" | "resolving" | "resolved" | "escalated" | "failed";
+      conflictingFiles: string[] | null;
+      attemptStartedAt: string | null;
+      attemptEndedAt: string | null;
+      /** @enum {string|null} */
+      escalationTarget: "author" | "human" | null;
+      detail: {
+        budgetConsumedSec?: number;
+        tokensConsumed?: number;
+        /** @enum {string} */
+        verifyVerdict?: "pass" | "fail";
+        escalationReason?: string;
+        logUrl?: string;
+      } | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    MergeResolutionOpen: {
+      originRequestId: string;
+      /** @default main */
+      resource: string;
+      conflictingFiles?: string[] | null;
+    };
+    MergeResolutionResolved: {
+      resolvedRequestId: string;
+      detail?: {
+        budgetConsumedSec?: number;
+        tokensConsumed?: number;
+        /** @enum {string} */
+        verifyVerdict?: "pass" | "fail";
+        escalationReason?: string;
+        logUrl?: string;
+      } | null;
+    };
+    MergeResolutionEscalate: {
+      /**
+       * @default escalated
+       * @enum {string}
+       */
+      state: "escalated" | "failed";
+      /** @enum {string} */
+      target: "author" | "human";
+      reason: string;
+      detail?: {
+        budgetConsumedSec?: number;
+        tokensConsumed?: number;
+        /** @enum {string} */
+        verifyVerdict?: "pass" | "fail";
+        escalationReason?: string;
+        logUrl?: string;
+      } | null;
+    };
+    ResolverDefaults: {
+      enabled: boolean;
+      max_concurrent: number;
+      time_budget_sec: number;
+      token_budget: number | null;
+      command: string | null;
+      prompt: string;
+    };
+    IntegratorHealth: {
+      resource: string;
+      status: string;
+      healthy: boolean;
+      last_seen_at: string | null;
+      staleness_ms: number | null;
+      pool_size: number | null;
+      pool_leased: number | null;
+      in_flight_requests: number;
+      in_flight_batches: number;
+      in_flight_groups: number;
+      version: string | null;
+      integrator_id: string | null;
+    };
+    IntegratorHeartbeat: {
+      /** @default main */
+      resource: string;
+      /** @enum {string} */
+      status: "idle" | "integrating";
+      pool_utilization: {
+        size: number;
+        leased: number;
+      };
+      /**
+       * @default {
+       *       "requests": 0,
+       *       "batches": 0,
+       *       "groups": 0
+       *     }
+       */
+      in_flight: {
+        /** @default 0 */
+        requests: number;
+        /** @default 0 */
+        batches: number;
+        /** @default 0 */
+        groups: number;
+      };
+      version: string;
+    };
+    TrainState: {
+      id: string;
+      projectId: string;
+      resource: string;
+      state: string;
+      changedBy: string | null;
+      reason: string | null;
+      changedAt: string | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    TrainPause: {
+      /** @default main */
+      resource: string;
+      reason?: string | null;
+    };
+    TrainResume: {
+      /** @default main */
+      resource: string;
+      reason?: string | null;
+    };
+    ForceReleaseResult: {
+      ok: boolean;
+      resource: string;
+      priorHolderId: string | null;
+    };
+    ForceReleaseLock: {
+      reason?: string | null;
+    };
+    ForceMergeRequest: {
+      id: string;
+      projectId: string;
+      resource: string;
+      submittedBy: string;
+      taskId: string | null;
+      branch: string | null;
+      commitSha: string | null;
+      verifyCmd: string | null;
+      worktreePath: string | null;
+      status: string;
+      enqueuedAt: string;
+      pickedUpAt: string | null;
+      resolvedAt: string | null;
+      landedSha: string | null;
+      rejectCategory: string | null;
+      rejectReason: string | null;
+      failedFiles: string[] | null;
+      logExcerpt: string | null;
+      logUrl: string | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    ForceLand: {
+      /** @example abc1234 */
+      landedSha: string;
+      /** @example hotfix for prod outage; verify infra down */
+      reason: string;
+    };
+    ForceReject: {
+      /** @example obsoleted by a newer request; clearing the lane */
+      reason: string;
+    };
+    TrainMetrics: {
+      resource: string;
+      queue_depth: number;
+      in_flight: number;
+      time_to_land: {
+        p50_ms: number | null;
+        p95_ms: number | null;
+        p99_ms: number | null;
+        sample_size: number;
+      };
+      verify_success_rate: {
+        ratio: number | null;
+        passed: number;
+        total: number;
+      };
+      abandon_rate: {
+        ratio: number | null;
+        abandoned: number;
+        resolved: number;
+      };
+      pool_utilization: {
+        size: number | null;
+        leased: number | null;
+        ratio: number | null;
+      };
+      health: {
+        resource: string;
+        status: string;
+        healthy: boolean;
+        last_seen_at: string | null;
+        staleness_ms: number | null;
+        pool_size: number | null;
+        pool_leased: number | null;
+        in_flight_requests: number;
+        in_flight_batches: number;
+        in_flight_groups: number;
+        version: string | null;
+        integrator_id: string | null;
+      };
+      slo: {
+        p95_time_to_land?: {
+          target_sec?: number;
+          target?: number;
+          measured_ms?: number | null;
+          measured?: number | null;
+          compliant: boolean;
+        };
+        verify_success_rate?: {
+          target_sec?: number;
+          target?: number;
+          measured_ms?: number | null;
+          measured?: number | null;
+          compliant: boolean;
+        };
+        abandon_rate?: {
+          target_sec?: number;
+          target?: number;
+          measured_ms?: number | null;
+          measured?: number | null;
+          compliant: boolean;
+        };
+        overall_compliant: boolean | null;
+      };
+      verify: {
+        cache_enabled: boolean;
+        cache_mode: string;
+        cache_hit_rate: {
+          ratio: number | null;
+          hits: number;
+          lookups: number;
+        };
+        time_saved_ms: number;
+        per_step: {
+          step_id: string;
+          runs: number;
+          cached: number;
+          pass_rate: number | null;
+          avg_duration_ms: number | null;
+          fail_count: number;
+        }[];
+        cache_mismatches: number;
+      };
+      resolution: {
+        attempts: number;
+        auto_resolve_success_rate: {
+          ratio: number | null;
+          resolved_and_landed: number;
+          attempts: number;
+        };
+        escalation_rate: {
+          ratio: number | null;
+          escalated: number;
+          attempts: number;
+        };
+        mean_wall_clock_ms: number | null;
+        mean_session_sec: number | null;
+        reclaimed_count: number;
+        budget_utilization: {
+          ratio: number | null;
+          mean_consumed_sec: number | null;
+          budget_sec: number;
+        };
+      };
+      window_hours: number;
+      computed_at: string;
+    };
+    TrainInFlight: {
+      groups: {
+        id: string;
+        project_id: string;
+        resource: string;
+        state: string;
+        submitted_by: string;
+        integrator_id: string | null;
+        resolved_at: string | null;
+        resolution_reason: string | null;
+        created_at: string;
+        updated_at: string;
+      }[];
+      members: {
+        id: string;
+        group_id: string | null;
+        status: string;
+        enqueued_at: string;
+        picked_up_at: string | null;
+        attempt: {
+          status: string;
+          base_sha: string;
+          tree_sha: string | null;
+          started_at: string | null;
+        } | null;
+      }[];
+    };
+    ClaimsHealth: {
+      stale_count: number;
+      oldest_stale_age_ms: number | null;
+    };
+    VerifyCacheList: {
+      data: components["schemas"]["VerifyCacheRow"][];
+      pagination: {
+        total: number;
+        page: number;
+        perPage: number;
+      };
+    };
+    VerifyCacheRow: {
+      id: string;
+      projectId: string;
+      resource: string;
+      treeSha: string;
+      stepId: string;
+      stepConfigSha: string;
+      /** @enum {string} */
+      result: "pass" | "fail";
+      durationMs: number | null;
+      logExcerpt: string | null;
+      logUrl: string | null;
+      createdAt: string;
+      lastHitAt: string | null;
+      hitCount: number;
+      updatedAt: string;
+    };
+    VerifyCacheLookup: {
+      /** @default main */
+      resource: string;
+      treeSha: string;
+      stepId: string;
+      stepConfigSha: string;
+    };
+    VerifyCacheRecord: {
+      /** @default main */
+      resource: string;
+      treeSha: string;
+      stepId: string;
+      stepConfigSha: string;
+      /** @enum {string} */
+      result: "pass" | "fail";
+      durationMs?: number | null;
+      logExcerpt?: string | null;
+      logUrl?: string | null;
+    };
+    VerifyCacheMismatch: {
+      /** @default main */
+      resource: string;
+      treeSha: string;
+      stepId: string;
+      stepConfigSha: string;
+      /** @enum {string} */
+      cachedResult: "pass" | "fail";
+      /** @enum {string} */
+      realResult: "pass" | "fail";
+      requestId?: string;
+      attemptId?: string;
+    };
+    AuditLogList: {
+      data: components["schemas"]["AuditLogEntry"][];
+      pagination: {
+        total: number;
+        page: number;
+        perPage: number;
+      };
+    };
+    AuditLogEntry: {
+      id: string;
+      projectId: string;
+      actorId: string;
+      action: string;
+      targetType: string;
+      targetId: string;
+      reason: string | null;
+      metadataBefore: {
+        [key: string]: unknown;
+      } | null;
+      metadataAfter: {
+        [key: string]: unknown;
+      } | null;
+      createdAt: string;
+    };
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export type operations = Record<string, never>;

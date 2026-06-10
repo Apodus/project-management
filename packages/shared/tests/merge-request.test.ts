@@ -92,6 +92,7 @@ describe("mergeRequestSchema", () => {
     submittedBy: VALID_ULID,
     taskId: VALID_ULID,
     resolvedFrom: null,
+    synthetic: false,
     branch: "feat/auth",
     commitSha: "abc123",
     verifyCmd: "pnpm test",
@@ -143,10 +144,23 @@ describe("mergeRequestSchema", () => {
     expect(mergeRequestSchema.parse({ ...validRequest, taskId: null })).toBeTruthy();
   });
 
+  it("accepts synthetic: true (the server-minted outer member of an inner-only group)", () => {
+    const synthetic = {
+      ...validRequest,
+      synthetic: true,
+      branch: null,
+      commitSha: null,
+    };
+    expect(mergeRequestSchema.parse(synthetic).synthetic).toBe(true);
+  });
+
+  it("rejects a request missing synthetic (required on the view)", () => {
+    const { synthetic: _, ...r } = validRequest;
+    expect(() => mergeRequestSchema.parse(r)).toThrow();
+  });
+
   it("accepts resolvedFrom null (a normal request) and a string (a resolved request)", () => {
-    expect(
-      mergeRequestSchema.parse({ ...validRequest, resolvedFrom: null }),
-    ).toBeTruthy();
+    expect(mergeRequestSchema.parse({ ...validRequest, resolvedFrom: null })).toBeTruthy();
     const resolved = { ...validRequest, resolvedFrom: VALID_ULID };
     expect(mergeRequestSchema.parse(resolved).resolvedFrom).toBe(VALID_ULID);
   });
@@ -158,15 +172,11 @@ describe("mergeRequestSchema", () => {
   });
 
   it("rejects unknown status", () => {
-    expect(() =>
-      mergeRequestSchema.parse({ ...validRequest, status: "in_progress" }),
-    ).toThrow();
+    expect(() => mergeRequestSchema.parse({ ...validRequest, status: "in_progress" })).toThrow();
   });
 
   it("rejects unknown rejectCategory", () => {
-    expect(() =>
-      mergeRequestSchema.parse({ ...validRequest, rejectCategory: "flaky" }),
-    ).toThrow();
+    expect(() => mergeRequestSchema.parse({ ...validRequest, rejectCategory: "flaky" })).toThrow();
   });
 
   it("rejects missing projectId", () => {
@@ -231,15 +241,11 @@ describe("mergeAttemptSchema", () => {
   });
 
   it("rejects unknown status", () => {
-    expect(() =>
-      mergeAttemptSchema.parse({ ...validAttempt, status: "queued" }),
-    ).toThrow();
+    expect(() => mergeAttemptSchema.parse({ ...validAttempt, status: "queued" })).toThrow();
   });
 
   it("rejects non-integer attemptNumber", () => {
-    expect(() =>
-      mergeAttemptSchema.parse({ ...validAttempt, attemptNumber: 1.5 }),
-    ).toThrow();
+    expect(() => mergeAttemptSchema.parse({ ...validAttempt, attemptNumber: 1.5 })).toThrow();
   });
 });
 
@@ -308,28 +314,20 @@ describe("mergeRequestRejectSchema", () => {
 
   it("accepts every valid reject category", () => {
     for (const category of MERGE_REJECT_CATEGORIES) {
-      expect(
-        mergeRequestRejectSchema.parse({ category, reason: "r" }),
-      ).toBeTruthy();
+      expect(mergeRequestRejectSchema.parse({ category, reason: "r" })).toBeTruthy();
     }
   });
 
   it("rejects an unknown category", () => {
-    expect(() =>
-      mergeRequestRejectSchema.parse({ category: "flaky", reason: "r" }),
-    ).toThrow();
+    expect(() => mergeRequestRejectSchema.parse({ category: "flaky", reason: "r" })).toThrow();
   });
 
   it("rejects missing reason", () => {
-    expect(() =>
-      mergeRequestRejectSchema.parse({ category: "conflict" }),
-    ).toThrow();
+    expect(() => mergeRequestRejectSchema.parse({ category: "conflict" })).toThrow();
   });
 
   it("rejects empty reason", () => {
-    expect(() =>
-      mergeRequestRejectSchema.parse({ category: "conflict", reason: "" }),
-    ).toThrow();
+    expect(() => mergeRequestRejectSchema.parse({ category: "conflict", reason: "" })).toThrow();
   });
 });
 
@@ -373,9 +371,7 @@ describe("mergeAttemptStartSchema", () => {
 
 describe("mergeAttemptCompleteSchema", () => {
   it("accepts a 'passed' body with treeSha", () => {
-    expect(
-      mergeAttemptCompleteSchema.parse({ status: "passed", treeSha: "abc123" }),
-    ).toBeTruthy();
+    expect(mergeAttemptCompleteSchema.parse({ status: "passed", treeSha: "abc123" })).toBeTruthy();
   });
 
   it("rejects a 'passed' body missing treeSha", () => {
@@ -383,9 +379,7 @@ describe("mergeAttemptCompleteSchema", () => {
   });
 
   it("rejects a 'passed' body with empty treeSha", () => {
-    expect(() =>
-      mergeAttemptCompleteSchema.parse({ status: "passed", treeSha: "" }),
-    ).toThrow();
+    expect(() => mergeAttemptCompleteSchema.parse({ status: "passed", treeSha: "" })).toThrow();
   });
 
   it("accepts a 'failed' body with category + reason", () => {
@@ -445,11 +439,7 @@ describe("mergeAttemptCompleteSchema", () => {
   });
 
   it("rejects unknown status values", () => {
-    expect(() =>
-      mergeAttemptCompleteSchema.parse({ status: "pending" }),
-    ).toThrow();
-    expect(() =>
-      mergeAttemptCompleteSchema.parse({ status: "running" }),
-    ).toThrow();
+    expect(() => mergeAttemptCompleteSchema.parse({ status: "pending" })).toThrow();
+    expect(() => mergeAttemptCompleteSchema.parse({ status: "running" })).toThrow();
   });
 });

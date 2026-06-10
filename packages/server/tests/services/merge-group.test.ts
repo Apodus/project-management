@@ -8,7 +8,7 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import { gitRefs, mergeRequests } from "../../src/db/index.js";
+import { gitRefs, mergeRequestGroups, mergeRequests } from "../../src/db/index.js";
 import * as svc from "../../src/services/merge-group.service.js";
 import * as mrSvc from "../../src/services/merge-request.service.js";
 import * as incidentSvc from "../../src/services/merge-incident.service.js";
@@ -37,9 +37,7 @@ describe("merge-group service", () => {
   ) {
     const out: { id: string; taskId: string | null }[] = [];
     for (let i = 0; i < n; i++) {
-      const task = opts.withTasks
-        ? createTestTask(testApp.db, { projectId: project.id })
-        : null;
+      const task = opts.withTasks ? createTestTask(testApp.db, { projectId: project.id }) : null;
       const r = mrSvc.submit({
         projectId: project.id,
         submittedBy: submitter.id,
@@ -96,9 +94,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
     });
 
     it("mismatched resource → 400 VALIDATION_ERROR", () => {
@@ -115,9 +111,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
     });
 
     it("non-queued member → 409 INVALID_TRANSITION", () => {
@@ -135,9 +129,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("already-grouped member → 409 ALREADY_GROUPED (and no partial writes)", () => {
@@ -162,9 +154,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "ALREADY_GROUPED" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "ALREADY_GROUPED" }));
       // m3 must NOT have been written to any group (atomic rollback).
       const m3row = testApp.db
         .select()
@@ -209,9 +199,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409 }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409 }));
       const m2row = testApp.db
         .select()
         .from(mergeRequests)
@@ -233,9 +221,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
     });
 
     it("missing member → 404 NOT_FOUND", () => {
@@ -251,9 +237,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }));
     });
 
     it("missing project → 404 NOT_FOUND", () => {
@@ -267,9 +251,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }));
     });
 
     it("emits no event on create", () => {
@@ -339,9 +321,7 @@ describe("merge-group service", () => {
       );
 
       const memberId = g.members[0].id;
-      expect(() =>
-        mrSvc.transitionToIntegrating(memberId, AGENT(integrator.user.id)),
-      ).toThrowError(
+      expect(() => mrSvc.transitionToIntegrating(memberId, AGENT(integrator.user.id))).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
       );
     });
@@ -400,16 +380,11 @@ describe("merge-group service", () => {
           {
             projectId: projectA.id,
             submittedBy: submitter.id,
-            members: [
-              { branch: "feat/inner", taskId: foreignTask.id },
-              { branch: "feat/outer" },
-            ],
+            members: [{ branch: "feat/inner", taskId: foreignTask.id }, { branch: "feat/outer" }],
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
       // No group/members written (validation throws before the txn).
       const groups = svc.list(projectA.id);
       expect(groups).toHaveLength(0);
@@ -430,9 +405,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }));
     });
 
     it("a spec with neither branch nor commitSha → 400 VALIDATION_ERROR", () => {
@@ -447,9 +420,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
     });
 
     it("<2 members → 400 VALIDATION_ERROR", () => {
@@ -464,9 +435,7 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
     });
 
     it("providing BOTH members and memberRequestIds → 400 VALIDATION_ERROR", () => {
@@ -483,22 +452,15 @@ describe("merge-group service", () => {
           },
           HUMAN(submitter.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
     });
 
     it("providing NEITHER members nor memberRequestIds → 400 VALIDATION_ERROR", () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       expect(() =>
-        svc.createGroup(
-          { projectId: project.id, submittedBy: submitter.id },
-          HUMAN(submitter.id),
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+        svc.createGroup({ projectId: project.id, submittedBy: submitter.id }, HUMAN(submitter.id)),
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
     });
 
     it("a born-grouped member still lands via its group (back-compat with group land path)", () => {
@@ -530,6 +492,424 @@ describe("merge-group service", () => {
       );
       expect(landed.state).toBe("landed");
       expect(landed.members.every((m) => m.status === "landed")).toBe(true);
+    });
+  });
+
+  // ─── createGroup (inner-only synthesizeOuter arm) ─────────────────
+  describe("createGroup (inner-only synthesizeOuter arm)", () => {
+    // The minimal valid topology: exactly one inner + one outer repo declared.
+    const XREPO_SETTINGS = {
+      integrator: {
+        linked_repos: [
+          { name: "rynx", path: "../rynx", role: "inner" },
+          { name: "game", path: ".", role: "outer", gitlink_path: "rynx" },
+        ],
+      },
+    };
+
+    function setupInnerOnly(opts: { withTask?: boolean } = {}) {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const task = opts.withTask ? createTestTask(testApp.db, { projectId: project.id }) : null;
+      const g = svc.createGroup({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        members: [
+          {
+            branch: "feat/inner",
+            verifyCmd: "pnpm verify",
+            ...(task ? { taskId: task.id } : {}),
+          },
+        ],
+        synthesizeOuter: true,
+      });
+      const real = g.members.find((m) => !m.synthetic)!;
+      const synthetic = g.members.find((m) => m.synthetic)!;
+      return { project, submitter, integrator, task, g, real, synthetic };
+    }
+
+    /** Assert NOTHING was written for the project (txn/pre-txn atomicity). */
+    function expectNoRows(projectId: string) {
+      const groups = testApp.db
+        .select()
+        .from(mergeRequestGroups)
+        .where(eq(mergeRequestGroups.projectId, projectId))
+        .all();
+      const requests = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.projectId, projectId))
+        .all();
+      expect(groups).toHaveLength(0);
+      expect(requests).toHaveLength(0);
+    }
+
+    it("happy path: forming group with the real inner member + a synthetic outer member", () => {
+      const { g, real, synthetic, task } = setupInnerOnly({ withTask: true });
+
+      expect(g.state).toBe("forming");
+      expect(g.members).toHaveLength(2);
+
+      // The real member persists the spec fields and is NOT synthetic.
+      expect(real.branch).toBe("feat/inner");
+      expect(real.verifyCmd).toBe("pnpm verify");
+      expect(real.taskId).toBe(task!.id);
+      expect(real.status).toBe("queued");
+      expect(real.synthetic).toBe(false);
+
+      // The synthetic member: all-null refs, queued, group-bound, synthetic.
+      expect(synthetic.branch).toBeNull();
+      expect(synthetic.commitSha).toBeNull();
+      expect(synthetic.verifyCmd).toBeNull();
+      expect(synthetic.taskId).toBeNull();
+      expect(synthetic.status).toBe("queued");
+      expect(synthetic.synthetic).toBe(true);
+
+      // Direct DB read: exactly 2 member rows, both bound to the group, the
+      // synthetic one flagged + ref-less.
+      const rows = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.groupId, g.id))
+        .all();
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.groupId === g.id)).toBe(true);
+      const syntheticRow = rows.find((r) => r.synthetic)!;
+      expect(syntheticRow.id).toBe(synthetic.id);
+      expect(syntheticRow.branch).toBeNull();
+      expect(syntheticRow.commitSha).toBeNull();
+      expect(syntheticRow.status).toBe("queued");
+
+      // getById view round-trips the flag.
+      const got = svc.getById(g.id);
+      expect(got.members.find((m) => m.id === synthetic.id)!.synthetic).toBe(true);
+      expect(got.members.find((m) => m.id === real.id)!.synthetic).toBe(false);
+    });
+
+    it("flag + 2 specs → 400 (exactly one member spec required); nothing written", () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/a" }, { branch: "feat/b" }],
+          synthesizeOuter: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message:
+            "synthesizeOuter requires exactly one member spec (the inner change); the outer member is synthesized at integration time.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("flag + memberRequestIds → 400 (cannot combine); nothing written", () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          memberRequestIds: ["a", "b"],
+          synthesizeOuter: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message:
+            "synthesizeOuter cannot be combined with memberRequestIds; provide members with exactly one inner member spec.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("1 spec WITHOUT the flag → 400 with the exact legacy message; nothing written", () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/inner" }],
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "A merge group requires at least 2 member specs.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("1 spec with an EXPLICIT synthesizeOuter: false → 400 (strict === true); nothing written", () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/inner" }],
+          synthesizeOuter: false,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "A merge group requires at least 2 member specs.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("flag without linked_repos settings → 400 topology error; nothing written", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/inner" }],
+          synthesizeOuter: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message:
+            "synthesizeOuter requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found 0 inner / 0 outer.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("flag with TWO inners declared → 400 topology error; nothing written", () => {
+      const project = createTestProject(testApp.db, {
+        settings: {
+          integrator: {
+            linked_repos: [
+              { name: "rynx", path: "../rynx", role: "inner" },
+              { name: "treegen", path: "../treegen", role: "inner" },
+              { name: "game", path: ".", role: "outer" },
+            ],
+          },
+        },
+      });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/inner" }],
+          synthesizeOuter: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message:
+            "synthesizeOuter requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found 2 inner / 1 outer.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("flag with NO outer declared → 400 topology error; nothing written", () => {
+      const project = createTestProject(testApp.db, {
+        settings: {
+          integrator: {
+            linked_repos: [{ name: "rynx", path: "../rynx", role: "inner" }],
+          },
+        },
+      });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/inner" }],
+          synthesizeOuter: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message:
+            "synthesizeOuter requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found 1 inner / 0 outer.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("emits NO events on inner-only create (parity with the other arms)", () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      const queuedListener = vi.fn();
+      const startedListener = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_REQUEST_QUEUED, queuedListener);
+      getEventBus().on(EVENT_NAMES.MERGE_GROUP_STARTED, startedListener);
+
+      svc.createGroup({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        members: [{ branch: "feat/inner" }],
+        synthesizeOuter: true,
+      });
+
+      expect(queuedListener).not.toHaveBeenCalled();
+      expect(startedListener).not.toHaveBeenCalled();
+    });
+
+    it("synthetic member is never single-repo-pickable (409 GROUPED_MEMBER)", () => {
+      const { synthetic, integrator } = setupInnerOnly();
+      expect(() =>
+        mrSvc.transitionToIntegrating(synthetic.id, AGENT(integrator.user.id)),
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }));
+    });
+
+    it("synthetic member is never individually cancellable (409 GROUPED_MEMBER)", () => {
+      const { synthetic, submitter } = setupInnerOnly();
+      expect(() => mrSvc.cancel(synthetic.id, HUMAN(submitter.id))).toThrowError(
+        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
+      );
+    });
+
+    it("markIntegrating flips the synthetic member queued→integrating; resetGroup returns it to queued (pickedUpAt null)", () => {
+      const { g, synthetic, integrator } = setupInnerOnly();
+
+      const integrating = svc.markIntegrating(g.id, AGENT(integrator.user.id));
+      const sIntegrating = integrating.members.find((m) => m.id === synthetic.id)!;
+      expect(sIntegrating.status).toBe("integrating");
+      expect(sIntegrating.pickedUpAt).toBeTruthy();
+
+      const reset = svc.resetGroup(g.id, AGENT(integrator.user.id));
+      const sReset = reset.members.find((m) => m.id === synthetic.id)!;
+      expect(sReset.status).toBe("queued");
+      expect(sReset.pickedUpAt).toBeNull();
+    });
+
+    it("rejectGroup rejects the synthetic member with the rest of the group", () => {
+      const { g, synthetic, submitter } = setupInnerOnly();
+      const out = svc.rejectGroup(g.id, { reason: "abandoned" }, HUMAN(submitter.id));
+      expect(out.state).toBe("rejected");
+      expect(out.members.find((m) => m.id === synthetic.id)!.status).toBe("rejected");
+    });
+
+    it("landGroup lands the synthetic member: landedSha=Ro, NO git_ref, member event gitRefId null, group event outerLandedSha", () => {
+      const { g, real, synthetic, integrator } = setupInnerOnly({
+        withTask: true,
+      });
+      svc.markIntegrating(g.id, AGENT(integrator.user.id));
+
+      const memberLanded = vi.fn();
+      const groupLanded = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_GROUP_MEMBER_LANDED, memberLanded);
+      getEventBus().on(EVENT_NAMES.MERGE_GROUP_LANDED, groupLanded);
+
+      const out = svc.landGroup(
+        g.id,
+        {
+          members: [
+            { requestId: real.id, landedSha: "Ri", role: "inner" },
+            { requestId: synthetic.id, landedSha: "Ro", role: "outer" },
+          ],
+        },
+        AGENT(integrator.user.id),
+      );
+
+      expect(out.state).toBe("landed");
+      const sLanded = out.members.find((m) => m.id === synthetic.id)!;
+      expect(sLanded.status).toBe("landed");
+      expect(sLanded.landedSha).toBe("Ro");
+
+      // No git_ref for the task-less synthetic member — only the real inner
+      // member (which carries the task) gets one.
+      const refs = testApp.db.select().from(gitRefs).all();
+      expect(refs).toHaveLength(1);
+      expect(refs[0].refValue).toBe("Ri");
+
+      // The synthetic MERGE_GROUP_MEMBER_LANDED carries gitRefId null.
+      const syntheticEvent = memberLanded.mock.calls
+        .map((c) => c[0])
+        .find((p) => p.entity.requestId === synthetic.id);
+      expect(syntheticEvent).toBeDefined();
+      expect(syntheticEvent.entity.gitRefId).toBeNull();
+
+      // The group event derives outerLandedSha from the synthetic member.
+      expect(groupLanded).toHaveBeenCalledTimes(1);
+      const lp = groupLanded.mock.calls[0][0];
+      expect(lp.entity.innerLandedSha).toBe("Ri");
+      expect(lp.entity.outerLandedSha).toBe("Ro");
+    });
+
+    it("list(ungrouped: true) excludes the synthetic member (and the real one — both group-bound)", () => {
+      const { project, submitter, synthetic } = setupInnerOnly();
+      // An ungrouped control request that MUST appear.
+      const control = mrSvc.submit({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        branch: "feat/solo",
+      });
+      const listed = mrSvc.list(project.id, { ungrouped: true });
+      const ids = listed.data.map((r) => r.id);
+      expect(ids).toContain(control.id);
+      expect(ids).not.toContain(synthetic.id);
+    });
+
+    it("legacy regression: both legacy arms produce synthetic:false members with the pinned view key set", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+
+      // Pinned member-view shape: the pre-campaign keys ∪ {"synthetic"}.
+      const PINNED_KEYS = [
+        "branch",
+        "commitSha",
+        "createdAt",
+        "enqueuedAt",
+        "failedFiles",
+        "id",
+        "landedSha",
+        "logExcerpt",
+        "logUrl",
+        "pickedUpAt",
+        "projectId",
+        "rejectCategory",
+        "rejectReason",
+        "resolvedAt",
+        "resolvedFrom",
+        "resource",
+        "status",
+        "submittedBy",
+        "synthetic",
+        "taskId",
+        "updatedAt",
+        "verifyCmd",
+        "worktreePath",
+      ];
+
+      const ids = svc.createGroup({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        memberRequestIds: makeMembers(project, submitter, 2).map((m) => m.id),
+      });
+      const atomic = svc.createGroup({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        members: [{ branch: "feat/a" }, { branch: "feat/b" }],
+      });
+
+      for (const g of [ids, atomic]) {
+        for (const m of g.members) {
+          expect(m.synthetic).toBe(false);
+          expect(Object.keys(m).sort()).toEqual(PINNED_KEYS);
+        }
+      }
     });
   });
 
@@ -595,9 +975,7 @@ describe("merge-group service", () => {
       expect(() => svc.assertMemberLandableViaGroup(m1.id)).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
       );
-      expect(() =>
-        svc.assertMemberLandableViaGroup(ungrouped.id),
-      ).not.toThrow();
+      expect(() => svc.assertMemberLandableViaGroup(ungrouped.id)).not.toThrow();
     });
   });
 
@@ -634,9 +1012,7 @@ describe("merge-group service", () => {
       expect(listener).toHaveBeenCalledTimes(1);
       const payload = listener.mock.calls[0][0];
       expect(payload.entity.memberCount).toBe(2);
-      expect(payload.entity.memberRequestIds.sort()).toEqual(
-        members.map((m) => m.id).sort(),
-      );
+      expect(payload.entity.memberRequestIds.sort()).toEqual(members.map((m) => m.id).sort());
     });
 
     it("does NOT emit per-member merge.request.integrating (PIN C: single visibility event)", () => {
@@ -660,18 +1036,14 @@ describe("merge-group service", () => {
     it("integrating → 409 INVALID_TRANSITION (no idempotent case)", () => {
       const { g, integrator } = setupForming();
       svc.markIntegrating(g.id, AGENT(integrator.user.id));
-      expect(() =>
-        svc.markIntegrating(g.id, AGENT(integrator.user.id)),
-      ).toThrowError(
+      expect(() => svc.markIntegrating(g.id, AGENT(integrator.user.id))).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
     });
 
     it("non-ai_agent → 403 FORBIDDEN", () => {
       const { g, submitter } = setupForming();
-      expect(() =>
-        svc.markIntegrating(g.id, HUMAN(submitter.id, "admin")),
-      ).toThrowError(
+      expect(() => svc.markIntegrating(g.id, HUMAN(submitter.id, "admin"))).toThrowError(
         expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
       );
     });
@@ -721,11 +1093,7 @@ describe("merge-group service", () => {
       }
       // git_ref per member with a taskId.
       for (const m of members) {
-        const refs = testApp.db
-          .select()
-          .from(gitRefs)
-          .where(eq(gitRefs.taskId, m.taskId!))
-          .all();
+        const refs = testApp.db.select().from(gitRefs).where(eq(gitRefs.taskId, m.taskId!)).all();
         expect(refs).toHaveLength(1);
         expect(refs[0].refType).toBe("landed_sha");
       }
@@ -792,11 +1160,7 @@ describe("merge-group service", () => {
       expect(memberLanded).not.toHaveBeenCalled();
       expect(groupLanded).not.toHaveBeenCalled();
       for (const m of members) {
-        const refs = testApp.db
-          .select()
-          .from(gitRefs)
-          .where(eq(gitRefs.taskId, m.taskId!))
-          .all();
+        const refs = testApp.db.select().from(gitRefs).where(eq(gitRefs.taskId, m.taskId!)).all();
         expect(refs).toHaveLength(1);
       }
     });
@@ -820,9 +1184,7 @@ describe("merge-group service", () => {
           { members: [{ requestId: members[0].id, landedSha: "x" }] },
           AGENT(integrator.user.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("from rejected → 409 INVALID_TRANSITION", () => {
@@ -834,9 +1196,7 @@ describe("merge-group service", () => {
           { members: [{ requestId: members[0].id, landedSha: "x" }] },
           AGENT(integrator.user.id),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("non-ai_agent → 403 FORBIDDEN", () => {
@@ -847,9 +1207,7 @@ describe("merge-group service", () => {
           { members: [{ requestId: members[0].id, landedSha: "x" }] },
           HUMAN(submitter.id, "admin"),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 
@@ -876,19 +1234,11 @@ describe("merge-group service", () => {
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_GROUP_REJECTED, listener);
 
-      const out = svc.rejectGroup(
-        g.id,
-        { reason: "changed my mind" },
-        HUMAN(submitter.id),
-      );
+      const out = svc.rejectGroup(g.id, { reason: "changed my mind" }, HUMAN(submitter.id));
       expect(out.state).toBe("rejected");
       expect(out.resolutionReason).toBe("changed my mind");
       for (const m of members) {
-        const row = testApp.db
-          .select()
-          .from(mergeRequests)
-          .where(eq(mergeRequests.id, m.id))
-          .get();
+        const row = testApp.db.select().from(mergeRequests).where(eq(mergeRequests.id, m.id)).get();
         expect(row!.status).toBe("rejected");
       }
       expect(listener).toHaveBeenCalledTimes(1);
@@ -905,11 +1255,7 @@ describe("merge-group service", () => {
       );
       expect(out.state).toBe("rejected");
       for (const m of members) {
-        const row = testApp.db
-          .select()
-          .from(mergeRequests)
-          .where(eq(mergeRequests.id, m.id))
-          .get();
+        const row = testApp.db.select().from(mergeRequests).where(eq(mergeRequests.id, m.id)).get();
         expect(row!.status).toBe("rejected");
       }
     });
@@ -924,9 +1270,7 @@ describe("merge-group service", () => {
     it("stranger → 403 FORBIDDEN", () => {
       const { g } = setupForming();
       const stranger = createTestUser(testApp.db, { role: "member" });
-      expect(() =>
-        svc.rejectGroup(g.id, { reason: "x" }, HUMAN(stranger.id)),
-      ).toThrowError(
+      expect(() => svc.rejectGroup(g.id, { reason: "x" }, HUMAN(stranger.id))).toThrowError(
         expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
       );
     });
@@ -966,11 +1310,7 @@ describe("merge-group service", () => {
       const memberLanded = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_GROUP_MEMBER_LANDED, memberLanded);
 
-      const out = svc.markInnerOrphaned(
-        members[0].id,
-        "orphansha",
-        AGENT(integrator.user.id),
-      );
+      const out = svc.markInnerOrphaned(members[0].id, "orphansha", AGENT(integrator.user.id));
       expect(out.status).toBe("orphaned");
       expect(out.landedSha).toBe("orphansha");
       expect(out.resolvedAt).toBeTruthy();
@@ -983,9 +1323,7 @@ describe("merge-group service", () => {
       const integrator = createTestAiAgent(testApp.db);
       const r = mrSvc.submit({ projectId: project.id, submittedBy: submitter.id });
       mrSvc.transitionToIntegrating(r.id, AGENT(integrator.user.id));
-      expect(() =>
-        svc.markInnerOrphaned(r.id, "s", AGENT(integrator.user.id)),
-      ).toThrowError(
+      expect(() => svc.markInnerOrphaned(r.id, "s", AGENT(integrator.user.id))).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
     });
@@ -996,18 +1334,14 @@ describe("merge-group service", () => {
       svc.markInnerOrphaned(members[0].id, "s", AGENT(integrator.user.id));
       expect(() =>
         svc.markInnerOrphaned(members[0].id, "s", AGENT(integrator.user.id)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("markInnerOrphaned non-ai_agent → 403", () => {
       const { members, submitter } = setupIntegrating();
       expect(() =>
         svc.markInnerOrphaned(members[0].id, "s", HUMAN(submitter.id, "admin")),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
 
     it("markPartiallyLanded → partially_landed; emits MERGE_GROUP_REJECTED outcome partially_landed", () => {
@@ -1032,11 +1366,7 @@ describe("merge-group service", () => {
       svc.markPartiallyLanded(g.id, { reason: "x" }, AGENT(integrator.user.id));
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_GROUP_REJECTED, listener);
-      const out = svc.markPartiallyLanded(
-        g.id,
-        { reason: "y" },
-        AGENT(integrator.user.id),
-      );
+      const out = svc.markPartiallyLanded(g.id, { reason: "y" }, AGENT(integrator.user.id));
       expect(out.state).toBe("partially_landed");
       expect(listener).not.toHaveBeenCalled();
     });
@@ -1044,14 +1374,8 @@ describe("merge-group service", () => {
     it("markPartiallyLanded non-ai_agent → 403", () => {
       const { g, submitter } = setupIntegrating();
       expect(() =>
-        svc.markPartiallyLanded(
-          g.id,
-          { reason: "x" },
-          HUMAN(submitter.id, "admin"),
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+        svc.markPartiallyLanded(g.id, { reason: "x" }, HUMAN(submitter.id, "admin")),
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 
@@ -1116,14 +1440,8 @@ describe("merge-group service", () => {
 
     it("CORRUPTION FENCE: partially_landed group → 409 INVALID_TRANSITION (a real orphan, not stranded)", () => {
       const { g, integrator } = setupIntegrating();
-      svc.markPartiallyLanded(
-        g.id,
-        { reason: "outer push failed" },
-        AGENT(integrator.user.id),
-      );
-      expect(() =>
-        svc.resetGroup(g.id, AGENT(integrator.user.id)),
-      ).toThrowError(
+      svc.markPartiallyLanded(g.id, { reason: "outer push failed" }, AGENT(integrator.user.id));
+      expect(() => svc.resetGroup(g.id, AGENT(integrator.user.id))).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
     });
@@ -1144,9 +1462,7 @@ describe("merge-group service", () => {
         },
         AGENT(integrator.user.id),
       );
-      expect(() =>
-        svc.resetGroup(g.id, AGENT(integrator.user.id)),
-      ).toThrowError(
+      expect(() => svc.resetGroup(g.id, AGENT(integrator.user.id))).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
       // The group stays integrating (untouched).
@@ -1166,18 +1482,14 @@ describe("merge-group service", () => {
         },
         AGENT(integrator.user.id),
       );
-      expect(() =>
-        svc.resetGroup(g.id, AGENT(integrator.user.id)),
-      ).toThrowError(
+      expect(() => svc.resetGroup(g.id, AGENT(integrator.user.id))).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
     });
 
     it("non-ai_agent → 403 FORBIDDEN", () => {
       const { g, submitter } = setupIntegrating();
-      expect(() =>
-        svc.resetGroup(g.id, HUMAN(submitter.id, "admin")),
-      ).toThrowError(
+      expect(() => svc.resetGroup(g.id, HUMAN(submitter.id, "admin"))).toThrowError(
         expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
       );
     });
