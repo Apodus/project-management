@@ -19,6 +19,19 @@ export interface WorktreeOptions {
   gitMainBranch: string;
   gitRepoUrl: string;
   cleanKeep: string[];
+  /**
+   * Gitlink (160000 submodule) paths — POSIX slashes, relative to the repo
+   * root — to purge of stale MATERIALIZED overlays on every resetForAttempt.
+   * A group assembly materializes the inner sources at the outer repo's
+   * gitlink path as plain files with no .git; git is BLIND to content at a
+   * committed gitlink path (`status` reports nothing, `clean -fdx` and
+   * `reset --hard` never touch it), so without this purge the overlay
+   * outlives the attempt and poisons every later verify in the slot (e.g. a
+   * verify script's `git submodule update --init` hard-fails on the
+   * populated-but-unregistered path). Derived from the linked_repos config
+   * (each inner repo's gitlink_path); default [] = no-op.
+   */
+  gitlinkPurgePaths?: string[];
 }
 
 /**
@@ -46,6 +59,36 @@ async function isDirectory(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Remove a stale materialized overlay at a committed gitlink path (see
+ * WorktreeOptions.gitlinkPurgePaths). Guarded three ways so it can never eat
+ * real content:
+ *  - the path must be a 160000 gitlink in HEAD (a tracked regular dir at a
+ *    misconfigured path is left alone);
+ *  - a REAL initialized submodule checkout (a .git file/dir inside) is left
+ *    alone — `submodule update` manages it and `git clean` correctly skips it;
+ *  - anything else (populated, unregistered — exactly a leftover materialize
+ *    overlay) is removed. `submodule update --init` recreates the checkout
+ *    from the persistent .git/modules store when a verify needs it.
+ */
+async function purgeStaleGitlinkOverlay(
+  g: SimpleGit,
+  wtPath: string,
+  gitlinkPath: string,
+): Promise<void> {
+  let lsTree: string;
+  try {
+    lsTree = await g.raw(["ls-tree", "HEAD", "--", gitlinkPath]);
+  } catch {
+    return; // unborn HEAD / bad path — never purge on uncertainty
+  }
+  if (!/^160000 commit [0-9a-f]/.test(lsTree.trim())) return;
+  const dir = path.join(path.normalize(wtPath), ...gitlinkPath.split("/"));
+  if (!(await isDirectory(dir))) return;
+  if (await pathExists(path.join(dir, ".git"))) return;
+  await rm(dir, { recursive: true, force: true });
 }
 
 export function createWorktree(opts: WorktreeOptions): Worktree {
@@ -109,6 +152,11 @@ export function createWorktree(opts: WorktreeOptions): Worktree {
     await g.fetch(opts.gitRemote);
     await g.checkout(opts.gitMainBranch);
     await g.reset(["--hard", `${opts.gitRemote}/${opts.gitMainBranch}`]);
+    // Reset/clean above are blind to materialized content at committed gitlink
+    // paths — purge any leftover overlay explicitly (see WorktreeOptions).
+    for (const p of opts.gitlinkPurgePaths ?? []) {
+      await purgeStaleGitlinkOverlay(g, wtPath, p);
+    }
   }
 
   async function detectCorruption(): Promise<boolean> {

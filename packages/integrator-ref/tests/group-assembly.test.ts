@@ -115,12 +115,8 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops submodule ops (real git)", () => {
     // Windows host with autocrlf=true, checkout-index writes CRLF — which
     // correctly matches a normal git checkout of the inner repo. The byte
     // content (not the line ending) is what this no-LFS guard asserts.
-    expect(readFileSync(libOnDisk, "utf8").replace(/\r\n/g, "\n")).toBe(
-      "lib content\n",
-    );
-    expect(readFileSync(readmeOnDisk, "utf8").replace(/\r\n/g, "\n")).toBe(
-      "inner\n",
-    );
+    expect(readFileSync(libOnDisk, "utf8").replace(/\r\n/g, "\n")).toBe("lib content\n");
+    expect(readFileSync(readmeOnDisk, "utf8").replace(/\r\n/g, "\n")).toBe("inner\n");
 
     // The COMMITTED tree still carries ONLY the 160000 gitlink (materialize must
     // not have leaked expanded blobs into HEAD).
@@ -129,6 +125,133 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops submodule ops (real git)", () => {
 
     // readSubmoduleGitlink throws on a non-gitlink path (§11).
     await expect(ops.readSubmoduleGitlink("top.txt")).rejects.toThrow();
+
+    // ── PURGE-BEFORE-MATERIALIZE: a stale overlay file never survives. ──
+    // Files at a committed gitlink path are INVISIBLE to git (status/clean/
+    // reset all skip them), and checkout-index -f overwrites but never
+    // deletes — so a file present from a PREVIOUS materialize (e.g. one the
+    // next inner SHA deleted) would silently persist without the purge. Seed
+    // a stale file and re-materialize: it must be gone, the real tree intact.
+    const staleOnDisk = path.join(outerWt, "vendor", "rynx", "stale-deleted.txt");
+    writeFileSync(staleOnDisk, "left over from a previous assembly\n");
+    await ops.materializeSubmoduleWorktree(GITLINK_PATH, innerSha, innerWt);
+    expect(existsSync(staleOnDisk)).toBe(false);
+    expect(existsSync(libOnDisk)).toBe(true);
+    expect(existsSync(readmeOnDisk)).toBe(true);
+  });
+});
+
+// ─── materialize populates NESTED submodules (real git, file protocol) ─
+//
+// The game_one shape: the inner repo (rynx) vendors its deps as its OWN
+// submodules (jolt, zstd, …). `sha`'s tree records them as 160000 gitlinks,
+// which checkout-index SKIPS — so without the nested overlay the assembled
+// outer tree lacks every vendored dep and the outer verify cannot fetch them
+// (the gitlink path is not a git repo in the outer worktree). materialize must
+// initialize them in the INNER pool worktree (a real clone) and export each
+// nested HEAD tree into the overlay.
+describe.skipIf(!GIT_AVAILABLE)("materialize populates nested submodules", () => {
+  let tmpRoot: string;
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeAll(() => {
+    tmpRoot = mkdtempSync(path.join(tmpdir(), "pm-int-nested-"));
+    // Modern git blocks file-protocol submodule clones (CVE-2022-39253
+    // mitigation). The materialize-spawned `submodule update --init` inherits
+    // process.env, so allow it for this suite via GIT_CONFIG_* (scoped here +
+    // restored in afterAll — never touches global git config). Production is
+    // unaffected: real linked repos use https/ssh URLs.
+    for (const [k, v] of Object.entries({
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "protocol.file.allow",
+      GIT_CONFIG_VALUE_0: "always",
+    })) {
+      savedEnv[k] = process.env[k];
+      process.env[k] = v;
+    }
+  });
+
+  afterAll(() => {
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    try {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it("exports each nested submodule's tree into the overlay (no .git pointers)", async () => {
+    // ── NESTED repo (the vendored dep) ──
+    const nestedBare = path.join(tmpRoot, "nested.git");
+    const nestedSeed = path.join(tmpRoot, "nested-seed");
+    await simpleGit().init(["--bare", "--initial-branch=main", nestedBare]);
+    await simpleGit().clone(nestedBare, nestedSeed);
+    const ng = simpleGit(nestedSeed);
+    await configIdentity(ng);
+    writeFileSync(path.join(nestedSeed, "dep.txt"), "vendored dep\n");
+    await ng.add(["dep.txt"]);
+    await ng.commit("nested dep");
+    await ng.branch(["-M", "main"]);
+    await ng.push(["-u", "origin", "main"]);
+
+    // ── INNER repo embedding it as a submodule at external/dep ──
+    const innerBare = path.join(tmpRoot, "inner.git");
+    const innerSeed = path.join(tmpRoot, "inner-seed");
+    await simpleGit().init(["--bare", "--initial-branch=main", innerBare]);
+    await simpleGit().clone(innerBare, innerSeed);
+    const ig = simpleGit(innerSeed);
+    await configIdentity(ig);
+    writeFileSync(path.join(innerSeed, "lib.txt"), "inner lib\n");
+    await ig.add(["lib.txt"]);
+    // submodule add CLONES the nested repo (file protocol — allowed via env).
+    await ig.raw(["submodule", "add", nestedBare.replace(/\\/g, "/"), "external/dep"]);
+    await ig.commit("inner with nested submodule");
+    await ig.branch(["-M", "main"]);
+    await ig.push(["-u", "origin", "main"]);
+    const innerSha = (await ig.revparse(["HEAD"])).trim();
+
+    // ── The inner POOL worktree: a FRESH clone (submodule NOT initialized —
+    //    exactly the daemon's pool-slot state). materialize must run
+    //    `submodule update --init --recursive` here itself. ──
+    const innerPoolWt = path.join(tmpRoot, "inner-pool-0");
+    await simpleGit().clone(innerBare, innerPoolWt);
+    expect(existsSync(path.join(innerPoolWt, "external", "dep", "dep.txt"))).toBe(false);
+
+    // ── OUTER repo with the gitlink ──
+    const outerBare = path.join(tmpRoot, "outer.git");
+    const outerWt = path.join(tmpRoot, "outer-wt");
+    await simpleGit().init(["--bare", "--initial-branch=main", outerBare]);
+    await simpleGit().clone(outerBare, outerWt);
+    const og = simpleGit(outerWt);
+    await configIdentity(og);
+    writeFileSync(path.join(outerWt, "top.txt"), "top\n");
+    await og.add(["top.txt"]);
+    await og.commit("outer init");
+    await og.branch(["-M", "main"]);
+
+    const ops = createGitOps(og);
+    await ops.fetchFromPath(innerPoolWt, innerSha);
+    await ops.updateSubmoduleGitlink(GITLINK_PATH, innerSha);
+    await ops.materializeSubmoduleWorktree(GITLINK_PATH, innerSha, innerPoolWt);
+
+    // The inner repo's own tree is materialized…
+    expect(existsSync(path.join(outerWt, "vendor", "rynx", "lib.txt"))).toBe(true);
+    // …AND the nested submodule's tree (the fix: previously an empty hole).
+    const depOnDisk = path.join(outerWt, "vendor", "rynx", "external", "dep", "dep.txt");
+    expect(existsSync(depOnDisk)).toBe(true);
+    expect(readFileSync(depOnDisk, "utf8").replace(/\r\n/g, "\n")).toBe("vendored dep\n");
+    // Tree-exact export: NO .git pointer is copied into the overlay (a copied
+    // gitdir pointer into the inner clone's .git/modules would be poison).
+    expect(existsSync(path.join(outerWt, "vendor", "rynx", "external", "dep", ".git"))).toBe(false);
+    // The committed outer tree still carries ONLY the 160000 gitlink.
+    const lsTree = await og.raw(["ls-tree", "HEAD", GITLINK_PATH]);
+    expect(lsTree.trim()).toMatch(/^160000 commit [0-9a-f]{40}\tvendor\/rynx$/);
+    // Side effect (by design): the inner pool worktree now has the nested
+    // submodule initialized — persistent across attempts (clean skips .git).
+    expect(existsSync(path.join(innerPoolWt, "external", "dep", "dep.txt"))).toBe(true);
   });
 });
 
@@ -268,11 +391,7 @@ describe.skipIf(!GIT_AVAILABLE)("assembleGroup (real two-repo)", () => {
     expect(Ri).toMatch(/^[0-9a-f]{40}$/);
 
     // (b) outer ls-tree HEAD <gitlinkPath> shows 160000 commit <Ri>.
-    const lsTree = await simpleGit(outerWt.path).raw([
-      "ls-tree",
-      "HEAD",
-      GITLINK_PATH,
-    ]);
+    const lsTree = await simpleGit(outerWt.path).raw(["ls-tree", "HEAD", GITLINK_PATH]);
     expect(lsTree.trim()).toBe(`160000 commit ${Ri}\t${GITLINK_PATH}`);
 
     // (c) readSubmoduleGitlink(outerWt, gitlinkPath) === Ri.
@@ -363,8 +482,7 @@ describe.skipIf(!LFS_AVAILABLE)("materialize is LFS-aware (real git+lfs, no netw
   let tmpRoot: string;
   // A fixed, deterministic "binary" (NOT randomBytes — reproducible).
   const originalBytes = Buffer.from([
-    0x00, 0x01, 0x02, 0x03, 0xff, 0xfe, 0xfd, 0xfc, 0x10, 0x20, 0x30, 0x40, 0x50,
-    0x60, 0x70, 0x80,
+    0x00, 0x01, 0x02, 0x03, 0xff, 0xfe, 0xfd, 0xfc, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80,
   ]);
 
   beforeAll(() => {

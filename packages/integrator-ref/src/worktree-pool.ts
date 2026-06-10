@@ -10,6 +10,8 @@ export interface WorktreePoolOptions {
   gitMainBranch: string;
   parallelism: number;
   cleanKeep: string[];
+  /** See WorktreeOptions.gitlinkPurgePaths — passed through to every slot. */
+  gitlinkPurgePaths?: string[];
 }
 
 export interface WorktreePool {
@@ -41,6 +43,7 @@ export function createWorktreePool(opts: WorktreePoolOptions): WorktreePool {
       gitRemote: opts.gitRemote,
       gitMainBranch: opts.gitMainBranch,
       cleanKeep: opts.cleanKeep,
+      gitlinkPurgePaths: opts.gitlinkPurgePaths,
     }),
   }));
 

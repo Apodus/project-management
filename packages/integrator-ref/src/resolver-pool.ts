@@ -146,6 +146,8 @@ export interface ResolverPoolOptions extends Partial<ResolverWorkerDeps> {
   gitRemote: string;
   gitMainBranch: string;
   cleanKeep: string[];
+  /** See WorktreeOptions.gitlinkPurgePaths — passed through to every slot. */
+  gitlinkPurgePaths?: string[];
   /** `resolver.max_concurrent` (design §3). Pool size; clamped to ≥ 1. */
   maxConcurrent: number;
 }
@@ -185,6 +187,7 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
       gitRemote: opts.gitRemote,
       gitMainBranch: opts.gitMainBranch,
       cleanKeep: opts.cleanKeep,
+      gitlinkPurgePaths: opts.gitlinkPurgePaths,
     }),
   }));
 

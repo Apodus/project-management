@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { copyFile, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
 import { killTree } from "./kill-tree.js";
@@ -113,10 +114,7 @@ export interface GitOps {
    * empty and the rebase already completed cleanly; the caller treats an empty
    * set + clean tree as "nothing to resolve" downstream.
    */
-  materializeConflict(
-    baseSha: string,
-    ref: string,
-  ): Promise<MaterializeConflictResult>;
+  materializeConflict(baseSha: string, ref: string): Promise<MaterializeConflictResult>;
   /**
    * Phase 7.6 §5.2. After the resolver agent has edited the conflicted files,
    * COMMIT the resolution and complete the in-progress rebase. Stages everything
@@ -191,11 +189,7 @@ export interface GitOps {
     sha: string,
     innerWorktreePath?: string,
   ): Promise<void>;
-  runVerify(
-    command: string,
-    timeoutMs: number,
-    opts: RunVerifyOptions,
-  ): Promise<VerifyResult>;
+  runVerify(command: string, timeoutMs: number, opts: RunVerifyOptions): Promise<VerifyResult>;
   /**
    * §7.4 RECONCILABLE ancestry check. Returns true iff `ancestor` is an ancestor
    * of `descendant` in THIS repo's history (i.e. `git merge-base --is-ancestor
@@ -271,11 +265,7 @@ function errText(err: unknown): string {
  * instance (simple-git `.env()` is stateful and persists). Rejects on non-zero
  * exit with the captured stderr.
  */
-function runGit(
-  args: string[],
-  cwd: string,
-  env: NodeJS.ProcessEnv,
-): Promise<void> {
+function runGit(args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const child = spawn("git", args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
@@ -325,23 +315,88 @@ function runGitCapture(
 }
 
 /**
+ * Enumerate every INITIALIZED submodule (all nesting levels) of `repoPath`,
+ * as display paths relative to `repoPath` (POSIX slashes — git's own output).
+ * Uses `submodule foreach`, which visits initialized submodules only and
+ * exits 0 with empty output on a repo with none. A non-zero exit after a
+ * successful `submodule update --init` is abnormal → throw (fail-loud; the
+ * assembly catch rejects the pass), never a silent empty list that would
+ * materialize an incomplete tree.
+ */
+async function listInitializedSubmodules(repoPath: string): Promise<string[]> {
+  const out = await runGitCapture(
+    ["submodule", "foreach", "--quiet", "--recursive", "echo $displaypath"],
+    repoPath,
+  );
+  if (out.code !== 0) {
+    throw new Error(`git submodule foreach (enumerate) exited ${out.code}: ${out.stderr.trim()}`);
+  }
+  return out.stdout
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Overlay the REAL Git LFS binaries from `srcRepoPath`'s working tree (which
+ * holds correctly-smudged content) over the POINTERS `checkout-index` wrote
+ * under `dstRoot` (smudge was skipped — see materializeSubmoduleWorktree).
+ * Enumerates via `git lfs ls-files`; git-lfs absent (or any failure) → treat
+ * as EMPTY (overlay no-op), so a non-LFS repo on a host without git-lfs is
+ * byte-identical. Do NOT throw on a non-zero ls-files exit.
+ */
+async function overlayLfsReals(srcRepoPath: string, dstRoot: string): Promise<void> {
+  const ls = await runGitCapture(["lfs", "ls-files", "--name-only"], srcRepoPath);
+  const relpaths =
+    ls.code === 0
+      ? ls.stdout
+          .split("\n")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : [];
+  for (const relpath of relpaths) {
+    const src = path.join(srcRepoPath, relpath);
+    const dst = path.join(dstRoot, relpath);
+    // FAIL-LOUD guard (P4): if `src` in the source worktree is itself an
+    // UNSMUDGED LFS POINTER (the clone's smudge filter never ran — e.g. it was
+    // cloned with GIT_LFS_SKIP_SMUDGE=1 or git-lfs is not configured there),
+    // copying it would silently overlay a POINTER over the pointer
+    // checkout-index already wrote — the outer verify would then build against
+    // a text pointer, not the real binary (a false-green: the build "succeeds"
+    // on garbage). An LFS pointer file is small and starts with the ASCII spec
+    // line `version https://git-lfs.github.com/spec/v1`. Read the head of
+    // `src` and refuse to overlay a pointer. (A correctly smudged worktree —
+    // the normal case — has the real binary here, so this guard is inert.)
+    const head = await readFile(src);
+    if (
+      head.subarray(0, 64).toString("utf8").startsWith("version https://git-lfs.github.com/spec/v1")
+    ) {
+      throw new Error(
+        `materialize: LFS file '${relpath}' in the source worktree '${srcRepoPath}' is an unsmudged pointer — cannot overlay the real binary (is git-lfs configured to smudge in that clone?).`,
+      );
+    }
+    await mkdir(path.dirname(dst), { recursive: true });
+    // copyFile overwrites the pointer with the real binary; overwriting an
+    // existing file's content preserves its mode. A genuinely missing src
+    // (a real defect) rejects — a missing binary must fail loud.
+    await copyFile(src, dst);
+  }
+}
+
+/**
  * Run `git merge-base --is-ancestor` as a DIRECT spawn, reading the NUMERIC
  * process exit code (the R1-critical precedent — see GitOps.isAncestor). Resolves
  * `true` on exit 0, `false` on exit 1, and REJECTS on any other exit code (e.g.
  * 128 — a bad/nonexistent object or a not-a-repo error) so the caller can
  * escalate rather than silently treat an error as "not ancestor".
  */
-function runIsAncestor(
-  ancestor: string,
-  descendant: string,
-  cwd: string,
-): Promise<boolean> {
+function runIsAncestor(ancestor: string, descendant: string, cwd: string): Promise<boolean> {
   return new Promise<boolean>((resolve, reject) => {
-    const child = spawn(
-      "git",
-      ["merge-base", "--is-ancestor", ancestor, descendant],
-      { cwd, env: process.env, stdio: ["ignore", "ignore", "pipe"] },
-    );
+    const child = spawn("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
     let stderr = "";
     child.stderr?.on("data", (d: Buffer) => {
       stderr += d.toString();
@@ -367,11 +422,7 @@ function runIsAncestor(
  * `false`; any other code (128 — bad object / not-a-repo) REJECTS so the caller
  * escalates rather than silently treating an error as "differ".
  */
-function runTreesIdentical(
-  a: string,
-  b: string,
-  cwd: string,
-): Promise<boolean> {
+function runTreesIdentical(a: string, b: string, cwd: string): Promise<boolean> {
   return new Promise<boolean>((resolve, reject) => {
     const child = spawn("git", ["diff", "--quiet", a, b], {
       cwd,
@@ -386,12 +437,7 @@ function runTreesIdentical(
     child.on("close", (code) => {
       if (code === 0) resolve(true);
       else if (code === 1) resolve(false);
-      else
-        reject(
-          new Error(
-            `git diff --quiet ${a} ${b} exited ${code}: ${stderr.trim()}`,
-          ),
-        );
+      else reject(new Error(`git diff --quiet ${a} ${b} exited ${code}: ${stderr.trim()}`));
     });
   });
 }
@@ -424,11 +470,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     } catch (err) {
       let conflictingFiles: string[] = [];
       try {
-        const diff = await git.raw([
-          "diff",
-          "--name-only",
-          "--diff-filter=U",
-        ]);
+        const diff = await git.raw(["diff", "--name-only", "--diff-filter=U"]);
         conflictingFiles = diff
           .split("\n")
           .map((s) => s.trim())
@@ -533,19 +575,11 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     return (await git.revparse([ref])).trim();
   }
 
-  async function updateSubmoduleGitlink(
-    gitlinkPath: string,
-    sha: string,
-  ): Promise<string> {
+  async function updateSubmoduleGitlink(gitlinkPath: string, sha: string): Promise<string> {
     // Stage the 160000 gitlink at `gitlinkPath` -> `sha`. `--add` is required to
     // introduce the cacheinfo entry; forward slashes are the git index
     // convention. `cacheinfo` does NOT need `sha` present locally.
-    await git.raw([
-      "update-index",
-      "--add",
-      "--cacheinfo",
-      `160000,${sha},${gitlinkPath}`,
-    ]);
+    await git.raw(["update-index", "--add", "--cacheinfo", `160000,${sha},${gitlinkPath}`]);
     // Commit with an EXPLICIT identity — pool-cloned worktrees have no
     // configured user, so without this the commit fails "Author identity
     // unknown" (this is the integrator's first authored commit).
@@ -593,6 +627,54 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     // the inner blobs under `<gitlinkPath>/` without disturbing the committed
     // gitlink in HEAD or the real index.
     const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+    const overlayRoot = path.join(topLevel, ...gitlinkPath.split("/"));
+
+    // ── PURGE the gitlink path before writing the overlay ──
+    // A previous materialize's overlay here is INVISIBLE to git: the path is a
+    // committed 160000 gitlink, so `git status` reports nothing and the
+    // worktree's per-attempt `reset --hard` + `clean -fdx` never touch it
+    // (confirmed empirically). Without this purge, (a) files deleted between
+    // two materialized inner SHAs would survive (checkout-index -f overwrites
+    // but never deletes), and (b) the stale overlay poisons every later verify
+    // in this slot — e.g. a verify script's `git submodule update --init`
+    // hard-fails on a populated-but-unregistered submodule path. `force: true`
+    // makes the first run (no dir) a no-op. A REAL initialized submodule
+    // checkout here is also safe to remove: its git dir lives under
+    // .git/modules, not inside the path, so a later `submodule update --init`
+    // re-checks-out from the existing module store without recloning.
+    await rm(overlayRoot, { recursive: true, force: true });
+
+    // ── Nested-submodule prep in the INNER worktree (assembly opt-in) ──
+    // `sha`'s tree records the inner repo's own submodules as 160000 gitlink
+    // entries, which checkout-index SKIPS (it writes blobs only) — so without
+    // this step the materialized tree would lack every nested vendored
+    // submodule, and the outer verify could not fetch them itself (the
+    // gitlink path is not a git repo in the outer worktree, and the verify
+    // contract forbids `submodule update` there — see
+    // docs/integrator-deployment.md §14.8). Initialize them in the inner pool
+    // worktree instead — a REAL clone where `submodule update` works, checked
+    // out at `sha` by the assembly, and persistent across attempts (the
+    // per-attempt `git clean` skips dirs carrying a .git). A failure here
+    // throws → the assembly rejects this pass (gitlink_mismatch detail),
+    // nothing pushed.
+    let nestedPaths: string[] = [];
+    if (innerWorktreePath) {
+      await runGit(
+        ["submodule", "update", "--init", "--recursive"],
+        innerWorktreePath,
+        process.env,
+      );
+      // Best-effort: pull LFS reals inside the nested submodules so the
+      // working trees we export below hold real binaries. A non-zero exit
+      // (git-lfs absent / no LFS use) is tolerated — the pointer fail-loud
+      // guard in overlayLfsReals still catches a needed-but-missing binary.
+      await runGitCapture(
+        ["submodule", "foreach", "--recursive", "git", "lfs", "pull"],
+        innerWorktreePath,
+      );
+      nestedPaths = await listInitializedSubmodules(innerWorktreePath);
+    }
+
     const tmpIndex = path.join(
       topLevel,
       ".git",
@@ -620,56 +702,50 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       await runGit(["read-tree", `--prefix=${gitlinkPath}/`, sha], topLevel, env);
       await runGit(["checkout-index", "-a", "-f"], topLevel, env);
 
-      // ── LFS overlay (opt-in) ──
-      // checkout-index wrote POINTERS for the inner's LFS-tracked files (smudge
-      // was skipped). Overlay the REAL binaries by copying each inner LFS file
-      // from the inner pool worktree (which holds the correctly-smudged content
-      // at `sha`) over its pointer in the outer working tree.
       if (innerWorktreePath) {
-        // Enumerate inner LFS files. git-lfs absent (or any failure) → non-zero
-        // exit → treat as EMPTY (overlay no-op), so a non-LFS inner on a host
-        // without git-lfs is byte-identical. Do NOT throw on non-zero.
-        const ls = await runGitCapture(
-          ["-C", innerWorktreePath, "lfs", "ls-files", "--name-only"],
-          innerWorktreePath,
-        );
-        const relpaths =
-          ls.code === 0
-            ? ls.stdout
-                .split("\n")
-                .map((s) => s.trim())
-                .filter((s) => s.length > 0)
-            : [];
-        for (const relpath of relpaths) {
-          const src = path.join(innerWorktreePath, relpath);
-          const dst = path.join(topLevel, gitlinkPath, relpath);
-          // FAIL-LOUD guard (P4): if `src` in the inner worktree is itself an
-          // UNSMUDGED LFS POINTER (the inner clone's smudge filter never ran —
-          // e.g. it was cloned with GIT_LFS_SKIP_SMUDGE=1 or git-lfs is not
-          // configured there), copying it would silently overlay a POINTER over
-          // the pointer checkout-index already wrote — the outer verify would then
-          // build against a text pointer, not the real binary (a false-green: the
-          // build "succeeds" on garbage). An LFS pointer file is small and starts
-          // with the ASCII spec line `version https://git-lfs.github.com/spec/v1`.
-          // Read the head of `src` and refuse to overlay a pointer. (A correctly
-          // smudged inner worktree — the normal case + the P2 test — has the real
-          // binary here, so this guard is inert.)
-          const head = await readFile(src);
-          if (
-            head
-              .subarray(0, 64)
-              .toString("utf8")
-              .startsWith("version https://git-lfs.github.com/spec/v1")
-          ) {
-            throw new Error(
-              `materialize: inner LFS file '${relpath}' in the inner worktree is an unsmudged pointer — cannot overlay the real binary (is git-lfs configured to smudge in the inner clone?).`,
+        // ── LFS overlay (opt-in) ──
+        // checkout-index wrote POINTERS for the inner's LFS-tracked files
+        // (smudge was skipped). Overlay the REAL binaries from the inner pool
+        // worktree (which holds the correctly-smudged content at `sha`).
+        await overlayLfsReals(innerWorktreePath, overlayRoot);
+
+        // ── Nested-submodule overlay ──
+        // Export each initialized nested submodule's HEAD tree (== the gitlink
+        // recorded in `sha`, per the `submodule update --init` above) from its
+        // OWN git dir into the overlay — tree-exact, no working-tree junk.
+        // A nested submodule's .git is a FILE (a gitdir pointer into the inner
+        // clone's .git/modules), so the throwaway index lives in tmpdir.
+        // Deeper nesting is covered by its own --recursive enumeration entry;
+        // each level's gitlink entries are skipped by checkout-index exactly
+        // like the top level's.
+        for (const nested of nestedPaths) {
+          const srcRepo = path.join(innerWorktreePath, ...nested.split("/"));
+          const dstDir = path.join(overlayRoot, ...nested.split("/"));
+          const nestedIndex = path.join(
+            tmpdir(),
+            `pm-materialize-nested-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          );
+          const nestedEnv = {
+            ...process.env,
+            GIT_INDEX_FILE: nestedIndex,
+            GIT_LFS_SKIP_SMUDGE: "1",
+          };
+          try {
+            // checkout-index --prefix requires the destination dir to exist;
+            // forward slashes + trailing slash (git convention, works on win32).
+            await mkdir(dstDir, { recursive: true });
+            await runGit(["read-tree", "HEAD"], srcRepo, nestedEnv);
+            await runGit(
+              ["checkout-index", "-a", "-f", `--prefix=${dstDir.replace(/\\/g, "/")}/`],
+              srcRepo,
+              nestedEnv,
             );
+          } finally {
+            await rm(nestedIndex, { force: true }).catch(() => {
+              /* best-effort */
+            });
           }
-          await mkdir(path.dirname(dst), { recursive: true });
-          // copyFile overwrites the pointer with the real binary; overwriting an
-          // existing file's content preserves its mode. A genuinely missing src
-          // (a real defect) rejects — a missing inner binary must fail loud.
-          await copyFile(src, dst);
+          await overlayLfsReals(srcRepo, dstDir);
         }
       }
     } finally {
@@ -751,10 +827,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       }, timeoutMs);
       timeout.unref?.();
 
-      const finish = (
-        exitCode: number,
-        exitSignal: NodeJS.Signals | null,
-      ): void => {
+      const finish = (exitCode: number, exitSignal: NodeJS.Signals | null): void => {
         // Settled/finished guard: a spawn `error` can arrive after a partial
         // `exit` (or vice-versa); resolve exactly once so we never double-resolve.
         if (settled) return;
@@ -795,10 +868,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     });
   }
 
-  async function isAncestor(
-    ancestor: string,
-    descendant: string,
-  ): Promise<boolean> {
+  async function isAncestor(ancestor: string, descendant: string): Promise<boolean> {
     // The cwd is the worktree this gitOps is bound to. `--show-toplevel`
     // resolves it from the underlying simple-git instance (same precedent as
     // materializeSubmoduleWorktree). The direct spawn then reads the numeric

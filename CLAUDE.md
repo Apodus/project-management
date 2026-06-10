@@ -171,8 +171,17 @@ declared per project in `settings.integrator.linked_repos` (`[{ name, path, role
 gitlink_parent?, gitlink_path? }]`; default `[]` = single-repo, byte-identical to 7.2) — where a
 linked-repo `path` accepts a bare/local path **or** a remote/`file://`/SSH/HTTPS URL (the integrator
 binds it via a local `--mirror` clone to resolve refs), and an inner repo's Git LFS files materialize
-as **real binaries** in the outer working tree for verify (land path; recovery roll-forward is not yet
-LFS-overlay-aware). Worker MCP tools: `pm_request_merge_group` (accepts an atomic `members` form —
+as **real binaries** in the outer working tree for verify (land path AND recovery roll-forward). The
+materialized overlay is **complete and self-cleaning** (2026-06-10 hardening): materialize purges the
+gitlink path before writing (content at a committed gitlink is INVISIBLE to git status/clean/reset, so
+a stale overlay would otherwise outlive every attempt and poison later verifies in the slot — the
+game_one `submodule update` fatal), exports the inner repo's **nested submodules recursively**
+(tree-exact, initialized in the inner pool worktree where `submodule update` works), and every
+`resetForAttempt` purges leftover overlays at declared `gitlink_path`s (triple-guarded: only a
+populated, `.git`-less dir at a real 160000 gitlink is removed). **Verify contract:** the outer verify
+command must NOT `submodule update --init` the gitlink path (unfetchable pre-land; the train provides
+those sources) — see `docs/integrator-deployment.md` §14.8 for the detection idiom. Worker MCP tools:
+`pm_request_merge_group` (accepts an atomic `members` form —
 members born group-bound, never single-repo-pickable — or the legacy `member_request_ids`),
 `pm_get_merge_group`, `pm_list_merge_incidents`, `pm_get_merge_incident`. Full spec:
 `docs/design/phase-7.3-design.md`.
@@ -291,7 +300,7 @@ spec: `docs/design/phase-7.6.1-resolver-in-session-loop.md`; operator guide:
 (the entity's `assigneeId`/`claimedBy` stays the human-facing holder pointer; the lease is the
 liveness layer beside it). **Renew-on-action**: every claimed write flows through the liveness-aware
 `assertClaimOk`, which renews the holder's own lease forward — so a holder is **never 409'd for its own
-stale lease** (self-stale → renew), and only a *different* agent is gated. Reclaim is an
+stale lease** (self-stale → renew), and only a _different_ agent is gated. Reclaim is an
 **opportunistic on-read sweep** (merge-lock parity — piggybacked on claim/pick, no scheduler / no
 background thread): lapsed leases (`now > expiresAt + grace`) are detected and, in mode `on`, the
 holder is cleared atomically with exactly one `claim_reclaimed` audit row + one `claim.lease.reclaimed`
@@ -378,7 +387,7 @@ Add the following to your Claude MCP settings (e.g., `claude_desktop_config.json
 
 Replace `/path/to/project-management` with the absolute path to this project. `PM_API_URL` can point to any machine running the server (e.g., `http://192.168.1.x:3000` for a remote host).
 
-When auto-claiming from an agent pool (`PM_POOL_SECRET` instead of a static `PM_API_TOKEN`), also set a **distinct** `PM_WORKER_KEY` per worker so a reconnect/restart re-binds the SAME identity instead of grabbing a new free agent (avoids stranded claims). The game_one distribute bundle (a separate repo — do not edit from here) should write a distinct `PM_WORKER_KEY` per worker alongside the per-worker `PM_POOL_*` it already emits.
+When auto-claiming from an agent pool (`PM_POOL_SECRET` instead of a static `PM_API_TOKEN`), also set a **distinct** `PM_WORKER_KEY` per worker so a reconnect/restart re-binds the SAME identity instead of grabbing a new free agent (avoids stranded claims). The game*one distribute bundle (a separate repo — do not edit from here) should write a distinct `PM_WORKER_KEY` per worker alongside the per-worker `PM_POOL*\*` it already emits.
 
 ### Available MCP Tools
 
@@ -395,21 +404,21 @@ The MCP server exposes tools for:
 
 ## Environment Variables
 
-| Variable            | Default                 | Description                             |
-| ------------------- | ----------------------- | --------------------------------------- |
-| `NODE_ENV`          | (none)                  | Set to `production` for production mode |
-| `PM_PORT`           | `3000`                  | Server port                             |
-| `PM_HOST`           | `127.0.0.1`             | Bind address (`0.0.0.0` for LAN access) |
-| `PM_DB_PATH`        | `./data/pm.db`          | SQLite database file path               |
-| `PM_SESSION_SECRET` | (generated)             | Session signing secret                  |
-| `PM_LOG_LEVEL`      | `info`                  | Logging verbosity                       |
-| `PM_WEB_DIST_PATH`  | (auto-resolved)         | Override path to web dist directory     |
-| `PM_LEASE_MODE`     | `shadow`                | Claim lease engine: `off`/`shadow`/`on` (`on` is C1-gated) |
-| `PM_LEASE_TTL_SEC`  | `1800`                  | Claim lease TTL (seconds) before a lease lapses |
-| `PM_LEASE_GRACE_SEC`| `86400`                 | Reclaim grace (seconds) beyond TTL before sweep |
-| `PM_API_URL`        | `http://localhost:3000` | MCP server: API base URL                |
-| `PM_API_TOKEN`      | (none)                  | MCP server: API authentication token    |
-| `PM_WORKER_KEY`     | (none)                  | MCP server: stable per-worker identity key. With the pool secret, re-binds the SAME agent identity across reconnect/restart (no stranded claims). Must be DISTINCT per worker. Unset ⇒ legacy behavior (grab any free agent). |
+| Variable             | Default                 | Description                                                                                                                                                                                                                   |
+| -------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`           | (none)                  | Set to `production` for production mode                                                                                                                                                                                       |
+| `PM_PORT`            | `3000`                  | Server port                                                                                                                                                                                                                   |
+| `PM_HOST`            | `127.0.0.1`             | Bind address (`0.0.0.0` for LAN access)                                                                                                                                                                                       |
+| `PM_DB_PATH`         | `./data/pm.db`          | SQLite database file path                                                                                                                                                                                                     |
+| `PM_SESSION_SECRET`  | (generated)             | Session signing secret                                                                                                                                                                                                        |
+| `PM_LOG_LEVEL`       | `info`                  | Logging verbosity                                                                                                                                                                                                             |
+| `PM_WEB_DIST_PATH`   | (auto-resolved)         | Override path to web dist directory                                                                                                                                                                                           |
+| `PM_LEASE_MODE`      | `shadow`                | Claim lease engine: `off`/`shadow`/`on` (`on` is C1-gated)                                                                                                                                                                    |
+| `PM_LEASE_TTL_SEC`   | `1800`                  | Claim lease TTL (seconds) before a lease lapses                                                                                                                                                                               |
+| `PM_LEASE_GRACE_SEC` | `86400`                 | Reclaim grace (seconds) beyond TTL before sweep                                                                                                                                                                               |
+| `PM_API_URL`         | `http://localhost:3000` | MCP server: API base URL                                                                                                                                                                                                      |
+| `PM_API_TOKEN`       | (none)                  | MCP server: API authentication token                                                                                                                                                                                          |
+| `PM_WORKER_KEY`      | (none)                  | MCP server: stable per-worker identity key. With the pool secret, re-binds the SAME agent identity across reconnect/restart (no stranded claims). Must be DISTINCT per worker. Unset ⇒ legacy behavior (grab any free agent). |
 
 See `.env.example` for a template.
 

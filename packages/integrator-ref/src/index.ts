@@ -97,6 +97,16 @@ async function main(): Promise<void> {
   // GitOps per-worktree via the factory (each member runs in its own slot).
   // At parallelism:1 the pool is a size-1 pool, so the observable behavior is a
   // batch-of-one that is byte-identical to the 7.1 serial loop.
+  //
+  // gitlinkPurgePaths: every declared inner gitlink_path is purged of stale
+  // materialized overlays on each resetForAttempt — git itself is blind to
+  // plain files at a committed gitlink path, so a leftover group-assembly
+  // overlay would otherwise poison every later verify in the slot. Applied to
+  // ALL pools (default/lane/resolver); the purge is self-guarding (only a
+  // populated, .git-less dir at an actual 160000 gitlink is removed), so it is
+  // a no-op for repos where the path is not a gitlink. Empty linked_repos ⇒ []
+  // ⇒ byte-identical to before.
+  const gitlinkPurgePaths = cfg.linkedRepos.flatMap((r) => (r.gitlinkPath ? [r.gitlinkPath] : []));
   const pool = createWorktreePool({
     parallelism: cfg.parallelism,
     worktreeRoot: cfg.worktreeRoot,
@@ -105,6 +115,7 @@ async function main(): Promise<void> {
     gitRemote: cfg.gitRemote,
     gitMainBranch: cfg.gitMainBranch,
     cleanKeep: cfg.cleanKeep,
+    gitlinkPurgePaths,
   });
   const makeGitOps = (p: string) => createGitOps(simpleGit(p));
 
@@ -144,6 +155,7 @@ async function main(): Promise<void> {
       gitRemote: cfg.gitRemote,
       gitMainBranch: cfg.gitMainBranch,
       cleanKeep: cfg.cleanKeep,
+      gitlinkPurgePaths,
       maxConcurrent: cfg.resolver.maxConcurrent,
       // ── Phase 7.6 Step 6 worker deps. ──
       pmClient,
@@ -214,6 +226,7 @@ async function main(): Promise<void> {
         gitRemote: cfg.gitRemote,
         gitMainBranch: cfg.gitMainBranch,
         cleanKeep: cfg.cleanKeep,
+        gitlinkPurgePaths,
       });
       // Binding clone: a LOCAL `--mirror` clone of the linked repo, used ONLY to
       // resolve a member's ref (commitSha/branch). `repo.path` may be a remote
