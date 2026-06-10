@@ -12,7 +12,7 @@ import type {
 import { getDb, getRawDb, notes, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
-import { sanitizeFtsQuery } from "./search.service.js";
+import { sanitizeFtsQuery, sanitizeFtsQueryOr } from "./search.service.js";
 import * as proposalService from "./proposal.service.js";
 import * as taskService from "./task.service.js";
 
@@ -410,9 +410,7 @@ export function findSimilarOpenNotes(
 
   try {
     const rawDb = getRawDb();
-    const rows = rawDb
-      .prepare(
-        `
+    const sql = `
         SELECT n.id, n.title, n.kind, notes_fts.rank as rank
         FROM notes_fts
         JOIN notes n ON n.rowid = notes_fts.rowid
@@ -420,16 +418,21 @@ export function findSimilarOpenNotes(
           AND n.project_id = ?
           AND n.status = 'open'
         ORDER BY rank LIMIT ?
-        `,
-      )
-      .all(sanitized, projectId, limit) as Array<{
-      id: string;
-      title: string;
-      kind: NoteKind;
-      rank: number;
-    }>;
+        `;
+    type Row = { id: string; title: string; kind: NoteKind; rank: number };
 
-    return rows.map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+    // Pass 1: implicit-AND (precise). If it hits, return those — no top-up.
+    const rows = rawDb.prepare(sql).all(sanitized, projectId, limit) as Row[];
+    if (rows.length > 0) {
+      return rows.map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+    }
+
+    // Pass 2: OR fallback — the recall floor for the zero-AND-hit case
+    // (advisory-only). Top-3 by rank, independent of the limit param.
+    const orSanitized = sanitizeFtsQueryOr(titleAndBody);
+    if (!orSanitized) return [];
+    const orRows = rawDb.prepare(sql).all(orSanitized, projectId, 3) as Row[];
+    return orRows.map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
   } catch {
     return [];
   }

@@ -963,6 +963,144 @@ describe("note service", () => {
       expect(noteService.findSimilarOpenNotes(project.id, "")).toEqual([]);
       expect(noteService.findSimilarOpenNotes(project.id, "   ")).toEqual([]);
     });
+
+    // ── P3: dedup two-pass OR-fallback ──────────────────────────────
+    it("with an AND-hit present, the OR fallback does NOT fire", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+
+      // Note containing ALL query tokens → the AND pass hits.
+      const full = noteService.create(
+        project.id,
+        { kind: "bug", title: "alpha bravo charlie delta echo" },
+        author.id,
+      );
+      // Notes sharing only SOME tokens → must NOT surface while AND hits.
+      const partialA = noteService.create(
+        project.id,
+        { kind: "idea", title: "alpha bravo zulu" },
+        author.id,
+      );
+      const partialB = noteService.create(
+        project.id,
+        { kind: "idea", title: "charlie delta yankee" },
+        author.id,
+      );
+
+      const hits = noteService.findSimilarOpenNotes(
+        project.id,
+        "alpha bravo charlie delta echo",
+      );
+      const ids = hits.map((h) => h.id);
+      expect(ids).toContain(full.id);
+      expect(ids).not.toContain(partialA.id);
+      expect(ids).not.toContain(partialB.id);
+    });
+
+    it("with zero AND-hits, the OR fallback surfaces a partial overlap", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+
+      // Shares ~2 of 5 query words; no note contains all five → AND = 0.
+      const partial = noteService.create(
+        project.id,
+        { kind: "bug", title: "alpha bravo unrelated topic here" },
+        author.id,
+      );
+
+      const hits = noteService.findSimilarOpenNotes(
+        project.id,
+        "alpha bravo charlie delta echo",
+      );
+      expect(hits.some((h) => h.id === partial.id)).toBe(true);
+    });
+
+    it("caps the OR fallback at top-3", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+
+      // Five partial-overlap open notes, each sharing some-but-not-all
+      // query tokens → AND = 0, OR fires.
+      for (const word of ["alpha", "bravo", "charlie", "delta", "echo"]) {
+        noteService.create(
+          project.id,
+          { kind: "idea", title: `${word} solo overlap line` },
+          author.id,
+        );
+      }
+
+      const hits = noteService.findSimilarOpenNotes(
+        project.id,
+        "alpha bravo charlie delta echo",
+      );
+      expect(hits.length).toBeLessThanOrEqual(3);
+    });
+
+    it("excludes a triaged partial overlap from the OR fallback", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      testApp.db
+        .insert(notes)
+        .values({
+          id: createId(),
+          projectId: project.id,
+          kind: "bug",
+          status: "triaged",
+          title: "alpha bravo unrelated topic here",
+          authorId: author.id,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        .run();
+
+      const hits = noteService.findSimilarOpenNotes(
+        project.id,
+        "alpha bravo charlie delta echo",
+      );
+      expect(hits).toHaveLength(0);
+    });
+
+    it("excludes an other-project partial overlap from the OR fallback", () => {
+      const projectA = createTestProject(testApp.db);
+      const projectB = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      noteService.create(
+        projectB.id,
+        { kind: "bug", title: "alpha bravo unrelated topic here" },
+        author.id,
+      );
+
+      const hits = noteService.findSimilarOpenNotes(
+        projectA.id,
+        "alpha bravo charlie delta echo",
+      );
+      expect(hits).toHaveLength(0);
+    });
+
+    it("handles a token-flood body (>15 tokens) without throwing, cap applies", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const partial = noteService.create(
+        project.id,
+        { kind: "bug", title: "alpha bravo unrelated topic here" },
+        author.id,
+      );
+
+      // 20 distinct tokens; only the first few overlap the partial note,
+      // none combine into an AND hit.
+      const floodTokens = [
+        "alpha",
+        "bravo",
+        ...Array.from({ length: 18 }, (_, i) => `tok${i}`),
+      ];
+      const hits = noteService.findSimilarOpenNotes(
+        project.id,
+        floodTokens.join(" "),
+      );
+      expect(hits.length).toBeLessThanOrEqual(3);
+      // sanity: the OR fallback still surfaces the partial overlap.
+      expect(hits.some((h) => h.id === partial.id)).toBe(true);
+    });
   });
 
   // ── activity integration ────────────────────────────────────────

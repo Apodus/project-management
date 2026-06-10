@@ -83,6 +83,22 @@ function getEntityTypes(entityType?: string): string[] {
 }
 
 /**
+ * Quote a single FTS5 token: wraps it in double quotes to escape special
+ * chars, preserving a trailing wildcard suffix (*) when present and
+ * stripping inner double quotes. Returns "" for a token that quotes empty
+ * (e.g. a bare "*"). Shared by sanitizeFtsQuery (AND) and
+ * sanitizeFtsQueryOr (OR fallback).
+ */
+function quoteFtsToken(token: string): string {
+  // Allow trailing wildcard
+  if (token.endsWith("*")) {
+    const base = token.slice(0, -1).replace(/"/g, "");
+    return base ? `"${base}"*` : "";
+  }
+  return `"${token.replace(/"/g, "")}"`;
+}
+
+/**
  * Sanitize a user query for FTS5 MATCH syntax.
  * Wraps individual tokens in double quotes to escape special chars,
  * preserving wildcard suffix (*) when present.
@@ -94,16 +110,27 @@ export function sanitizeFtsQuery(query: string): string {
   // Split into tokens and wrap each in double quotes
   const tokens = trimmed.split(/\s+/).filter(Boolean);
   return tokens
-    .map((token) => {
-      // Allow trailing wildcard
-      if (token.endsWith("*")) {
-        const base = token.slice(0, -1).replace(/"/g, "");
-        return base ? `"${base}"*` : "";
-      }
-      return `"${token.replace(/"/g, "")}"`;
-    })
+    .map(quoteFtsToken)
     .filter(Boolean)
     .join(" ");
+}
+
+/**
+ * OR-mode FTS5 sanitizer for the dedup fallback (P3): quoted tokens joined
+ * with the FTS5 OR operator, capped at the first `maxTokens` tokens (the
+ * low-signal rank-flood guard for long bodies). sanitizeFtsQuery (implicit
+ * AND) and /search are deliberately untouched.
+ */
+export function sanitizeFtsQueryOr(query: string, maxTokens = 15): string {
+  const trimmed = query.trim();
+  if (!trimmed) return "";
+  return trimmed
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, maxTokens)
+    .map(quoteFtsToken)
+    .filter(Boolean)
+    .join(" OR ");
 }
 
 function searchProposals(
