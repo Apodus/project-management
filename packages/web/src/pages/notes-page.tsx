@@ -38,6 +38,7 @@ import {
   usePromoteNoteToTask,
 } from "@/hooks/use-notes";
 import { useEpics } from "@/hooks/use-epics";
+import { useFtsSearch } from "@/hooks/use-fts-search";
 import { useProjectStore } from "@/stores/project-store";
 import {
   formatRelativeTime,
@@ -662,18 +663,31 @@ export function NotesPage() {
   const notes = notesQuery.data?.data ?? [];
   const { isLoading, error, refetch } = notesQuery;
 
-  // Client-side free-text search over title + body (debounced), mirroring
-  // command-palette's `.toLowerCase().includes` idiom. No /search wrapper exists
-  // for notes (FTS deferred).
+  // Hybrid search (C4): the AND model. Structured filters narrow via the list
+  // endpoint (the `notes` rows above); free text narrows via server FTS5
+  // (GET /search, entity_type=note, project-scoped). The visible set is the
+  // ID-SET INTERSECTION of both, ordered by FTS rank (hit order, best first) —
+  // a note matching the text but excluded by a structured filter stays hidden,
+  // and vice versa. The wrapper passes limit=100 explicitly, so free-text
+  // results cap at the 100 best-ranked hits.
+  const hasFreeText = debouncedSearch.trim().length > 0;
+  const ftsQuery = useFtsSearch(debouncedSearch, {
+    projectId,
+    entityType: "note",
+  });
   const visibleNotes = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    if (!q) return notes;
-    return notes.filter(
-      (n) =>
-        n.title.toLowerCase().includes(q) ||
-        (n.body && n.body.toLowerCase().includes(q)),
-    );
-  }, [notes, debouncedSearch]);
+    if (!hasFreeText) return notes;
+    const hits = ftsQuery.data ?? [];
+    const byId = new Map(notes.map((n) => [n.id, n]));
+    return hits
+      .map((h) => byId.get(h.entityId))
+      .filter((n): n is Note => n !== undefined);
+  }, [notes, hasFreeText, ftsQuery.data]);
+
+  // Avoid a false "no notes match" flash while the FIRST fts fetch for a
+  // query is in flight (subsequent keystrokes keep previous hits rendered
+  // via placeholderData).
+  const searchPending = hasFreeText && ftsQuery.isLoading;
 
   const hasActiveFilters = !!(
     (kindFilter && kindFilter !== "all") ||
@@ -797,7 +811,7 @@ export function NotesPage() {
       )}
 
       {/* Loading state */}
-      {isLoading && (
+      {(isLoading || searchPending) && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <NoteSkeleton key={i} />
@@ -806,7 +820,7 @@ export function NotesPage() {
       )}
 
       {/* Empty state */}
-      {!isLoading && !error && visibleNotes.length === 0 && (
+      {!isLoading && !searchPending && !error && visibleNotes.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
           <Inbox className="mb-3 size-10 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">
@@ -826,7 +840,7 @@ export function NotesPage() {
       )}
 
       {/* Note grid */}
-      {!isLoading && !error && visibleNotes.length > 0 && (
+      {!isLoading && !searchPending && !error && visibleNotes.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleNotes.map((note) => (
             <NoteCard key={note.id} note={note} isHuman={isHuman} />

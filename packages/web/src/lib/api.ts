@@ -444,6 +444,38 @@ export async function promoteNoteToTask(
   });
 }
 
+// ---- Search API (Campaign C4) ----
+
+export type SearchResult = components["schemas"]["SearchResult"];
+
+export interface SearchOptions {
+  projectId?: string;
+  entityType?: "proposal" | "task" | "comment" | "note";
+  limit?: number;
+}
+
+/**
+ * Server FTS5 search over GET /search. Appends a trailing `*` to the FINAL
+ * token (type-ahead prefix match — the server's quoteFtsToken preserves a
+ * trailing wildcard). Returns rank-ordered hits (best first).
+ *
+ * `limit` is passed EXPLICITLY, defaulting to 100 (the route's own default is
+ * 20 — without the explicit param a documented "100-hit cap" would be a lie).
+ */
+export async function search(
+  q: string,
+  options?: SearchOptions,
+): Promise<SearchResult[]> {
+  const trimmed = q.trim();
+  if (!trimmed) return [];
+  const prefixed = trimmed.endsWith("*") ? trimmed : `${trimmed}*`;
+  const params = new URLSearchParams({ q: prefixed });
+  if (options?.projectId) params.set("project_id", options.projectId);
+  if (options?.entityType) params.set("entity_type", options.entityType);
+  params.set("limit", String(options?.limit ?? 100));
+  return apiFetch<SearchResult[]>(`/search?${params.toString()}`);
+}
+
 // ---- Activity API ----
 
 export type ActivityLogEntry = components["schemas"]["ActivityLogEntry"];

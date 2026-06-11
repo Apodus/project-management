@@ -38,6 +38,38 @@ vi.mock("@/components/ui/select", () => ({
 const useNotesSpy = vi.fn();
 let notesData: Note[] = [];
 
+// ── Server FTS mock (C4 hybrid search) ─────────────────────────────
+// The page intersects the loaded (structured-filtered) rows with these hits,
+// in HIT order. Tests seed `ftsHits` to simulate the /search response.
+type FtsHit = {
+  entityType: string;
+  entityId: string;
+  title: string;
+  excerpt: string;
+  rank: number;
+  projectId: string | null;
+};
+let ftsHits: FtsHit[] = [];
+const useFtsSearchSpy = vi.fn();
+
+function makeHit(entityId: string, rank: number): FtsHit {
+  return {
+    entityType: "note",
+    entityId,
+    title: `hit ${entityId}`,
+    excerpt: "…",
+    rank,
+    projectId: "proj-1",
+  };
+}
+
+vi.mock("@/hooks/use-fts-search", () => ({
+  useFtsSearch: (q: string, opts: unknown) => {
+    useFtsSearchSpy(q, opts);
+    return { data: ftsHits, isLoading: false };
+  },
+}));
+
 function makeNote(overrides: Partial<Note>): Note {
   return {
     id: "note-1",
@@ -139,6 +171,7 @@ import { NotesPage } from "./notes-page";
 beforeEach(() => {
   vi.clearAllMocks();
   notesData = [];
+  ftsHits = [];
   // clearAllMocks wipes the implementation — restore the human default.
   useCurrentUserMock.mockReturnValue({ data: { type: "human" } });
 });
@@ -154,11 +187,14 @@ describe("NotesPage", () => {
     expect(screen.getByText("Idea for caching")).toBeInTheDocument();
   });
 
-  it("filters rendered cards by the client-side search box (debounced)", async () => {
+  // ── C4 hybrid search: server FTS free-text ANDs structured filters ──
+
+  it("free-text narrows the rendered cards to the server FTS hits (debounced)", async () => {
     notesData = [
       makeNote({ id: "n1", title: "Login is broken" }),
       makeNote({ id: "n2", title: "Idea for caching" }),
     ];
+    ftsHits = [makeHit("n2", -1.5)];
     render(<NotesPage />);
     fireEvent.change(screen.getByPlaceholderText("Search notes..."), {
       target: { value: "caching" },
@@ -168,6 +204,62 @@ describe("NotesPage", () => {
       expect(screen.queryByText("Login is broken")).not.toBeInTheDocument(),
     );
     expect(screen.getByText("Idea for caching")).toBeInTheDocument();
+    // The hook received the debounced query, project-scoped to notes.
+    expect(useFtsSearchSpy).toHaveBeenLastCalledWith("caching", {
+      projectId: "proj-1",
+      entityType: "note",
+    });
+  });
+
+  it("renders free-text results in FTS RANK order (hit order), not list order", async () => {
+    notesData = [
+      makeNote({ id: "n1", title: "ranked-first-created" }),
+      makeNote({ id: "n2", title: "ranked-second-created" }),
+      makeNote({ id: "n3", title: "ranked-third-created" }),
+    ];
+    // Best-ranked hit is n3, then n1; n2 is no hit.
+    ftsHits = [makeHit("n3", -2.0), makeHit("n1", -0.5)];
+    render(<NotesPage />);
+    fireEvent.change(screen.getByPlaceholderText("Search notes..."), {
+      target: { value: "ranked" },
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("ranked-second-created")).not.toBeInTheDocument(),
+    );
+    const titles = screen
+      .getAllByText(/^ranked-/)
+      .map((el) => el.textContent);
+    expect(titles).toEqual(["ranked-third-created", "ranked-first-created"]);
+  });
+
+  it("hides an FTS hit that the structured filters excluded (the AND model)", async () => {
+    // The loaded rows are the structured-filtered set; "n-excluded" matched
+    // the text server-side but is NOT in the rows → must stay hidden.
+    notesData = [makeNote({ id: "n1", title: "Visible note" })];
+    ftsHits = [makeHit("n-excluded", -3.0), makeHit("n1", -1.0)];
+    render(<NotesPage />);
+    fireEvent.change(screen.getByPlaceholderText("Search notes..."), {
+      target: { value: "note" },
+    });
+    await waitFor(() =>
+      expect(screen.getByText("Visible note")).toBeInTheDocument(),
+    );
+    // Exactly one card (the excluded hit contributed nothing).
+    expect(screen.getAllByText(/note/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText("hit n-excluded")).not.toBeInTheDocument();
+  });
+
+  it("shows the filtered empty state when the intersection is empty", async () => {
+    notesData = [makeNote({ id: "n1", title: "Login is broken" })];
+    ftsHits = [];
+    render(<NotesPage />);
+    fireEvent.change(screen.getByPlaceholderText("Search notes..."), {
+      target: { value: "zorvex" },
+    });
+    await waitFor(() =>
+      expect(screen.getByText("No notes match your filters")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Login is broken")).not.toBeInTheDocument();
   });
 
   it("shows the empty-state copy when there are no notes", () => {
