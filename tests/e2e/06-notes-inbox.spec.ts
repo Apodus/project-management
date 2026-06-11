@@ -29,9 +29,17 @@ test.describe("Notes Inbox", () => {
     });
 
     await page.goto(`/projects/${projectId}/notes`);
+    // Positive load-gating: assert the page actually reached its loaded state
+    // (the Inbox heading, then the project-name BADGE — which only renders
+    // once the project query resolved) BEFORE asserting card text. The badge
+    // locator is data-slot-scoped because the project name also appears in
+    // the sidebar + breadcrumb (strict mode). The card assert then uses the
+    // DEFAULT timeout — no bespoke padding, no sleeps.
+    await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
     await expect(
-      page.getByText("E2E finding: broken thing"),
-    ).toBeVisible({ timeout: 10_000 });
+      page.locator('[data-slot="badge"]', { hasText: "Notes Inbox Test Project" }),
+    ).toBeVisible();
+    await expect(page.getByText("E2E finding: broken thing")).toBeVisible();
   });
 
   test("promote-to-proposal records provenance and triages the note", async ({
