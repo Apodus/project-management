@@ -4208,6 +4208,110 @@ describe("MCP Tools", () => {
     });
   });
 
+  // ---- Note enrichment renders (Campaign C4) ----
+  // Presence-guarded: the suffix renders ONLY when the server enriched the
+  // note (anchor/promotedTarget present); a pre-C4 server's payload renders
+  // byte-identically to the old output.
+
+  describe("note enrichment renders (C4)", () => {
+    it("pm_get_note renders the enriched anchor title and the promoted target", async () => {
+      mockGetNote.mockResolvedValue({
+        ...sampleNote,
+        status: "triaged" as const,
+        triageOutcome: "promoted" as const,
+        promotedProposalId: "prop_001",
+        promotedTaskId: null,
+        anchor: { exists: true, title: "Implement feature X" },
+        promotedTarget: { exists: true, title: "Add caching layer" },
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_note",
+        arguments: { note_id: "note_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain('- task: task_001 — "Implement feature X"');
+      expect(text).toContain('**Promoted to:** proposal prop_001 — "Add caching layer"');
+    });
+
+    it("pm_get_note renders (removed) for a DELETED anchor (positive evidence)", async () => {
+      mockGetNote.mockResolvedValue({
+        ...sampleNote,
+        anchor: { exists: false, title: null },
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_note",
+        arguments: { note_id: "note_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("- task: task_001 — (removed)");
+    });
+
+    it("pm_get_note WITHOUT enrichment fields stays byte-identical to the pre-C4 render", async () => {
+      mockGetNote.mockResolvedValue(sampleNote); // no anchor/promotedTarget keys
+
+      const result = await client.callTool({
+        name: "pm_get_note",
+        arguments: { note_id: "note_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("- task: task_001");
+      expect(text).not.toContain("(removed)");
+      expect(text).not.toContain("Promoted to");
+      expect(text).not.toContain(" — ");
+    });
+
+    it("pm_list_notes renders the enriched anchor suffix when present, none when absent", async () => {
+      mockListNotes.mockResolvedValue([
+        {
+          ...sampleNote,
+          id: "note_a",
+          anchor: { exists: true, title: "Implement feature X" },
+        },
+        {
+          ...sampleNote,
+          id: "note_b",
+          anchor: { exists: false, title: null },
+        },
+        { ...sampleNote, id: "note_c" }, // pre-C4 payload — no suffix
+      ]);
+
+      const result = await client.callTool({
+        name: "pm_list_notes",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain('Anchor: task task_001 — "Implement feature X"');
+      expect(text).toContain("Anchor: task task_001 — (removed)");
+      // The pre-C4 row's anchor line carries NO suffix.
+      const lines = text.split("\n");
+      const noteCLine = lines.find((l, i) => lines[i - 1]?.includes("note_c") || l.includes("note_c"));
+      expect(noteCLine).toBeDefined();
+      expect(noteCLine).toContain("Anchor: task task_001");
+      expect(noteCLine).not.toContain("—");
+    });
+
+    it("pm_post_note renders the enriched suffix only when the server provided it", async () => {
+      mockCreateNote.mockResolvedValue({
+        note: { ...sampleNote, anchor: { exists: true, title: "Implement feature X" } },
+        similar: [],
+      });
+
+      const result = await client.callTool({
+        name: "pm_post_note",
+        arguments: { project_id: "proj_001", kind: "bug", title: "X" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain('**Anchor:** task task_001 — "Implement feature X"');
+    });
+  });
+
   // ---- Note triage (Campaign C2) ----
 
   const dismissedNote = {

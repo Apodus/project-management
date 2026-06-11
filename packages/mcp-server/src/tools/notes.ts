@@ -19,6 +19,20 @@ import {
  * involved: a note belongs to no one, it's just jotted down. Snake_case tool
  * params map to the camelCase client/wire shape (pm_create_task convention).
  */
+
+/**
+ * Render the server-enriched anchor/promoted-target truth (Campaign C4):
+ * ` — "title"` when the target exists, ` — (removed)` when the server says it
+ * was deleted. PRESENCE-GUARDED: an old (pre-C4) server omits the ref entirely
+ * and this returns "" — the render stays byte-identical to the pre-C4 output.
+ */
+function enrichedRefSuffix(
+  ref: { exists: boolean; title: string | null } | null | undefined,
+): string {
+  if (!ref) return "";
+  return ref.exists ? ` — "${ref.title}"` : " — (removed)";
+}
+
 export function registerNoteTools(server: McpServer): void {
   // ---- pm_post_note ----
 
@@ -79,7 +93,9 @@ export function registerNoteTools(server: McpServer): void {
 
       if (note.severity) sections.push(`**Severity:** ${note.severity}`);
       if (note.anchorType && note.anchorId) {
-        sections.push(`**Anchor:** ${note.anchorType} ${note.anchorId}`);
+        sections.push(
+          `**Anchor:** ${note.anchorType} ${note.anchorId}${enrichedRefSuffix(note.anchor)}`,
+        );
       }
       if (note.codeLocator) {
         const loc = note.codeLocator;
@@ -143,7 +159,9 @@ export function registerNoteTools(server: McpServer): void {
         lines.push(head);
         const meta = [`ID: ${note.id}`, `Status: ${note.status}`];
         if (note.anchorType && note.anchorId) {
-          meta.push(`Anchor: ${note.anchorType} ${note.anchorId}`);
+          meta.push(
+            `Anchor: ${note.anchorType} ${note.anchorId}${enrichedRefSuffix(note.anchor)}`,
+          );
         }
         lines.push(`  ${meta.join(" | ")}`);
         lines.push("");
@@ -183,7 +201,22 @@ export function registerNoteTools(server: McpServer): void {
       );
 
       if (note.anchorType && note.anchorId) {
-        sections.push("", "**Anchor:**", `- ${note.anchorType}: ${note.anchorId}`);
+        sections.push(
+          "",
+          "**Anchor:**",
+          `- ${note.anchorType}: ${note.anchorId}${enrichedRefSuffix(note.anchor)}`,
+        );
+      }
+
+      // Promoted-target truth (C4) — only when the server enriched it (a
+      // pre-C4 server omits `promotedTarget`, keeping output byte-identical).
+      if (note.promotedTarget && (note.promotedTaskId || note.promotedProposalId)) {
+        const targetType = note.promotedTaskId ? "task" : "proposal";
+        const targetId = note.promotedTaskId ?? note.promotedProposalId;
+        sections.push(
+          "",
+          `**Promoted to:** ${targetType} ${targetId}${enrichedRefSuffix(note.promotedTarget)}`,
+        );
       }
 
       if (note.codeLocator) {
