@@ -126,6 +126,14 @@ async function main(): Promise<void> {
   // (below, after ensureAll) reports the true idle state.
   const inFlight = { requests: 0, batches: 0, groups: 0 };
 
+  // ── C2 (failure legibility): shared lane-health state. ──
+  // The lock releaser (batch + group lanes) records a FAILED lane-lock release
+  // here (and clears it on a later success); every heartbeat carries it to PM
+  // (integrator_health.last_release_failure) so "why is the lane idling while
+  // work queues" is answerable from the dashboard. Same mutable-object idiom
+  // as `inFlight`.
+  const laneHealth = { lastReleaseFailure: null as { at: string; message: string } | null };
+
   try {
     // gc() removes stale slot clones from a previous run with a larger pool;
     // ensureAll() clones any missing slot. On-disk clones are reused across
@@ -342,7 +350,7 @@ async function main(): Promise<void> {
     pmClient
       .postHeartbeat(
         cfg.projectId,
-        buildHeartbeat({ resource: cfg.resource, pool, inFlight, version }),
+        buildHeartbeat({ resource: cfg.resource, pool, inFlight, version, laneHealth }),
       )
       .catch((e) => logger.warn(`heartbeat post failed: ${String(e)}`));
   };
@@ -400,6 +408,8 @@ async function main(): Promise<void> {
       // Phase 7.4 §3.2: the shared in-flight counters the batch + group lane
       // mutate; the heartbeat reads them to mint the in_flight payload + status.
       inFlight,
+      // C2: the lane-health state the lock releaser writes + the heartbeat reads.
+      laneHealth,
       // Telemetry sink: post each batch marker to the PM relay endpoint. This is
       // a SYNCHRONOUS void handler that swallows its promise — a failed telemetry
       // POST must NEVER reject into / crash the drain loop, so we `.catch` it and

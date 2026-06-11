@@ -189,6 +189,10 @@ const metricsBundleSchema = z
       in_flight_groups: z.number(),
       version: z.string().nullable(),
       integrator_id: z.string().nullable(),
+      // C2: the lane's most recent failed lock release (null = none/cleared).
+      last_release_failure: z
+        .object({ at: z.string(), message: z.string() })
+        .nullable(),
     }),
     slo: z.object({
       p95_time_to_land: sloDimensionSchema.optional(),
@@ -650,6 +654,7 @@ function metricsToResponse(bundle: MetricsBundle): z.infer<typeof metricsBundleS
       in_flight_groups: bundle.health.inFlightGroups,
       version: bundle.health.version,
       integrator_id: bundle.health.integratorId,
+      last_release_failure: bundle.health.lastReleaseFailure,
     },
     slo: sloResponse,
     verify: {

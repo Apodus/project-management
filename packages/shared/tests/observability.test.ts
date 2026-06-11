@@ -60,6 +60,49 @@ describe("integratorHeartbeatSchema", () => {
       integratorHeartbeatSchema.parse({ status: "idle", version: "0.0.0" }),
     ).toThrow();
   });
+
+  // ── last_release_failure (C2): TRI-STATE on the wire ─────────────
+
+  it("last_release_failure ABSENT (old integrator) → parses, key undefined", () => {
+    const parsed = integratorHeartbeatSchema.parse({
+      status: "idle",
+      pool_utilization: { size: 1, leased: 0 },
+      version: "0.0.0",
+    });
+    expect(parsed.last_release_failure).toBeUndefined();
+  });
+
+  it("last_release_failure explicit NULL (the clear signal) → preserved as null", () => {
+    const parsed = integratorHeartbeatSchema.parse({
+      status: "idle",
+      pool_utilization: { size: 1, leased: 0 },
+      version: "0.0.0",
+      last_release_failure: null,
+    });
+    expect(parsed.last_release_failure).toBeNull();
+  });
+
+  it("last_release_failure { at, message } → accepted; malformed → rejected", () => {
+    const parsed = integratorHeartbeatSchema.parse({
+      status: "idle",
+      pool_utilization: { size: 1, leased: 0 },
+      version: "0.0.0",
+      last_release_failure: { at: VALID_TIMESTAMP, message: "HTTP 500" },
+    });
+    expect(parsed.last_release_failure).toEqual({
+      at: VALID_TIMESTAMP,
+      message: "HTTP 500",
+    });
+
+    expect(() =>
+      integratorHeartbeatSchema.parse({
+        status: "idle",
+        pool_utilization: { size: 1, leased: 0 },
+        version: "0.0.0",
+        last_release_failure: { message: "missing at" },
+      }),
+    ).toThrow();
+  });
 });
 
 // ─── integratorHealthView (§3.4) ──────────────────────────────────
@@ -79,6 +122,26 @@ describe("integratorHealthView", () => {
       in_flight_groups: 0,
       version: "0.0.0",
       integrator_id: VALID_ULID,
+      last_release_failure: null,
+    };
+    expect(integratorHealthView.parse(view)).toEqual(view);
+  });
+
+  it("accepts a recorded last_release_failure (C2)", () => {
+    const view = {
+      resource: "main",
+      status: "idle",
+      healthy: true,
+      last_seen_at: VALID_TIMESTAMP,
+      staleness_ms: 12000,
+      pool_size: 3,
+      pool_leased: 1,
+      in_flight_requests: 0,
+      in_flight_batches: 0,
+      in_flight_groups: 0,
+      version: "0.0.0",
+      integrator_id: VALID_ULID,
+      last_release_failure: { at: VALID_TIMESTAMP, message: "HTTP 500" },
     };
     expect(integratorHealthView.parse(view)).toEqual(view);
   });
@@ -97,6 +160,7 @@ describe("integratorHealthView", () => {
       in_flight_groups: 0,
       version: null,
       integrator_id: null,
+      last_release_failure: null,
     };
     expect(integratorHealthView.parse(view)).toBeTruthy();
   });
@@ -116,6 +180,7 @@ describe("integratorHealthView", () => {
         in_flight_groups: 0,
         version: null,
         integrator_id: null,
+        last_release_failure: null,
       }),
     ).toThrow();
   });
@@ -188,6 +253,7 @@ describe("metricsBundleSchema", () => {
       in_flight_groups: 0,
       version: "0.0.0",
       integrator_id: VALID_ULID,
+      last_release_failure: null,
     },
     slo: { overall_compliant: null },
     window_hours: 24,

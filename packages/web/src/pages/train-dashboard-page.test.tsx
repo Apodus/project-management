@@ -90,6 +90,7 @@ function seededMetrics(): TrainMetrics {
       in_flight_groups: 0,
       version: "1.0.0",
       integrator_id: "int-1",
+      last_release_failure: null,
     },
     slo: {
       p95_time_to_land: { compliant: true },
@@ -159,6 +160,7 @@ function nullMetrics(): TrainMetrics {
       in_flight_groups: 0,
       version: null,
       integrator_id: null,
+      last_release_failure: null,
     },
     slo: { overall_compliant: null },
     verify: {
@@ -297,6 +299,28 @@ describe("TrainDashboardPage — seeded data", () => {
     render(<TrainDashboardPage />);
     expect(screen.getByText(/ago/)).toBeInTheDocument();
     expect(screen.getByText("last heard from integrator")).toBeInTheDocument();
+  });
+
+  it("renders the lane-lock release-failure warning when last_release_failure is set (C2)", () => {
+    const health = {
+      ...seededMetrics().health,
+      last_release_failure: {
+        at: "2026-06-10T12:00:00.000Z",
+        message: "HTTP 500: release exploded",
+      },
+    };
+    mocks.useTrainHealth.mockReturnValue(q(health));
+    render(<TrainDashboardPage />);
+    expect(screen.getByText(/Lane lock release failed/)).toBeInTheDocument();
+    expect(screen.getByText(/HTTP 500: release exploded/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/staleness sweep or a force-release/),
+    ).toBeInTheDocument();
+  });
+
+  it("renders NO release-failure warning when last_release_failure is null (C2)", () => {
+    render(<TrainDashboardPage />);
+    expect(screen.queryByText(/Lane lock release failed/)).toBeNull();
   });
 
   it("renders SLO compliance chips", () => {

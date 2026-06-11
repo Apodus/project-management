@@ -1,0 +1,1 @@
+ALTER TABLE `integrator_health` ADD `last_release_failure` text;

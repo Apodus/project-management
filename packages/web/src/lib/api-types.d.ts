@@ -14617,6 +14617,10 @@ export interface components {
             in_flight_groups: number;
             version: string | null;
             integrator_id: string | null;
+            last_release_failure: {
+                at: string;
+                message: string;
+            } | null;
         };
         IntegratorHeartbeat: {
             /** @default main */
@@ -14643,6 +14647,10 @@ export interface components {
                 groups: number;
             };
             version: string;
+            last_release_failure?: {
+                at: string;
+                message: string;
+            } | null;
         };
         TrainState: {
             id: string;
@@ -14744,6 +14752,10 @@ export interface components {
                 in_flight_groups: number;
                 version: string | null;
                 integrator_id: string | null;
+                last_release_failure: {
+                    at: string;
+                    message: string;
+                } | null;
             };
             slo: {
                 p95_time_to_land?: {

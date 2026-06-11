@@ -287,6 +287,17 @@ function HealthFreshnessSection({ projectId }: { projectId: string }) {
             )}
           </div>
         )}
+        {health?.last_release_failure && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              Lane lock release failed{" "}
+              {new Date(health.last_release_failure.at).toLocaleString()}:{" "}
+              {health.last_release_failure.message} — queued work may stall
+              until the staleness sweep or a force-release
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

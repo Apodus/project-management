@@ -27,6 +27,18 @@ export interface HeartbeatPayload {
   inFlightBatches: number;
   inFlightGroups: number;
   version: string | null;
+  /**
+   * C2 (failure legibility): the integrator's most recent FAILED lane-lock
+   * release. TRI-STATE: `undefined` (field absent — an old integrator) →
+   * leave the stored value untouched; `null` → clear it; a value → set it.
+   */
+  lastReleaseFailure?: ReleaseFailure | null;
+}
+
+/** The { at, message } shape stored in integrator_health.last_release_failure. */
+export interface ReleaseFailure {
+  at: string;
+  message: string;
 }
 
 /**
@@ -47,6 +59,8 @@ export interface IntegratorHealthView {
   inFlightGroups: number;
   version: string | null;
   integratorId: string | null;
+  /** C2: the lane's most recent failed lock release (null = none / cleared). */
+  lastReleaseFailure: ReleaseFailure | null;
 }
 
 // ─── Internal row shape ───────────────────────────────────────────
@@ -65,6 +79,7 @@ interface IntegratorHealthRow {
   version: string | null;
   lastSeenAt: string;
   unhealthyNotified: boolean;
+  lastReleaseFailure: ReleaseFailure | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -115,6 +130,7 @@ function toView(row: IntegratorHealthRow, now: string): IntegratorHealthView {
     inFlightGroups: row.inFlightGroups,
     version: row.version,
     integratorId: row.integratorId,
+    lastReleaseFailure: row.lastReleaseFailure,
   };
 }
 
@@ -136,6 +152,7 @@ function neverSeenView(resource: string): IntegratorHealthView {
     inFlightGroups: 0,
     version: null,
     integratorId: null,
+    lastReleaseFailure: null,
   };
 }
 
@@ -180,6 +197,8 @@ export function recordHeartbeat(
           version: payload.version,
           lastSeenAt: now,
           unhealthyNotified: false,
+          // First beat: absent ≡ nothing recorded yet → null.
+          lastReleaseFailure: payload.lastReleaseFailure ?? null,
           createdAt: now,
           updatedAt: now,
         })
@@ -200,6 +219,11 @@ export function recordHeartbeat(
           version: payload.version,
           lastSeenAt: now,
           unhealthyNotified: false,
+          // TRI-STATE (C2): absent (old integrator) → don't touch the stored
+          // value; explicit null → clear; value → set.
+          ...(payload.lastReleaseFailure === undefined
+            ? {}
+            : { lastReleaseFailure: payload.lastReleaseFailure }),
           updatedAt: now,
         })
         .where(
@@ -225,6 +249,11 @@ export function recordHeartbeat(
         // A fresh heartbeat re-arms the edge so the NEXT stale episode fires
         // again (§3.4 recovery).
         unhealthyNotified: false,
+        // TRI-STATE (C2): absent (old integrator) → don't touch the stored
+        // value; explicit null → clear; value → set.
+        ...(payload.lastReleaseFailure === undefined
+          ? {}
+          : { lastReleaseFailure: payload.lastReleaseFailure }),
         updatedAt: now,
       })
       .where(eq(integratorHealth.id, existing.id))

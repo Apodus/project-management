@@ -829,6 +829,17 @@ export const integratorHealth = sqliteTable(
     // per stale→healthy→stale cycle (edge-triggered, not level-triggered).
     // Reset to false on the next fresh heartbeat.
     unhealthyNotified: integer("unhealthy_notified", { mode: "boolean" }).notNull().default(false),
+    // C2 (failure legibility): the integrator's most recent FAILED lane-lock
+    // release, denormalized from the heartbeat ({ at, message } JSON). A failed
+    // release leaves the lane lock stuck held → queued work stalls until the
+    // staleness sweep or a force-release, so the cause must be visible from PM
+    // alone. DURABLE (this table's pin: survives integrator restarts — the
+    // documented operator reflex). Heartbeat tri-state: field absent (old
+    // integrator) → stored value untouched; explicit null → cleared; value → set.
+    lastReleaseFailure: text("last_release_failure", { mode: "json" }).$type<{
+      at: string;
+      message: string;
+    }>(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

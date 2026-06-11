@@ -34,6 +34,7 @@ import {
 import { landAssembledGroup, type GroupLandResult } from "./group-land.js";
 import { recoverOrphanedInner, type RecoverResult } from "./group-recovery.js";
 import { reclaimResolvingResolutions } from "./reclaim-resolutions.js";
+import type { LaneHealthState } from "./heartbeat.js";
 
 const LOG_EXCERPT_CAP = 4096;
 
@@ -244,6 +245,14 @@ export interface BatchDeps {
    */
   inFlight?: { requests: number; batches: number; groups: number };
   /**
+   * C2 (failure legibility): the shared, MUTABLE lane-health state the lock
+   * releaser writes (failed release → `lastReleaseFailure` set; successful
+   * release → cleared) and the heartbeat (`index.ts`) reads to carry the
+   * failure to PM. Same synchronous-mutation idiom as `inFlight`. Absent
+   * (tests) → the releaser just logs.
+   */
+  laneHealth?: LaneHealthState;
+  /**
    * PHASE 7.6 Step 5 (design §5.1): the conflict-resolution seam. Present ONLY
    * when `settings.integrator.resolver.enabled` (index.ts constructs the
    * resolver pool and the open+enqueue handle only then). Absent / `enabled:
@@ -333,6 +342,50 @@ export async function maybeOpenResolution(
       "openResolution failed (non-fatal); origin stays rejected-conflict",
     );
   }
+}
+
+// ─── Lane-lock releaser (C2 — failure legibility) ─────────────────
+//
+// The ONE place a lane lock is released, shared by the batch lane and the
+// group lane. A failed release is NOT cosmetic: the lock stays held
+// server-side with a now-idle/dead holder, so the next pickup sees the lane
+// occupied → backs off → NEVER re-picks queued work until the staleness sweep
+// or a manual force-release (the classic "integrator needs a re-kick" stall —
+// the live game_one report). So the failure is (a) WARN-logged and (b)
+// recorded on the shared `laneHealth` state the next heartbeat carries to PM
+// (durable on integrator_health → GET health → dashboard). A subsequent
+// successful release clears it.
+export function makeLaneLockReleaser(deps: {
+  pmClient: Pick<PmClient, "releaseLock">;
+  logger: Logger;
+  projectId: string;
+  resource: string;
+  laneHealth?: LaneHealthState;
+  /** Site-specific teardown (clear the lock heartbeat, flip lockHeld, …) —
+   * runs exactly once, before the release call. */
+  cleanup?: () => void;
+}): (opts: { landedSha?: string; reason?: string }) => Promise<void> {
+  let released = false;
+  return async (opts) => {
+    if (released) return;
+    released = true;
+    deps.cleanup?.();
+    try {
+      await deps.pmClient.releaseLock(deps.projectId, deps.resource, opts);
+      if (deps.laneHealth) deps.laneHealth.lastReleaseFailure = null;
+    } catch (err) {
+      deps.logger.warn(
+        { err: errMessage(err), resource: deps.resource },
+        "releaseLock FAILED — lane lock may be stuck held; queued work will not be re-picked until the staleness sweep or a force-release",
+      );
+      if (deps.laneHealth) {
+        deps.laneHealth.lastReleaseFailure = {
+          at: new Date().toISOString(),
+          message: errMessage(err),
+        };
+      }
+    }
+  };
 }
 
 // ─── Pause read-side gate (Phase 7.4 §4.2, Step 12) ───────────────
@@ -1096,27 +1149,19 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
   }, deps.heartbeatIntervalMs ?? 60_000);
   heartbeat.unref?.();
 
-  let released = false;
-  const releaseLock = async (opts: { landedSha?: string; reason?: string }): Promise<void> => {
-    if (released) return;
-    released = true;
-    clearInterval(heartbeat);
-    batch.lockHeld = false;
-    try {
-      await pmClient.releaseLock(projectId, resource, opts);
-    } catch (err) {
-      // A failed release is NOT cosmetic: the lane lock stays held server-side
-      // with a now-idle/dead holder, so the next `runBatchOnce` sees the lane
-      // occupied → `lock_unavailable` → backs off → NEVER re-picks queued work
-      // until the lock's staleness sweep or a manual force-release. That is the
-      // classic "integrator needs a re-kick" stall (the live game_one report).
-      // WARN (not debug) so it surfaces in the operator's logs as the cause.
-      logger.warn(
-        { err: errMessage(err), resource },
-        "releaseLock FAILED — lane lock may be stuck held; queued work will not be re-picked until the staleness sweep or a force-release",
-      );
-    }
-  };
+  // C2: shared releaser — once-guard + WARN + laneHealth record-on-failure /
+  // clear-on-success (the next heartbeat carries it to PM).
+  const releaseLock = makeLaneLockReleaser({
+    pmClient,
+    logger,
+    projectId,
+    resource,
+    laneHealth: deps.laneHealth,
+    cleanup: () => {
+      clearInterval(heartbeat);
+      batch.lockHeld = false;
+    },
+  });
 
   const ctx: BatchCtx = { landed: [], rejected: [], requeued: [] };
 
@@ -1917,17 +1962,18 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
   }, deps.heartbeatIntervalMs ?? 60_000);
   heartbeat.unref?.();
 
-  let released = false;
-  const releaseLock = async (opts: { landedSha?: string; reason?: string }): Promise<void> => {
-    if (released) return;
-    released = true;
-    clearInterval(heartbeat);
-    try {
-      await pmClient.releaseLock(projectId, resource, opts);
-    } catch (err) {
-      logger.debug({ err: errMessage(err) }, "releaseLock failed (group, non-fatal)");
-    }
-  };
+  // C2: shared releaser (was a silent debug log) — once-guard + WARN +
+  // laneHealth record-on-failure / clear-on-success, same as the batch lane.
+  const releaseLock = makeLaneLockReleaser({
+    pmClient,
+    logger,
+    projectId,
+    resource,
+    laneHealth: deps.laneHealth,
+    cleanup: () => {
+      clearInterval(heartbeat);
+    },
+  });
 
   let landResult: GroupLandResult | undefined;
   try {

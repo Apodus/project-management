@@ -5995,6 +5995,23 @@
           "integrator_id": {
             "type": "string",
             "nullable": true
+          },
+          "last_release_failure": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "at",
+              "message"
+            ]
           }
         },
         "required": [
@@ -6009,7 +6026,8 @@
           "in_flight_batches",
           "in_flight_groups",
           "version",
-          "integrator_id"
+          "integrator_id",
+          "last_release_failure"
         ]
       },
       "IntegratorHeartbeat": {
@@ -6067,6 +6085,23 @@
           "version": {
             "type": "string",
             "minLength": 1
+          },
+          "last_release_failure": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "at",
+              "message"
+            ]
           }
         },
         "required": [
@@ -6470,6 +6505,22 @@
               "integrator_id": {
                 "type": "string",
                 "nullable": true
+              },
+              "last_release_failure": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "at": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "at",
+                  "message"
+                ]
               }
             },
             "required": [
@@ -6484,7 +6535,8 @@
               "in_flight_batches",
               "in_flight_groups",
               "version",
-              "integrator_id"
+              "integrator_id",
+              "last_release_failure"
             ]
           },
           "slo": {

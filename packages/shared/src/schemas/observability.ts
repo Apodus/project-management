@@ -18,6 +18,17 @@ import { z } from "zod";
 // ─── Heartbeat (§3.2 — the integrator POSTs this) ─────────────────
 // pool_utilization.size/leased + status + version are required; in_flight
 // defaults to all-zero. snake_case on the wire — the integrator mints it.
+//
+// last_release_failure (C2 failure legibility) is TRI-STATE: absent (an old
+// integrator that predates the field) → PM leaves the stored value untouched;
+// explicit null → PM clears it; { at, message } → PM records the failed
+// lane-lock release. Optional so old→new and new→old stay compatible.
+export const releaseFailureSchema = z.object({
+  at: z.string().min(1),
+  message: z.string(),
+});
+export type ReleaseFailure = z.infer<typeof releaseFailureSchema>;
+
 export const integratorHeartbeatSchema = z.object({
   resource: z.string().min(1).default("main"),
   status: z.enum(["idle", "integrating"]),
@@ -33,6 +44,7 @@ export const integratorHeartbeatSchema = z.object({
     })
     .default({ requests: 0, batches: 0, groups: 0 }),
   version: z.string().min(1),
+  last_release_failure: releaseFailureSchema.nullable().optional(),
 });
 export type IntegratorHeartbeat = z.infer<typeof integratorHeartbeatSchema>;
 
@@ -53,6 +65,10 @@ export const integratorHealthView = z.object({
   in_flight_groups: z.number(),
   version: z.string().nullable(),
   integrator_id: z.string().nullable(),
+  // C2: the lane's most recent failed lock release (null = none recorded /
+  // cleared by a subsequent successful release). Why a lane idles while work
+  // queues — durable on integrator_health, surfaced on the dashboard.
+  last_release_failure: releaseFailureSchema.nullable(),
 });
 export type IntegratorHealthView = z.infer<typeof integratorHealthView>;
 

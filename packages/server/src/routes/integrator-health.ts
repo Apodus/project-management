@@ -20,6 +20,13 @@ const resourceQuery = z.string().min(1).optional().openapi({
 // The integrator MINTS the payload; PM denormalizes it onto the health row.
 // pool_utilization.size/leased + version are required; in_flight defaults to
 // all-zero.
+// last_release_failure (C2) is TRI-STATE: absent (old integrator) → stored
+// value untouched; explicit null → cleared; { at, message } → set.
+const releaseFailureSchema = z.object({
+  at: z.string().min(1),
+  message: z.string(),
+});
+
 const heartbeatBody = z
   .object({
     resource: z.string().min(1).default("main"),
@@ -36,6 +43,7 @@ const heartbeatBody = z
       })
       .default({ requests: 0, batches: 0, groups: 0 }),
     version: z.string().min(1),
+    last_release_failure: releaseFailureSchema.nullable().optional(),
   })
   .openapi("IntegratorHeartbeat");
 
@@ -55,6 +63,7 @@ const healthViewSchema = z
     in_flight_groups: z.number(),
     version: z.string().nullable(),
     integrator_id: z.string().nullable(),
+    last_release_failure: releaseFailureSchema.nullable(),
   })
   .openapi("IntegratorHealth");
 
@@ -137,6 +146,7 @@ function toResponse(view: IntegratorHealthView): z.infer<typeof healthViewSchema
     in_flight_groups: view.inFlightGroups,
     version: view.version,
     integrator_id: view.integratorId,
+    last_release_failure: view.lastReleaseFailure,
   };
 }
 
@@ -177,6 +187,10 @@ export function createIntegratorHealthRoutes(): OpenAPIHono<{
         inFlightBatches: body.in_flight.batches,
         inFlightGroups: body.in_flight.groups,
         version: body.version,
+        // TRI-STATE passthrough: `undefined` (absent on the wire — an old
+        // integrator) must stay undefined so recordHeartbeat leaves the
+        // stored value untouched; null clears; a value sets.
+        lastReleaseFailure: body.last_release_failure,
       },
       now,
     );
