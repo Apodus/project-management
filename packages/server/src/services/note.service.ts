@@ -1,15 +1,16 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import type {
   CreateNote,
   ListNotesQuery,
+  NoteAnchorRef,
   NoteKind,
   NoteStatus,
   NoteTriageOutcome,
   PatchNote,
   UserType,
 } from "@pm/shared";
-import { getDb, getRawDb, notes, projects } from "../db/index.js";
+import { getDb, getRawDb, notes, projects, tasks, epics, proposals } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 import { sanitizeFtsQuery, sanitizeFtsQueryOr } from "./search.service.js";
@@ -89,7 +90,102 @@ export function create(projectId: string, input: CreateNote, authorId: string) {
 }
 
 /**
- * Get a single note by id. Throws 404 if not found.
+ * Anchor + promoted-target enrichment (Campaign C4). Decorates note rows
+ * with server-derived truth about their references:
+ *   anchor:         { exists, title } for (anchorType, anchorId), null when unanchored
+ *   promotedTarget: { exists, title } for promotedTaskId/promotedProposalId, null when not promoted
+ * `exists: false` + `title: null` means the target was deleted (anchors carry
+ * no FK, so a dangling anchorId is representable; promoted targets are FK
+ * `onDelete: "set null"`, so dangling is near-impossible but handled).
+ *
+ * Mirrors the enrichActivityEntries precedent: ≤3 batched `inArray` selects
+ * (one per referenced entity type, skipped when that type's id set is empty)
+ * — never N+1 in the number of notes.
+ */
+export function enrichNotes<
+  T extends {
+    anchorType: string | null;
+    anchorId: string | null;
+    promotedProposalId: string | null;
+    promotedTaskId: string | null;
+  },
+>(rows: T[]): (T & { anchor: NoteAnchorRef | null; promotedTarget: NoteAnchorRef | null })[] {
+  if (rows.length === 0) return [];
+
+  const db = getDb();
+
+  // 1. Collect unique ids per entity type (anchors ∪ promoted targets).
+  const taskIds = new Set<string>();
+  const epicIds = new Set<string>();
+  const proposalIds = new Set<string>();
+  for (const r of rows) {
+    if (r.anchorType && r.anchorId) {
+      if (r.anchorType === "task") taskIds.add(r.anchorId);
+      else if (r.anchorType === "epic") epicIds.add(r.anchorId);
+      else if (r.anchorType === "proposal") proposalIds.add(r.anchorId);
+    }
+    if (r.promotedTaskId) taskIds.add(r.promotedTaskId);
+    if (r.promotedProposalId) proposalIds.add(r.promotedProposalId);
+  }
+
+  // 2. Batched lookups — one select per entity type, skipped when empty.
+  const taskTitles = new Map<string, string>();
+  if (taskIds.size > 0) {
+    const found = db
+      .select({ id: tasks.id, title: tasks.title })
+      .from(tasks)
+      .where(inArray(tasks.id, [...taskIds]))
+      .all();
+    for (const t of found) taskTitles.set(t.id, t.title);
+  }
+  const epicTitles = new Map<string, string>();
+  if (epicIds.size > 0) {
+    const found = db
+      .select({ id: epics.id, title: epics.name })
+      .from(epics)
+      .where(inArray(epics.id, [...epicIds]))
+      .all();
+    for (const e of found) epicTitles.set(e.id, e.title);
+  }
+  const proposalTitles = new Map<string, string>();
+  if (proposalIds.size > 0) {
+    const found = db
+      .select({ id: proposals.id, title: proposals.title })
+      .from(proposals)
+      .where(inArray(proposals.id, [...proposalIds]))
+      .all();
+    for (const p of found) proposalTitles.set(p.id, p.title);
+  }
+
+  const titlesFor = (type: string): Map<string, string> =>
+    type === "task" ? taskTitles : type === "epic" ? epicTitles : proposalTitles;
+
+  // 3. Decorate.
+  return rows.map((r) => {
+    let anchor: NoteAnchorRef | null = null;
+    if (r.anchorType && r.anchorId) {
+      const titles = titlesFor(r.anchorType);
+      anchor = { exists: titles.has(r.anchorId), title: titles.get(r.anchorId) ?? null };
+    }
+    let promotedTarget: NoteAnchorRef | null = null;
+    if (r.promotedTaskId) {
+      promotedTarget = {
+        exists: taskTitles.has(r.promotedTaskId),
+        title: taskTitles.get(r.promotedTaskId) ?? null,
+      };
+    } else if (r.promotedProposalId) {
+      promotedTarget = {
+        exists: proposalTitles.has(r.promotedProposalId),
+        title: proposalTitles.get(r.promotedProposalId) ?? null,
+      };
+    }
+    return { ...r, anchor, promotedTarget };
+  });
+}
+
+/**
+ * Get a single note by id, enriched (C4: anchor/promotedTarget truth).
+ * Throws 404 if not found.
  */
 export function getById(id: string) {
   const db = getDb();
@@ -97,11 +193,12 @@ export function getById(id: string) {
   if (!row) {
     throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
   }
-  return row;
+  return enrichNotes([row])[0]!;
 }
 
 /**
  * List notes for a project, newest first, with optional filters.
+ * Enriched (C4: anchor/promotedTarget truth — batched, never N+1).
  */
 export function list(projectId: string, filters: ListNotesQuery) {
   const db = getDb();
@@ -113,12 +210,14 @@ export function list(projectId: string, filters: ListNotesQuery) {
   if (filters.anchorId) conditions.push(eq(notes.anchorId, filters.anchorId));
   if (filters.severity) conditions.push(eq(notes.severity, filters.severity));
 
-  return db
+  const rows = db
     .select()
     .from(notes)
     .where(and(...conditions))
     .orderBy(desc(notes.createdAt))
     .all();
+
+  return enrichNotes(rows);
 }
 
 /**

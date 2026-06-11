@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
+import Database from "better-sqlite3";
 import { createId } from "@pm/shared";
 import {
   createTestApp,
   createTestProject,
   createTestTask,
   createTestEpic,
+  createTestProposal,
   createTestUser,
   type TestApp,
 } from "../utils.js";
@@ -1122,6 +1124,233 @@ describe("note service", () => {
       expect(hits.length).toBeLessThanOrEqual(3);
       // sanity: the OR fallback still surfaces the partial overlap.
       expect(hits.some((h) => h.id === partial.id)).toBe(true);
+    });
+  });
+
+  // ── enrichment (Campaign C4) ────────────────────────────────────
+  describe("enrichment (anchor / promotedTarget)", () => {
+    it("anchors to EXISTING targets carry {exists:true, title} for all three types", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: author.id,
+        title: "anchored task",
+      });
+      const epic = createTestEpic(testApp.db, {
+        projectId: project.id,
+        createdBy: author.id,
+        name: "anchored epic",
+      });
+      const proposal = createTestProposal(testApp.db, {
+        projectId: project.id,
+        createdBy: author.id,
+        title: "anchored proposal",
+      });
+
+      const onTask = noteService.create(
+        project.id,
+        { kind: "bug", title: "on task", anchorType: "task", anchorId: task.id },
+        author.id,
+      );
+      const onEpic = noteService.create(
+        project.id,
+        { kind: "idea", title: "on epic", anchorType: "epic", anchorId: epic.id },
+        author.id,
+      );
+      const onProposal = noteService.create(
+        project.id,
+        { kind: "question", title: "on proposal", anchorType: "proposal", anchorId: proposal.id },
+        author.id,
+      );
+
+      const list = noteService.list(project.id, {});
+      const byId = new Map(list.map((n) => [n.id, n]));
+      expect(byId.get(onTask.id)!.anchor).toEqual({ exists: true, title: "anchored task" });
+      expect(byId.get(onEpic.id)!.anchor).toEqual({ exists: true, title: "anchored epic" });
+      expect(byId.get(onProposal.id)!.anchor).toEqual({
+        exists: true,
+        title: "anchored proposal",
+      });
+    });
+
+    it("DANGLING anchors read {exists:false, title:null} for all three types (no FK on anchors)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+
+      const onTask = noteService.create(
+        project.id,
+        { kind: "bug", title: "gone task", anchorType: "task", anchorId: createId() },
+        author.id,
+      );
+      const onEpic = noteService.create(
+        project.id,
+        { kind: "idea", title: "gone epic", anchorType: "epic", anchorId: createId() },
+        author.id,
+      );
+      const onProposal = noteService.create(
+        project.id,
+        { kind: "wtf", title: "gone proposal", anchorType: "proposal", anchorId: createId() },
+        author.id,
+      );
+
+      const list = noteService.list(project.id, {});
+      const byId = new Map(list.map((n) => [n.id, n]));
+      for (const id of [onTask.id, onEpic.id, onProposal.id]) {
+        expect(byId.get(id)!.anchor).toEqual({ exists: false, title: null });
+      }
+    });
+
+    it("mixed existing + dangling anchors in one list are each decorated truthfully", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: author.id,
+        title: "still here",
+      });
+
+      const live = noteService.create(
+        project.id,
+        { kind: "bug", title: "live anchor", anchorType: "task", anchorId: task.id },
+        author.id,
+      );
+      const dangling = noteService.create(
+        project.id,
+        { kind: "bug", title: "dead anchor", anchorType: "task", anchorId: createId() },
+        author.id,
+      );
+
+      const list = noteService.list(project.id, {});
+      const byId = new Map(list.map((n) => [n.id, n]));
+      expect(byId.get(live.id)!.anchor).toEqual({ exists: true, title: "still here" });
+      expect(byId.get(dangling.id)!.anchor).toEqual({ exists: false, title: null });
+    });
+
+    it("an unanchored, unpromoted note reads anchor:null and promotedTarget:null", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const note = noteService.create(project.id, { kind: "observation", title: "free" }, author.id);
+
+      const fetched = noteService.getById(note.id);
+      expect(fetched.anchor).toBeNull();
+      expect(fetched.promotedTarget).toBeNull();
+    });
+
+    it("a promoted-to-proposal note carries promotedTarget {exists:true, title} (list + getById)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const note = noteService.create(project.id, { kind: "idea", title: "promote me" }, author.id);
+
+      const { proposal } = noteService.promoteToProposal(note.id, {
+        id: author.id,
+        type: "human",
+      });
+
+      const fetched = noteService.getById(note.id);
+      expect(fetched.promotedTarget).toEqual({ exists: true, title: proposal.title });
+
+      const listed = noteService.list(project.id, {}).find((n) => n.id === note.id)!;
+      expect(listed.promotedTarget).toEqual({ exists: true, title: proposal.title });
+    });
+
+    it("a promoted-to-task note carries promotedTarget {exists:true, title}", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const note = noteService.create(project.id, { kind: "bug", title: "task me" }, human.id);
+
+      const { task } = noteService.promoteToTask(note.id, { id: human.id, type: "human" });
+
+      const fetched = noteService.getById(note.id);
+      expect(fetched.promotedTarget).toEqual({ exists: true, title: task.title });
+    });
+
+    it("a DANGLING promoted target reads {exists:false, title:null} (forged — FKs make it unrepresentable normally)", () => {
+      // promotedTaskId/promotedProposalId are real FKs with onDelete:"set null"
+      // under PRAGMA foreign_keys=ON, so a dangling promoted target cannot be
+      // produced via normal writes. Forge the rows with foreign_keys=OFF —
+      // NEVER weaken the schema to make this representable.
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const viaTask = noteService.create(project.id, { kind: "bug", title: "t" }, human.id);
+      const viaProposal = noteService.create(project.id, { kind: "idea", title: "p" }, human.id);
+      noteService.promoteToTask(viaTask.id, { id: human.id, type: "human" });
+      noteService.promoteToProposal(viaProposal.id, { id: human.id, type: "human" });
+
+      const raw = getRawDb();
+      raw.pragma("foreign_keys = OFF");
+      try {
+        raw
+          .prepare("UPDATE notes SET promoted_task_id = ? WHERE id = ?")
+          .run(createId(), viaTask.id);
+        raw
+          .prepare("UPDATE notes SET promoted_proposal_id = ? WHERE id = ?")
+          .run(createId(), viaProposal.id);
+      } finally {
+        raw.pragma("foreign_keys = ON");
+      }
+
+      const list = noteService.list(project.id, {});
+      const byId = new Map(list.map((n) => [n.id, n]));
+      expect(byId.get(viaTask.id)!.promotedTarget).toEqual({ exists: false, title: null });
+      expect(byId.get(viaProposal.id)!.promotedTarget).toEqual({ exists: false, title: null });
+    });
+
+    it("issues the SAME number of prepared statements for 5 notes as for 50 (batched inArray, no N+1)", () => {
+      const author = createTestUser(testApp.db);
+      const seed = (count: number) => {
+        const project = createTestProject(testApp.db);
+        for (let i = 0; i < count; i++) {
+          // Mixed anchor types so all three enrichment lookups are exercised.
+          const anchor =
+            i % 3 === 0
+              ? {
+                  anchorType: "task" as const,
+                  anchorId: createTestTask(testApp.db, {
+                    projectId: project.id,
+                    reporterId: author.id,
+                  }).id,
+                }
+              : i % 3 === 1
+                ? {
+                    anchorType: "epic" as const,
+                    anchorId: createTestEpic(testApp.db, {
+                      projectId: project.id,
+                      createdBy: author.id,
+                    }).id,
+                  }
+                : {
+                    anchorType: "proposal" as const,
+                    anchorId: createTestProposal(testApp.db, {
+                      projectId: project.id,
+                      createdBy: author.id,
+                    }).id,
+                  };
+          noteService.create(project.id, { kind: "bug", title: `note ${i}`, ...anchor }, author.id);
+        }
+        return project.id;
+      };
+
+      const projectWith5 = seed(5);
+      const projectWith50 = seed(50);
+
+      const spy = vi.spyOn(Database.prototype, "prepare");
+      try {
+        noteService.list(projectWith5, {});
+        const preparesFor5 = spy.mock.calls.length;
+        spy.mockClear();
+        noteService.list(projectWith50, {});
+        const preparesFor50 = spy.mock.calls.length;
+
+        // EQUALITY — the statement count is a function of the number of
+        // referenced entity TYPES (1 notes select + ≤3 enrichment selects),
+        // never of the number of notes.
+        expect(preparesFor50).toBe(preparesFor5);
+        expect(preparesFor5).toBeLessThanOrEqual(4);
+        expect(preparesFor5).toBeGreaterThan(0);
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 

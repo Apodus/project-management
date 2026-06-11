@@ -24,6 +24,15 @@ const codeLocatorSchema = z.object({
   commitSha: z.string().optional(),
 });
 
+// Anchor/promoted-target enrichment ref (Campaign C4). Route-local Zod-4
+// mirror of @pm/shared `noteAnchorRefSchema` (the established split).
+const anchorRefSchema = z
+  .object({
+    exists: z.boolean(),
+    title: z.string().nullable(),
+  })
+  .openapi("NoteAnchorRef");
+
 const noteSchema = z
   .object({
     id: z.string(),
@@ -45,6 +54,14 @@ const noteSchema = z
     triageReason: z.string().nullable(),
     promotedProposalId: z.string().nullable(),
     promotedTaskId: z.string().nullable(),
+    anchor: anchorRefSchema.nullable().optional().openapi({
+      description:
+        "Server-derived anchor truth (C4): { exists, title } for (anchorType, anchorId); null when unanchored. Absent on non-enriched responses (create/patch); exists:false means the target was deleted.",
+    }),
+    promotedTarget: anchorRefSchema.nullable().optional().openapi({
+      description:
+        "Server-derived promoted-target truth (C4): { exists, title } for promotedTaskId/promotedProposalId; null when not promoted. Absent on non-enriched responses (create/patch); exists:false means the target was deleted.",
+    }),
   })
   .openapi("Note");
 

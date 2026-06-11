@@ -1521,6 +1521,42 @@
           "promotedTaskId": {
             "type": "string",
             "nullable": true
+          },
+          "anchor": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "exists": {
+                "type": "boolean"
+              },
+              "title": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "exists",
+              "title"
+            ],
+            "description": "Server-derived anchor truth (C4): { exists, title } for (anchorType, anchorId); null when unanchored. Absent on non-enriched responses (create/patch); exists:false means the target was deleted."
+          },
+          "promotedTarget": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "exists": {
+                "type": "boolean"
+              },
+              "title": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "exists",
+              "title"
+            ],
+            "description": "Server-derived promoted-target truth (C4): { exists, title } for promotedTaskId/promotedProposalId; null when not promoted. Absent on non-enriched responses (create/patch); exists:false means the target was deleted."
           }
         },
         "required": [

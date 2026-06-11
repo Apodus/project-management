@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   createTestApp,
   createTestProject,
+  createTestTask,
   createTestAiAgent,
   authRequest,
   type TestApp,
@@ -180,6 +181,78 @@ describe("Notes API", () => {
       const body = await res.json();
       expect(body.data).toHaveLength(1);
       expect(body.data[0].kind).toBe("bug");
+    });
+  });
+
+  // ── C4 enrichment on the wire (anchor / promotedTarget) ──────────
+  describe("C4 enrichment fields", () => {
+    it("GET by id carries enriched anchor truth ({exists,title} / null)", async () => {
+      const project = createTestProject(testApp.db);
+      const task = createTestTask(testApp.db, {
+        projectId: project.id,
+        reporterId: testApp.testUser.id,
+        title: "the anchor",
+      });
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "anchored", anchorType: "task", anchorId: task.id },
+        })
+      ).json();
+
+      const res = await authRequest(testApp.app, "GET", `/api/v1/notes/${created.data.id}`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.anchor).toEqual({ exists: true, title: "the anchor" });
+      expect(body.data.promotedTarget).toBeNull();
+    });
+
+    it("LIST carries the enrichment fields (dangling anchor → exists:false, unanchored → null)", async () => {
+      const project = createTestProject(testApp.db);
+      const dangling = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "dangling", anchorType: "task", anchorId: createId() },
+        })
+      ).json();
+      const unanchored = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "idea", title: "free" },
+        })
+      ).json();
+
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/notes`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const byId = new Map(
+        (body.data as Array<{ id: string }>).map((n) => [n.id, n as Record<string, unknown>]),
+      );
+      expect(byId.get(dangling.data.id)!.anchor).toEqual({ exists: false, title: null });
+      expect(byId.get(unanchored.data.id)!.anchor).toBeNull();
+      expect(byId.get(unanchored.data.id)!.promotedTarget).toBeNull();
+    });
+
+    it("CREATE and PATCH responses OMIT the enrichment fields (non-enriched writes)", async () => {
+      const project = createTestProject(testApp.db);
+      const createRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/notes`,
+        { body: { kind: "bug", title: "raw create" } },
+      );
+      expect(createRes.status).toBe(201);
+      const createBody = await createRes.json();
+      expect("anchor" in createBody.data).toBe(false);
+      expect("promotedTarget" in createBody.data).toBe(false);
+
+      const patchRes = await authRequest(
+        testApp.app,
+        "PATCH",
+        `/api/v1/notes/${createBody.data.id}`,
+        { body: { title: "raw patch" } },
+      );
+      expect(patchRes.status).toBe(200);
+      const patchBody = await patchRes.json();
+      expect("anchor" in patchBody.data).toBe(false);
+      expect("promotedTarget" in patchBody.data).toBe(false);
     });
   });
 

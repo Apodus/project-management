@@ -13537,6 +13537,16 @@ export interface components {
             triageReason: string | null;
             promotedProposalId: string | null;
             promotedTaskId: string | null;
+            /** @description Server-derived anchor truth (C4): { exists, title } for (anchorType, anchorId); null when unanchored. Absent on non-enriched responses (create/patch); exists:false means the target was deleted. */
+            anchor?: {
+                exists: boolean;
+                title: string | null;
+            } | null;
+            /** @description Server-derived promoted-target truth (C4): { exists, title } for promotedTaskId/promotedProposalId; null when not promoted. Absent on non-enriched responses (create/patch); exists:false means the target was deleted. */
+            promotedTarget?: {
+                exists: boolean;
+                title: string | null;
+            } | null;
         };
         CreateNote: {
             /** @enum {string} */

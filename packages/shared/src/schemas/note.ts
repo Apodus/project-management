@@ -48,6 +48,19 @@ export const codeLocatorSchema = z.object({
 });
 export type CodeLocator = z.infer<typeof codeLocatorSchema>;
 
+// ─── Anchor / promoted-target enrichment ref (Campaign C4) ────────
+// Server-derived truth about a note's anchor or promoted target:
+// `exists` is whether the referenced entity still exists; `title` is its
+// current human-readable handle (task.title / epic.name / proposal.title),
+// null when the target is gone. Optional on the wire — absent on
+// non-enriched responses (create/patch), so old servers / mid-rollout
+// clients keep working (additive).
+export const noteAnchorRefSchema = z.object({
+  exists: z.boolean(),
+  title: z.string().nullable(),
+});
+export type NoteAnchorRef = z.infer<typeof noteAnchorRefSchema>;
+
 // ─── View shape ───────────────────────────────────────────────────
 // Full GET response shape for a notes row. Field names mirror the Drizzle
 // TS property names (camelCase) that P2 will add. body/anchorType/anchorId/
@@ -74,6 +87,11 @@ export const noteSchema = z.object({
   triageReason: z.string().nullable(),
   promotedProposalId: z.string().nullable(),
   promotedTaskId: z.string().nullable(),
+  // ─── Enrichment (Campaign C4) — server-derived, list/get only.
+  // Optional: absent on non-enriched responses (create/patch). null ⇔ no
+  // anchor / not promoted; { exists: false } ⇔ the target was deleted.
+  anchor: noteAnchorRefSchema.nullable().optional(),
+  promotedTarget: noteAnchorRefSchema.nullable().optional(),
 });
 export type Note = z.infer<typeof noteSchema>;
 
