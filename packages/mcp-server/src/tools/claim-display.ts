@@ -87,10 +87,7 @@ export function claimResultText(
  * interpolate `previousHolder` — the displaced holder's identity is recorded in
  * the audit log, never leaked to the new claimant.
  */
-export function forceClaimResultText(
-  _result: ForceClaimResultData,
-  entity: string,
-): string {
+export function forceClaimResultText(_result: ForceClaimResultData, entity: string): string {
   return `✓ Force-claimed — this ${entity} is now yours. The previous holder was displaced (recorded in the audit log).`;
 }
 
@@ -99,10 +96,7 @@ export function forceClaimResultText(
  * interpolate `previousHolder`/`newHolder` — identities are recorded in the
  * audit log, never leaked.
  */
-export function releaseToResultText(
-  _result: ForceClaimResultData,
-  entity: string,
-): string {
+export function releaseToResultText(_result: ForceClaimResultData, entity: string): string {
   return `✓ Handed off — this ${entity}'s claim was transferred to the named worker (recorded in the audit log).`;
 }
 
@@ -127,6 +121,18 @@ export function requestTakeoverResultText(
     default:
       return `Unexpected takeover result: ${result.status}`;
   }
+}
+
+/**
+ * Render an entity reference as "Name (id)" when both are known, else
+ * whichever exists ("" when neither). Read-tool renders surface the id beside
+ * the display name so follow-up calls always have the id at hand (C5.P4).
+ * NOT for assignee/reporter slots — those stay name-preferred with no id
+ * pairing (the no-leak sentinel tests pin that masking boundary).
+ */
+export function nameWithId(name: string | null | undefined, id: string | null | undefined): string {
+  if (name && id) return `${name} (${id})`;
+  return name ?? id ?? "";
 }
 
 /**

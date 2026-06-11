@@ -14,6 +14,7 @@ import {
   claimResultText,
   claimStateLabel,
   forceClaimResultText,
+  nameWithId,
   releaseToResultText,
   requestTakeoverResultText,
 } from "./claim-display.js";
@@ -77,7 +78,7 @@ export function registerTaskTools(server: McpServer): void {
       const text = tasks
         .map((t) => {
           const assignee = t.assigneeName ?? t.assigneeId;
-          const epic = t.epicName ?? t.epicId;
+          const epic = nameWithId(t.epicName, t.epicId);
           const claim = claimStateLabel(t.claimState);
           return `- [${t.priority.toUpperCase()}] **${t.title}**\n  ID: ${t.id}\n  Status: ${t.status} | Type: ${t.type}${assignee ? ` | Assignee: ${assignee}` : ""}${epic ? ` | Epic: ${epic}` : ""}${claim ? ` | Claim: ${claim}` : ""}`;
         })
@@ -113,11 +114,11 @@ export function registerTaskTools(server: McpServer): void {
         `**Status:** ${task.status}`,
         `**Priority:** ${task.priority}`,
         `**Type:** ${task.type}`,
-        `**Project:** ${task.projectName ?? task.projectId}`,
+        `**Project:** ${nameWithId(task.projectName, task.projectId)}`,
       ];
 
       if (task.epicId) {
-        sections.push(`**Epic:** ${task.epicName ?? task.epicId}`);
+        sections.push(`**Epic:** ${nameWithId(task.epicName, task.epicId)}`);
       }
       if (task.assigneeId) {
         sections.push(`**Assignee:** ${task.assigneeName ?? task.assigneeId}`);
@@ -129,7 +130,7 @@ export function registerTaskTools(server: McpServer): void {
       if (task.estimatedEffort) sections.push(`**Estimated Effort:** ${task.estimatedEffort}`);
       if (task.dueDate) sections.push(`**Due Date:** ${task.dueDate}`);
       if (task.parentTaskId) {
-        sections.push(`**Parent Task:** ${task.parentTaskTitle ?? task.parentTaskId}`);
+        sections.push(`**Parent Task:** ${nameWithId(task.parentTaskTitle, task.parentTaskId)}`);
       }
 
       sections.push("");

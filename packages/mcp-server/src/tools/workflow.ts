@@ -9,6 +9,7 @@ import {
   addTaskDependency,
   getTask,
 } from "../api-client.js";
+import { nameWithId } from "./claim-display.js";
 
 export function registerWorkflowTools(server: McpServer): void {
   // ---- pm_implement_proposal ----
@@ -50,10 +51,7 @@ export function registerWorkflowTools(server: McpServer): void {
         )
         .optional()
         .describe("Standalone tasks to create (not under any epic)"),
-      summary: z
-        .string()
-        .optional()
-        .describe("Summary comment explaining the implementation plan"),
+      summary: z.string().optional().describe("Summary comment explaining the implementation plan"),
     },
     async ({ proposal_id, epics, tasks, summary }) => {
       // Build the epics payload for the API. Tasks nested within epics are
@@ -127,6 +125,8 @@ export function registerWorkflowTools(server: McpServer): void {
           sections.push("", "**Plan summary:**", summary);
         }
 
+        sections.push("", "Call pm_get_proposal to see the created work items with their ids.");
+
         return {
           content: [
             {
@@ -196,11 +196,11 @@ export function registerWorkflowTools(server: McpServer): void {
         `**Status:** ${task.status}`,
         `**Priority:** ${task.priority}`,
         `**Type:** ${task.type}`,
-        `**Project:** ${task.projectName ?? task.projectId}`,
+        `**Project:** ${nameWithId(task.projectName, task.projectId)}`,
       ];
 
       if (task.epicId) {
-        sections.push(`**Epic:** ${task.epicName ?? task.epicId}`);
+        sections.push(`**Epic:** ${nameWithId(task.epicName, task.epicId)}`);
       }
       if (task.assigneeId) {
         sections.push(`**Assignee:** ${task.assigneeName ?? task.assigneeId}`);
@@ -277,10 +277,7 @@ export function registerWorkflowTools(server: McpServer): void {
     {
       task_id: z.string().describe("The task ID to complete"),
       summary: z.string().describe("Summary of what was done"),
-      files_changed: z
-        .array(z.string())
-        .optional()
-        .describe("List of files that were modified"),
+      files_changed: z.array(z.string()).optional().describe("List of files that were modified"),
       open_questions: z
         .array(z.string())
         .optional()
@@ -359,14 +356,8 @@ export function registerWorkflowTools(server: McpServer): void {
     {
       task_id: z.string().describe("The task ID to request review for"),
       summary: z.string().describe("Summary of the changes for the reviewer"),
-      review_notes: z
-        .string()
-        .optional()
-        .describe("Specific areas to focus on during review"),
-      files_changed: z
-        .array(z.string())
-        .optional()
-        .describe("List of files that were modified"),
+      review_notes: z.string().optional().describe("Specific areas to focus on during review"),
+      files_changed: z.array(z.string()).optional().describe("List of files that were modified"),
     },
     async ({ task_id, summary, review_notes, files_changed }) => {
       // Transition to in_review

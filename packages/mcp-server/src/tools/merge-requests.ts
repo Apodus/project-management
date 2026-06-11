@@ -1,9 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import {
-  MERGE_REQUEST_STATUSES,
-  type MergeRequestStatus,
-} from "@pm/shared";
+import { MERGE_REQUEST_STATUSES, type MergeRequestStatus } from "@pm/shared";
 import {
   cancelMergeRequest,
   getMergeRequest,
@@ -17,6 +14,11 @@ import {
 const resourceDesc =
   "Lock resource name (default: 'main'). Names the train lane. Use 'main' unless told otherwise.";
 
+// Appended to every merge-request tool description: MRs live outside the
+// claim system, and agents should never reach for claim-style tools on them.
+const integratorOwnedNote =
+  "Merge requests are integrator-owned: there is no claim to take or release on them — never try claim-style tools; to stop one, use pm_cancel_merge_request.";
+
 const STATUS_FILTER_VALUES = [...MERGE_REQUEST_STATUSES, "all"] as const;
 
 export function registerMergeRequestTools(server: McpServer): void {
@@ -24,14 +26,10 @@ export function registerMergeRequestTools(server: McpServer): void {
 
   server.tool(
     "pm_request_merge",
-    "Submit a merge request: the integrator picks it up, rebases, runs verify, and either lands it or rejects it with a structured payload. THIS IS THE RECOMMENDED WAY TO LAND CHANGES — you submit and exit; you do NOT hold a lock during verify. Subscribe to 'merge.request.landed' / 'merge.request.rejected' SSE events with the returned request id to learn the outcome. The Stage 1 pm_acquire_merge_lock tool still exists but is low-level — use this instead unless you are driving integration yourself.",
+    `Submit a merge request: the integrator picks it up, rebases, runs verify, and either lands it or rejects it with a structured payload. THIS IS THE RECOMMENDED WAY TO LAND CHANGES — you submit and exit; you do NOT hold a lock during verify. Subscribe to 'merge.request.landed' / 'merge.request.rejected' SSE events with the returned request id to learn the outcome. The Stage 1 pm_acquire_merge_lock tool still exists but is low-level — use this instead unless you are driving integration yourself. ${integratorOwnedNote}`,
     {
       project_id: z.string().describe("The project ID."),
-      resource: z
-        .string()
-        .optional()
-        .default("main")
-        .describe(resourceDesc),
+      resource: z.string().optional().default("main").describe(resourceDesc),
       task_id: z
         .string()
         .optional()
@@ -53,9 +51,7 @@ export function registerMergeRequestTools(server: McpServer): void {
       verify_cmd: z
         .string()
         .optional()
-        .describe(
-          "Per-request override of the project's configured verify command.",
-        ),
+        .describe("Per-request override of the project's configured verify command."),
       worktree_path: z
         .string()
         .optional()
@@ -63,15 +59,7 @@ export function registerMergeRequestTools(server: McpServer): void {
           "Per-machine path to your isolated worktree. Informational only — recorded so observability tools can correlate to your host.",
         ),
     },
-    async ({
-      project_id,
-      resource,
-      task_id,
-      branch,
-      commit_sha,
-      verify_cmd,
-      worktree_path,
-    }) => {
+    async ({ project_id, resource, task_id, branch, commit_sha, verify_cmd, worktree_path }) => {
       const resolvedResource = resource ?? "main";
       const created = await submitMergeRequest(project_id, {
         resource: resolvedResource,
@@ -108,13 +96,9 @@ export function registerMergeRequestTools(server: McpServer): void {
       if (position !== null) {
         lines.push(`  Queue position: ${position} of ${total}`);
       }
-      lines.push(
-        "  Status:         queued — waiting for the integrator to pick this up.",
-      );
+      lines.push("  Status:         queued — waiting for the integrator to pick this up.");
       lines.push("");
-      lines.push(
-        `Subscribe to SSE events for "merge.request.landed" / "merge.request.rejected"`,
-      );
+      lines.push(`Subscribe to SSE events for "merge.request.landed" / "merge.request.rejected"`);
       lines.push(`with entityId ${created.id} to learn the outcome.`);
       return { content: [{ type: "text" as const, text: lines.join("\n") }] };
     },
@@ -124,13 +108,10 @@ export function registerMergeRequestTools(server: McpServer): void {
 
   server.tool(
     "pm_list_merge_requests",
-    "List merge requests for a project. Optional filters: resource (lane), status (queued/integrating/landed/rejected/abandoned/all), task_id. Returns id, status, branch/commit, submitter, and queue position for queued entries.",
+    `List merge requests for a project. Optional filters: resource (lane), status (queued/integrating/landed/rejected/abandoned/all), task_id. Returns id, status, branch/commit, submitter, and queue position for queued entries. ${integratorOwnedNote}`,
     {
       project_id: z.string().describe("The project ID."),
-      resource: z
-        .string()
-        .optional()
-        .describe(resourceDesc),
+      resource: z.string().optional().describe(resourceDesc),
       status: z
         .enum(STATUS_FILTER_VALUES)
         .optional()
@@ -138,16 +119,11 @@ export function registerMergeRequestTools(server: McpServer): void {
         .describe(
           'Status filter. Default "all" returns every status. Use "queued" to see the active queue, "integrating" to see what the integrator is working on, etc.',
         ),
-      task_id: z
-        .string()
-        .optional()
-        .describe("Only return requests linked to this task id."),
+      task_id: z.string().optional().describe("Only return requests linked to this task id."),
     },
     async ({ project_id, resource, status, task_id }) => {
       const statusFilter: MergeRequestStatus | undefined =
-        status === "all" || status === undefined
-          ? undefined
-          : (status as MergeRequestStatus);
+        status === "all" || status === undefined ? undefined : (status as MergeRequestStatus);
 
       const rows = await listMergeRequests(project_id, {
         resource,
@@ -178,16 +154,11 @@ export function registerMergeRequestTools(server: McpServer): void {
       }
 
       const laneLabel = resource ? ` (${resource} lane)` : "";
-      const out: string[] = [
-        `${rows.length} merge request(s) in ${project_id}${laneLabel}:`,
-        "",
-      ];
+      const out: string[] = [`${rows.length} merge request(s) in ${project_id}${laneLabel}:`, ""];
       rows.forEach((r, i) => {
         const pos = queuePositions.get(r.id);
         const statusLabel =
-          r.status === "queued" && pos !== undefined
-            ? `queued (position ${pos})`
-            : r.status;
+          r.status === "queued" && pos !== undefined ? `queued (position ${pos})` : r.status;
         const idLine = `  ${i + 1}. ${r.id}   ${statusLabel}`;
         const refLine =
           r.branch && r.commitSha
@@ -210,7 +181,7 @@ export function registerMergeRequestTools(server: McpServer): void {
 
   server.tool(
     "pm_get_merge_request",
-    "Get full detail for a merge request including all attempts (most-recent first). For rejected requests, the structured rejection envelope (category, reason, failed files, log URL) is surfaced prominently at the top so you can see why without scrolling.",
+    `Get full detail for a merge request including all attempts (most-recent first). For rejected requests, the structured rejection envelope (category, reason, failed files, log URL) is surfaced prominently at the top so you can see why without scrolling. ${integratorOwnedNote}`,
     {
       request_id: z.string().describe("The merge request ID."),
     },
@@ -278,7 +249,7 @@ export function registerMergeRequestTools(server: McpServer): void {
 
   server.tool(
     "pm_cancel_merge_request",
-    "Cancel a merge request (yours or another agent's — collaborative env) from queued OR integrating. Cancelling an integrating request interrupts the in-flight integration — the integrator discovers it via a 409 on its next call — and is recorded in the audit log with an optional reason. A group member can NOT be cancelled individually → 409 GROUPED_MEMBER (reject the group instead). A request already terminal (landed/rejected) is rejected with 409 INVALID_TRANSITION; 'abandoned → abandoned' is the idempotent no-op.",
+    `Cancel a merge request (yours or another agent's — collaborative env) from queued OR integrating. Cancelling an integrating request interrupts the in-flight integration — the integrator discovers it via a 409 on its next call — and is recorded in the audit log with an optional reason. A group member can NOT be cancelled individually → 409 GROUPED_MEMBER (reject the group instead). A request already terminal (landed/rejected) is rejected with 409 INVALID_TRANSITION; 'abandoned → abandoned' is the idempotent no-op. ${integratorOwnedNote}`,
     {
       request_id: z.string().describe("The merge request ID."),
       reason: z
@@ -331,8 +302,4 @@ function formatDuration(ms: number): string {
   return `${m}m${rem.toString().padStart(2, "0")}s`;
 }
 
-export type {
-  MergeAttemptView,
-  MergeRequestView,
-  MergeRequestDetailView,
-};
+export type { MergeAttemptView, MergeRequestView, MergeRequestDetailView };

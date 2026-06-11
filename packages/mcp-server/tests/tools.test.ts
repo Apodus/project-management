@@ -3939,6 +3939,131 @@ describe("MCP Tools", () => {
     });
   });
 
+  // ---- C5.P4: render audit — ids beside names + integrator-owned MR notes ----
+
+  describe("render audit (C5.P4)", () => {
+    const taskWithEpic = {
+      ...sampleTask,
+      epicId: "epic_007",
+      epicName: "Skinning",
+      projectName: "Test Project",
+    };
+
+    it("pm_list_tasks renders the epic as name (id)", async () => {
+      mockListTasks.mockResolvedValue([taskWithEpic]);
+
+      const result = await client.callTool({
+        name: "pm_list_tasks",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Epic: Skinning (epic_007)");
+    });
+
+    it("pm_get_task renders project, epic, and parent task as name (id)", async () => {
+      mockGetTask.mockResolvedValue({
+        ...taskWithEpic,
+        parentTaskId: "task_parent",
+        parentTaskTitle: "Parent feature",
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_task",
+        arguments: { task_id: "task_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("**Project:** Test Project (proj_001)");
+      expect(text).toContain("**Epic:** Skinning (epic_007)");
+      expect(text).toContain("**Parent Task:** Parent feature (task_parent)");
+    });
+
+    it("pm_get_task falls back to the bare id when no name is enriched", async () => {
+      mockGetTask.mockResolvedValue({
+        ...sampleTask,
+        epicId: "epic_007",
+        // epicName / projectName absent.
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_task",
+        arguments: { task_id: "task_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("**Project:** proj_001");
+      expect(text).toContain("**Epic:** epic_007");
+    });
+
+    it("pm_pick_next_task renders project and epic as name (id)", async () => {
+      mockPickNextTask.mockResolvedValue(taskWithEpic);
+
+      const result = await client.callTool({
+        name: "pm_pick_next_task",
+        arguments: {},
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("**Project:** Test Project (proj_001)");
+      expect(text).toContain("**Epic:** Skinning (epic_007)");
+    });
+
+    it("pm_get_my_work renders the epic as name (id)", async () => {
+      mockGetAgentIdentity.mockReturnValue({
+        userId: "user_me",
+        username: "me",
+        displayName: "Me",
+      });
+      mockListTasks.mockResolvedValue([{ ...taskWithEpic, status: "in_progress" }]);
+      mockListProposals.mockResolvedValue([]);
+
+      const result = await client.callTool({
+        name: "pm_get_my_work",
+        arguments: {},
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("[Epic: Skinning (epic_007)]");
+    });
+
+    it("pm_implement_proposal points at pm_get_proposal for the created ids", async () => {
+      mockImplementProposal.mockResolvedValue({
+        ...sampleProposal,
+        status: "in_progress",
+      });
+
+      const result = await client.callTool({
+        name: "pm_implement_proposal",
+        arguments: {
+          proposal_id: "prop_001",
+          tasks: [{ title: "Standalone task" }],
+        },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Call pm_get_proposal to see the created work items with their ids.");
+    });
+
+    it("all four merge-request tool descriptions state integrator ownership", async () => {
+      const { tools } = await client.listTools();
+      const mrToolNames = [
+        "pm_request_merge",
+        "pm_list_merge_requests",
+        "pm_get_merge_request",
+        "pm_cancel_merge_request",
+      ];
+      for (const name of mrToolNames) {
+        const tool = tools.find((t) => t.name === name);
+        expect(tool, `${name} should be registered`).toBeDefined();
+        expect(tool?.description).toContain(
+          "Merge requests are integrator-owned: there is no claim to take or release on them",
+        );
+        expect(tool?.description).toContain("pm_cancel_merge_request");
+      }
+    });
+  });
+
   // ---- Notes (Campaign C1) ----
 
   const sampleNote = {

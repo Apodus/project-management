@@ -1,10 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  getAgentIdentity,
-  listProposals,
-  listTasks,
-} from "../api-client.js";
-import { claimStateLabel } from "./claim-display.js";
+import { getAgentIdentity, listProposals, listTasks } from "../api-client.js";
+import { claimStateLabel, nameWithId } from "./claim-display.js";
 
 export function registerAgentTools(server: McpServer): void {
   // ---- pm_get_my_work ----
@@ -20,15 +16,9 @@ export function registerAgentTools(server: McpServer): void {
 
       // Identity
       if (identity) {
-        sections.push(
-          `**You are:** ${identity.displayName} (@${identity.username})`,
-          "",
-        );
+        sections.push(`**You are:** ${identity.displayName} (@${identity.username})`, "");
       } else {
-        sections.push(
-          "**Identity:** Using static API token (no pool claim)",
-          "",
-        );
+        sections.push("**Identity:** Using static API token (no pool claim)", "");
       }
 
       // Fetch in-progress tasks assigned to this agent
@@ -55,7 +45,7 @@ export function registerAgentTools(server: McpServer): void {
       if (myTasks.length > 0) {
         sections.push(`## In-Progress Tasks (${myTasks.length})`);
         for (const task of myTasks) {
-          const epic = task.epicName ?? task.epicId;
+          const epic = nameWithId(task.epicName, task.epicId);
           const claim = claimStateLabel(task.claimState);
           sections.push(
             `- [${task.priority.toUpperCase()}] **${task.title}** (${task.id})${epic ? ` [Epic: ${epic}]` : ""}${claim ? ` — ${claim}` : ""}`,
@@ -70,9 +60,7 @@ export function registerAgentTools(server: McpServer): void {
       if (openProposals.length > 0) {
         sections.push(`## Open Proposals (${openProposals.length})`);
         for (const p of openProposals) {
-          sections.push(
-            `- **${p.title}** (${p.id}) — ${p.status}`,
-          );
+          sections.push(`- **${p.title}** (${p.id}) — ${p.status}`);
         }
         sections.push("");
       } else {
