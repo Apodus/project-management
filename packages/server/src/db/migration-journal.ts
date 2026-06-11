@@ -54,10 +54,26 @@ export function readJournalEntries(migrationsFolder: string): JournalEntry[] {
   return journal.entries;
 }
 
-/** sha256 over the raw migration file text — drizzle's migration identity. */
-function migrationHash(migrationsFolder: string, tag: string): string {
-  const sql = fs.readFileSync(path.join(migrationsFolder, `${tag}.sql`), "utf8");
-  return crypto.createHash("sha256").update(sql).digest("hex");
+/**
+ * All hashes under which this migration may legitimately appear in a DB's log:
+ * the file as-is, plus its LF and CRLF renditions. Drizzle hashes the WORKING
+ * TREE text at apply time, so a checkout-level line-ending flip changes the
+ * recorded identity of an unchanged migration — proven on the live DB
+ * (2026-06-11): rows for 0011–0015 carried the CRLF rendition of byte-LF files
+ * after the repo's 2026-06-02 line-ending normalization. Same content, same
+ * schema effect — a benign rendition, not divergence. Any hash outside this
+ * set IS divergence and stays fail-loud.
+ */
+function migrationHashAliases(
+  migrationsFolder: string,
+  tag: string,
+): { canonical: string; aliases: string[] } {
+  const raw = fs.readFileSync(path.join(migrationsFolder, `${tag}.sql`), "utf8");
+  const lf = raw.replace(/\r\n/g, "\n");
+  const crlf = lf.replace(/\n/g, "\r\n");
+  const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
+  const canonical = sha(raw);
+  return { canonical, aliases: [...new Set([canonical, sha(lf), sha(crlf)])] };
 }
 
 function migrationLogRows(rawDb: Database.Database): MigrationLogRow[] | null {
@@ -73,24 +89,34 @@ function migrationLogRows(rawDb: Database.Database): MigrationLogRow[] | null {
 }
 
 /**
- * Rewrite recorded `created_at` values that disagree with the shipped journal
- * (hash-matched). Returns the number of rows healed. Throws on a recorded
- * migration the journal does not contain — the log and the shipped migrations
- * have genuinely diverged and continuing could mis-apply schema changes.
+ * Rewrite recorded rows that disagree with the shipped journal, matched by
+ * migration hash INCLUDING line-ending renditions (see migrationHashAliases):
+ * a matched row's `created_at` is set to the journal `when` and its hash is
+ * CANONICALIZED to the current file's hash, so later assertions and heals are
+ * rendition-independent. Returns the number of rows healed. Throws on a
+ * recorded migration the journal does not contain under ANY rendition — the
+ * log and the shipped migrations have genuinely diverged and continuing could
+ * mis-apply schema changes.
  */
 export function healMigrationLogDrift(rawDb: Database.Database, migrationsFolder: string): number {
   const rows = migrationLogRows(rawDb);
   if (!rows || rows.length === 0) return 0;
 
   const entries = readJournalEntries(migrationsFolder);
-  const whenByHash = new Map<string, { when: number; tag: string }>(
-    entries.map((e) => [migrationHash(migrationsFolder, e.tag), { when: e.when, tag: e.tag }]),
-  );
+  const byAlias = new Map<string, { when: number; tag: string; canonical: string }>();
+  for (const e of entries) {
+    const { canonical, aliases } = migrationHashAliases(migrationsFolder, e.tag);
+    for (const alias of aliases) {
+      byAlias.set(alias, { when: e.when, tag: e.tag, canonical });
+    }
+  }
 
-  const update = rawDb.prepare("UPDATE __drizzle_migrations SET created_at = ? WHERE rowid = ?");
+  const update = rawDb.prepare(
+    "UPDATE __drizzle_migrations SET hash = ?, created_at = ? WHERE rowid = ?",
+  );
   let healed = 0;
   for (const row of rows) {
-    const expected = whenByHash.get(row.hash);
+    const expected = byAlias.get(row.hash);
     if (expected === undefined) {
       throw new Error(
         `Migration log integrity: __drizzle_migrations records a migration the shipped journal does not contain (hash ${row.hash.slice(0, 12)}…). ` +
@@ -98,8 +124,8 @@ export function healMigrationLogDrift(rawDb: Database.Database, migrationsFolder
           `Restore the matching migrations or investigate the database's provenance.`,
       );
     }
-    if (Number(row.created_at) !== expected.when) {
-      update.run(expected.when, row.rowid);
+    if (Number(row.created_at) !== expected.when || row.hash !== expected.canonical) {
+      update.run(expected.canonical, expected.when, row.rowid);
       healed++;
     }
   }
@@ -122,7 +148,10 @@ export function assertMigrationLogCurrent(
   const appliedHashes = new Set(rows.map((r) => r.hash));
 
   for (const entry of entries) {
-    if (!appliedHashes.has(migrationHash(migrationsFolder, entry.tag))) {
+    // Rendition-aware membership (heal canonicalizes, but keep the assertion
+    // independently robust — it must never false-alarm on a legacy rendition).
+    const { aliases } = migrationHashAliases(migrationsFolder, entry.tag);
+    if (!aliases.some((h) => appliedHashes.has(h))) {
       throw new Error(
         `Migration log integrity: journal migration ${entry.tag} (idx ${entry.idx}) is NOT recorded as applied — ` +
           `a migration was silently skipped (the watermark/timestamp bug class). Refusing to start: ` +

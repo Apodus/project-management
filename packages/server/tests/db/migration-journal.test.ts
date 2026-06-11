@@ -139,6 +139,41 @@ describe("migration log heal + boot assertion", () => {
     expect(() => assertMigrationLogCurrent(raw, MIGRATIONS)).not.toThrow();
   });
 
+  it("REGRESSION (live boot failure 2026-06-11): a CRLF-rendition hash is the SAME migration — healed + canonicalized, never a divergence throw", () => {
+    const dbPath = freshDbPath();
+    initializeDatabase({ dbPath });
+    closeDb();
+
+    // Reconstruct the live state: rows recorded when the working tree had CRLF
+    // line endings (pre-normalization checkout); today's files are LF. Same
+    // content, different rendition — drizzle hashed the working-tree text at
+    // apply time, so the recorded hash differs from the current file's.
+    const entries = readJournalEntries(MIGRATIONS);
+    const raw = new Database(dbPath);
+    for (const idx of [11, 12, 13]) {
+      const sql = readFileSync(path.join(MIGRATIONS, `${entries[idx]!.tag}.sql`), "utf8");
+      const crlf = sql.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+      const crlfHash = crypto.createHash("sha256").update(crlf).digest("hex");
+      raw
+        .prepare("UPDATE __drizzle_migrations SET hash = ? WHERE rowid = ?")
+        .run(crlfHash, idx + 1);
+    }
+    raw.close();
+
+    // Boot must recognize the rendition, canonicalize, and come up clean.
+    initializeDatabase({ dbPath });
+    const healedRaw = getRawDb();
+    expect(() => assertMigrationLogCurrent(healedRaw, MIGRATIONS)).not.toThrow();
+    const rows = healedRaw
+      .prepare("SELECT hash FROM __drizzle_migrations ORDER BY rowid")
+      .all() as { hash: string }[];
+    for (const idx of [11, 12, 13]) {
+      const sql = readFileSync(path.join(MIGRATIONS, `${entries[idx]!.tag}.sql`), "utf8");
+      const canonical = crypto.createHash("sha256").update(sql).digest("hex");
+      expect(rows[idx]!.hash).toBe(canonical);
+    }
+  });
+
   it("fails loud (refuses to boot) when the log records a migration the journal does not contain", () => {
     const dbPath = freshDbPath();
     initializeDatabase({ dbPath });
