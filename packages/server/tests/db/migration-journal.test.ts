@@ -93,13 +93,25 @@ describe("migration log heal + boot assertion", () => {
     // Reconstruct the broken state: every recorded migration future-stamped
     // (the fabricated journal's footprint), the LAST migration unrecorded and
     // its schema effect reverted — exactly what a DB migrated under the old
-    // journal looked like the moment 0027 shipped.
+    // journal looked like the moment 0027 shipped (the live incident; the
+    // simulation tracks whatever migration is CURRENTLY last).
+    //
+    // MAINTENANCE NOTE: the revert below must undo the CURRENT last
+    // migration's schema effect. When you add a migration, update LAST_REVERT
+    // + LAST_COLUMN_CHECK — this test fails loudly (duplicate column on
+    // re-apply) if they fall behind.
+    const LAST_REVERT =
+      "ALTER TABLE integrator_health DROP COLUMN last_release_failure"; // 0028
+    const LAST_COLUMN_CHECK = {
+      table: "integrator_health",
+      column: "last_release_failure",
+    };
     const raw = new Database(dbPath);
     const last = raw
       .prepare("SELECT rowid, hash FROM __drizzle_migrations ORDER BY rowid DESC LIMIT 1")
       .get() as { rowid: number; hash: string };
     raw.prepare("DELETE FROM __drizzle_migrations WHERE rowid = ?").run(last.rowid);
-    raw.exec("ALTER TABLE merge_requests DROP COLUMN synthetic");
+    raw.exec(LAST_REVERT);
     const future = Date.parse("2026-06-21T00:00:00Z");
     raw.prepare("UPDATE __drizzle_migrations SET created_at = ? + rowid").run(future);
     raw.close();
@@ -111,9 +123,11 @@ describe("migration log heal + boot assertion", () => {
     const healedRaw = getRawDb();
 
     const cols = (
-      healedRaw.prepare("PRAGMA table_info(merge_requests)").all() as { name: string }[]
+      healedRaw
+        .prepare(`PRAGMA table_info(${LAST_COLUMN_CHECK.table})`)
+        .all() as { name: string }[]
     ).map((c) => c.name);
-    expect(cols).toContain("synthetic");
+    expect(cols).toContain(LAST_COLUMN_CHECK.column);
 
     const entries = readJournalEntries(MIGRATIONS);
     const rows = healedRaw
