@@ -638,7 +638,7 @@ export function NotesPage() {
   );
   const [anchorId, setAnchorId] = useState<string>(search.anchorId ?? "");
   const [severityFilter, setSeverityFilter] = useState<string>("");
-  const [searchInput, setSearchInput] = useState("");
+  const [searchInput, setSearchInput] = useState(search.q ?? "");
   const debouncedSearch = useDebounce(searchInput, 300);
 
   const filters: NoteFilters = useMemo(() => {

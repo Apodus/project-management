@@ -213,11 +213,13 @@ const projectProposalListRoute = createRoute({
   component: ProposalListPage,
 });
 
-// Search params type for the notes inbox (deep-link from anchored-note badges)
+// Search params type for the notes inbox (deep-link from anchored-note badges;
+// `q` seeds the free-text search box — command-palette note hits land here)
 export interface NotesSearch {
   anchorType?: string;
   anchorId?: string;
   status?: string;
+  q?: string;
 }
 
 // /projects/$projectId/notes — notes inbox (Campaign C3)
@@ -230,6 +232,7 @@ const projectNotesRoute = createRoute({
       typeof search.anchorType === "string" ? search.anchorType : undefined,
     anchorId: typeof search.anchorId === "string" ? search.anchorId : undefined,
     status: typeof search.status === "string" ? search.status : undefined,
+    q: typeof search.q === "string" ? search.q : undefined,
   }),
 });
 

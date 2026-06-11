@@ -4,6 +4,7 @@ import {
   Activity,
   FileText,
   FolderOpen,
+  Inbox,
   LayoutDashboard,
   ListTodo,
   Milestone,
@@ -25,17 +26,22 @@ import {
 import { cn } from "@/lib/utils";
 import { formatStatus, getStatusColor, getPriorityColor } from "@/lib/format";
 import { useProjectStore } from "@/stores/project-store";
-import { getTasks, getProposals } from "@/lib/api";
-import type { Task, Proposal } from "@/lib/api";
+import { search } from "@/lib/api";
+import type { SearchResult } from "@/lib/api";
 
 // ---- Recent items storage ----
 
+// C4 (server FTS): search hits carry no status/priority, so NEW recents are
+// stored WITHOUT badges (`status` is now optional) — a deliberate shape
+// decision; previously-stored recents still render their badges. `projectId`
+// is stored for note recents (the notes route is project-scoped).
 interface RecentItem {
   id: string;
   title: string;
-  type: "task" | "proposal";
-  status: string;
+  type: "task" | "proposal" | "note";
+  status?: string;
   priority?: string;
+  projectId?: string;
   visitedAt: number;
 }
 
@@ -145,9 +151,10 @@ export function CommandPalette({
   const debouncedQuery = useDebounce(query, 300);
 
   const [searchResults, setSearchResults] = useState<{
-    tasks: Task[];
-    proposals: Proposal[];
-  }>({ tasks: [], proposals: [] });
+    tasks: SearchResult[];
+    proposals: SearchResult[];
+    notes: SearchResult[];
+  }>({ tasks: [], proposals: [], notes: [] });
   const [isSearching, setIsSearching] = useState(false);
 
   const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
@@ -162,14 +169,16 @@ export function CommandPalette({
     if (open) {
       setRecentItems(getRecentItems());
       setQuery("");
-      setSearchResults({ tasks: [], proposals: [] });
+      setSearchResults({ tasks: [], proposals: [], notes: [] });
     }
   }, [open]);
 
-  // Search when debounced query changes
+  // Search when debounced query changes — ONE server FTS call (C4), grouped
+  // by entityType in rank order. Comment hits are dropped: a comment is
+  // inline on its parent entity, so there is no navigation target for it.
   useEffect(() => {
     if (!debouncedQuery.trim() || !currentProjectId) {
-      setSearchResults({ tasks: [], proposals: [] });
+      setSearchResults({ tasks: [], proposals: [], notes: [] });
       setIsSearching(false);
       return;
     }
@@ -179,36 +188,25 @@ export function CommandPalette({
 
     async function doSearch() {
       try {
-        const [taskResult, proposalResult] = await Promise.allSettled([
-          getTasks(currentProjectId!, {
-            search: debouncedQuery,
-            perPage: 8,
-          }),
-          getProposals(currentProjectId!, undefined),
-        ]);
+        const hits = await search(debouncedQuery, {
+          projectId: currentProjectId!,
+          limit: 24,
+        });
 
         if (cancelled) return;
 
-        const tasks =
-          taskResult.status === "fulfilled" ? taskResult.value.data : [];
-
-        // Client-side filter proposals by query since the API may not support search
-        const allProposals =
-          proposalResult.status === "fulfilled" ? proposalResult.value : [];
-        const lowerQuery = debouncedQuery.toLowerCase();
-        const proposals = allProposals
-          .filter(
-            (p) =>
-              p.title.toLowerCase().includes(lowerQuery) ||
-              (p.description && p.description.toLowerCase().includes(lowerQuery)),
-          )
-          .slice(0, 8);
-
-        setSearchResults({ tasks, proposals });
+        // Hits arrive rank-ordered (best first); filter preserves that order.
+        setSearchResults({
+          tasks: hits.filter((h) => h.entityType === "task").slice(0, 8),
+          proposals: hits
+            .filter((h) => h.entityType === "proposal")
+            .slice(0, 8),
+          notes: hits.filter((h) => h.entityType === "note").slice(0, 8),
+        });
       } catch {
         // Silently fail search
         if (!cancelled) {
-          setSearchResults({ tasks: [], proposals: [] });
+          setSearchResults({ tasks: [], proposals: [], notes: [] });
         }
       } finally {
         if (!cancelled) {
@@ -229,30 +227,35 @@ export function CommandPalette({
 
   // ---- Handlers ----
 
-  function handleSelectTask(task: Task) {
+  function handleSelectHit(hit: SearchResult) {
     addRecentItem({
-      id: task.id,
-      title: task.title,
-      type: "task",
-      status: task.status,
-      priority: task.priority,
+      id: hit.entityId,
+      title: hit.title,
+      type: hit.entityType as "task" | "proposal" | "note",
+      ...(hit.entityType === "note"
+        ? { projectId: hit.projectId ?? currentProjectId ?? undefined }
+        : {}),
     });
     close();
-    navigate({ to: "/tasks/$taskId", params: { taskId: task.id } });
-  }
-
-  function handleSelectProposal(proposal: Proposal) {
-    addRecentItem({
-      id: proposal.id,
-      title: proposal.title,
-      type: "proposal",
-      status: proposal.status,
-    });
-    close();
-    navigate({
-      to: "/proposals/$proposalId",
-      params: { proposalId: proposal.id },
-    });
+    if (hit.entityType === "task") {
+      navigate({ to: "/tasks/$taskId", params: { taskId: hit.entityId } });
+    } else if (hit.entityType === "proposal") {
+      navigate({
+        to: "/proposals/$proposalId",
+        params: { proposalId: hit.entityId },
+      });
+    } else if (hit.entityType === "note") {
+      // Notes have no detail page — land on the project inbox pre-seeded
+      // with the hit's title as the free-text query.
+      const pid = hit.projectId ?? currentProjectId;
+      if (pid) {
+        navigate({
+          to: "/projects/$projectId/notes",
+          params: { projectId: pid },
+          search: { q: hit.title },
+        });
+      }
+    }
   }
 
   function handleSelectNav(item: NavItem) {
@@ -266,6 +269,17 @@ export function CommandPalette({
     close();
     if (item.type === "task") {
       navigate({ to: "/tasks/$taskId", params: { taskId: item.id } });
+    } else if (item.type === "note") {
+      const pid = item.projectId ?? currentProjectId;
+      if (pid) {
+        navigate({
+          to: "/projects/$projectId/notes",
+          params: { projectId: pid },
+          search: { q: item.title },
+        });
+      } else {
+        navigate({ to: "/projects" });
+      }
     } else {
       navigate({
         to: "/proposals/$proposalId",
@@ -293,7 +307,9 @@ export function CommandPalette({
 
   const hasQuery = debouncedQuery.trim().length > 0;
   const hasResults =
-    searchResults.tasks.length > 0 || searchResults.proposals.length > 0;
+    searchResults.tasks.length > 0 ||
+    searchResults.proposals.length > 0 ||
+    searchResults.notes.length > 0;
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
@@ -325,12 +341,17 @@ export function CommandPalette({
                   >
                     <Clock className="size-4 text-muted-foreground" />
                     <span className="flex-1 truncate">{item.title}</span>
-                    <Badge
-                      variant="secondary"
-                      className={cn("text-[10px]", getStatusColor(item.status))}
-                    >
-                      {formatStatus(item.status)}
-                    </Badge>
+                    {item.status && (
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "text-[10px]",
+                          getStatusColor(item.status),
+                        )}
+                      >
+                        {formatStatus(item.status)}
+                      </Badge>
+                    )}
                     {item.priority && (
                       <Badge
                         variant="secondary"
@@ -366,34 +387,21 @@ export function CommandPalette({
         {/* When typing: show search results */}
         {hasQuery && !isSearching && (
           <>
+            {/* Server FTS hits (C4), grouped by entity type in rank order.
+                keywords={[debouncedQuery]} guarantees a server-matched hit
+                passes cmdk's own value filter even when the match was on
+                body/description rather than the title. */}
             {searchResults.tasks.length > 0 && (
               <CommandGroup heading="Tasks">
-                {searchResults.tasks.map((task) => (
+                {searchResults.tasks.map((hit) => (
                   <CommandItem
-                    key={task.id}
-                    value={`task-${task.id}-${task.title}`}
-                    onSelect={() => handleSelectTask(task)}
+                    key={hit.entityId}
+                    value={`task-${hit.entityId}-${hit.title}`}
+                    keywords={[debouncedQuery]}
+                    onSelect={() => handleSelectHit(hit)}
                   >
                     <ListTodo className="size-4 text-muted-foreground" />
-                    <span className="flex-1 truncate">{task.title}</span>
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        "text-[10px]",
-                        getStatusColor(task.status),
-                      )}
-                    >
-                      {formatStatus(task.status)}
-                    </Badge>
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        "text-[10px]",
-                        getPriorityColor(task.priority),
-                      )}
-                    >
-                      {formatStatus(task.priority)}
-                    </Badge>
+                    <span className="flex-1 truncate">{hit.title}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -401,23 +409,31 @@ export function CommandPalette({
 
             {searchResults.proposals.length > 0 && (
               <CommandGroup heading="Proposals">
-                {searchResults.proposals.map((proposal) => (
+                {searchResults.proposals.map((hit) => (
                   <CommandItem
-                    key={proposal.id}
-                    value={`proposal-${proposal.id}-${proposal.title}`}
-                    onSelect={() => handleSelectProposal(proposal)}
+                    key={hit.entityId}
+                    value={`proposal-${hit.entityId}-${hit.title}`}
+                    keywords={[debouncedQuery]}
+                    onSelect={() => handleSelectHit(hit)}
                   >
                     <FileText className="size-4 text-muted-foreground" />
-                    <span className="flex-1 truncate">{proposal.title}</span>
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        "text-[10px]",
-                        getStatusColor(proposal.status),
-                      )}
-                    >
-                      {formatStatus(proposal.status)}
-                    </Badge>
+                    <span className="flex-1 truncate">{hit.title}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {searchResults.notes.length > 0 && (
+              <CommandGroup heading="Notes">
+                {searchResults.notes.map((hit) => (
+                  <CommandItem
+                    key={hit.entityId}
+                    value={`note-${hit.entityId}-${hit.title}`}
+                    keywords={[debouncedQuery]}
+                    onSelect={() => handleSelectHit(hit)}
+                  >
+                    <Inbox className="size-4 text-muted-foreground" />
+                    <span className="flex-1 truncate">{hit.title}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
