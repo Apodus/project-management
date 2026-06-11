@@ -73,10 +73,32 @@ const LEASE_TTL_MS = parsePositiveSec(
   process.env.PM_LEASE_TTL_SEC,
   LEASE_TTL_MS_DEFAULT,
 );
-const LEASE_GRACE_MS = parsePositiveSec(
-  process.env.PM_LEASE_GRACE_SEC,
-  LEASE_GRACE_MS_DEFAULT,
-);
+
+/**
+ * PURE resolver for the reclaim grace (ms) from a raw PM_LEASE_GRACE_SEC
+ * value — exported so the env-derivation itself is unit-testable. Unset /
+ * non-numeric / non-positive → the @pm/shared default (byte-identical to the
+ * pinned constant when the env is untouched).
+ */
+export function resolveLeaseGraceMs(
+  raw: string | undefined = process.env.PM_LEASE_GRACE_SEC,
+): number {
+  return parsePositiveSec(raw, LEASE_GRACE_MS_DEFAULT);
+}
+
+const LEASE_GRACE_MS = resolveLeaseGraceMs();
+
+/**
+ * The single, authoritative read of the active reclaim grace (resolved once at
+ * module load from PM_LEASE_GRACE_SEC). Callers OUTSIDE this module — notably
+ * claims-health.service (C2 amendment: the stale-claim ALERT grace must agree
+ * with the lease engine's reclaim grace under a tuned env, or badge-staleness
+ * and alert-staleness diverge) — MUST read it through this getter and never
+ * re-parse the env or pin the default constant.
+ */
+export function resolveActiveLeaseGraceMs(): number {
+  return LEASE_GRACE_MS;
+}
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -478,19 +500,32 @@ function reclaimOne(
   const { entityId } = lease;
 
   // Load the entity. A lease pointing at a vanished entity is unreclaimable
-  // (nothing to clear, and no projectId to audit against) — skip.
+  // (nothing to clear, and no projectId to audit against) — skip, but WARN
+  // (C2 de-silence): a silently-skipped candidate would otherwise look like a
+  // healthy live claim forever.
   const entityRow = db
     .select()
     .from(cfg.table)
     .where(eq(cfg.table.id, entityId))
     .get() as EntityRow | undefined;
-  if (!entityRow) return false;
+  if (!entityRow) {
+    console.warn(
+      `[claim-lease] reclaim skipped: ${entityType} ${entityId} has a lapsed lease but the entity row is gone (unreclaimable; lease left in place)`,
+    );
+    return false;
+  }
 
   // audit_log.projectId is NOT NULL — a proposal with a null projectId cannot
   // be audited, so refuse before the txn (uniform with forceClaim FOLDED-FIX 1;
-  // harmless for tasks/epics whose projectId is NOT NULL).
+  // harmless for tasks/epics whose projectId is NOT NULL). WARN (C2): the
+  // skip is permanent for this entity, so it must be visible.
   const projectId = entityRow.projectId;
-  if (projectId == null) return false;
+  if (projectId == null) {
+    console.warn(
+      `[claim-lease] reclaim skipped: ${entityType} ${entityId} has a null projectId (cannot write the NOT-NULL audit row; lease left in place)`,
+    );
+    return false;
+  }
 
   // TOCTOU re-read: capture the holder at txn-entry time. Non-null by the
   // candidate construction above, but re-read so the audit `before` is honest.

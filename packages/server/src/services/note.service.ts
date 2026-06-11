@@ -433,7 +433,14 @@ export function findSimilarOpenNotes(
     if (!orSanitized) return [];
     const orRows = rawDb.prepare(sql).all(orSanitized, projectId, 3) as Row[];
     return orRows.map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
-  } catch {
+  } catch (err) {
+    // C2 de-silence: the [] fallback is correct (advisory dedup must never
+    // break a note post), but a throwing FTS query (dropped/corrupt notes_fts,
+    // SQL error) was previously invisible — dedup would just silently stop
+    // working. Warn so the operator can see the cause.
+    console.warn(
+      `[notes-dedup] findSimilarOpenNotes failed (advisory, returning []): ${err}`,
+    );
     return [];
   }
 }

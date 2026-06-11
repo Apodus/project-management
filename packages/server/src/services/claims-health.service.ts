@@ -1,7 +1,6 @@
 import { and, asc, desc, eq, inArray, isNotNull, lt, notInArray } from "drizzle-orm";
 import {
   createId,
-  LEASE_GRACE_MS_DEFAULT,
   type ClaimState,
   type LeaseEntityType,
   type UserType,
@@ -18,7 +17,11 @@ import {
 } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
-import { deriveLiveness, readLeasesFor } from "./claim-lease.service.js";
+import {
+  deriveLiveness,
+  readLeasesFor,
+  resolveActiveLeaseGraceMs,
+} from "./claim-lease.service.js";
 import { deriveClaimState } from "./claim-helpers.js";
 
 // ─── Constants ────────────────────────────────────────────────────
@@ -30,12 +33,15 @@ import { deriveClaimState } from "./claim-helpers.js";
 // when the stale claims clear. There is NO sweep / scheduler / side-effecting
 // reclaim here — this module only READS (the latch boolean is the sole write).
 
-// The grace window for the stale pre-filter + per-candidate liveness check. The
-// same default the C2 lease engine uses (a lease is "stale" only once
-// now > expiresAt + grace). staleness already embeds the long lease TTL+grace,
-// so a claim past it is intrinsically rare — the threshold is simply
-// staleCount > 0 (no extra floor needed).
-const GRACE_MS = LEASE_GRACE_MS_DEFAULT;
+// The grace window for the stale pre-filter + per-candidate liveness check.
+// C2 amendment: derived from the SAME env-driven config as the lease engine
+// (PM_LEASE_GRACE_SEC via resolveActiveLeaseGraceMs) — byte-identical to the
+// pinned LEASE_GRACE_MS_DEFAULT when the env is unset, but under a tuned
+// grace the alert threshold now agrees with badge-staleness (deriveClaimState)
+// instead of silently diverging. staleness already embeds the long lease
+// TTL+grace, so a claim past it is intrinsically rare — the threshold is
+// simply staleCount > 0 (no extra floor needed).
+const GRACE_MS = resolveActiveLeaseGraceMs();
 
 // Bound the candidate batch. A lapsed-past-grace lease is rare (the TTL+grace is
 // ~24.5h by default), so a few hundred is a generous ceiling that keeps the

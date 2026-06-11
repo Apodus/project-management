@@ -68,6 +68,48 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * C2 de-silence: read an error response body ONCE (res.text()) and extract the
+ * server's { error: { code, message } } when it parses as JSON — otherwise
+ * preserve a ~300-char excerpt of the raw body (a proxy 502 HTML page, a plain
+ * text crash) instead of discarding it. The previous `.json().catch(() => null)`
+ * pattern reduced every non-JSON failure to "HTTP <status>".
+ *
+ * Defensive: a throwing res.text() (or a mock without it) falls back to the
+ * statusText-only message — never throws.
+ */
+async function readErrorBody(res: {
+  status: number;
+  statusText: string;
+  text?: () => Promise<string>;
+}): Promise<{ code: string; message: string }> {
+  let raw = "";
+  try {
+    raw = await res.text!();
+  } catch {
+    return {
+      code: "UNKNOWN_ERROR",
+      message: `HTTP ${res.status}: ${res.statusText}`,
+    };
+  }
+  try {
+    const json = JSON.parse(raw) as { error?: { code?: string; message?: string } };
+    const err = json?.error;
+    return {
+      code: err?.code ?? "UNKNOWN_ERROR",
+      message: err?.message ?? `HTTP ${res.status}`,
+    };
+  } catch {
+    const excerpt = raw.trim().replace(/\s+/g, " ").slice(0, 300);
+    return {
+      code: "UNKNOWN_ERROR",
+      message: excerpt
+        ? `HTTP ${res.status}: ${excerpt}`
+        : `HTTP ${res.status}: ${res.statusText}`,
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Generic request function
 // ---------------------------------------------------------------------------
@@ -94,11 +136,13 @@ export async function apiRequest<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  // Handle non-JSON responses
+  // Handle non-JSON responses — preserve the body excerpt (C2 de-silence)
+  // instead of reducing a proxy/crash page to "HTTP <status>".
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     if (!res.ok) {
-      throw new ApiError(res.status, "UNKNOWN_ERROR", `HTTP ${res.status}: ${res.statusText}`);
+      const { code, message } = await readErrorBody(res);
+      throw new ApiError(res.status, code, message);
     }
     return undefined as T;
   }
@@ -823,13 +867,9 @@ export async function checkUpdates(since: string, projectId?: string): Promise<U
   });
 
   if (!res.ok) {
-    const json = await res.json().catch(() => null);
-    const err = json?.error;
-    throw new ApiError(
-      res.status,
-      err?.code ?? "UNKNOWN_ERROR",
-      err?.message ?? `HTTP ${res.status}`,
-    );
+    // C2: read the body once via readErrorBody — preserves non-JSON bodies.
+    const { code, message } = await readErrorBody(res);
+    throw new ApiError(res.status, code, message);
   }
 
   return (await res.json()) as UpdatesResponse;
@@ -1525,18 +1565,15 @@ export async function createNote(projectId: string, data: CreateNote): Promise<C
     body: JSON.stringify(data),
   });
 
-  const json = await res.json().catch(() => null);
-
+  // C2: the body is read ONCE per branch — readErrorBody (text) on failure,
+  // res.json() on success (a Response body is single-read).
   if (!res.ok) {
-    const err = json?.error;
-    throw new ApiError(
-      res.status,
-      err?.code ?? "UNKNOWN_ERROR",
-      err?.message ?? `HTTP ${res.status}`,
-    );
+    const { code, message } = await readErrorBody(res);
+    throw new ApiError(res.status, code, message);
   }
 
-  return { note: json.data as Note, similar: (json.similar ?? []) as SimilarNote[] };
+  const json = (await res.json()) as { data: Note; similar?: SimilarNote[] };
+  return { note: json.data, similar: json.similar ?? [] };
 }
 
 /**
@@ -1619,16 +1656,13 @@ export async function promoteNoteToProposal(
     body: JSON.stringify(data),
   });
 
-  const json = await res.json().catch(() => null);
-
+  // C2: the body is read ONCE per branch — readErrorBody (text) on failure,
+  // res.json() on success (a Response body is single-read).
   if (!res.ok) {
-    const err = json?.error;
-    throw new ApiError(
-      res.status,
-      err?.code ?? "UNKNOWN_ERROR",
-      err?.message ?? `HTTP ${res.status}`,
-    );
+    const { code, message } = await readErrorBody(res);
+    throw new ApiError(res.status, code, message);
   }
 
-  return { note: json.data as Note, proposal: json.proposal as PromotedProposal };
+  const json = (await res.json()) as { data: Note; proposal: PromotedProposal };
+  return { note: json.data, proposal: json.proposal };
 }

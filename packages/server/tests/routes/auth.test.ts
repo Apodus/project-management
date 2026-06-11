@@ -118,6 +118,36 @@ describe("Auth routes", () => {
       // Should succeed, not return 401
       expect(res.status).toBe(201);
     });
+
+    it("double setup from empty: exactly one 201 and one 409, exactly ONE admin row (C2 transactional check-and-create)", async () => {
+      testApp.db.delete(users).run();
+
+      const post = (username: string) =>
+        testApp.app.request("/api/v1/auth/setup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            displayName: username,
+            password: "password123",
+          }),
+        });
+
+      // Two setup attempts — the check-and-create runs inside one synchronous
+      // transaction (createFirstAdmin), so the second can never also insert.
+      const [first, second] = [await post("admin-a"), await post("admin-b")];
+      const statuses = [first.status, second.status].sort();
+      expect(statuses).toEqual([201, 409]);
+
+      const loser = first.status === 409 ? first : second;
+      const loserBody = await loser.json();
+      expect(loserBody.error.code).toBe("SETUP_COMPLETE");
+
+      // Exactly one user row exists, and it is the admin.
+      const rows = testApp.db.select().from(users).all();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].role).toBe("admin");
+    });
   });
 
   // ── Login ────────────────────────────────────────────────────────

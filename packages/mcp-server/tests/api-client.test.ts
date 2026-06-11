@@ -30,6 +30,9 @@ function mockFetch(response: {
       "content-type": response.contentType ?? "application/json",
     }),
     json: vi.fn().mockResolvedValue(response.body),
+    // Faithful Response mock: error paths now read the body ONCE via text()
+    // (readErrorBody, C2) — serve the same body as text, like a real Response.
+    text: vi.fn().mockResolvedValue(JSON.stringify(response.body)),
   });
   vi.stubGlobal("fetch", fn);
   return fn;
@@ -180,6 +183,58 @@ describe("apiRequest", () => {
       const apiErr = err as ApiError;
       expect(apiErr.status).toBe(502);
       expect(apiErr.message).toContain("Bad Gateway");
+    }
+  });
+
+  it("preserves a non-JSON error body excerpt (C2 de-silence)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        status: 502,
+        ok: false,
+        statusText: "Bad Gateway",
+        headers: new Headers({ "content-type": "text/html" }),
+        json: vi.fn().mockRejectedValue(new Error("not JSON")),
+        text: vi
+          .fn()
+          .mockResolvedValue(
+            "<html><body>nginx: upstream timed out while reading response</body></html>",
+          ),
+      }),
+    );
+
+    try {
+      await apiRequest("GET", "/projects");
+      expect.fail("Should have thrown");
+    } catch (err) {
+      const apiErr = err as ApiError;
+      expect(apiErr.status).toBe(502);
+      expect(apiErr.code).toBe("UNKNOWN_ERROR");
+      // The raw body excerpt is preserved, not reduced to "HTTP 502".
+      expect(apiErr.message).toContain("upstream timed out");
+    }
+  });
+
+  it("caps the non-JSON error excerpt at ~300 chars (C2)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        status: 500,
+        ok: false,
+        statusText: "Internal Server Error",
+        headers: new Headers({ "content-type": "text/plain" }),
+        json: vi.fn().mockRejectedValue(new Error("not JSON")),
+        text: vi.fn().mockResolvedValue("x".repeat(5000)),
+      }),
+    );
+
+    try {
+      await apiRequest("GET", "/projects");
+      expect.fail("Should have thrown");
+    } catch (err) {
+      const apiErr = err as ApiError;
+      expect(apiErr.message.length).toBeLessThan(400);
+      expect(apiErr.message).toContain("xxx");
     }
   });
 

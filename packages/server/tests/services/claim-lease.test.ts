@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import {
   CLAIM_LEASE_RECLAIMED_EVENT,
+  LEASE_GRACE_MS_DEFAULT,
   LEASE_TTL_MS_DEFAULT,
 } from "@pm/shared";
 import {
@@ -499,6 +500,88 @@ describe("claim-lease service", () => {
         .where(eq(proposals.id, noProjProposal.id))
         .get()!.claimedBy,
     ).toBe(a.user.id);
+  });
+
+  // ── 8b. de-silenced skips (C2): the fail-safe skips WARN ──────────
+  it("reclaim skip on a VANISHED entity warns (C2 de-silence)", () => {
+    const project = createTestProject(testApp.db);
+    const a = createTestAiAgent(testApp.db);
+    const t0 = new Date("2026-06-06T10:00:00.000Z");
+
+    const task = createTestTask(testApp.db, {
+      projectId: project.id,
+      assigneeId: a.user.id,
+    });
+    svc.acquireLease("task", task.id, { id: a.user.id }, { now: t0, ttlMs: 1000 });
+    // Vanish the entity row, leaving the lease dangling.
+    testApp.db.delete(tasks).where(eq(tasks.id, task.id)).run();
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const r = svc.sweepStaleClaims({
+        entityType: "task",
+        entityId: task.id,
+        mode: "on",
+        graceMs: 0,
+        now: new Date(t0.getTime() + 1_000_000),
+      });
+      expect(r.reclaimed).toHaveLength(0);
+      const warned = warnSpy.mock.calls.map((c) => String(c[0]));
+      expect(
+        warned.some(
+          (m) => m.includes("[claim-lease]") && m.includes("entity row is gone"),
+        ),
+      ).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("reclaim skip on a NULL-projectId entity warns (C2 de-silence)", () => {
+    const project = createTestProject(testApp.db);
+    const a = createTestAiAgent(testApp.db);
+    const t0 = new Date("2026-06-06T10:00:00.000Z");
+
+    const prop = createTestProposal(testApp.db, { projectId: project.id });
+    testApp.db
+      .update(proposals)
+      .set({ projectId: null, claimedBy: a.user.id })
+      .where(eq(proposals.id, prop.id))
+      .run();
+    svc.acquireLease("proposal", prop.id, { id: a.user.id }, { now: t0, ttlMs: 1000 });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const r = svc.sweepStaleClaims({
+        entityType: "proposal",
+        entityId: prop.id,
+        mode: "on",
+        graceMs: 0,
+        now: new Date(t0.getTime() + 1_000_000),
+      });
+      expect(r.reclaimed).toHaveLength(0);
+      const warned = warnSpy.mock.calls.map((c) => String(c[0]));
+      expect(
+        warned.some(
+          (m) => m.includes("[claim-lease]") && m.includes("null projectId"),
+        ),
+      ).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  // ── 8c. env-driven grace derivation (C2 amendment 7) ──────────────
+  it("resolveLeaseGraceMs derives from PM_LEASE_GRACE_SEC and is byte-identical to the default when unset/invalid", () => {
+    expect(svc.resolveLeaseGraceMs("60")).toBe(60_000);
+    expect(svc.resolveLeaseGraceMs("7200")).toBe(7_200_000);
+    // Unset / invalid / non-positive → the @pm/shared default.
+    expect(svc.resolveLeaseGraceMs(undefined)).toBe(LEASE_GRACE_MS_DEFAULT);
+    expect(svc.resolveLeaseGraceMs("not-a-number")).toBe(LEASE_GRACE_MS_DEFAULT);
+    expect(svc.resolveLeaseGraceMs("0")).toBe(LEASE_GRACE_MS_DEFAULT);
+    expect(svc.resolveLeaseGraceMs("-5")).toBe(LEASE_GRACE_MS_DEFAULT);
+    // The active getter agrees with a fresh resolution of the live env.
+    expect(svc.resolveActiveLeaseGraceMs()).toBe(svc.resolveLeaseGraceMs());
   });
 
   // ── 9. epic + proposal reclaim parity ────────────────────────────

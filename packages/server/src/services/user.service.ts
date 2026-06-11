@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createId } from "@pm/shared";
 import { getDb, users } from "../db/index.js";
@@ -268,11 +268,58 @@ export async function validateCredentials(
 }
 
 /**
- * Count total users in the database.
+ * Count total users in the database. SQL COUNT (C2): the previous
+ * select-all-rows-and-measure-length materialized every user row (with
+ * password/token hashes) just to count them.
  */
 export function count(): number {
   const db = getDb();
-  return db.select().from(users).all().length;
+  const row = db.select({ c: sql<number>`count(*)` }).from(users).get();
+  return Number(row?.c ?? 0);
+}
+
+/**
+ * C2: transactional first-admin creation for POST /auth/setup. The previous
+ * route-level read-then-create had a check/insert race: two concurrent setup
+ * POSTs could both observe count()===0 and both create an admin. Structure
+ * (pinned): bcrypt-hash FIRST (the only await), then a SYNCHRONOUS
+ * db.transaction whose body does count-check → throw SetupAlreadyCompleteError
+ * → insert with NO await between check and insert — better-sqlite3 txns are
+ * synchronous, so the pair is atomic.
+ */
+export async function createFirstAdmin(input: {
+  username: string;
+  displayName: string;
+  password: string;
+}): Promise<UserRecord> {
+  // Hash FIRST — no await may sit between the count-check and the insert.
+  const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
+
+  const db = getDb();
+  const ts = new Date().toISOString();
+  const id = createId();
+
+  db.transaction((tx) => {
+    const row = tx.select({ c: sql<number>`count(*)` }).from(users).get();
+    if (Number(row?.c ?? 0) > 0) {
+      throw new SetupAlreadyCompleteError();
+    }
+    tx.insert(users)
+      .values({
+        id,
+        username: input.username,
+        displayName: input.displayName,
+        email: null,
+        role: "admin",
+        type: "human",
+        passwordHash,
+        createdAt: ts,
+        updatedAt: ts,
+      })
+      .run();
+  });
+
+  return getById(id)!;
 }
 
 // ─── Error types ─────────────────────────────────────────────────
@@ -284,5 +331,16 @@ export class DuplicateUsernameError extends Error {
     super(`Username "${username}" is already taken`);
     this.name = "DuplicateUsernameError";
     this.username = username;
+  }
+}
+
+/**
+ * C2: thrown by createFirstAdmin when a user already exists — the route maps
+ * it to the existing 409 SETUP_COMPLETE envelope.
+ */
+export class SetupAlreadyCompleteError extends Error {
+  constructor() {
+    super("Setup has already been completed. Users already exist.");
+    this.name = "SetupAlreadyCompleteError";
   }
 }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import {
@@ -9,7 +9,13 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import { activityLog, notes, proposals, tasks } from "../../src/db/index.js";
+import {
+  activityLog,
+  getRawDb,
+  notes,
+  proposals,
+  tasks,
+} from "../../src/db/index.js";
 import { AppError } from "../../src/types.js";
 import * as noteService from "../../src/services/note.service.js";
 
@@ -962,6 +968,22 @@ describe("note service", () => {
       const project = createTestProject(testApp.db);
       expect(noteService.findSimilarOpenNotes(project.id, "")).toEqual([]);
       expect(noteService.findSimilarOpenNotes(project.id, "   ")).toEqual([]);
+    });
+
+    it("a throwing FTS query → [] AND a console.warn (C2 de-silence: never silent)", () => {
+      const project = createTestProject(testApp.db);
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        // Break the FTS table so the MATCH query throws inside the try.
+        getRawDb().exec("DROP TABLE notes_fts");
+        const hits = noteService.findSimilarOpenNotes(project.id, "anything here");
+        expect(hits).toEqual([]); // advisory fallback unchanged
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(String(warnSpy.mock.calls[0][0])).toContain("[notes-dedup]");
+        expect(String(warnSpy.mock.calls[0][0])).toContain("advisory");
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
 
     // ── P3: dedup two-pass OR-fallback ──────────────────────────────

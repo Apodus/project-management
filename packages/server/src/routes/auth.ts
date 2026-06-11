@@ -184,28 +184,33 @@ export function createAuthRoutes(): OpenAPIHono<{
 
   // POST /api/v1/auth/setup — PUBLIC
   router.openapi(postSetupRoute, async (c) => {
-    const count = userService.count();
-    if (count > 0) {
-      return c.json(
-        {
-          error: {
-            code: "SETUP_COMPLETE",
-            message: "Setup has already been completed. Users already exist.",
-          },
-        },
-        409,
-      );
-    }
-
     const body = c.req.valid("json");
 
-    const { user } = await userService.create({
-      username: body.username,
-      displayName: body.displayName,
-      password: body.password,
-      role: "admin",
-      type: "human",
-    });
+    // C2: transactional check-and-create (no route-level pre-check read).
+    // The count-check and the insert run inside ONE synchronous transaction
+    // (createFirstAdmin), so two concurrent setup POSTs can never both create
+    // an admin — exactly one 201; the loser maps to the existing 409.
+    let user: userService.UserRecord;
+    try {
+      user = await userService.createFirstAdmin({
+        username: body.username,
+        displayName: body.displayName,
+        password: body.password,
+      });
+    } catch (err) {
+      if (err instanceof userService.SetupAlreadyCompleteError) {
+        return c.json(
+          {
+            error: {
+              code: "SETUP_COMPLETE",
+              message: "Setup has already been completed. Users already exist.",
+            },
+          },
+          409,
+        );
+      }
+      throw err;
+    }
 
     // Create session and set cookie
     const session = await authService.createSession(user.id);
