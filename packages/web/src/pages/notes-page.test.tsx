@@ -59,6 +59,11 @@ function makeNote(overrides: Partial<Note>): Note {
     triageReason: null,
     promotedProposalId: null,
     promotedTaskId: null,
+    // C4 server enrichment — list/get responses always carry these (null when
+    // unanchored / not promoted). Tests for the ABSENT (non-enriched) state
+    // override with `undefined`.
+    anchor: null,
+    promotedTarget: null,
     ...overrides,
   };
 }
@@ -114,12 +119,6 @@ vi.mock("@/hooks/use-auth", () => ({
   useCurrentUser: () => useCurrentUserMock(),
 }));
 
-vi.mock("@/hooks/use-tasks", () => ({
-  useTasks: () => ({
-    data: { data: [{ id: "task-known", title: "Resolvable task" }] },
-  }),
-}));
-
 vi.mock("@/hooks/use-epics", () => ({
   useEpics: () => ({
     data: [
@@ -128,10 +127,6 @@ vi.mock("@/hooks/use-epics", () => ({
       { id: "epic-dead", name: "Dead epic", status: "cancelled" },
     ],
   }),
-}));
-
-vi.mock("@/hooks/use-proposals", () => ({
-  useProposals: () => ({ data: [{ id: "prop-1", title: "Some proposal" }] }),
 }));
 
 vi.mock("@/stores/project-store", () => ({
@@ -191,7 +186,7 @@ describe("NotesPage", () => {
     expect(filters.severity).toBeUndefined();
   });
 
-  it("shows 'Promoted' on a triaged+promoted note", () => {
+  it("shows 'Promoted' on a triaged+promoted note with the enriched target title", () => {
     notesData = [
       makeNote({
         id: "n1",
@@ -199,39 +194,95 @@ describe("NotesPage", () => {
         status: "triaged",
         triageOutcome: "promoted",
         promotedTaskId: "task-known",
+        promotedTarget: { exists: true, title: "Resolvable task" },
       }),
     ];
     render(<NotesPage />);
     expect(screen.getByText("Triaged · Promoted")).toBeInTheDocument();
-    // Resolvable promoted target renders its title.
+    // Existing promoted target renders its enriched title.
     expect(screen.getByText("Resolvable task")).toBeInTheDocument();
   });
 
-  it("renders a resolvable anchor as the resolved title", () => {
+  // ── C4 truth rendering: anchor {exists, title} ──────────────────
+
+  it("renders an EXISTING anchor (exists:true) as its enriched title", () => {
     notesData = [
       makeNote({
         id: "n1",
         title: "Anchored note",
         anchorType: "task",
         anchorId: "task-known",
+        anchor: { exists: true, title: "Resolvable task" },
       }),
     ];
     render(<NotesPage />);
     expect(screen.getByText("Resolvable task")).toBeInTheDocument();
+    expect(screen.queryByText(/removed/i)).not.toBeInTheDocument();
   });
 
-  it("renders raw type+id (NOT 'removed') when the anchor id is absent from the map", () => {
+  it("renders a DELETED anchor (exists:false) as a muted non-link '(removed)'", () => {
     notesData = [
       makeNote({
         id: "n1",
-        title: "Old anchor note",
+        title: "Dangling anchor note",
         anchorType: "task",
-        anchorId: "task-missing-abcdef0123",
+        anchorId: "task-gone-abcdef0123",
+        anchor: { exists: false, title: null },
       }),
     ];
     render(<NotesPage />);
-    // Map miss → raw "task <short-id>", never "(removed)".
+    const removed = screen.getByText(/task task-gon.*\(removed\)/);
+    expect(removed).toBeInTheDocument();
+    // Positive-evidence removal renders as a SPAN, never a link.
+    expect(removed.closest("a")).toBeNull();
+  });
+
+  it("renders the raw type+short-id (NOT '(removed)') when enrichment is ABSENT", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        title: "Old server note",
+        anchorType: "task",
+        anchorId: "task-missing-abcdef0123",
+        anchor: undefined, // non-enriched payload (old server / mid-rollout)
+      }),
+    ];
+    render(<NotesPage />);
+    // No positive evidence → pre-C4 fallback, never "(removed)".
     expect(screen.getByText(/task task-mis/)).toBeInTheDocument();
+    expect(screen.queryByText(/removed/i)).not.toBeInTheDocument();
+  });
+
+  // ── C4 truth rendering: promotedTarget variants ─────────────────
+
+  it("renders a DELETED promoted target (exists:false) as '(removed)'", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        title: "Promoted then target deleted",
+        status: "triaged",
+        triageOutcome: "promoted",
+        promotedProposalId: "prop-gone-abcdef0123",
+        promotedTarget: { exists: false, title: null },
+      }),
+    ];
+    render(<NotesPage />);
+    expect(screen.getByText(/proposal prop-gon.*\(removed\)/)).toBeInTheDocument();
+  });
+
+  it("renders the promoted-target short-id fallback (NOT '(removed)') when enrichment is ABSENT", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        title: "Promoted, old server",
+        status: "triaged",
+        triageOutcome: "promoted",
+        promotedTaskId: "task-promoted-abcdef0123",
+        promotedTarget: undefined,
+      }),
+    ];
+    render(<NotesPage />);
+    expect(screen.getByText(/task task-pro/)).toBeInTheDocument();
     expect(screen.queryByText(/removed/i)).not.toBeInTheDocument();
   });
 

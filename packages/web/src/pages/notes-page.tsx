@@ -37,9 +37,7 @@ import {
   usePromoteNoteToProposal,
   usePromoteNoteToTask,
 } from "@/hooks/use-notes";
-import { useTasks } from "@/hooks/use-tasks";
 import { useEpics } from "@/hooks/use-epics";
-import { useProposals } from "@/hooks/use-proposals";
 import { useProjectStore } from "@/stores/project-store";
 import {
   formatRelativeTime,
@@ -97,24 +95,33 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-// Resolve an anchor (or promoted target) to a clickable Link when the id is in
-// the map, else render the raw type + short id.
-//
-// CRITICAL: the task list caps at 50, so a map MISS does NOT mean the entity was
-// deleted — it may simply be older than the 50 most recent. We therefore render
-// the raw type + short id on a miss (mirroring task-list-page's
-// `epicMap.get(id) ?? id.slice(0,8)+"..."`), NEVER "(removed)". True dangling
-// detection needs per-anchor server resolution — deferred.
+// Render an anchor (or promoted target) truthfully from the server-enriched
+// ref (Campaign C4: note.anchor / note.promotedTarget = {exists, title}):
+//   exists:true  → titled Link (same routes as before)
+//   exists:false → muted NON-link "<type> <shortid>… (removed)" — POSITIVE
+//                  server evidence the target was deleted
+//   ref absent   → the raw type+short-id fallback (no link, no "(removed)")
+// "(removed)" renders ONLY on positive evidence — an old/non-enriched server
+// payload degrades to the pre-C4 fallback. This single rule is the
+// additive-rollout guarantee.
 function AnchorRef({
   type,
   id,
-  title,
+  anchorRef,
 }: {
   type: "task" | "epic" | "proposal";
   id: string;
-  title: string | undefined;
+  anchorRef: Note["anchor"];
 }) {
   const short = `${type} ${id.slice(0, 8)}…`;
+  if (anchorRef && !anchorRef.exists) {
+    return (
+      <span className="font-mono text-[11px] text-muted-foreground/60">
+        {short} (removed)
+      </span>
+    );
+  }
+  const title = anchorRef?.title;
   if (!title) {
     return <span className="font-mono text-[11px]">{short}</span>;
   }
@@ -440,19 +447,7 @@ function PromoteToTaskDialog({
   );
 }
 
-function NoteCard({
-  note,
-  anchorTitle,
-  promotedTaskTitle,
-  promotedProposalTitle,
-  isHuman,
-}: {
-  note: Note;
-  anchorTitle: string | undefined;
-  promotedTaskTitle: string | undefined;
-  promotedProposalTitle: string | undefined;
-  isHuman: boolean;
-}) {
+function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
   const isPromoted = note.status === "triaged" && note.triageOutcome === "promoted";
   const isDismissed = note.status === "triaged" && note.triageOutcome === "dismissed";
   const isOpen = note.status === "open";
@@ -518,7 +513,7 @@ function NoteCard({
             <AnchorRef
               type={note.anchorType}
               id={note.anchorId}
-              title={anchorTitle}
+              anchorRef={note.anchor}
             />
           </div>
         )}
@@ -529,7 +524,7 @@ function NoteCard({
             <AnchorRef
               type="task"
               id={note.promotedTaskId}
-              title={promotedTaskTitle}
+              anchorRef={note.promotedTarget}
             />
           </div>
         )}
@@ -539,7 +534,7 @@ function NoteCard({
             <AnchorRef
               type="proposal"
               id={note.promotedProposalId}
-              title={promotedProposalTitle}
+              anchorRef={note.promotedTarget}
             />
           </div>
         )}
@@ -661,41 +656,11 @@ export function NotesPage() {
   // note.service.list has NO server limit (returns all project notes), so the
   // client-side search below is complete. NOTE the double `.data` — useNotes
   // returns NoteListResult `{ data: Note[], pagination }`.
+  // Anchor + promoted-target titles arrive ENRICHED on each note (C4:
+  // note.anchor / note.promotedTarget) — no client entity maps.
   const notesQuery = useNotes(projectId, filters);
   const notes = notesQuery.data?.data ?? [];
   const { isLoading, error, refetch } = notesQuery;
-
-  // Anchor + promoted-target resolution. Build id→title/name maps (mirror
-  // task-list-page's epicMap). These lists cap server-side, so a MISS is not a
-  // deletion — AnchorRef renders the raw type+short-id on a miss (not "removed").
-  const { data: tasks } = useTasks(projectId);
-  const { data: epics } = useEpics(projectId);
-  const { data: proposals } = useProposals(projectId);
-
-  const taskMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const t of tasks?.data ?? []) map.set(t.id, t.title);
-    return map;
-  }, [tasks]);
-
-  const epicMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const e of epics ?? []) map.set(e.id, e.name);
-    return map;
-  }, [epics]);
-
-  const proposalMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of proposals ?? []) map.set(p.id, p.title);
-    return map;
-  }, [proposals]);
-
-  function anchorTitleFor(note: Note): string | undefined {
-    if (!note.anchorType || !note.anchorId) return undefined;
-    if (note.anchorType === "task") return taskMap.get(note.anchorId);
-    if (note.anchorType === "epic") return epicMap.get(note.anchorId);
-    return proposalMap.get(note.anchorId);
-  }
 
   // Client-side free-text search over title + body (debounced), mirroring
   // command-palette's `.toLowerCase().includes` idiom. No /search wrapper exists
@@ -864,22 +829,7 @@ export function NotesPage() {
       {!isLoading && !error && visibleNotes.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleNotes.map((note) => (
-            <NoteCard
-              key={note.id}
-              note={note}
-              anchorTitle={anchorTitleFor(note)}
-              promotedTaskTitle={
-                note.promotedTaskId
-                  ? taskMap.get(note.promotedTaskId)
-                  : undefined
-              }
-              promotedProposalTitle={
-                note.promotedProposalId
-                  ? proposalMap.get(note.promotedProposalId)
-                  : undefined
-              }
-              isHuman={isHuman}
-            />
+            <NoteCard key={note.id} note={note} isHuman={isHuman} />
           ))}
         </div>
       )}
