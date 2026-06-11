@@ -25,7 +25,7 @@ test.describe("Setup and Login", () => {
 
     // Verify we see the projects page heading
     await expect(
-      page.getByRole("heading", { name: "Projects" }),
+      page.getByRole("heading", { name: "Projects", exact: true }),
     ).toBeVisible();
   });
 
@@ -44,7 +44,7 @@ test.describe("Setup and Login", () => {
 
     // Verify we see the projects page heading
     await expect(
-      page.getByRole("heading", { name: "Projects" }),
+      page.getByRole("heading", { name: "Projects", exact: true }),
     ).toBeVisible();
   });
 

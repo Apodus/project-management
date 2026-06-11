@@ -61,8 +61,13 @@ export async function setupAdmin(
 
   await page.waitForURL("**/projects");
   // This one IS a real <h1> — the only true heading among these screens.
+  // `exact: true` is load-bearing: Playwright's string name-match is a
+  // case-insensitive SUBSTRING match, and the post-load empty state renders
+  // an <h3>No projects yet</h3> which contains "projects" — without exact
+  // matching, both headings match and the assertion strict-mode-races on
+  // whichever renders first.
   await expect(
-    page.getByRole("heading", { name: "Projects" }),
+    page.getByRole("heading", { name: "Projects", exact: true }),
   ).toBeVisible();
 }
 
