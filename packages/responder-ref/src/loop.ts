@@ -13,26 +13,77 @@
  *      acknowledge(id) to CLAIM it (the C1 one-active-responder gate). On a
  *      successful claim the job (holding the slot for the budget duration, like
  *      the wake daemon) fetches the thread, builds the prompt, SPAWNS the
- *      answering session, and handles its 4-state outcome:
- *        - mode !== "on" → spawn + log the outcome, do NOT post (the P5
- *          shadow-handling seam — off AND shadow both spawn-and-log).
- *        - mode === "on" → answered → answer(); needs_human/give_up/error →
- *          escalate-to-human (no proven work discarded).
+ *      answering session, and handles its 4-state outcome.
+ *
+ * Outcome routing (P5 — shadow + the permanent human-approval boundary):
+ *   - An `answered` outcome runs through `decideAnsweredDisposition(mode,
+ *     severity)`:
+ *       off            → log_only  (off is fully silent — never posts anything).
+ *       on + routine   → auto_send (answer() reaches the client directly).
+ *       on + HIGH sev  → approve   (the PERMANENT boundary — a high-severity
+ *                                   drafted answer ALWAYS routes to a human for
+ *                                   approval, even at on; it never auto-sends).
+ *       shadow         → approve   (every drafted answer is routed to a human
+ *                                   for review before it could reach a client —
+ *                                   shadow is the safe-rollout rung).
+ *     `approve` reuses `escalateToHuman` (the C2 Discord needs-human bridge),
+ *     embedding the draft in the reason so NO proven work is discarded.
+ *   - `needs_human` / `give_up` / `error` (the agent's own low-confidence /
+ *     failure signals): at `off` they are SILENT (off escalates nothing); at
+ *     shadow OR on they escalate-to-human verbatim (no proven work discarded).
+ *
  *      ack failures: 403 (another responder beat us; debug, don't record),
  *      409 (raced out of open; skip), other (warn, retry next tick).
  *
  * `enabled` is the kill-switch: a disabled tick is a no-op (defense-in-depth —
- * index.ts also exits before entering the loop). `mode` gates ONLY the POST —
- * the spawn always runs when enabled (so shadow exercises the real session).
+ * index.ts also exits before entering the loop). The spawn always runs when
+ * enabled (so shadow exercises the real session); `mode` gates only what the
+ * outcome POSTs — and the high-severity approval boundary survives `on`.
  */
 import path from "node:path";
 import { tmpdir } from "node:os";
+import type { EscalationSeverity } from "@pm/shared";
 import type { Logger } from "./logger.js";
 import type { ResponderClient } from "./api-client.js";
 import { PmApiError } from "./api-client.js";
 import type { ResponderRunner } from "./responder-runner.js";
 import { buildResponderPrompt } from "./prompt.js";
 import type { ResponderMode } from "./config.js";
+
+/**
+ * Decide what to do with an `answered` outcome given the mode and the
+ * escalation's severity. Pure — the single source of the P5 disposition table:
+ *   off                       → "log_only"  (off is silent)
+ *   on  + severity !== high    → "auto_send" (routine answers reach the client)
+ *   shadow, OR on + high       → "approve"   (route the draft to a human first;
+ *                                            high-severity approval is PERMANENT
+ *                                            and survives `on`)
+ */
+export function decideAnsweredDisposition(
+  mode: ResponderMode,
+  severity: EscalationSeverity | null,
+): "auto_send" | "approve" | "log_only" {
+  if (mode === "off") return "log_only";
+  if (mode === "on" && severity !== "high") return "auto_send";
+  return "approve";
+}
+
+/**
+ * Route a drafted answer to a human for approval by reusing `escalateToHuman`
+ * (the C2 needs-human → Discord bridge). The draft is embedded in the reason so
+ * the human can review/send it — NO proven work is discarded.
+ */
+export function routeToHumanApproval(
+  client: Pick<ResponderClient, "escalateToHuman">,
+  escalationId: string,
+  draft: string,
+  reason: string,
+): Promise<unknown> {
+  return client.escalateToHuman(
+    escalationId,
+    "[NEEDS APPROVAL] " + reason + "\n\nDraft answer:\n" + draft,
+  );
+}
 
 export interface ResponderDeps {
   client: Pick<
@@ -177,29 +228,52 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
             signal: deps.signal,
           });
 
-          // ── Outcome handling. The POST is gated on mode === "on"; off AND
-          // shadow both spawn + log + do NOT post (the clean P5 seam). ──
-          if (deps.mode !== "on") {
-            deps.logger.info(
-              { escalationId, kind: result.kind, mode: deps.mode },
-              "responder produced outcome (mode != on, not auto-sending — shadow handling is P5)",
-            );
-            return;
-          }
-
-          // mode === "on": route the 4-state outcome. The POST is wrapped in an
-          // inner try/catch so a transient client failure does NOT escape the
-          // job (the escalation stays acknowledged; P6 reclaim recovers it).
+          // ── Outcome handling (P5). The POST is wrapped in an inner try/catch
+          // so a transient client failure does NOT escape the job (the
+          // escalation stays acknowledged; P6 reclaim recovers it). ──
           try {
             switch (result.kind) {
-              case "answered":
-                await deps.client.answer(escalationId, result.answer);
-                deps.logger.info(
-                  { escalationId, projectId },
-                  "responder answered escalation",
-                );
+              case "answered": {
+                const disposition = decideAnsweredDisposition(deps.mode, detail.severity);
+                if (disposition === "log_only") {
+                  deps.logger.info(
+                    { escalationId, kind: "answered", mode: deps.mode },
+                    "answered (mode=off) — not sending; off is silent",
+                  );
+                  return;
+                }
+                if (disposition === "auto_send") {
+                  await deps.client.answer(escalationId, result.answer);
+                  deps.logger.info(
+                    { escalationId, projectId },
+                    "responder answered escalation",
+                  );
+                } else {
+                  // "approve" — route the draft to a human (shadow review, OR
+                  // the permanent high-severity boundary at `on`).
+                  await routeToHumanApproval(
+                    deps.client,
+                    escalationId,
+                    result.answer,
+                    deps.mode === "shadow"
+                      ? "shadow mode — review the drafted answer before it reaches the client"
+                      : "high-severity escalation — drafted answer requires human approval",
+                  );
+                  deps.logger.info(
+                    { escalationId, projectId, mode: deps.mode, severity: detail.severity },
+                    "responder routed drafted answer to a human for approval",
+                  );
+                }
                 break;
+              }
               case "needs_human":
+                if (deps.mode === "off") {
+                  deps.logger.info(
+                    { escalationId, kind: result.kind, mode: deps.mode },
+                    "outcome (mode=off) — not escalating; off is silent",
+                  );
+                  return;
+                }
                 await deps.client.escalateToHuman(escalationId, result.reason);
                 deps.logger.info(
                   { escalationId, projectId, reason: result.reason },
@@ -207,6 +281,13 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
                 );
                 break;
               case "give_up":
+                if (deps.mode === "off") {
+                  deps.logger.info(
+                    { escalationId, kind: result.kind, mode: deps.mode },
+                    "outcome (mode=off) — not escalating; off is silent",
+                  );
+                  return;
+                }
                 await deps.client.escalateToHuman(
                   escalationId,
                   `Responder gave up: ${result.reason}`,
@@ -217,6 +298,13 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
                 );
                 break;
               case "error":
+                if (deps.mode === "off") {
+                  deps.logger.info(
+                    { escalationId, kind: result.kind, mode: deps.mode },
+                    "outcome (mode=off) — not escalating; off is silent",
+                  );
+                  return;
+                }
                 await deps.client.escalateToHuman(
                   escalationId,
                   `Responder failed (${result.reason}): ${result.detail ?? ""}`,

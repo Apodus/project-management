@@ -63,8 +63,18 @@ class FakeClient {
 
   // P3: the thread fetch + the two outcome posts. getEscalation defaults to the
   // escalation spread with an empty thread (overridable per test).
+  // P5 severity seam: a test sets `severityById[id]` to control the severity
+  // returned by getEscalation (default null — keeps existing tests identical).
+  severityById: Record<string, Escalation["severity"]> = {};
   getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => {
-    return { ...mkEscalation(id, { status: "acknowledged", holderId: SELF }), messages: [] };
+    return {
+      ...mkEscalation(id, {
+        status: "acknowledged",
+        holderId: SELF,
+        severity: this.severityById[id] ?? null,
+      }),
+      messages: [],
+    };
   });
 
   answerCalls: { id: string; body: string }[] = [];
@@ -310,14 +320,81 @@ describe("responderTick", () => {
     expect(c2.escalateCalls[0].reason).toContain("ENOENT");
   });
 
-  it("shadow + answered → runner.run called but NEITHER answer nor escalateToHuman (P5 seam)", async () => {
+  // ── P5: shadow + the permanent human-approval boundary ───────────
+
+  it("shadow + answered → routeToHumanApproval (escalate, NOT answer); draft embedded", async () => {
     const client = new FakeClient();
     client.listResults = [[mkEscalation("e1")]];
     const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
     await responderTick(baseDeps(client, { mode: "shadow", runner }), createResponderState());
     expect(runner.run).toHaveBeenCalledTimes(1);
     expect(client.answer).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].id).toBe("e1");
+    expect(client.escalateCalls[0].reason.startsWith("[NEEDS APPROVAL]")).toBe(true);
+    // Draft preserved — no proven work discarded.
+    expect(client.escalateCalls[0].reason).toContain("A");
+  });
+
+  it("on + answered + severity 'high' → routeToHumanApproval (NOT answer) — the permanent boundary", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.severityById["e1"] = "high";
+    const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "on", runner }), createResponderState());
+    expect(client.answer).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason.startsWith("[NEEDS APPROVAL]")).toBe(true);
+    expect(client.escalateCalls[0].reason).toContain("A");
+  });
+
+  it("on + answered + severity 'low' → answer(id, text); no escalate", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.severityById["e1"] = "low";
+    const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "on", runner }), createResponderState());
+    expect(client.answerCalls).toEqual([{ id: "e1", body: "A" }]);
     expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("on + answered + severity 'medium' → answer(id, text); no escalate", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.severityById["e1"] = "medium";
+    const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "on", runner }), createResponderState());
+    expect(client.answerCalls).toEqual([{ id: "e1", body: "A" }]);
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("off + answered → NEITHER answer nor escalate (log only); runner.run once", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "off", runner }), createResponderState());
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(client.answer).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("off + needs_human → NEITHER (off is silent even for needs_human)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = onRunner({ kind: "needs_human", reason: "need a human", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "off", runner }), createResponderState());
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(client.answer).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("shadow + needs_human → escalateToHuman with the plain reason (NOT the [NEEDS APPROVAL] form)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = onRunner({ kind: "needs_human", reason: "need a human", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "shadow", runner }), createResponderState());
+    expect(client.escalateCalls).toEqual([{ id: "e1", reason: "need a human" }]);
+    expect(client.answer).not.toHaveBeenCalled();
   });
 
   it("on + client.answer throws → loop resolves (no throw escapes), escalation still claimed", async () => {
