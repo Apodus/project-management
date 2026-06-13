@@ -30,6 +30,16 @@ export const EVENT_NAMES = {
   // carries NO note id — only an aggregate count + the oldest-open age.
   NOTE_BACKLOG_ALERT: "note.backlog_alert",
 
+  // Escalation events (Campaign C1 — bidirectional cross-team escalation
+  // channel). Emitted by escalation.service after each lifecycle transition.
+  // SSE id projection + activity_log mapping land in P5.
+  ESCALATION_OPENED: "escalation.opened",
+  ESCALATION_ACKNOWLEDGED: "escalation.acknowledged",
+  ESCALATION_REPLIED: "escalation.replied",
+  ESCALATION_ANSWERED: "escalation.answered",
+  ESCALATION_RESOLVED: "escalation.resolved",
+  ESCALATION_NEEDS_HUMAN: "escalation.needs_human",
+
   // Epic events
   EPIC_CREATED: "epic.created",
   EPIC_UPDATED: "epic.updated",
