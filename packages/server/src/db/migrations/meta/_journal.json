@@ -204,6 +204,13 @@
       "when": 1781159514470,
       "tag": "0028_white_abomination",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1781335885823,
+      "tag": "0029_panoramic_deathstrike",
+      "breakpoints": true
     }
   ]
 }

@@ -1155,3 +1155,67 @@ export const notesAlertState = sqliteTable(
   },
   (table) => [uniqueIndex("idx_notes_alert_state_project").on(table.projectId)],
 );
+
+// ─── escalations ────────────────────────────────────────────────────
+// Campaign C1 (§P1): a bidirectional cross-team escalation channel — a
+// worker raises a bug_report/question/request/blocked against a project,
+// a human (or another worker) holds/answers/resolves it. P1 adds the
+// table only (no service reads/writes it yet); the @pm/shared kind/status
+// enums land in P2. holder/resolvedBy set-null on user delete.
+export const escalations = sqliteTable(
+  "escalations",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    kind: text("kind").notNull(), // bug_report|question|request|blocked (@pm/shared enum lands P2)
+    status: text("status").notNull().default("open"), // open|acknowledged|answered|resolved|needs_human
+    severity: text("severity"),
+    title: text("title").notNull(),
+    body: text("body"),
+    codeLocator: text("code_locator", { mode: "json" }).$type<CodeLocator>(),
+    anchorType: text("anchor_type"),
+    anchorId: text("anchor_id"),
+    originRepo: text("origin_repo").notNull(),
+    originWorkerKey: text("origin_worker_key").notNull(),
+    holderId: text("holder_id").references(() => users.id, { onDelete: "set null" }),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    resolvedAt: text("resolved_at"),
+    resolvedBy: text("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    index("idx_escalations_project_status").on(table.projectId, table.status),
+    index("idx_escalations_holder").on(table.holderId),
+    index("idx_escalations_origin").on(table.originRepo, table.originWorkerKey),
+  ],
+);
+
+// ─── escalation_messages ────────────────────────────────────────────
+// Campaign C1 (§P1): the append-only thread under an escalation. The
+// unique (escalation_id, seq) index seals per-thread monotonicity;
+// escalationId cascade-deletes the thread with its escalation.
+export const escalationMessages = sqliteTable(
+  "escalation_messages",
+  {
+    id: text("id").primaryKey(),
+    escalationId: text("escalation_id")
+      .notNull()
+      .references(() => escalations.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    body: text("body").notNull(),
+    messageType: text("message_type"),
+    metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_escalation_messages_thread_seq").on(table.escalationId, table.seq),
+  ],
+);
