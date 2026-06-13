@@ -1324,6 +1324,7 @@ import type {
   CreateEscalation,
   CreateEscalationMessage,
   ListEscalationsQuery,
+  UndeliveredEscalation,
 } from "@pm/shared";
 
 // Re-export so MCP tool files can pull types from one place.
@@ -1767,4 +1768,41 @@ export async function escalateToHuman(id: string, reason: string): Promise<Escal
     `/escalations/${encodeURIComponent(id)}/escalate-to-human`,
     { reason },
   );
+}
+
+// ─── C2 §P3+P4: delivery cursor (undelivered directed replies) ────────
+//
+// The origin worker (identified by its PM_WORKER_KEY) polls for directed
+// replies it has not yet seen — non-origin-authored messages with seq beyond
+// its per-escalation read cursor. markDelivered advances that cursor.
+
+/**
+ * List the escalations with unread directed replies addressed to `workerKey`
+ * (optionally scoped to one project). Each entry carries the escalation, its
+ * unread messages, and the unread count.
+ */
+export async function listUndelivered(
+  workerKey: string,
+  projectId?: string,
+): Promise<UndeliveredEscalation[]> {
+  return apiRequest<UndeliveredEscalation[]>(
+    "GET",
+    `/escalations/undelivered${qs({ worker_key: workerKey, project_id: projectId })}`,
+  );
+}
+
+/**
+ * Advance the origin worker's read cursor on one escalation up to `uptoSeq`,
+ * acknowledging delivery of every directed reply at or below that seq. Returns
+ * the updated escalation row.
+ */
+export async function markDelivered(
+  id: string,
+  workerKey: string,
+  uptoSeq: number,
+): Promise<Escalation> {
+  return apiRequest<Escalation>("POST", `/escalations/${encodeURIComponent(id)}/mark-delivered`, {
+    workerKey,
+    uptoSeq,
+  });
 }

@@ -2,6 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerAllTools } from "./tools/index.js";
 import { registerAllResources } from "./resources/index.js";
+import { withPiggyback } from "./piggyback.js";
+import { getWorkerKey } from "./worker-key.js";
 import { VERSION } from "./version.js";
 import {
   claimAgent,
@@ -20,6 +22,11 @@ export function createMcpServer(): McpServer {
     name: "project-management",
     version: VERSION,
   });
+
+  // Wrap server.tool BEFORE registering tools so every tool response can carry
+  // the unread-escalation-replies piggyback (C2 §P3) — best-effort, byte-
+  // identical when no PM_WORKER_KEY / no unread / lookup throws.
+  withPiggyback(server, getWorkerKey);
 
   registerAllTools(server);
   registerAllResources(server);

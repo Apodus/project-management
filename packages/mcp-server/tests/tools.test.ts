@@ -86,6 +86,12 @@ vi.mock("../src/api-client.js", () => ({
   answerEscalation: vi.fn(),
   resolveEscalation: vi.fn(),
   escalateToHuman: vi.fn(),
+  listUndelivered: vi.fn(),
+  markDelivered: vi.fn(),
+}));
+
+vi.mock("../src/worker-key.js", () => ({
+  getWorkerKey: vi.fn(),
 }));
 
 // Import the mocked functions so we can configure them per test
@@ -157,6 +163,11 @@ const mockAcknowledgeEscalation = vi.mocked(apiClient.acknowledgeEscalation);
 const mockAnswerEscalation = vi.mocked(apiClient.answerEscalation);
 const mockResolveEscalation = vi.mocked(apiClient.resolveEscalation);
 const mockEscalateToHuman = vi.mocked(apiClient.escalateToHuman);
+const mockListUndelivered = vi.mocked(apiClient.listUndelivered);
+const mockMarkDelivered = vi.mocked(apiClient.markDelivered);
+
+import { getWorkerKey } from "../src/worker-key.js";
+const mockGetWorkerKey = vi.mocked(getWorkerKey);
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -278,6 +289,12 @@ describe("MCP Tools", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    // Piggyback (C2 §P3) wraps every tool response. Default to NO worker key so
+    // the wrapper short-circuits and all existing tests stay byte-identical
+    // (many assert content.length === 1). listUndelivered defaults to [] as a
+    // second safety net for any test that does set a key.
+    mockGetWorkerKey.mockReturnValue(undefined);
+    mockListUndelivered.mockResolvedValue([]);
     client = await createTestClient();
   });
 
@@ -4755,6 +4772,235 @@ describe("MCP Tools", () => {
       expect(text).toContain("Escalated to a human.");
       expect(text).toContain("needs_human");
       expect(text).toContain("Needs a human decision");
+    });
+  });
+
+  // ---- C2 §P4: pm_check_messages (drain) ----
+
+  const sampleUndelivered = [
+    {
+      escalation: sampleEscalation,
+      unreadMessages: [
+        {
+          id: "msg_010",
+          escalationId: "esc_001",
+          seq: 3,
+          authorId: "user_002",
+          body: "Directed reply one.",
+          messageType: "reply" as const,
+          metadata: null,
+          createdAt: "2026-06-13T03:00:00Z",
+        },
+        {
+          id: "msg_011",
+          escalationId: "esc_001",
+          seq: 4,
+          authorId: "user_002",
+          body: "Directed reply two.",
+          messageType: "diagnosis" as const,
+          metadata: null,
+          createdAt: "2026-06-13T04:00:00Z",
+        },
+      ],
+      unreadCount: 2,
+    },
+  ];
+
+  describe("pm_check_messages", () => {
+    it("renders unread replies thread-aware and advances the cursor to maxSeq", async () => {
+      mockGetWorkerKey.mockReturnValue("worker-3");
+      mockListUndelivered.mockResolvedValue(sampleUndelivered);
+      mockMarkDelivered.mockResolvedValue(sampleEscalation);
+
+      const result = await client.callTool({ name: "pm_check_messages", arguments: {} });
+
+      expect(mockListUndelivered).toHaveBeenCalledWith("worker-3", undefined);
+      expect(mockMarkDelivered).toHaveBeenCalledWith("esc_001", "worker-3", 4);
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("2 unread replies across 1 escalation");
+      expect(text).toContain("Merge train rejects valid groups");
+      expect(text).toContain("**#3**");
+      expect(text).toContain("Directed reply one.");
+      expect(text).toContain("**#4**");
+      expect(text).toContain("Marked as read.");
+    });
+
+    it("reports empty with no markDelivered when nothing is unread", async () => {
+      mockGetWorkerKey.mockReturnValue("worker-3");
+      mockListUndelivered.mockResolvedValue([]);
+
+      const result = await client.callTool({ name: "pm_check_messages", arguments: {} });
+
+      expect(mockMarkDelivered).not.toHaveBeenCalled();
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("No unread directed replies");
+    });
+
+    it("returns a friendly message and makes NO http call when no worker key", async () => {
+      mockGetWorkerKey.mockReturnValue(undefined);
+
+      const result = await client.callTool({ name: "pm_check_messages", arguments: {} });
+
+      expect(mockListUndelivered).not.toHaveBeenCalled();
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("No worker key configured");
+      expect(text).toContain("PM_WORKER_KEY");
+    });
+
+    it("peeks (no markDelivered) when mark_delivered is false", async () => {
+      mockGetWorkerKey.mockReturnValue("worker-3");
+      mockListUndelivered.mockResolvedValue(sampleUndelivered);
+
+      const result = await client.callTool({
+        name: "pm_check_messages",
+        arguments: { mark_delivered: false },
+      });
+
+      expect(mockMarkDelivered).not.toHaveBeenCalled();
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Directed reply one.");
+      expect(text).toContain("Peeked only");
+    });
+
+    it("honors an explicit worker_key override", async () => {
+      mockGetWorkerKey.mockReturnValue(undefined);
+      mockListUndelivered.mockResolvedValue(sampleUndelivered);
+      mockMarkDelivered.mockResolvedValue(sampleEscalation);
+
+      await client.callTool({
+        name: "pm_check_messages",
+        arguments: { worker_key: "override-key", project_id: "proj_001" },
+      });
+
+      expect(mockListUndelivered).toHaveBeenCalledWith("override-key", "proj_001");
+      expect(mockMarkDelivered).toHaveBeenCalledWith("esc_001", "override-key", 4);
+    });
+
+    it("still renders the replies and notes a cursor failure when markDelivered rejects", async () => {
+      mockGetWorkerKey.mockReturnValue("worker-3");
+      mockListUndelivered.mockResolvedValue(sampleUndelivered);
+      mockMarkDelivered.mockRejectedValue(new Error("cursor write boom"));
+
+      const result = await client.callTool({ name: "pm_check_messages", arguments: {} });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Directed reply one.");
+      expect(text).toContain("could not advance the read cursor");
+    });
+  });
+
+  // ---- C2 §P3: response piggyback ----
+
+  describe("piggyback", () => {
+    it("appends a 📬 envelope as a new block when the caller has unread replies", async () => {
+      mockGetWorkerKey.mockReturnValue("pk-1");
+      mockListProjects.mockResolvedValue([sampleProject]);
+      mockListUndelivered.mockResolvedValue(sampleUndelivered);
+
+      const result = await client.callTool({ name: "pm_list_projects", arguments: {} });
+
+      const blocks = result.content as { type: string; text: string }[];
+      expect(blocks.length).toBe(2);
+      // original block unchanged
+      expect(blocks[0].text).toContain("Test Project");
+      expect(blocks[0].text).not.toContain("📬");
+      // appended envelope
+      expect(blocks[1].text).toContain("📬");
+      expect(blocks[1].text).toContain("esc_001");
+      expect(blocks[1].text).toContain("pm_check_messages");
+    });
+
+    it("is byte-identical (no fetch) when no worker key", async () => {
+      mockGetWorkerKey.mockReturnValue(undefined);
+      mockListProjects.mockResolvedValue([sampleProject]);
+
+      const result = await client.callTool({ name: "pm_list_projects", arguments: {} });
+
+      expect(mockListUndelivered).not.toHaveBeenCalled();
+      const blocks = result.content as { type: string; text: string }[];
+      expect(blocks.length).toBe(1);
+      expect(blocks[0].text).not.toContain("📬");
+    });
+
+    it("is byte-identical when there are no unread replies", async () => {
+      mockGetWorkerKey.mockReturnValue("pk-2");
+      mockListProjects.mockResolvedValue([sampleProject]);
+      mockListUndelivered.mockResolvedValue([]);
+
+      const result = await client.callTool({ name: "pm_list_projects", arguments: {} });
+
+      const blocks = result.content as { type: string; text: string }[];
+      expect(blocks.length).toBe(1);
+      expect(blocks[0].text).not.toContain("📬");
+    });
+
+    it("is byte-identical (swallows) when the unread lookup throws", async () => {
+      mockGetWorkerKey.mockReturnValue("pk-throw");
+      mockListProjects.mockResolvedValue([sampleProject]);
+      mockListUndelivered.mockRejectedValue(new Error("network down"));
+
+      const result = await client.callTool({ name: "pm_list_projects", arguments: {} });
+
+      const blocks = result.content as { type: string; text: string }[];
+      expect(blocks.length).toBe(1);
+      expect(blocks[0].text).not.toContain("📬");
+    });
+
+    it("does NOT piggyback pm_check_messages (excluded by name)", async () => {
+      mockGetWorkerKey.mockReturnValue("pk-self");
+      mockListUndelivered.mockResolvedValue(sampleUndelivered);
+      mockMarkDelivered.mockResolvedValue(sampleEscalation);
+
+      const result = await client.callTool({ name: "pm_check_messages", arguments: {} });
+
+      // The drain renders its OWN single block — no appended envelope.
+      const blocks = result.content as { type: string; text: string }[];
+      expect(blocks.length).toBe(1);
+      expect(blocks[0].text).not.toContain("📬");
+      // Its own listUndelivered call (the drain), not a second wrapper call.
+      expect(mockListUndelivered).toHaveBeenCalledTimes(1);
+    });
+
+    it("caps the envelope at top-3 with an …and M more. line", async () => {
+      mockGetWorkerKey.mockReturnValue("pk-many");
+      mockListProjects.mockResolvedValue([sampleProject]);
+      const many = Array.from({ length: 5 }, (_, i) => ({
+        escalation: { ...sampleEscalation, id: `esc_${i}`, title: `Title ${i}` },
+        unreadMessages: sampleUndelivered[0].unreadMessages,
+        unreadCount: 2,
+      }));
+      mockListUndelivered.mockResolvedValue(many);
+
+      const result = await client.callTool({ name: "pm_list_projects", arguments: {} });
+
+      const blocks = result.content as { type: string; text: string }[];
+      const envelope = blocks[blocks.length - 1].text;
+      expect(envelope).toContain("esc_0");
+      expect(envelope).toContain("esc_2");
+      expect(envelope).not.toContain("esc_3");
+      expect(envelope).toContain("…and 2 more.");
+    });
+
+    it("throttles the unread lookup to once per TTL window", async () => {
+      vi.useFakeTimers();
+      try {
+        mockGetWorkerKey.mockReturnValue("pk-throttle");
+        mockListProjects.mockResolvedValue([sampleProject]);
+        mockListUndelivered.mockResolvedValue(sampleUndelivered);
+
+        await client.callTool({ name: "pm_list_projects", arguments: {} });
+        await client.callTool({ name: "pm_list_projects", arguments: {} });
+        // Two back-to-back calls share the cached lookup.
+        expect(mockListUndelivered).toHaveBeenCalledTimes(1);
+
+        // Advance past the 10s TTL → the next call re-fetches.
+        vi.advanceTimersByTime(10_001);
+        await client.callTool({ name: "pm_list_projects", arguments: {} });
+        expect(mockListUndelivered).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });
