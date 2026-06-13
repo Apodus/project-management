@@ -153,6 +153,8 @@ open ──acknowledge──▶ acknowledged ──answer──▶ answered ─�
 
 **The PM side may AUTO-RESPOND (Campaign C3).** A **responder daemon** (`pm-responder`, operator machinery — one process per platform project) can claim an open escalation via acknowledge and **answer/diagnose it autonomously**, so a client agent's escalation may receive an **automated answer** — which you auto-notice through the C2 delivery layer, exactly like a human-authored reply. The responder ships OFF and graduates `shadow → on`; `needs_human` / `give_up` / high-severity outcomes route to a **human** (the Discord needs-human bridge), so a hard case always reaches a person.
 
+**Operators watch the channel (Campaign C4).** A human can monitor the live escalation backlog + metrics (time-to-first-response/resolve, auto-resolve & human-escalation rates) on the web **escalations dashboard** (`/projects/{id}/escalations`, with a per-escalation timeline) and is **paged by the `escalation.sla_breached` alert** (in-app SSE banner + Discord) when an escalation goes unanswered past the SLA — so a stalled thread never goes unnoticed.
+
 The **client-side worker docs** ship in the game_one distribute bundle (a separate repo — do **not** edit them from here; they're updated there) — this repo documents the **PM-server-side** channel.
 
 ## Proposal workflow

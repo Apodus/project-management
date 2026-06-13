@@ -453,6 +453,32 @@ tools** (the responder is operator/integrator machinery, like the wake daemon). 
 `docs/integrator-deployment.md` Â§20; the game_one bundle ships it (a separate repo, do not edit). Full
 spec under `roadmaps/`.
 
+**Escalation legibility, safety rails & SLAs (Campaign C4).** The cross-team channel is now **legible,
+bounded, and self-alerting**. A human-facing **web dashboard** (`/projects/{id}/escalations`) lists/filters
+escalations (status/kind/severity/origin-repo/worker-key), a **per-escalation timeline**
+(`/projects/{id}/escalations/{escalationId}`) renders the message thread + a status-derived lifecycle
+strip, and a sidebar nav entry/badge surfaces the project's open-escalation count. An **on-read metrics
+endpoint** (`GET /api/v1/projects/{id}/escalations/metrics`, mirroring `train/metrics` â€” no new table)
+exposes time-to-first-response and time-to-resolve p50/p95, **auto-resolve rate** (diagnosis-message
+presence), **human-escalation rate** (current `needs_human` share), and **open backlog** (count + oldest
+age); the dashboard's metrics panel renders these. These are the **PM-side observable responder-outcome
+signals** â€” the responder-internal seals (spawn-rate budget, `maxConcurrent`) are **DAEMON-side**
+(observable via the responder logs + `docs/integrator-deployment.md` Â§20), NOT the PM dashboard
+(deferred). An **edge-triggered + latched `escalation.sla_breached` alert** (migration 0031;
+ESCALATION_SLA_BREACH_THRESHOLD_MS = **1h**, hardcoded non-env) fires once per breach episode â€”
+identity-masked to an aggregate count + oldest-unanswered age, re-arming on resolution (`train.stuck`
+parity) â€” BOTH in-app (SSE banner) AND out-of-band to Discord (`settings.webhooks.discord_url`).
+Anti-spam: an `escalations_fts` **advisory similar-thread** hint plus an **exact-dup auto-link** (same
+project + `originRepo` + normalized title, both open) that **folds** the second raise into the existing
+thread (bumps `updatedAt`, emits `escalation.replied` NOT `escalation.opened` â€” so **no 2nd thread and no
+2nd responder spawn**), and a **per-`origin_worker_key` raise rate-limit** (soft â†’ proceed with
+`rateLimited:true`; hard (env) â†’ 429; **fail-open** on any limiter error). The create response is now the
+envelope `{data, similar, merged, mergedInto, rateLimited}` (201). **Arc-close:** the 4-campaign arc is
+**COMPLETE** â€” **C1 channel â†’ C2 delivery â†’ C3 responder â†’ C4 legibility**. The channel is legible,
+bounded, and self-alerting, so the responder (which **ships `enabled=false`**) can be flipped
+**shadow â†’ on** responsibly â€” a human always sees the backlog, is paged by the SLA alert, and approves
+high-severity/`needs_human` outcomes. Roadmap: `roadmaps/roadmap-20260613-1441-c4-legibility-sla.md`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:
