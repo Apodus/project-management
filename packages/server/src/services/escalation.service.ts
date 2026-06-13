@@ -1,4 +1,4 @@
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, gt, ne } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import type {
   CreateEscalation,
@@ -471,4 +471,105 @@ export function getById(id: string) {
     .map((m) => ({ ...m, messageType: m.messageType as EscalationMessageType | null }));
 
   return { ...esc, messages };
+}
+
+// ─── C2 §P1: delivery cursor ──────────────────────────────────────
+// The origin worker pulls escalations that have unread directed replies
+// (messages NOT authored by the origin author, with seq beyond the
+// origin's read cursor), then advances the cursor via markDelivered. The
+// cursor (escalations.originLastSeenSeq) is an ADVISORY delivery
+// watermark — it advances ONLY here, never on a read path (load-bearing:
+// getById/list never bump it), and is forward-only (never decreases).
+
+/**
+ * List the origin worker's escalations that carry unread directed replies.
+ * A candidate is an escalation whose originWorkerKey matches `workerKey`
+ * (optionally scoped to `projectId`), newest-updated first. For each, the
+ * unread messages are those NOT authored by the origin author (i.e. a
+ * holder/human reply — a non-origin `system` resolve/escalate message
+ * counts too, by design) with seq beyond originLastSeenSeq, asc by seq.
+ * Escalations with no such message are dropped. One query per candidate.
+ */
+export function listUndeliveredForWorker(workerKey: string, projectId?: string) {
+  const db = getDb();
+  const conditions = [eq(escalations.originWorkerKey, workerKey)];
+  if (projectId) conditions.push(eq(escalations.projectId, projectId));
+
+  const candidates = db
+    .select()
+    .from(escalations)
+    .where(and(...conditions))
+    .orderBy(desc(escalations.updatedAt))
+    .all();
+
+  const result: {
+    escalation: ReturnType<typeof toView>;
+    unreadMessages: Array<
+      Omit<typeof escalationMessages.$inferSelect, "messageType"> & {
+        messageType: EscalationMessageType | null;
+      }
+    >;
+    unreadCount: number;
+  }[] = [];
+
+  for (const esc of candidates) {
+    const unreadMessages = db
+      .select()
+      .from(escalationMessages)
+      .where(
+        and(
+          eq(escalationMessages.escalationId, esc.id),
+          ne(escalationMessages.authorId, esc.authorId),
+          gt(escalationMessages.seq, esc.originLastSeenSeq),
+        ),
+      )
+      .orderBy(asc(escalationMessages.seq))
+      .all()
+      .map((m) => ({ ...m, messageType: m.messageType as EscalationMessageType | null }));
+
+    if (unreadMessages.length === 0) continue;
+
+    result.push({
+      escalation: toView(esc),
+      unreadMessages,
+      unreadCount: unreadMessages.length,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Advance the origin worker's delivery cursor on an escalation to
+ * `uptoSeq` (forward-only — never decreases). Authz: `workerKey` MUST
+ * match the escalation's originWorkerKey, else 403.
+ *
+ * NOTE: the cursor is an ADVISORY delivery watermark, NOT token-bound —
+ * any authed caller presenting the matching worker_key can advance it.
+ * This is acceptable in the trusted pool: messages are never destroyed,
+ * so the full thread is always re-fetchable via GET by-id even if the
+ * cursor is advanced past unseen messages. updatedAt is deliberately NOT
+ * bumped (a delivery ack is not a thread mutation) and no event is emitted.
+ */
+export function markDelivered(escalationId: string, uptoSeq: number, workerKey: string) {
+  const db = getDb();
+  const current = getRowOr404(escalationId);
+
+  if (current.originWorkerKey !== workerKey) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      `worker_key "${workerKey}" does not match the origin of escalation ${escalationId}`,
+    );
+  }
+
+  const next = Math.max(current.originLastSeenSeq, uptoSeq);
+  if (next !== current.originLastSeenSeq) {
+    db.update(escalations)
+      .set({ originLastSeenSeq: next })
+      .where(eq(escalations.id, escalationId))
+      .run();
+  }
+
+  return toView(getRowOr404(escalationId));
 }

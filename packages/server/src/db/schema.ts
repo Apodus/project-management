@@ -1187,6 +1187,10 @@ export const escalations = sqliteTable(
     updatedAt: text("updated_at").notNull(),
     resolvedAt: text("resolved_at"),
     resolvedBy: text("resolved_by").references(() => users.id, { onDelete: "set null" }),
+    // C2 §P1: the origin worker's read watermark — the highest message seq
+    // already delivered to the origin. An ADVISORY, forward-only delivery
+    // cursor advanced ONLY via markDelivered (never on a read path).
+    originLastSeenSeq: integer("origin_last_seen_seq").notNull().default(0),
   },
   (table) => [
     index("idx_escalations_project_status").on(table.projectId, table.status),

@@ -82,6 +82,27 @@ const escalationListEnvelope = z.object({
   }),
 });
 
+// ─── C2 §P1: delivery-cursor schemas ──────────────────────────────
+
+const undeliveredEscalationSchema = z
+  .object({
+    escalation: escalationSchema,
+    unreadMessages: z.array(escalationMessageSchema),
+    unreadCount: z.number().int().nonnegative(),
+  })
+  .openapi("UndeliveredEscalation");
+
+const undeliveredListEnvelope = z.object({
+  data: z.array(undeliveredEscalationSchema),
+});
+
+const markDeliveredBody = z
+  .object({
+    workerKey: z.string().min(1),
+    uptoSeq: z.number().int().nonnegative(),
+  })
+  .openapi("MarkDelivered");
+
 const errorEnvelope = z.object({
   error: z.object({
     code: z.string(),
@@ -140,6 +161,11 @@ const listEscalationsQuery = z.object({
   holderId: z.string().optional(),
 });
 
+const undeliveredQuery = z.object({
+  worker_key: z.string().min(1),
+  project_id: z.string().optional(),
+});
+
 const projectIdParam = z.string().min(1).openapi({
   param: { name: "projectId", in: "path" },
   example: "01HXYZ1234567890ABCDEFGHIJ",
@@ -196,6 +222,62 @@ const listEscalationsRoute = createRoute({
     200: {
       description: "List of escalations",
       content: { "application/json": { schema: escalationListEnvelope } },
+    },
+  },
+});
+
+const undeliveredRoute = createRoute({
+  method: "get",
+  path: "/api/v1/escalations/undelivered",
+  tags: ["Escalations"],
+  summary: "List undelivered escalations for a worker",
+  description:
+    "List the origin worker's escalations that carry unread directed replies (messages not authored by the origin author, with seq beyond the origin's advisory delivery cursor). `worker_key` is required; `project_id` optionally scopes it. Returns each escalation with its unread messages and their count.",
+  request: {
+    query: undeliveredQuery,
+  },
+  responses: {
+    200: {
+      description: "Undelivered escalations for the worker",
+      content: { "application/json": { schema: undeliveredListEnvelope } },
+    },
+    400: {
+      description: "Validation error (missing worker_key)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const markDeliveredRoute = createRoute({
+  method: "post",
+  path: "/api/v1/escalations/{id}/mark-delivered",
+  tags: ["Escalations"],
+  summary: "Advance the delivery cursor",
+  description:
+    "Advance the origin worker's delivery cursor on an escalation to `uptoSeq` (forward-only — never decreases). `workerKey` must match the escalation's origin (else 403). The cursor is an ADVISORY delivery watermark, NOT token-bound: any authed caller presenting the matching worker_key can advance it — acceptable in the trusted pool, since messages are never destroyed and the full thread stays re-fetchable via GET by-id.",
+  request: {
+    params: z.object({ id: escalationIdParam }),
+    body: {
+      content: { "application/json": { schema: markDeliveredBody } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: "Cursor advanced; updated escalation returned",
+      content: { "application/json": { schema: escalationDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "worker_key does not match the escalation's origin",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Escalation not found",
+      content: { "application/json": { schema: errorEnvelope } },
     },
   },
 });
@@ -430,10 +512,26 @@ export function createEscalationRoutes(): OpenAPIHono<{
     return c.json({ data: list, pagination: { total: list.length } }, 200);
   });
 
+  // GET /api/v1/escalations/undelivered (registered BEFORE /:id so the
+  // literal segment is not shadowed by the {id} param route)
+  router.openapi(undeliveredRoute, (c) => {
+    const { worker_key, project_id } = c.req.valid("query");
+    const data = escalationService.listUndeliveredForWorker(worker_key, project_id);
+    return c.json({ data }, 200);
+  });
+
   // GET /api/v1/escalations/:id
   router.openapi(getEscalationRoute, (c) => {
     const { id } = c.req.valid("param");
     return c.json({ data: escalationService.getById(id) }, 200);
+  });
+
+  // POST /api/v1/escalations/:id/mark-delivered
+  router.openapi(markDeliveredRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const escalation = escalationService.markDelivered(id, body.uptoSeq, body.workerKey);
+    return c.json({ data: escalation }, 200);
   });
 
   // POST /api/v1/escalations/:id/messages

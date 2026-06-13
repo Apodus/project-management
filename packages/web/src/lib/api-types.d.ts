@@ -3925,6 +3925,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/escalations/undelivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List undelivered escalations for a worker
+         * @description List the origin worker's escalations that carry unread directed replies (messages not authored by the origin author, with seq beyond the origin's advisory delivery cursor). `worker_key` is required; `project_id` optionally scopes it. Returns each escalation with its unread messages and their count.
+         */
+        get: {
+            parameters: {
+                query: {
+                    worker_key: string;
+                    project_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Undelivered escalations for the worker */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["UndeliveredEscalation"][];
+                        };
+                    };
+                };
+                /** @description Validation error (missing worker_key) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/escalations/{id}": {
         parameters: {
             query?: never;
@@ -3976,6 +4034,95 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/escalations/{id}/mark-delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Advance the delivery cursor
+         * @description Advance the origin worker's delivery cursor on an escalation to `uptoSeq` (forward-only — never decreases). `workerKey` must match the escalation's origin (else 403). The cursor is an ADVISORY delivery watermark, NOT token-bound: any authed caller presenting the matching worker_key can advance it — acceptable in the trusted pool, since messages are never destroyed and the full thread stays re-fetchable via GET by-id.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MarkDelivered"];
+                };
+            };
+            responses: {
+                /** @description Cursor advanced; updated escalation returned */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Escalation"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description worker_key does not match the escalation's origin */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -14333,8 +14480,10 @@ export interface components {
             originRepo: string;
             originWorkerKey: string;
         };
-        EscalationWithThread: components["schemas"]["Escalation"] & {
-            messages: components["schemas"]["EscalationMessage"][];
+        UndeliveredEscalation: {
+            escalation: components["schemas"]["Escalation"];
+            unreadMessages: components["schemas"]["EscalationMessage"][];
+            unreadCount: number;
         };
         EscalationMessage: {
             id: string;
@@ -14348,6 +14497,13 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             createdAt: string;
+        };
+        EscalationWithThread: components["schemas"]["Escalation"] & {
+            messages: components["schemas"]["EscalationMessage"][];
+        };
+        MarkDelivered: {
+            workerKey: string;
+            uptoSeq: number;
         };
         CreateEscalationMessage: {
             body: string;

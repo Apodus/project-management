@@ -551,4 +551,152 @@ describe("Escalations API", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  // ── C2 §P1: delivery cursor ──────────────────────────────────────
+  // Seed a non-origin directed reply: the origin (default test admin)
+  // raises; a SECOND human acks + replies. The reply's authorId differs
+  // from the escalation's authorId, so it is "undelivered" to the origin.
+  async function raiseWithHolderReply(
+    projectId: string,
+    workerKey: string,
+    replyBody = "here is the fix",
+  ) {
+    const esc = await raise(testApp, projectId, { body: { originWorkerKey: workerKey } });
+    const holder = createTestHuman(testApp.db);
+    await authRequest(testApp.app, "POST", `/api/v1/escalations/${esc.id}/acknowledge`, {
+      token: holder.token,
+    });
+    await authRequest(testApp.app, "POST", `/api/v1/escalations/${esc.id}/messages`, {
+      token: holder.token,
+      body: { body: replyBody },
+    });
+    return esc;
+  }
+
+  describe("GET /api/v1/escalations/undelivered", () => {
+    it("returns undelivered escalations for the worker (200, shape)", async () => {
+      const project = createTestProject(testApp.db);
+      const esc = await raiseWithHolderReply(project.id, "worker-1");
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/escalations/undelivered?worker_key=worker-1`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].escalation.id).toBe(esc.id);
+      expect(body.data[0].unreadCount).toBe(1);
+      expect(body.data[0].unreadMessages).toHaveLength(1);
+      expect(body.data[0].unreadMessages[0].body).toBe("here is the fix");
+    });
+
+    it("returns an empty list for a worker with nothing undelivered", async () => {
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/escalations/undelivered?worker_key=nobody`,
+      );
+      expect(res.status).toBe(200);
+      expect((await res.json()).data).toHaveLength(0);
+    });
+
+    it("scopes by project_id when given", async () => {
+      const projectA = createTestProject(testApp.db);
+      const projectB = createTestProject(testApp.db);
+      await raiseWithHolderReply(projectA.id, "worker-9");
+      await raiseWithHolderReply(projectB.id, "worker-9");
+
+      const all = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/escalations/undelivered?worker_key=worker-9`,
+      );
+      expect((await all.json()).data).toHaveLength(2);
+
+      const scoped = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/escalations/undelivered?worker_key=worker-9&project_id=${projectA.id}`,
+      );
+      const scopedBody = await scoped.json();
+      expect(scopedBody.data).toHaveLength(1);
+      expect(scopedBody.data[0].escalation.projectId).toBe(projectA.id);
+    });
+
+    it("400s when worker_key is missing", async () => {
+      const res = await authRequest(testApp.app, "GET", `/api/v1/escalations/undelivered`);
+      expect(res.status).toBe(400);
+    });
+
+    it("is NOT captured by the /escalations/:id route", async () => {
+      // If `undelivered` were routed as an :id, this would 404 (no such
+      // escalation). Instead it 200s the undelivered list.
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/escalations/undelivered?worker_key=worker-1`,
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe("POST /api/v1/escalations/:id/mark-delivered", () => {
+    it("advances the cursor → a subsequent /undelivered is empty (200)", async () => {
+      const project = createTestProject(testApp.db);
+      const esc = await raiseWithHolderReply(project.id, "worker-1");
+
+      const mark = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/escalations/${esc.id}/mark-delivered`,
+        { body: { workerKey: "worker-1", uptoSeq: 1 } },
+      );
+      expect(mark.status).toBe(200);
+      expect((await mark.json()).data.id).toBe(esc.id);
+
+      const after = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/escalations/undelivered?worker_key=worker-1`,
+      );
+      expect((await after.json()).data).toHaveLength(0);
+    });
+
+    it("400s on a bad body", async () => {
+      const project = createTestProject(testApp.db);
+      const esc = await raiseWithHolderReply(project.id, "worker-1");
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/escalations/${esc.id}/mark-delivered`,
+        { body: { uptoSeq: -1 } },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("403s on a wrong workerKey", async () => {
+      const project = createTestProject(testApp.db);
+      const esc = await raiseWithHolderReply(project.id, "worker-1");
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/escalations/${esc.id}/mark-delivered`,
+        { body: { workerKey: "not-the-origin", uptoSeq: 1 } },
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("404s on an unknown id", async () => {
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/escalations/${createId()}/mark-delivered`,
+        { body: { workerKey: "worker-1", uptoSeq: 1 } },
+      );
+      expect(res.status).toBe(404);
+    });
+  });
 });

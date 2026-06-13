@@ -1,0 +1,1 @@
+ALTER TABLE `escalations` ADD `origin_last_seen_seq` integer DEFAULT 0 NOT NULL;

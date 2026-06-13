@@ -2093,25 +2093,27 @@
           "originWorkerKey"
         ]
       },
-      "EscalationWithThread": {
-        "allOf": [
-          {
+      "UndeliveredEscalation": {
+        "type": "object",
+        "properties": {
+          "escalation": {
             "$ref": "#/components/schemas/Escalation"
           },
-          {
-            "type": "object",
-            "properties": {
-              "messages": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/EscalationMessage"
-                }
-              }
-            },
-            "required": [
-              "messages"
-            ]
+          "unreadMessages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EscalationMessage"
+            }
+          },
+          "unreadCount": {
+            "type": "integer",
+            "minimum": 0
           }
+        },
+        "required": [
+          "escalation",
+          "unreadMessages",
+          "unreadCount"
         ]
       },
       "EscalationMessage": {
@@ -2164,6 +2166,44 @@
           "messageType",
           "metadata",
           "createdAt"
+        ]
+      },
+      "EscalationWithThread": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Escalation"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "messages": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EscalationMessage"
+                }
+              }
+            },
+            "required": [
+              "messages"
+            ]
+          }
+        ]
+      },
+      "MarkDelivered": {
+        "type": "object",
+        "properties": {
+          "workerKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uptoSeq": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "workerKey",
+          "uptoSeq"
         ]
       },
       "CreateEscalationMessage": {
@@ -14241,6 +14281,87 @@
         }
       }
     },
+    "/api/v1/escalations/undelivered": {
+      "get": {
+        "tags": [
+          "Escalations"
+        ],
+        "summary": "List undelivered escalations for a worker",
+        "description": "List the origin worker's escalations that carry unread directed replies (messages not authored by the origin author, with seq beyond the origin's advisory delivery cursor). `worker_key` is required; `project_id` optionally scopes it. Returns each escalation with its unread messages and their count.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "worker_key",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "project_id",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Undelivered escalations for the worker",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/UndeliveredEscalation"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (missing worker_key)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/escalations/{id}": {
       "get": {
         "tags": [
@@ -14274,6 +14395,147 @@
                   },
                   "required": [
                     "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Escalation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/escalations/{id}/mark-delivered": {
+      "post": {
+        "tags": [
+          "Escalations"
+        ],
+        "summary": "Advance the delivery cursor",
+        "description": "Advance the origin worker's delivery cursor on an escalation to `uptoSeq` (forward-only — never decreases). `workerKey` must match the escalation's origin (else 403). The cursor is an ADVISORY delivery watermark, NOT token-bound: any authed caller presenting the matching worker_key can advance it — acceptable in the trusted pool, since messages are never destroyed and the full thread stays re-fetchable via GET by-id.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkDelivered"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cursor advanced; updated escalation returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Escalation"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "worker_key does not match the escalation's origin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
                   ]
                 }
               }

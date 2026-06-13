@@ -151,3 +151,31 @@ export const escalateToHumanSchema = z.object({
   reason: z.string().min(1),
 });
 export type EscalateToHuman = z.infer<typeof escalateToHumanSchema>;
+
+// ─── C2 §P1: delivery cursor ──────────────────────────────────────
+// An undelivered escalation: the escalation + the unread directed
+// replies (non-origin-authored, seq > the origin's read cursor) +
+// their count. Surfaced to the origin worker by listUndeliveredForWorker.
+export const undeliveredEscalationSchema = z.object({
+  escalation: escalationSchema,
+  unreadMessages: z.array(escalationMessageSchema),
+  unreadCount: z.number().int().nonnegative(),
+});
+export type UndeliveredEscalation = z.infer<typeof undeliveredEscalationSchema>;
+
+// Query for the origin worker's undelivered escalations — workerKey is
+// REQUIRED (the delivery identity), projectId optionally scopes it.
+export const undeliveredQuerySchema = z.object({
+  workerKey: z.string().min(1),
+  projectId: z.string().optional(),
+});
+export type UndeliveredQuery = z.infer<typeof undeliveredQuerySchema>;
+
+// Advance the delivery cursor — workerKey gates it (must match the
+// escalation's originWorkerKey), uptoSeq is the watermark to advance to
+// (forward-only, never decreases).
+export const markDeliveredSchema = z.object({
+  workerKey: z.string().min(1),
+  uptoSeq: z.number().int().nonnegative(),
+});
+export type MarkDelivered = z.infer<typeof markDeliveredSchema>;

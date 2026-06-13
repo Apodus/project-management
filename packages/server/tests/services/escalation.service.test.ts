@@ -484,4 +484,178 @@ describe("escalation service", () => {
       expect(fired).toBe(true);
     });
   });
+
+  // ── C2 §P1: delivery cursor ─────────────────────────────────────
+  describe("delivery cursor (C2 P1)", () => {
+    // Raise as the origin author, then have a holder pick it up and reply,
+    // so there is a non-origin-authored directed reply for the origin to see.
+    function raiseWithHolderReply(
+      projectId: string,
+      origin: { id: string; type: "human" | "ai_agent" },
+      holder: { id: string; type: "human" | "ai_agent" },
+      replyBody = "here is your fix",
+    ) {
+      const esc = raise(testApp.db, projectId, origin);
+      escalationService.acknowledge(esc.id, holder); // holder auto-claims if agent
+      escalationService.addMessage(esc.id, { body: replyBody }, holder);
+      return esc;
+    }
+
+    it("listUndeliveredForWorker surfaces a non-origin reply; origin's own message excluded", () => {
+      const project = createTestProject(testApp.db);
+      const origin = agent();
+      const holder = human();
+      const esc = raiseWithHolderReply(project.id, actorOf(origin), actorOf(holder));
+
+      // The origin author also posts a message of their own — must be excluded.
+      escalationService.addMessage(esc.id, { body: "thanks, looking" }, actorOf(origin));
+
+      const undelivered = escalationService.listUndeliveredForWorker(ORIGIN.originWorkerKey);
+      expect(undelivered).toHaveLength(1);
+      const entry = undelivered[0];
+      expect(entry.escalation.id).toBe(esc.id);
+      expect(entry.unreadCount).toBe(1);
+      expect(entry.unreadMessages).toHaveLength(1);
+      expect(entry.unreadMessages[0].body).toBe("here is your fix");
+      expect(entry.unreadMessages[0].authorId).toBe(holder.id);
+      // The view shape carries no nested `messages` key (that is getById).
+      expect("messages" in entry.escalation).toBe(false);
+    });
+
+    it("only counts replies with seq > the cursor", () => {
+      const project = createTestProject(testApp.db);
+      const origin = agent();
+      const holder = human();
+      const esc = raiseWithHolderReply(project.id, actorOf(origin), actorOf(holder), "reply one");
+
+      // Cursor at seq 1 → first reply (seq 1) now read; a second reply is unread.
+      escalationService.markDelivered(esc.id, 1, ORIGIN.originWorkerKey);
+      escalationService.addMessage(esc.id, { body: "reply two" }, actorOf(holder));
+
+      const undelivered = escalationService.listUndeliveredForWorker(ORIGIN.originWorkerKey);
+      expect(undelivered).toHaveLength(1);
+      expect(undelivered[0].unreadCount).toBe(1);
+      expect(undelivered[0].unreadMessages[0].body).toBe("reply two");
+    });
+
+    it("escalation with no directed reply is omitted", () => {
+      const project = createTestProject(testApp.db);
+      const origin = agent();
+      // No holder reply — only the origin exists, nothing to deliver.
+      raise(testApp.db, project.id, actorOf(origin));
+
+      const undelivered = escalationService.listUndeliveredForWorker(ORIGIN.originWorkerKey);
+      expect(undelivered).toHaveLength(0);
+    });
+
+    it("isolates by workerKey — a worker sees only its own escalations", () => {
+      const project = createTestProject(testApp.db);
+      const origin = agent();
+      const holder = human();
+      raiseWithHolderReply(project.id, actorOf(origin), actorOf(holder));
+
+      const undelivered = escalationService.listUndeliveredForWorker("some-other-worker");
+      expect(undelivered).toHaveLength(0);
+    });
+
+    it("scopes by projectId when given", () => {
+      const projectA = createTestProject(testApp.db);
+      const projectB = createTestProject(testApp.db);
+      const origin = agent();
+      const holder = human();
+      raiseWithHolderReply(projectA.id, actorOf(origin), actorOf(holder));
+      raiseWithHolderReply(projectB.id, actorOf(origin), actorOf(holder));
+
+      const all = escalationService.listUndeliveredForWorker(ORIGIN.originWorkerKey);
+      expect(all).toHaveLength(2);
+      const scoped = escalationService.listUndeliveredForWorker(ORIGIN.originWorkerKey, projectA.id);
+      expect(scoped).toHaveLength(1);
+      expect(scoped[0].escalation.projectId).toBe(projectA.id);
+    });
+
+    it("markDelivered advances 0 → N, is idempotent, and never decreases", () => {
+      const project = createTestProject(testApp.db);
+      const origin = agent();
+      const holder = human();
+      const esc = raiseWithHolderReply(project.id, actorOf(origin), actorOf(holder));
+
+      const row = () =>
+        testApp.db.select().from(escalations).where(eq(escalations.id, esc.id)).get()!;
+      expect(row().originLastSeenSeq).toBe(0);
+
+      const after = escalationService.markDelivered(esc.id, 1, ORIGIN.originWorkerKey);
+      expect(after.originLastSeenSeq).toBe(1);
+      expect(row().originLastSeenSeq).toBe(1);
+
+      // Idempotent.
+      escalationService.markDelivered(esc.id, 1, ORIGIN.originWorkerKey);
+      expect(row().originLastSeenSeq).toBe(1);
+
+      // Never decreases (uptoSeq < current is a no-op).
+      escalationService.markDelivered(esc.id, 0, ORIGIN.originWorkerKey);
+      expect(row().originLastSeenSeq).toBe(1);
+
+      // Forward to a higher watermark.
+      escalationService.markDelivered(esc.id, 5, ORIGIN.originWorkerKey);
+      expect(row().originLastSeenSeq).toBe(5);
+    });
+
+    it("markDelivered does NOT bump updatedAt", () => {
+      const project = createTestProject(testApp.db);
+      const origin = agent();
+      const holder = human();
+      const esc = raiseWithHolderReply(project.id, actorOf(origin), actorOf(holder));
+      const before = testApp.db
+        .select()
+        .from(escalations)
+        .where(eq(escalations.id, esc.id))
+        .get()!.updatedAt;
+
+      escalationService.markDelivered(esc.id, 1, ORIGIN.originWorkerKey);
+      const after = testApp.db
+        .select()
+        .from(escalations)
+        .where(eq(escalations.id, esc.id))
+        .get()!.updatedAt;
+      expect(after).toBe(before);
+    });
+
+    it("markDelivered 403s on a wrong workerKey", () => {
+      const project = createTestProject(testApp.db);
+      const origin = agent();
+      const esc = raise(testApp.db, project.id, actorOf(origin));
+      try {
+        escalationService.markDelivered(esc.id, 1, "not-the-origin");
+        expect.unreachable("should have thrown 403");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(403);
+      }
+    });
+
+    it("markDelivered 404s on an unknown id", () => {
+      try {
+        escalationService.markDelivered(createId(), 1, ORIGIN.originWorkerKey);
+        expect.unreachable("should have thrown 404");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(404);
+      }
+    });
+
+    it("getById does NOT advance the cursor (read path is inert)", () => {
+      const project = createTestProject(testApp.db);
+      const origin = agent();
+      const holder = human();
+      const esc = raiseWithHolderReply(project.id, actorOf(origin), actorOf(holder));
+
+      escalationService.getById(esc.id);
+      const seq = testApp.db
+        .select()
+        .from(escalations)
+        .where(eq(escalations.id, esc.id))
+        .get()!.originLastSeenSeq;
+      expect(seq).toBe(0);
+    });
+  });
 });

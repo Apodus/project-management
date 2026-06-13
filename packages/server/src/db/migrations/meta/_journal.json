@@ -211,6 +211,13 @@
       "when": 1781335885823,
       "tag": "0029_panoramic_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1781341417063,
+      "tag": "0030_careful_karma",
+      "breakpoints": true
     }
   ]
 }

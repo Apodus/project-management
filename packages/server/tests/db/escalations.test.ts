@@ -34,7 +34,7 @@ describe("escalations schema (C1 P1)", () => {
 
   // ── Table + column shape ─────────────────────────────────────────
   describe("table existence", () => {
-    it("creates escalations with all 18 columns", () => {
+    it("creates escalations with all 19 columns", () => {
       const db = setupDb();
       const present = db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type='table' AND name='escalations'`,
@@ -63,6 +63,7 @@ describe("escalations schema (C1 P1)", () => {
           "updated_at",
           "resolved_at",
           "resolved_by",
+          "origin_last_seen_seq",
         ].sort(),
       );
     });
