@@ -1,0 +1,55 @@
+{
+  "name": "@urtela/pm-wake-daemon",
+  "version": "0.1.0",
+  "description": "Reference wake daemon for the PM escalation channel — polls undelivered escalation replies per watched worker key and spawns a fresh client worker turn (claude -p) to read the thread and act, then mark-delivered. Covers the dormant/ended worker that piggyback/drain delivery cannot. One process per machine watching the local worker key(s).",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/Apodus/project-management#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Apodus/project-management.git",
+    "directory": "packages/wake-daemon-ref"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "pm-wake-daemon": "./dist/bundle/pm-wake-daemon.mjs"
+  },
+  "files": [
+    "dist/bundle/*.mjs",
+    "README.md"
+  ],
+  "scripts": {
+    "gen-version": "node scripts/gen-version.mjs",
+    "prebuild": "node scripts/gen-version.mjs",
+    "build": "tsc --build && node scripts/add-shebang.mjs",
+    "bundle": "node scripts/bundle.mjs",
+    "predev": "node scripts/gen-version.mjs",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "prelint": "node scripts/gen-version.mjs",
+    "lint": "eslint src/",
+    "pretypecheck": "node scripts/gen-version.mjs",
+    "typecheck": "tsc --noEmit",
+    "pretest": "node scripts/gen-version.mjs",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build && pnpm run bundle"
+  },
+  "devDependencies": {
+    "@pm/shared": "workspace:*",
+    "@types/node": "^22",
+    "commander": "^12.1.0",
+    "esbuild": "^0.28.0",
+    "pino": "^9.5.0",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.7"
+  }
+}
