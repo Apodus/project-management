@@ -118,6 +118,19 @@ export class ResponderClient {
   }
 
   /**
+   * The project's ACKNOWLEDGED escalations held by `holderId` (the reclaim seed,
+   * C3 P6a). The server ANDs `status` + `holderId` filters; the responder passes
+   * its own selfId to recover stranded-acknowledged threads it once claimed.
+   * Unwraps the list envelope to the bare array (like listOpenEscalations).
+   */
+  listAcknowledgedByHolder(projectId: string, holderId: string): Promise<Escalation[]> {
+    return this.request<Escalation[]>(
+      "GET",
+      `/projects/${encodeURIComponent(projectId)}/escalations?status=acknowledged&holderId=${encodeURIComponent(holderId)}`,
+    );
+  }
+
+  /**
    * Acknowledge (claim) an escalation. No body. An ai_agent acking an unclaimed
    * open escalation auto-claims it (holderId ← actor). A DIFFERENT agent acking
    * a held one → 403; acking a non-open → 409.

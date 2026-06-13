@@ -82,6 +82,36 @@ describe("loadConfig", () => {
     expect(cfg.tokenBudget).toBeUndefined();
     expect(cfg.pmUrl).toBe("http://localhost:3000");
     expect(cfg.logLevel).toBe("info");
+    // P6a safety-seal defaults.
+    expect(cfg.excludeOriginRepos).toEqual([]);
+    expect(cfg.reclaimGraceSec).toBe(225); // max(120, floor(0.25 * 900))
+    expect(cfg.maxReclaimAttempts).toBe(2);
+  });
+
+  it("P6a: parses PM_RESPONDER_EXCLUDE_ORIGIN_REPOS as a trimmed, non-empty CSV", () => {
+    const cfg = loadConfig(
+      {},
+      {
+        ...baseEnv,
+        PM_PROJECT_ID: "p",
+        PM_RESPONDER_EXCLUDE_ORIGIN_REPOS: " pm-repo , , client-repo ,",
+      },
+    );
+    expect(cfg.excludeOriginRepos).toEqual(["pm-repo", "client-repo"]);
+  });
+
+  it("P6a: honors PM_RESPONDER_RECLAIM_GRACE_SEC and PM_RESPONDER_MAX_RECLAIM_ATTEMPTS overrides", () => {
+    const cfg = loadConfig(
+      {},
+      {
+        ...baseEnv,
+        PM_PROJECT_ID: "p",
+        PM_RESPONDER_RECLAIM_GRACE_SEC: "600",
+        PM_RESPONDER_MAX_RECLAIM_ATTEMPTS: "5",
+      },
+    );
+    expect(cfg.reclaimGraceSec).toBe(600);
+    expect(cfg.maxReclaimAttempts).toBe(5);
   });
 
   it("strips a trailing slash from the pm url; CLI overrides env", () => {

@@ -56,6 +56,22 @@ export interface ResponderConfig {
   spawnBudget: SpawnBudget;
   /** Per-session wall-clock budget (consumed by the runner). */
   timeBudgetSec: number;
+  /**
+   * No-recursion seal (C3 P6a): origin repos whose escalations the responder
+   * NEVER seeds/reclaims. Default []. (The responder has no escalation-creating
+   * action, so recursion is already structurally absent — this is the explicit
+   * belt-and-suspenders for a self-hosted PM repo whose own escalations should
+   * not be auto-answered by a responder running against it.)
+   */
+  excludeOriginRepos: string[];
+  /**
+   * Reclaim grace (C3 P6a): seconds BEYOND `timeBudgetSec` before a stranded
+   * acknowledged self-held escalation is considered stale and re-processed.
+   * Default `max(120, floor(0.25 * timeBudgetSec))` (the 7.6.1 reclaim precedent).
+   */
+  reclaimGraceSec: number;
+  /** Max reclaim re-spawn attempts before handing to a human (C3 P6a). Default 2. */
+  maxReclaimAttempts: number;
   /** Optional per-session token budget (surfaced to the runner). */
   tokenBudget?: number;
   /** Headless answering command (PM_RESPONDER_COMMAND || default "claude -p"). */
@@ -86,6 +102,9 @@ export interface ConfigEnv {
   PM_RESPONDER_COMMAND?: string;
   PM_RESPONDER_REPO_CWD?: string;
   PM_RESPONDER_LOGS_DIR?: string;
+  PM_RESPONDER_EXCLUDE_ORIGIN_REPOS?: string;
+  PM_RESPONDER_RECLAIM_GRACE_SEC?: string;
+  PM_RESPONDER_MAX_RECLAIM_ATTEMPTS?: string;
   PM_LOG_LEVEL?: string;
   [k: string]: string | undefined;
 }
@@ -95,6 +114,7 @@ const DEFAULT_MAX_CONCURRENT = 1;
 const DEFAULT_MAX_SPAWNS = 10;
 const DEFAULT_SPAWN_WINDOW_SEC = 3600;
 const DEFAULT_TIME_BUDGET_SEC = 900;
+const DEFAULT_MAX_RECLAIM_ATTEMPTS = 2;
 
 export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   const pmUrl = (args.pmUrl ?? env.PM_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
@@ -152,6 +172,26 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   const repoCwd = args.repoCwd ?? env.PM_RESPONDER_REPO_CWD ?? process.cwd();
   const logsDir = env.PM_RESPONDER_LOGS_DIR ?? path.join(os.tmpdir(), "pm-responder-logs");
 
+  // P6a safety-seal config. excludeOriginRepos: comma-separated CSV → trimmed,
+  // non-empty tokens (mirrors the projectIds CSV parse contract). Default [].
+  const excludeOriginRepos: string[] = [];
+  if (env.PM_RESPONDER_EXCLUDE_ORIGIN_REPOS) {
+    for (const token of env.PM_RESPONDER_EXCLUDE_ORIGIN_REPOS.split(",")) {
+      const t = token.trim();
+      if (t.length > 0) excludeOriginRepos.push(t);
+    }
+  }
+
+  const timeBudgetSec = DEFAULT_TIME_BUDGET_SEC;
+  const reclaimGraceSec = positiveInt(
+    env.PM_RESPONDER_RECLAIM_GRACE_SEC,
+    Math.max(120, Math.floor(0.25 * timeBudgetSec)),
+  );
+  const maxReclaimAttempts = positiveInt(
+    env.PM_RESPONDER_MAX_RECLAIM_ATTEMPTS,
+    DEFAULT_MAX_RECLAIM_ATTEMPTS,
+  );
+
   return {
     pmUrl,
     token,
@@ -161,7 +201,10 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     pollIntervalSec,
     maxConcurrent: DEFAULT_MAX_CONCURRENT,
     spawnBudget: { maxSpawns: DEFAULT_MAX_SPAWNS, windowSec: DEFAULT_SPAWN_WINDOW_SEC },
-    timeBudgetSec: DEFAULT_TIME_BUDGET_SEC,
+    timeBudgetSec,
+    excludeOriginRepos,
+    reclaimGraceSec,
+    maxReclaimAttempts,
     tokenBudget: undefined,
     command,
     repoCwd,

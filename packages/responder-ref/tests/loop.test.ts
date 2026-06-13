@@ -54,6 +54,17 @@ class FakeClient {
     return this.listResults.shift() ?? [];
   });
 
+  // P6a reclaim seed. Scripted per call (shifted); default [].
+  ackResults: Escalation[][] = [];
+  ackListError: ((projectId: string, holderId: string) => unknown) | undefined;
+  listAcknowledgedByHolder = vi.fn(
+    async (projectId: string, holderId: string): Promise<Escalation[]> => {
+      const err = this.ackListError?.(projectId, holderId);
+      if (err) throw err;
+      return this.ackResults.shift() ?? [];
+    },
+  );
+
   acknowledge = vi.fn(async (id: string): Promise<Escalation> => {
     const err = this.ackError?.(id);
     if (err) throw err;
@@ -120,6 +131,12 @@ function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): Respon
     repoCwd: "/repo",
     command: "claude -p",
     budget: { timeBudgetSec: 900 },
+    // P6a defaults: empty exclude list; modest grace; budget high enough that
+    // every existing P1-P5 test is unaffected.
+    excludeOriginRepos: [],
+    reclaimGraceSec: 120,
+    maxReclaimAttempts: 2,
+    spawnBudget: { maxSpawns: 1000, windowSec: 3600 },
     now: () => 1_000_000,
     ...over,
   };
@@ -440,5 +457,192 @@ describe("responderTick", () => {
     release();
     await tick;
     expect(runner.run).toHaveBeenCalledTimes(1); // the 2nd reappears next tick
+  });
+
+  // ── P6a Seal 1: no-recursion full seal (excludeOriginRepos) ──────
+
+  it("excludeOriginRepos → escalation from an excluded origin repo NOT acknowledged; a sibling repo IS", async () => {
+    const client = new FakeClient();
+    client.listResults = [
+      [
+        mkEscalation("self-pm", { originRepo: "pm-repo" }), // excluded — skip
+        mkEscalation("client", { originRepo: "client-repo" }), // sibling — claim
+      ],
+    ];
+    await responderTick(
+      baseDeps(client, { maxConcurrent: 10, excludeOriginRepos: ["pm-repo"] }),
+      createResponderState(),
+    );
+    expect(client.acks).toEqual(["client"]);
+  });
+
+  // ── P6a Seal 2: reclaim sweep ────────────────────────────────────
+
+  // A timestamp comfortably past updatedAt(2026-06-13) + (900 budget + 120 grace).
+  const STALE_NOW = Date.parse("2026-06-14T00:00:00.000Z");
+
+  it("reclaim: a stale acknowledged self-held escalation is re-processed (runner.run, no re-acknowledge)", async () => {
+    const client = new FakeClient();
+    // No open candidates; one stale acknowledged held by SELF.
+    client.listResults = [[]];
+    client.ackResults = [
+      [mkEscalation("r1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" })],
+    ];
+    const runner = onRunner({ kind: "needs_human", reason: "still stuck", durationMs: 1 });
+    await responderTick(
+      baseDeps(client, { mode: "on", maxConcurrent: 10, runner, now: () => STALE_NOW }),
+      createResponderState(),
+    );
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(client.acknowledge).not.toHaveBeenCalled(); // already held — never re-ack
+    expect(client.escalateCalls).toEqual([{ id: "r1", reason: "still stuck" }]);
+  });
+
+  it("reclaim: a FRESH acknowledged escalation (updatedAt=now) is NOT reclaimed", async () => {
+    const client = new FakeClient();
+    client.listResults = [[]];
+    const freshIso = new Date(STALE_NOW).toISOString();
+    client.ackResults = [
+      [mkEscalation("fresh", { status: "acknowledged", holderId: SELF, updatedAt: freshIso })],
+    ];
+    const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+    await responderTick(
+      baseDeps(client, { mode: "on", maxConcurrent: 10, runner, now: () => STALE_NOW }),
+      createResponderState(),
+    );
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it("reclaim: an already-in-flight id is not double-processed", async () => {
+    const client = new FakeClient();
+    client.listResults = [[]];
+    client.ackResults = [
+      [mkEscalation("r1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" })],
+    ];
+    const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+    const state = createResponderState();
+    state.inFlight.add("r1"); // pretend a claim job already holds it
+    await responderTick(
+      baseDeps(client, { mode: "on", maxConcurrent: 10, runner, now: () => STALE_NOW }),
+      state,
+    );
+    expect(runner.run).not.toHaveBeenCalled();
+    state.inFlight.delete("r1");
+  });
+
+  it("reclaim poison cap: after maxReclaimAttempts the thread → escalateToHuman (reclaim-exhausted), no more runner.run", async () => {
+    const client = new FakeClient();
+    // The reclaim post keeps it acknowledged (escalate/answer throw), so it
+    // re-qualifies each sweep. maxReclaimAttempts=1: tick 1 spawns once; tick 2
+    // hits the cap → escalateToHuman, no spawn.
+    client.escalateToHuman = vi.fn(async (id: string, reason: string): Promise<Escalation> => {
+      client.escalateCalls.push({ id, reason });
+      throw new PmApiError(500, "INTERNAL", "boom"); // keeps it acknowledged
+    });
+    const strandedRow = () =>
+      mkEscalation("p1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" });
+    client.ackResults = [[strandedRow()], [strandedRow()]];
+    client.listResults = [[], []];
+    const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+    const deps = baseDeps(client, {
+      mode: "on",
+      maxConcurrent: 10,
+      maxReclaimAttempts: 1,
+      runner,
+      now: () => STALE_NOW,
+    });
+    const state = createResponderState();
+    await responderTick(deps, state); // attempt 1 → spawn
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    await responderTick(deps, state); // cap reached → escalateToHuman, no spawn
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    const exhausted = client.escalateCalls.filter((c) =>
+      c.reason.startsWith("Reclaim exhausted"),
+    );
+    expect(exhausted).toHaveLength(1);
+    expect(exhausted[0].id).toBe("p1");
+  });
+
+  it("PIN 1: poison-branch escalateToHuman throwing does NOT crash the tick", async () => {
+    const client = new FakeClient();
+    client.escalateToHuman = vi.fn(async (): Promise<Escalation> => {
+      throw new PmApiError(500, "INTERNAL", "boom");
+    });
+    client.ackResults = [
+      [mkEscalation("p1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" })],
+    ];
+    client.listResults = [[]];
+    const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+    const state = createResponderState();
+    state.reclaimAttempts.set("p1", 5); // already past any cap
+    await expect(
+      responderTick(
+        baseDeps(client, {
+          mode: "on",
+          maxConcurrent: 10,
+          maxReclaimAttempts: 1,
+          runner,
+          now: () => STALE_NOW,
+        }),
+        state,
+      ),
+    ).resolves.toBeUndefined();
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  // ── P6a Seal 3: spawn-rate budget ────────────────────────────────
+
+  it("spawn budget: maxSpawns=1 → only 1 runner.run this tick; the 2nd defers, then spawns once the window passes", async () => {
+    const client = new FakeClient();
+    const e1 = mkEscalation("e1", { createdAt: "2026-06-13T01:00:00.000Z" });
+    const e2 = mkEscalation("e2", { createdAt: "2026-06-13T02:00:00.000Z" });
+    client.listResults = [[e1, e2], [e2], [e2]];
+    const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+    const state = createResponderState();
+    const spawnBudget = { maxSpawns: 1, windowSec: 100 };
+    let now = 1_000_000;
+    const deps = baseDeps(client, { mode: "on", maxConcurrent: 10, runner, spawnBudget, now: () => now });
+
+    await responderTick(deps, state); // tick 1: e1 spawns, e2 deferred (budget spent)
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(client.escalateCalls.map((c) => c.id)).toEqual(["e1"]);
+
+    // tick 2: still inside the window, budget spent → e2 still deferred.
+    now += 50_000; // +50s (< 100s window)
+    await responderTick(deps, state);
+    expect(runner.run).toHaveBeenCalledTimes(1);
+
+    // tick 3: window elapsed → the deferred e2 now spawns.
+    now += 100_000; // total +150s from the e1 spawn → outside the window
+    await responderTick(deps, state);
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(client.escalateCalls.map((c) => c.id)).toEqual(["e1", "e2"]);
+  });
+
+  it("spawn budget: a 403-failed acknowledge does NOT consume budget (reservation refunded)", async () => {
+    const client = new FakeClient();
+    // maxSpawns=1. e1 throws 403 on ack → its budget reservation is refunded, so
+    // a later tick's e2 still spawns within the SAME window (no budget burned).
+    client.ackError = (id) =>
+      id === "e1" ? new PmApiError(403, "FORBIDDEN", "held") : undefined;
+    const e1 = mkEscalation("e1", { createdAt: "2026-06-13T01:00:00.000Z" });
+    const e2 = mkEscalation("e2", { createdAt: "2026-06-13T02:00:00.000Z" });
+    // e1 alone first (it 403s + refunds), then e2 alone next tick.
+    client.listResults = [[e1], [e2]];
+    const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+    const state = createResponderState();
+    const deps = baseDeps(client, {
+      mode: "on",
+      maxConcurrent: 10,
+      runner,
+      spawnBudget: { maxSpawns: 1, windowSec: 100 },
+      now: () => 1_000_000, // SAME window both ticks
+    });
+    await responderTick(deps, state); // e1 403 → refund; no spawn
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(state.spawnTimestamps).toEqual([]); // reservation refunded
+    await responderTick(deps, state); // e2 spawns — budget was not consumed
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(client.escalateCalls.map((c) => c.id)).toEqual(["e2"]);
   });
 });
