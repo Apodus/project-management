@@ -84,9 +84,11 @@ import { PmApiError } from "./api-client.js";
 import type { ResponderRunner } from "./responder-runner.js";
 import type { InjectionSniffer } from "./injection-sniffer.js";
 import type { ImplementRunner } from "./implement-runner.js";
+import type { DriveRunner } from "./drive-runner.js";
 import type { Worktree } from "./worktree.js";
 import { buildResponderPrompt } from "./prompt.js";
 import { buildImplementPrompt } from "./implement-prompt.js";
+import { buildDrivePrompt } from "./drive-prompt.js";
 import type { ResponderMode, SpawnBudget } from "./config.js";
 
 /**
@@ -135,6 +137,8 @@ export interface ResponderDeps {
     | "getEscalation"
     | "addMessage"
     | "submitMergeRequest"
+    | "createEpic"
+    | "createTask"
   >;
   logger: Logger;
   projectIds: string[];
@@ -174,6 +178,14 @@ export interface ResponderDeps {
    * Real spawn (`createClaudeImplementRunner`) in prod; scripted fake in tests.
    */
   implementRunner: ImplementRunner;
+  /**
+   * The injectable vision-producing drive runner (A3 P1). Spawned ONLY on the
+   * `implement{systemic}` path when auto_implement is enabled + the sniff is clean.
+   * Real spawn (`createClaudeDriveRunner`) in prod; scripted fake in tests. It
+   * writes a vision `.md` in the worktree; the LOOP creates the PM epic + tasks over
+   * HTTP from its result (the session does NO PM write-back).
+   */
+  driveRunner: DriveRunner;
   /**
    * Acquire an isolated worktree for an implement session (A1 P3, REVISE FIX #1).
    * Injectable: prod binds `createWorktree` to the git config + worktreeRoot; tests
@@ -300,6 +312,18 @@ function leaseImplementSlot(
  */
 function hasPendingLandMarker(messages: EscalationMessage[]): boolean {
   return messages.some((m) => m.metadata != null && m.metadata.pendingLand === true);
+}
+
+/**
+ * Does this escalation's thread carry a pending-DRIVE handoff marker (A3 P1)? A
+ * `vision_ready` drive session leaves a `diagnosis` message with
+ * `metadata.pendingDrive === true`; the reclaim sweep keys off it (alongside the
+ * pending-land marker) to SKIP an escalation whose vision+epic is awaiting the P2
+ * campaign drive — re-spawning a read-only answering session on it would march the
+ * poison cap.
+ */
+function hasPendingDriveMarker(messages: EscalationMessage[]): boolean {
+  return messages.some((m) => m.metadata != null && m.metadata.pendingDrive === true);
 }
 
 /**
@@ -534,14 +558,14 @@ async function runAnsweringSession(
         }
         // auto_implement ENABLED (the sniff already passed at admission).
         if (result.size === "systemic") {
-          await deps.client.escalateToHuman(
-            escalationId,
-            `Systemic change — needs human (A3 drives systemic later). Rationale: ${result.rationale}`,
-          );
-          deps.logger.info(
-            { escalationId, projectId },
-            "implement (systemic) → escalated to human",
-          );
+          // A3 P1: a systemic change drives an autonomous VISION. Acquire an isolated
+          // worktree, spawn the drive session (writes a vision .md), and on
+          // vision_ready CREATE the PM epic + tasks over HTTP + addMessage(pendingDrive)
+          // leaving the escalation acknowledged (P2 runs the campaign). NOTE: this runs
+          // OUTSIDE the swallowing try/catch below (it owns its own non-fatal handling).
+          // We return here so the outer catch never re-wraps it.
+          await runDriveSession(deps, state, projectId, escalationId, detail);
+          return;
         } else {
           // bounded — A1 P3: acquire an isolated worktree, spawn the write session,
           // and on branch_ready push + addMessage(pendingLand) leaving the
@@ -824,6 +848,214 @@ async function runImplementSession(
 }
 
 /**
+ * The vision-producing drive session (A3 P1) — runs on the `implement{systemic}`
+ * path when auto_implement is enabled and the injection sniff was clean. Acquires an
+ * isolated worktree (the EXISTING implement slot pool), spawns the drive runner with
+ * the /vision prompt, and on `vision_ready` CREATES the PM epic + the campaign tasks
+ * OVER HTTP from the runner's result — then appends a `pendingDrive` handoff message,
+ * LEAVING the escalation `acknowledged` (P2 runs the campaign phases). NO branch is
+ * pre-created (the drive writes a file, never commits) and NO campaign runs here (P2).
+ *
+ * The LOOP does ALL PM write-back (createEpic/createTask over HTTP) — the drive
+ * session itself has no PM-MCP access in the clone, so it only declares the breakdown.
+ * give_up/error escalate to a human (mode=off ⇒ silent). PARTIAL-FAILURE is
+ * load-bearing: if the epic is created but a task POST throws mid-loop, we escalate to
+ * a human naming the orphan epic id + the failed campaign (so the partial epic+tasks
+ * are findable) — the escalation ends up needs_human, NOT stranded acknowledged. All
+ * PM/git I/O is non-fatal; the worktree is reset for reuse + the slot released in
+ * `finally`.
+ */
+async function runDriveSession(
+  deps: ResponderDeps,
+  state: ResponderState,
+  projectId: string,
+  escalationId: string,
+  detail: EscalationWithThread,
+): Promise<void> {
+  // Lease a worktree slot (the EXISTING implement pool, sized to maxConcurrent). None
+  // free ⇒ escalate (rare; only at maxConcurrent>1 with every session in flight).
+  const slot = leaseImplementSlot(deps, state);
+  if (slot === null) {
+    if (deps.mode === "off") return; // off is silent.
+    try {
+      await deps.client.escalateToHuman(
+        escalationId,
+        "no free worktree slot for the drive session (all busy); needs a human or a retry",
+      );
+    } catch (err) {
+      deps.logger.error(
+        { escalationId, projectId, err: errMessage(err) },
+        "no-slot drive escalateToHuman failed; escalation stays acknowledged (reclaim recovers)",
+      );
+    }
+    return;
+  }
+
+  const wt = slot.wt;
+
+  // Prepare the worktree (clone-if-needed + reset to fresh main). A failure here is
+  // non-fatal: escalate, release the slot, return. The runner never spawns. NO branch
+  // pre-create (the drive writes a vision file, never commits).
+  try {
+    await wt.ensureExists();
+    await wt.resetForAttempt();
+  } catch (err) {
+    slot.leased = false;
+    if (deps.mode === "off") return; // off is silent.
+    try {
+      await deps.client.escalateToHuman(
+        escalationId,
+        `could not prepare a worktree for the drive session: ${errMessage(err)}`,
+      );
+    } catch (postErr) {
+      deps.logger.error(
+        { escalationId, projectId, err: errMessage(postErr) },
+        "drive worktree-prep escalateToHuman failed; escalation stays acknowledged (reclaim recovers)",
+      );
+    }
+    return;
+  }
+
+  try {
+    const logsDir = deps.logsDir ?? tmpdir();
+    const statusPath = path.join(logsDir, `${escalationId}.drive.status.json`);
+    const logPath = path.join(logsDir, `${escalationId}.drive.log`);
+    const prompt = buildDrivePrompt(detail, detail.messages);
+
+    const result = await deps.driveRunner.run({
+      escalation: detail,
+      thread: detail.messages,
+      worktreePath: wt.path,
+      budget: deps.budget,
+      command: deps.command,
+      prompt,
+      statusPath,
+      logPath,
+      signal: deps.signal,
+    });
+
+    // Outcome handling — every PM call wrapped so a transient failure never escapes
+    // the job (the escalation stays acknowledged; reclaim recovers it).
+    try {
+      switch (result.kind) {
+        case "vision_ready": {
+          if (deps.mode === "off") {
+            deps.logger.info(
+              { escalationId, projectId, visionPath: result.visionPath, mode: deps.mode },
+              "drive vision_ready (mode=off) — not creating epic/tasks; off is silent",
+            );
+            break;
+          }
+
+          // Create the vision's PM epic over HTTP. A failure escalates (no epic
+          // created — nothing to orphan) and does NOT addMessage.
+          let epic: { id: string; name?: string };
+          try {
+            epic = await deps.client.createEpic(projectId, {
+              name: result.epicName,
+              description: `Auto-driven vision for escalation ${escalationId}`,
+              priority: "high",
+            });
+          } catch (epicErr) {
+            await deps.client.escalateToHuman(
+              escalationId,
+              `produced a vision (${result.visionPath}) but creating the PM epic failed: ${errMessage(epicErr)}`,
+            );
+            deps.logger.warn(
+              { escalationId, projectId, visionPath: result.visionPath, err: errMessage(epicErr) },
+              "drive vision_ready but createEpic failed; escalated to human",
+            );
+            break;
+          }
+
+          // Create the campaign tasks under the epic, one at a time. PARTIAL-FAILURE
+          // (load-bearing): if a task POST throws mid-loop, escalate naming the epic
+          // id + which campaign failed (the partial epic+tasks persist + are findable)
+          // — the escalation ends up needs_human, NOT stranded acknowledged.
+          for (let i = 0; i < result.campaigns.length; i++) {
+            const c = result.campaigns[i];
+            try {
+              await deps.client.createTask(projectId, {
+                title: c.title,
+                description: c.description,
+                epicId: epic.id,
+                priority: c.priority,
+              });
+            } catch (taskErr) {
+              await deps.client.escalateToHuman(
+                escalationId,
+                `produced a vision (${result.visionPath}) + created epic ${epic.id}, but creating campaign task ${i + 1}/${result.campaigns.length} ("${c.title}") failed: ${errMessage(taskErr)}. The epic + the tasks created so far persist; a human should finish the breakdown.`,
+              );
+              deps.logger.warn(
+                { escalationId, projectId, epicId: epic.id, campaign: c.title, err: errMessage(taskErr) },
+                "drive createTask failed mid-loop; escalated to human (epic preserved, partial tasks)",
+              );
+              return; // do NOT fall through to the pendingDrive handoff.
+            }
+          }
+
+          // addMessage leaves the escalation ACKNOWLEDGED (NOT answer/resolve — P2
+          // runs the campaign). pendingDrive:true keeps the reclaim re-spawn skip
+          // byte-identical (hasPendingDriveMarker checks only that flag).
+          const body =
+            `Produced a vision \`${result.visionPath}\` and created PM epic \`${epic.id}\` ` +
+            `with ${result.campaigns.length} campaign task(s), pending campaign drive (P2).`;
+          await deps.client.addMessage(escalationId, body, "diagnosis", {
+            pendingDrive: true,
+            visionPath: result.visionPath,
+            epicId: epic.id,
+          });
+          deps.logger.info(
+            { escalationId, projectId, visionPath: result.visionPath, epicId: epic.id, campaigns: result.campaigns.length },
+            "drive produced a vision + created the epic + tasks; appended pending-drive handoff (stays acknowledged for P2)",
+          );
+          break;
+        }
+        case "give_up":
+          if (deps.mode === "off") break; // off is silent.
+          await deps.client.escalateToHuman(
+            escalationId,
+            `Responder could not produce a vision: ${result.reason}`,
+          );
+          deps.logger.info(
+            { escalationId, projectId, reason: result.reason },
+            "drive give_up; escalated to human",
+          );
+          break;
+        case "error":
+          if (deps.mode === "off") break; // off is silent.
+          await deps.client.escalateToHuman(
+            escalationId,
+            `drive session failed (${result.reason}): ${result.detail ?? ""}`,
+          );
+          deps.logger.warn(
+            { escalationId, projectId, reason: result.reason, detail: result.detail },
+            "drive session failed; escalated to human",
+          );
+          break;
+      }
+    } catch (postErr) {
+      deps.logger.error(
+        { escalationId, projectId, kind: result.kind, err: errMessage(postErr) },
+        "post-drive client call failed; escalation stays acknowledged (reclaim recovers)",
+      );
+    }
+  } finally {
+    // Clean the worktree for reuse (safe — the vision lives in the PM epic now) and
+    // release the slot. A reset failure is non-fatal (the next lease re-resets).
+    try {
+      await wt.resetForAttempt();
+    } catch (err) {
+      deps.logger.warn(
+        { escalationId, projectId, err: errMessage(err) },
+        "post-drive worktree reset failed; will re-reset on next lease",
+      );
+    }
+    slot.leased = false;
+  }
+}
+
+/**
  * One poll pass over every watched project. Non-throwing per project: a poll
  * error is logged and the other projects still run. Claims are awaited only up
  * to the concurrency semaphore — a claim that would exceed `maxConcurrent` is
@@ -977,10 +1209,10 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
       // it as before — a getEscalation failure inside the session is logged).
       try {
         const thread = await deps.client.getEscalation(escalationId);
-        if (hasPendingLandMarker(thread.messages)) {
+        if (hasPendingLandMarker(thread.messages) || hasPendingDriveMarker(thread.messages)) {
           deps.logger.debug(
             { escalationId, projectId },
-            "reclaim skip: escalation has a pending-land handoff (awaiting A2); not re-spawning",
+            "reclaim skip: escalation has a pending-land/pending-drive handoff (awaiting A2/P2); not re-spawning",
           );
           continue;
         }

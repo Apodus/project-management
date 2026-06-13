@@ -18,6 +18,11 @@ import type {
   ImplementRunInput,
   ImplementRunResult,
 } from "../src/implement-runner.js";
+import type {
+  DriveRunner,
+  DriveRunInput,
+  DriveRunResult,
+} from "../src/drive-runner.js";
 import type { Worktree } from "../src/worktree.js";
 
 // ── Fakes ──────────────────────────────────────────────────────────
@@ -163,6 +168,33 @@ class FakeClient {
       };
     },
   );
+
+  // A3 P1: the drive session's PM write-back — the LOOP creates the epic + tasks over
+  // HTTP from the drive result. `createEpicFail`/`createTaskFail` drive the failure +
+  // partial-failure paths; createTask returns a fresh id per call (task-1, task-2, …).
+  createEpicFail = false;
+  createTaskFail = false;
+  createEpicCalls: { projectId: string; body: Record<string, unknown> }[] = [];
+  createTaskCalls: { projectId: string; body: Record<string, unknown> }[] = [];
+  private taskSeq = 0;
+  createEpic = vi.fn(
+    async (
+      projectId: string,
+      body: Record<string, unknown>,
+    ): Promise<{ id: string; name?: string }> => {
+      if (this.createEpicFail) throw new Error("epic create rejected");
+      this.createEpicCalls.push({ projectId, body });
+      return { id: "epic1", name: body.name as string | undefined };
+    },
+  );
+  createTask = vi.fn(
+    async (projectId: string, body: Record<string, unknown>): Promise<{ id: string }> => {
+      if (this.createTaskFail) throw new Error("task create rejected");
+      this.createTaskCalls.push({ projectId, body });
+      this.taskSeq += 1;
+      return { id: `task-${this.taskSeq}` };
+    },
+  );
 }
 
 /**
@@ -196,6 +228,20 @@ class FakeImplementRunner implements ImplementRunner {
   result: ImplementRunResult = { kind: "give_up", reason: "noop", durationMs: 0 };
   lastInput?: ImplementRunInput;
   run = vi.fn(async (input: ImplementRunInput): Promise<ImplementRunResult> => {
+    this.lastInput = input;
+    return this.result;
+  });
+}
+
+/**
+ * A scripted vision-producing drive runner (A3 P1). Defaults to a give_up so the
+ * drive path is a benign no-post unless a test scripts vision_ready/error. Records
+ * the last input for prompt/worktree assertions.
+ */
+class FakeDriveRunner implements DriveRunner {
+  result: DriveRunResult = { kind: "give_up", reason: "noop", durationMs: 0 };
+  lastInput?: DriveRunInput;
+  run = vi.fn(async (input: DriveRunInput): Promise<DriveRunResult> => {
     this.lastInput = input;
     return this.result;
   });
@@ -272,6 +318,9 @@ function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): Respon
     // git) + empty verifyCmd + git defaults — so the implement path is inert unless a
     // test scripts it, keeping every existing test byte-identical.
     implementRunner: new FakeImplementRunner(),
+    // A3 P1 default: a give_up drive runner — the systemic drive path is inert unless
+    // a test scripts vision_ready/error, keeping every existing test byte-identical.
+    driveRunner: new FakeDriveRunner(),
     acquireWorktree: () => new FakeWorktree(),
     // A1 P4: empty allowlist by default = no restriction (every existing implement
     // test proceeds unchanged).
@@ -869,20 +918,173 @@ describe("responderTick", () => {
     expect(client.escalateCalls[0].reason).toContain("fail-safe");
   });
 
-  it("enabled + implement{systemic} (clean) → escalateToHuman (systemic → human)", async () => {
+  /** An implement{systemic} answering runner + a scripted drive runner. */
+  function driveSetup(driveResult: DriveRunResult): {
+    client: FakeClient;
+    runner: FakeResponderRunner;
+    sniffer: FakeInjectionSniffer;
+    drive: FakeDriveRunner;
+    wt: FakeWorktree;
+  } {
     const client = new FakeClient();
     client.listResults = [[mkEscalation("e1")]];
     const runner = implementRunner("systemic");
     const sniffer = snifferOf({ kind: "clean" });
+    const drive = new FakeDriveRunner();
+    drive.result = driveResult;
+    const wt = new FakeWorktree();
+    return { client, runner, sniffer, drive, wt };
+  }
+
+  it("enabled + implement{systemic} (clean) → drive: vision_ready creates epic + tasks + pendingDrive handoff (no escalate)", async () => {
+    const { client, runner, sniffer, drive, wt } = driveSetup({
+      kind: "vision_ready",
+      visionPath: "roadmaps/v.md",
+      epicName: "E",
+      campaigns: [{ title: "C1", priority: "high", description: "d" }],
+      durationMs: 1,
+    });
     await responderTick(
-      baseDeps(client, { mode: "on", runner, sniffer, autoImplementEnabled: true }),
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        driveRunner: drive,
+        acquireWorktree: () => wt,
+      }),
       createResponderState(),
     );
-    expect(runner.run).toHaveBeenCalledTimes(1);
-    expect(client.escalateCalls).toHaveLength(1);
-    expect(client.escalateCalls[0].id).toBe("e1");
-    expect(client.escalateCalls[0].reason).toContain("Systemic");
+    expect(runner.run).toHaveBeenCalledTimes(1); // the answering (assess) session
+    expect(drive.run).toHaveBeenCalledTimes(1); // the drive session
+    // The LOOP did the PM write-back over HTTP.
+    expect(client.createEpic).toHaveBeenCalledTimes(1);
+    expect(client.createEpicCalls[0].projectId).toBe("p");
+    expect(client.createEpicCalls[0].body).toMatchObject({ name: "E" });
+    expect(client.createTask).toHaveBeenCalledTimes(1);
+    expect(client.createTaskCalls[0].body).toMatchObject({
+      title: "C1",
+      epicId: "epic1",
+      priority: "high",
+    });
+    // pendingDrive handoff (stays acknowledged for P2).
+    expect(client.addMessageCalls).toHaveLength(1);
+    const msg = client.addMessageCalls[0];
+    expect(msg.metadata).toMatchObject({
+      pendingDrive: true,
+      visionPath: "roadmaps/v.md",
+      epicId: "epic1",
+    });
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
     expect(client.answer).not.toHaveBeenCalled();
+  });
+
+  it("enabled + implement{systemic} + drive give_up → escalateToHuman (no epic/tasks created)", async () => {
+    const { client, runner, sniffer, drive, wt } = driveSetup({
+      kind: "give_up",
+      reason: "too vague",
+      durationMs: 1,
+    });
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        driveRunner: drive,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    expect(client.createEpic).not.toHaveBeenCalled();
+    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.addMessage).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("could not produce a vision");
+  });
+
+  it("enabled + implement{systemic} + drive error → escalateToHuman (no epic/tasks created)", async () => {
+    const { client, runner, sniffer, drive, wt } = driveSetup({
+      kind: "error",
+      reason: "timeout",
+      detail: "budget",
+      durationMs: 1,
+    });
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        driveRunner: drive,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    expect(client.createEpic).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("timeout");
+    expect(client.escalateCalls[0].reason).toContain("budget");
+  });
+
+  it("enabled + implement{systemic} + vision_ready but createTask fails mid-loop → escalateToHuman naming the epic id; no throw escapes", async () => {
+    const { client, runner, sniffer, drive, wt } = driveSetup({
+      kind: "vision_ready",
+      visionPath: "roadmaps/v.md",
+      epicName: "E",
+      campaigns: [
+        { title: "C1", priority: "high", description: "d1" },
+        { title: "C2", priority: "medium", description: "d2" },
+      ],
+      durationMs: 1,
+    });
+    client.createTaskFail = true; // both task POSTs throw
+    await expect(
+      responderTick(
+        baseDeps(client, {
+          mode: "on",
+          runner,
+          sniffer,
+          autoImplementEnabled: true,
+          driveRunner: drive,
+          acquireWorktree: () => wt,
+        }),
+        createResponderState(),
+      ),
+    ).resolves.toBeUndefined();
+    // The epic was created (and persists — findable); the first task POST failed.
+    expect(client.createEpic).toHaveBeenCalledTimes(1);
+    expect(client.addMessage).not.toHaveBeenCalled(); // no pendingDrive handoff
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("epic1"); // orphan epic id named
+    expect(client.escalateCalls[0].reason).toContain("C1"); // the failed campaign named
+  });
+
+  it("mode=off + implement{systemic} (enabled) → silent: no epic/tasks/addMessage/escalate", async () => {
+    const { client, runner, sniffer, drive, wt } = driveSetup({
+      kind: "vision_ready",
+      visionPath: "roadmaps/v.md",
+      epicName: "E",
+      campaigns: [{ title: "C1", priority: "high", description: "d" }],
+      durationMs: 1,
+    });
+    await responderTick(
+      baseDeps(client, {
+        mode: "off",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        driveRunner: drive,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    // mode=off short-circuits the implement switch BEFORE the systemic branch — the
+    // drive never runs and nothing is posted.
+    expect(client.createEpic).not.toHaveBeenCalled();
+    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.addMessage).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
   });
 
   it("DISABLED + implement{bounded} → escalateToHuman (fall-back, rationale embedded); NOT stranded; sniffer NOT called", async () => {
@@ -902,14 +1104,17 @@ describe("responderTick", () => {
     expect(client.escalateCalls[0].reason).toContain("r"); // rationale embedded
   });
 
-  it("DISABLED + implement{systemic} → escalateToHuman (fall-back)", async () => {
+  it("DISABLED + implement{systemic} → escalateToHuman (fall-back); driveRunner.run NOT called", async () => {
     const client = new FakeClient();
     client.listResults = [[mkEscalation("e1")]];
     const runner = implementRunner("systemic");
+    const drive = new FakeDriveRunner();
     await responderTick(
-      baseDeps(client, { mode: "on", runner, autoImplementEnabled: false }),
+      baseDeps(client, { mode: "on", runner, autoImplementEnabled: false, driveRunner: drive }),
       createResponderState(),
     );
+    expect(drive.run).not.toHaveBeenCalled(); // disabled → no drive
+    expect(client.createEpic).not.toHaveBeenCalled();
     expect(client.escalateCalls).toHaveLength(1);
     expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
   });
@@ -1453,6 +1658,41 @@ describe("responderTick", () => {
       createResponderState(),
     );
     // The read-only answering session is NOT re-spawned on the pending-land row.
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  // A3 P1: reclaim SKIPS a pending-DRIVE escalation (awaiting the P2 campaign).
+  it("reclaim SKIPS an acknowledged self-held escalation carrying a pendingDrive marker (no re-spawn)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[]];
+    const stale = mkEscalation("r1", {
+      status: "acknowledged",
+      holderId: SELF,
+      updatedAt: "2026-06-13T00:00:00.000Z",
+    });
+    client.ackResults = [[stale]];
+    // getEscalation returns a thread WITH the pending-drive marker.
+    client.getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => ({
+      ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+      messages: [
+        {
+          id: `${id}-m1`,
+          escalationId: id,
+          seq: 1,
+          authorId: SELF,
+          body: "Produced a vision ... and created PM epic ...",
+          messageType: "diagnosis",
+          metadata: { pendingDrive: true, visionPath: "roadmaps/v.md", epicId: "epic1" },
+          createdAt: "2026-06-13T00:00:00.000Z",
+        },
+      ],
+    }));
+    const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+    await responderTick(
+      baseDeps(client, { mode: "on", maxConcurrent: 10, runner, now: () => STALE_NOW }),
+      createResponderState(),
+    );
     expect(runner.run).not.toHaveBeenCalled();
     expect(client.escalateToHuman).not.toHaveBeenCalled();
   });

@@ -11,6 +11,7 @@ import type {
   EscalationMessage,
   EscalationMessageType,
   EscalationWithThread,
+  Priority,
 } from "@pm/shared";
 
 export class PmApiError extends Error {
@@ -48,6 +49,28 @@ export interface SubmittedMergeRequest {
   id: string;
   branch: string | null;
   commitSha: string | null;
+}
+
+/**
+ * The body the daemon POSTs to create the vision's PM epic (A3 P1). The server
+ * auto-attributes `createdBy` from the responder's ai_agent bearer token — no
+ * creator field travels in the body.
+ */
+export interface CreateEpicBody {
+  name: string;
+  description?: string | null;
+  priority?: Priority;
+}
+
+/**
+ * The body the daemon POSTs to create a campaign task under the vision epic (A3 P1).
+ * The server auto-attributes `reporterId` from the responder's ai_agent bearer token.
+ */
+export interface CreateTaskBody {
+  title: string;
+  description?: string | null;
+  epicId?: string | null;
+  priority?: Priority;
 }
 
 export interface ResponderClientOptions {
@@ -238,6 +261,33 @@ export class ResponderClient {
     return this.request<SubmittedMergeRequest>(
       "POST",
       `/projects/${encodeURIComponent(projectId)}/merge-requests`,
+      body,
+    );
+  }
+
+  /**
+   * Create the vision's PM epic (A3 P1 drive). Over HTTP (NOT pm_create_epic MCP —
+   * the responder is a separate ai_agent process). `request<T>` unwraps the
+   * `{ data }` envelope; the server auto-attributes `createdBy` from the bearer
+   * token, so no creator field travels in the body.
+   */
+  createEpic(projectId: string, body: CreateEpicBody): Promise<{ id: string; name?: string }> {
+    return this.request<{ id: string; name?: string }>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/epics`,
+      body,
+    );
+  }
+
+  /**
+   * Create a campaign task under the vision epic (A3 P1 drive). Over HTTP (NOT
+   * pm_create_task MCP). `request<T>` unwraps the `{ data }` envelope; the server
+   * auto-attributes `reporterId` from the bearer token.
+   */
+  createTask(projectId: string, body: CreateTaskBody): Promise<{ id: string }> {
+    return this.request<{ id: string }>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/tasks`,
       body,
     );
   }

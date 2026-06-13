@@ -115,6 +115,84 @@ describe("ResponderClient", () => {
     expect((err as PmApiError).code).toBe("VALIDATION_ERROR");
   });
 
+  it("createEpic POSTs /projects/{id}/epics with the body and unwraps {data} → {id}", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ data: { id: "epic-1", name: "Systemic rework" } }, 201),
+    );
+    const client = new ResponderClient({
+      baseUrl: "http://h:3000",
+      token: "t",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const out = await client.createEpic("proj-1", {
+      name: "Systemic rework",
+      description: "Auto-driven vision for escalation e1",
+      priority: "high",
+    });
+    expect(out).toEqual({ id: "epic-1", name: "Systemic rework" });
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://h:3000/api/v1/projects/proj-1/epics");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      name: "Systemic rework",
+      priority: "high",
+    });
+  });
+
+  it("createEpic maps a non-ok JSON error body to PmApiError", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: "VALIDATION_ERROR", message: "bad" } }, 400),
+    );
+    const client = new ResponderClient({
+      baseUrl: "http://h:3000",
+      token: "t",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const err = await client.createEpic("proj-1", { name: "x" }).catch((e) => e);
+    expect(err).toBeInstanceOf(PmApiError);
+    expect((err as PmApiError).status).toBe(400);
+    expect((err as PmApiError).code).toBe("VALIDATION_ERROR");
+  });
+
+  it("createTask POSTs /projects/{id}/tasks with {title,epicId,...} and unwraps {data} → {id}", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ data: { id: "task-1" } }, 201));
+    const client = new ResponderClient({
+      baseUrl: "http://h:3000",
+      token: "t",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const out = await client.createTask("proj-1", {
+      title: "C1",
+      description: "d",
+      epicId: "epic-1",
+      priority: "high",
+    });
+    expect(out).toEqual({ id: "task-1" });
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://h:3000/api/v1/projects/proj-1/tasks");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      title: "C1",
+      epicId: "epic-1",
+      priority: "high",
+    });
+  });
+
+  it("createTask maps a non-ok JSON error body to PmApiError", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: "VALIDATION_ERROR", message: "bad" } }, 400),
+    );
+    const client = new ResponderClient({
+      baseUrl: "http://h:3000",
+      token: "t",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const err = await client.createTask("proj-1", { title: "x" }).catch((e) => e);
+    expect(err).toBeInstanceOf(PmApiError);
+    expect((err as PmApiError).status).toBe(400);
+    expect((err as PmApiError).code).toBe("VALIDATION_ERROR");
+  });
+
   it("maps a 403 JSON error body to PmApiError(403)", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({ error: { code: "FORBIDDEN", message: "held by another" } }, 403),

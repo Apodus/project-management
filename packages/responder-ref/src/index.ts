@@ -7,6 +7,7 @@ import { runResponderLoop } from "./loop.js";
 import { createClaudeResponderRunner } from "./responder-runner.js";
 import { createClaudeInjectionSniffer } from "./injection-sniffer.js";
 import { createClaudeImplementRunner } from "./implement-runner.js";
+import { createClaudeDriveRunner } from "./drive-runner.js";
 import { createWorktree, type Worktree } from "./worktree.js";
 import { VERSION } from "./version.js";
 
@@ -77,6 +78,9 @@ async function main(): Promise<void> {
   // (createWorktree bound to the git config + worktreeRoot). The slot name maps to a
   // distinct clone directory under worktreeRoot so concurrent sessions never collide.
   const implementRunner = createClaudeImplementRunner({ command: cfg.command });
+  // A3 P1: the vision-producing drive runner (reuses cfg.command). The loop creates
+  // the PM epic + tasks over HTTP from its result — the session does no PM write-back.
+  const driveRunner = createClaudeDriveRunner({ command: cfg.command });
   const acquireWorktree = (slotName: string): Worktree =>
     createWorktree({
       worktreeRoot: cfg.worktreeRoot,
@@ -144,6 +148,7 @@ async function main(): Promise<void> {
       autoImplementEnabled: cfg.autoImplement.enabled,
       sniffer,
       implementRunner,
+      driveRunner,
       acquireWorktree,
       worktreeGit: {
         remote: cfg.worktreeGit.remote,
