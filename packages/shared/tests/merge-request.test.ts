@@ -92,6 +92,7 @@ describe("mergeRequestSchema", () => {
     submittedBy: VALID_ULID,
     taskId: VALID_ULID,
     resolvedFrom: null,
+    escalationId: null,
     synthetic: false,
     branch: "feat/auth",
     commitSha: "abc123",

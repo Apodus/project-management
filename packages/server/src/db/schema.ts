@@ -552,6 +552,15 @@ export const mergeRequests = sqliteTable(
     resolvedFrom: text("resolved_from").references((): AnySQLiteColumn => mergeRequests.id, {
       onDelete: "set null",
     }),
+    // Campaign A2 (§P1): provenance link to the escalation an auto-implement
+    // responder session produced this request from; null on every normal
+    // (worker- or MCP-submitted) request. ON DELETE SET NULL so deleting the
+    // escalation never cascades into the request it spawned. The lazy () =>
+    // arrow forward-refs escalations (defined further below in this file).
+    escalationId: text("escalation_id").references(
+      (): AnySQLiteColumn => escalations.id,
+      { onDelete: "set null" },
+    ),
     // Inner-only groups (campaign 2026-06-10): a SYNTHETIC member is born with no
     // branch/commit — the integrator synthesizes the outer candidate (live outer
     // main + gitlink commit → Ri) at assembly and fills landedSha at land. Only

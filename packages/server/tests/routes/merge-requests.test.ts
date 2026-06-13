@@ -9,7 +9,8 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import { comments, gitRefs, mergeRequests } from "../../src/db/index.js";
+import { comments, escalations, gitRefs, mergeRequests } from "../../src/db/index.js";
+import { createId } from "@pm/shared";
 
 describe("Merge Requests API", () => {
   let testApp: TestApp;
@@ -148,6 +149,121 @@ describe("Merge Requests API", () => {
       );
       const getJson = await getRes.json();
       expect(getJson.data.resolvedFrom).toBe(originId);
+    });
+
+    // ── Campaign A2 §P1: escalationId provenance link ──────────────
+    function insertEscalation(projectId: string, authorId: string): string {
+      const id = createId();
+      const ts = new Date().toISOString();
+      testApp.db
+        .insert(escalations)
+        .values({
+          id,
+          projectId,
+          kind: "bug_report",
+          title: "auto-implement me",
+          originRepo: "game_one",
+          originWorkerKey: "worker-1",
+          authorId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+      return id;
+    }
+
+    it("persists escalationId and round-trips it on the view (A2 §P1)", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const escId = insertEscalation(project.id, agent.user.id);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests`,
+        {
+          token: agent.token,
+          body: {
+            resource: "main",
+            branch: "pm/escalation-e1",
+            escalationId: escId,
+          },
+        },
+      );
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json.data.escalationId).toBe(escId);
+
+      const row = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, json.data.id))
+        .get();
+      expect(row?.escalationId).toBe(escId);
+
+      const getRes = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/merge-requests/${json.data.id}`,
+        { token: agent.token },
+      );
+      const getJson = await getRes.json();
+      expect(getJson.data.escalationId).toBe(escId);
+    });
+
+    it("escalationId is null when omitted (byte-identical to pre-A2)", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+
+      const id = await submitRequest(project.id, agent.token, { branch: "feature/no-esc" });
+      const getRes = await authRequest(testApp.app, "GET", `/api/v1/merge-requests/${id}`, {
+        token: agent.token,
+      });
+      const getJson = await getRes.json();
+      expect(getJson.data.escalationId).toBeNull();
+
+      const row = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, id))
+        .get();
+      expect(row?.escalationId).toBeNull();
+    });
+
+    it("400 when escalationId belongs to a different project", async () => {
+      const projectA = createTestProject(testApp.db);
+      const projectB = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const otherEsc = insertEscalation(projectB.id, agent.user.id);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${projectA.id}/merge-requests`,
+        {
+          token: agent.token,
+          body: { resource: "main", escalationId: otherEsc },
+        },
+      );
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("404 when escalationId does not exist", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests`,
+        {
+          token: agent.token,
+          body: { resource: "main", escalationId: "01HNONEXISTENTESC000000" },
+        },
+      );
+      expect(res.status).toBe(404);
     });
 
     it("401 when unauthenticated", async () => {

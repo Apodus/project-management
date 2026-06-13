@@ -30,6 +30,26 @@ export interface SelfIdentity {
   type: string;
 }
 
+/**
+ * The body the responder POSTs to create a merge request (A2 P1). Task-less,
+ * escalationId-linked; the train lands it. Mirrors the route's submitBody.
+ */
+export interface SubmitMergeRequestBody {
+  resource: string;
+  taskId: string | null;
+  branch: string | null;
+  commitSha: string | null;
+  verifyCmd: string | null;
+  escalationId: string | null;
+}
+
+/** The narrow merge-request view slice the responder reads back after submit. */
+export interface SubmittedMergeRequest {
+  id: string;
+  branch: string | null;
+  commitSha: string | null;
+}
+
 export interface ResponderClientOptions {
   baseUrl: string;
   token: string;
@@ -202,6 +222,23 @@ export class ResponderClient {
       "POST",
       `/escalations/${encodeURIComponent(id)}/messages`,
       { body, messageType, metadata },
+    );
+  }
+
+  /**
+   * Submit a merge request for an implemented escalation branch (A2 P1). Over
+   * HTTP (NOT the pm_request_merge MCP tool) — the responder is a separate
+   * ai_agent process. Task-less + escalationId-linked; the train lands it (P2).
+   * `request<T>` unwraps the `{ data }` envelope to the merge-request view.
+   */
+  submitMergeRequest(
+    projectId: string,
+    body: SubmitMergeRequestBody,
+  ): Promise<SubmittedMergeRequest> {
+    return this.request<SubmittedMergeRequest>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/merge-requests`,
+      body,
     );
   }
 

@@ -59,6 +59,62 @@ describe("ResponderClient", () => {
     expect(url).toBe("http://h:3000/api/v1/auth/me");
   });
 
+  it("submitMergeRequest POSTs /projects/{id}/merge-requests with the body and unwraps {data}", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(
+        { data: { id: "mr-1", branch: "pm/escalation-e1", commitSha: "abc123" } },
+        201,
+      ),
+    );
+    const client = new ResponderClient({
+      baseUrl: "http://h:3000",
+      token: "t",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const out = await client.submitMergeRequest("proj-1", {
+      resource: "main",
+      taskId: null,
+      branch: "pm/escalation-e1",
+      commitSha: "abc123",
+      verifyCmd: null,
+      escalationId: "e1",
+    });
+    expect(out).toEqual({ id: "mr-1", branch: "pm/escalation-e1", commitSha: "abc123" });
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://h:3000/api/v1/projects/proj-1/merge-requests");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      resource: "main",
+      taskId: null,
+      branch: "pm/escalation-e1",
+      escalationId: "e1",
+    });
+  });
+
+  it("submitMergeRequest maps a non-ok JSON error body to PmApiError", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: "VALIDATION_ERROR", message: "bad" } }, 400),
+    );
+    const client = new ResponderClient({
+      baseUrl: "http://h:3000",
+      token: "t",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const err = await client
+      .submitMergeRequest("proj-1", {
+        resource: "main",
+        taskId: null,
+        branch: "b",
+        commitSha: null,
+        verifyCmd: null,
+        escalationId: "e1",
+      })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(PmApiError);
+    expect((err as PmApiError).status).toBe(400);
+    expect((err as PmApiError).code).toBe("VALIDATION_ERROR");
+  });
+
   it("maps a 403 JSON error body to PmApiError(403)", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({ error: { code: "FORBIDDEN", message: "held by another" } }, 403),

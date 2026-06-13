@@ -1,0 +1,1 @@
+ALTER TABLE `merge_requests` ADD `escalation_id` text REFERENCES escalations(id) ON UPDATE no action ON DELETE set null;

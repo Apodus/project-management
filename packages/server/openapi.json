@@ -4993,6 +4993,10 @@
             "type": "string",
             "nullable": true
           },
+          "escalationId": {
+            "type": "string",
+            "nullable": true
+          },
           "synthetic": {
             "type": "boolean"
           },
@@ -5085,6 +5089,7 @@
           "submittedBy",
           "taskId",
           "resolvedFrom",
+          "escalationId",
           "synthetic",
           "branch",
           "commitSha",
@@ -5133,6 +5138,10 @@
             "nullable": true
           },
           "resolvedFrom": {
+            "type": "string",
+            "nullable": true
+          },
+          "escalationId": {
             "type": "string",
             "nullable": true
           }

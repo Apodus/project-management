@@ -27,6 +27,7 @@ import {
   trainState,
   claimsAlertState,
   notes,
+  escalations,
 } from "../../src/db/index.js";
 import type { AppDatabase } from "../../src/db/index.js";
 
@@ -148,6 +149,83 @@ describe("Database schema", () => {
       expect(synthetic).toBeDefined();
       expect(synthetic.notnull).toBe(1);
       expect(synthetic.dflt_value).toBe("false");
+    });
+
+    it("migration 0032: merge_requests has the additive escalation_id column", () => {
+      const db = setupDb();
+      const cols = db.all<{ name: string }>(sql`PRAGMA table_info(merge_requests)`);
+      const names = (cols as any[]).map((c: any) => c.name);
+      expect(names).toContain("escalation_id");
+    });
+
+    it("migration 0032: SET NULL on merge_requests.escalation_id when the escalation is deleted", () => {
+      const db = setupDb();
+      const workspaceId = db.select().from(workspaces).all()[0].id;
+      const ts = now();
+
+      const userId = createId();
+      db.insert(users)
+        .values({
+          id: userId,
+          username: "escuser",
+          displayName: "Esc User",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const projectId = createId();
+      db.insert(projects)
+        .values({
+          id: projectId,
+          workspaceId,
+          name: "Esc Project",
+          slug: "esc-project",
+          createdAt: ts,
+          updatedAt: ts,
+          createdBy: userId,
+        })
+        .run();
+
+      const escalationId = createId();
+      db.insert(escalations)
+        .values({
+          id: escalationId,
+          projectId,
+          kind: "bug_report",
+          title: "auto-implement me",
+          originRepo: "game_one",
+          originWorkerKey: "worker-1",
+          authorId: userId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const requestId = createId();
+      db.insert(mergeRequests)
+        .values({
+          id: requestId,
+          projectId,
+          submittedBy: userId,
+          escalationId,
+          enqueuedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      // foreign_keys is ON → ON DELETE SET NULL nulls the provenance link
+      // rather than cascade-deleting the merge request.
+      db.delete(escalations).where(eq(escalations.id, escalationId)).run();
+
+      const result = db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, requestId))
+        .get();
+      expect(result).toBeDefined();
+      expect(result!.escalationId).toBeNull();
     });
 
     it("migration 0025: proposals and tasks have the additive source_note_id column", () => {

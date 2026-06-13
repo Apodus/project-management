@@ -12,6 +12,7 @@ import type {
 } from "@pm/shared";
 import {
   comments,
+  escalations,
   getDb,
   gitRefs,
   mergeAttempts,
@@ -56,6 +57,12 @@ export interface SubmitParams {
   verifyCmd?: string | null;
   worktreePath?: string | null;
   resolvedFrom?: string | null;
+  /**
+   * Campaign A2 (§P1): provenance link to the escalation an auto-implement
+   * responder session produced this request from. Null/absent on every
+   * normal request — byte-identical to pre-A2 when omitted.
+   */
+  escalationId?: string | null;
 }
 
 export interface ListParams {
@@ -93,6 +100,7 @@ interface MergeRequestRow {
   submittedBy: string;
   taskId: string | null;
   resolvedFrom: string | null;
+  escalationId: string | null;
   synthetic: boolean;
   branch: string | null;
   commitSha: string | null;
@@ -160,6 +168,35 @@ export function validateTaskBelongsToProject(
       400,
       "VALIDATION_ERROR",
       `Task ${taskId} does not belong to project ${projectId}`,
+    );
+  }
+}
+
+/**
+ * Cross-project escalationId validation. Mirrors validateTaskBelongsToProject.
+ * - escalationId omitted: nothing to check.
+ * - escalationId points to a row in a different project: 400 VALIDATION_ERROR.
+ * - escalationId points to no row at all: 404 NOT_FOUND.
+ */
+export function validateEscalationBelongsToProject(
+  projectId: string,
+  escalationId: string | null | undefined,
+): void {
+  if (!escalationId) return;
+  const db = getDb();
+  const escalation = db
+    .select({ id: escalations.id, projectId: escalations.projectId })
+    .from(escalations)
+    .where(eq(escalations.id, escalationId))
+    .get();
+  if (!escalation) {
+    throw new AppError(404, "NOT_FOUND", `Escalation not found: ${escalationId}`);
+  }
+  if (escalation.projectId !== projectId) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      `Escalation ${escalationId} does not belong to project ${projectId}`,
     );
   }
 }
@@ -356,6 +393,7 @@ function toView(row: MergeRequestRow): MergeRequestView {
     submittedBy: row.submittedBy,
     taskId: row.taskId,
     resolvedFrom: row.resolvedFrom,
+    escalationId: row.escalationId,
     synthetic: row.synthetic,
     branch: row.branch,
     commitSha: row.commitSha,
@@ -399,6 +437,8 @@ export interface InsertRequestRowParams {
   verifyCmd?: string | null;
   worktreePath?: string | null;
   resolvedFrom?: string | null;
+  /** Campaign A2 (§P1): escalation provenance link; null/absent on normal requests. */
+  escalationId?: string | null;
   /** Defaults to false; only the inner-only group form sets true (the server-minted outer member). */
   synthetic?: boolean;
   /** Defaults to "queued". The atomic group-create path passes "queued" explicitly. */
@@ -432,6 +472,7 @@ export function insertRequestRow(dbOrTx: DbOrTx, params: InsertRequestRowParams)
       verifyCmd: params.verifyCmd ?? null,
       worktreePath: params.worktreePath ?? null,
       resolvedFrom: params.resolvedFrom ?? null,
+      escalationId: params.escalationId ?? null,
       synthetic: params.synthetic ?? false,
       status: params.status ?? "queued",
       groupId: params.groupId ?? null,
@@ -465,6 +506,7 @@ export function submit(params: SubmitParams): MergeRequestView {
   ensureProjectExists(params.projectId);
   ensureUserExists(params.submittedBy);
   validateTaskBelongsToProject(params.projectId, params.taskId ?? null);
+  validateEscalationBelongsToProject(params.projectId, params.escalationId ?? null);
 
   const id = insertRequestRow(getDb(), {
     projectId: params.projectId,
@@ -476,6 +518,7 @@ export function submit(params: SubmitParams): MergeRequestView {
     verifyCmd: params.verifyCmd ?? null,
     worktreePath: params.worktreePath ?? null,
     resolvedFrom: params.resolvedFrom ?? null,
+    escalationId: params.escalationId ?? null,
   });
 
   const row = readRequestOrThrow(id);

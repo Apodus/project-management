@@ -35,6 +35,7 @@ const mergeRequestSchema = z
     submittedBy: z.string(),
     taskId: z.string().nullable(),
     resolvedFrom: z.string().nullable(),
+    escalationId: z.string().nullable(),
     synthetic: z.boolean(),
     branch: z.string().nullable(),
     commitSha: z.string().nullable(),
@@ -244,6 +245,7 @@ const submitBody = z
     verifyCmd: z.string().nullable().optional(),
     worktreePath: z.string().nullable().optional(),
     resolvedFrom: z.string().nullable().optional(),
+    escalationId: z.string().nullable().optional(),
   })
   .openapi("MergeRequestSubmit");
 
@@ -726,6 +728,7 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
       verifyCmd: body.verifyCmd ?? null,
       worktreePath: body.worktreePath ?? null,
       resolvedFrom: body.resolvedFrom ?? null,
+      escalationId: body.escalationId ?? null,
     });
     return c.json({ data: view }, 201);
   });

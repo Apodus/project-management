@@ -15269,6 +15269,7 @@ export interface components {
             submittedBy: string;
             taskId: string | null;
             resolvedFrom: string | null;
+            escalationId: string | null;
             synthetic: boolean;
             branch: string | null;
             commitSha: string | null;
@@ -15298,6 +15299,7 @@ export interface components {
             verifyCmd?: string | null;
             worktreePath?: string | null;
             resolvedFrom?: string | null;
+            escalationId?: string | null;
         };
         MergeRequestDetail: components["schemas"]["MergeRequest"] & {
             attempts: components["schemas"]["MergeAttempt"][];

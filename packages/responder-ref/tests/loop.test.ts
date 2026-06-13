@@ -143,6 +143,26 @@ class FakeClient {
       };
     },
   );
+
+  // A2 P1: the responder submits a task-less, escalationId-linked merge request
+  // over HTTP on branch_ready. Records the call; returns a narrow MR view.
+  // `submitFail` drives the submit-failure escalation path.
+  submitFail = false;
+  submitMergeRequestCalls: { projectId: string; body: Record<string, unknown> }[] = [];
+  submitMergeRequest = vi.fn(
+    async (
+      projectId: string,
+      body: Record<string, unknown>,
+    ): Promise<{ id: string; branch: string | null; commitSha: string | null }> => {
+      if (this.submitFail) throw new Error("submit rejected");
+      this.submitMergeRequestCalls.push({ projectId, body });
+      return {
+        id: "mr1",
+        branch: (body.branch as string | null) ?? null,
+        commitSha: (body.commitSha as string | null) ?? null,
+      };
+    },
+  );
 }
 
 /**
@@ -978,16 +998,61 @@ describe("responderTick", () => {
     expect(wt.ensureExists).toHaveBeenCalledTimes(1);
     expect(wt.resetForAttempt).toHaveBeenCalled(); // prep + finally
     expect(wt.pushCalls).toEqual([{ remote: "origin", branch: "pm/escalation-e1" }]);
+    // A2 P1: a task-less, escalationId-linked merge request submitted once.
+    expect(client.submitMergeRequest).toHaveBeenCalledTimes(1);
+    expect(client.submitMergeRequestCalls).toHaveLength(1);
+    expect(client.submitMergeRequestCalls[0].projectId).toBe("p");
+    expect(client.submitMergeRequestCalls[0].body).toMatchObject({
+      resource: "main",
+      taskId: null,
+      branch: "pm/escalation-e1",
+      commitSha: "abc123",
+      escalationId: "e1",
+    });
     expect(client.addMessageCalls).toHaveLength(1);
     const msg = client.addMessageCalls[0];
     expect(msg.id).toBe("e1");
     expect(msg.body).toContain("pm/escalation-e1");
+    expect(msg.body).toContain("mr1");
     expect(msg.body).toContain("abc123");
     expect(msg.body).toContain("pending land");
-    expect(msg.metadata).toMatchObject({ pendingLand: true, branch: "pm/escalation-e1" });
+    // pendingLand:true preserved (reclaim-skip byte-identical); MR id augmented.
+    expect(msg.metadata).toMatchObject({
+      pendingLand: true,
+      mergeRequestId: "mr1",
+      branch: "pm/escalation-e1",
+      commitSha: "abc123",
+    });
     // Stays acknowledged — A2 lands + resolves.
     expect(client.answer).not.toHaveBeenCalled();
     expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("implement branch_ready + submit failure → escalateToHuman ('submit failed'); no addMessage; branch preserved", async () => {
+    const { client, runner, sniffer, impl, wt } = implementSetup({
+      kind: "branch_ready",
+      branch: "pm/escalation-e1",
+      commitSha: "abc123",
+      durationMs: 1,
+    });
+    client.submitFail = true;
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    // Pushed (work preserved) but the submit failed → escalate, no addMessage.
+    expect(wt.pushCalls).toEqual([{ remote: "origin", branch: "pm/escalation-e1" }]);
+    expect(client.addMessage).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("merge-request submit failed");
+    expect(client.escalateCalls[0].reason).toContain("pm/escalation-e1");
   });
 
   it("implement give_up → escalateToHuman (reason); no addMessage", async () => {
@@ -1155,6 +1220,9 @@ describe("responderTick", () => {
     // already asserts the answering switch returns before reaching the bounded path).
     expect(client.addMessage).not.toHaveBeenCalled();
     expect(client.escalateToHuman).not.toHaveBeenCalled();
+    // A2 P1: mode=off never submits the merge request (the submit sits after the
+    // mode=off break; off short-circuits before it).
+    expect(client.submitMergeRequest).not.toHaveBeenCalled();
   });
 
   it("implement verifyCmd is threaded into the implement prompt", async () => {

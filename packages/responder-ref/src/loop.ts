@@ -134,6 +134,7 @@ export interface ResponderDeps {
     | "escalateToHuman"
     | "getEscalation"
     | "addMessage"
+    | "submitMergeRequest"
   >;
   logger: Logger;
   projectIds: string[];
@@ -719,6 +720,32 @@ async function runImplementSession(
             break;
           }
 
+          // Submit the merge request (A2 P1) — task-less, escalationId-linked, over
+          // HTTP (NOT pm_request_merge MCP). The train lands it (P2). A submit
+          // failure escalates (the branch is pushed — no work lost) and does NOT
+          // addMessage, mirroring the push-failure handler.
+          let mr: { id: string };
+          try {
+            mr = await deps.client.submitMergeRequest(projectId, {
+              resource: "main",
+              taskId: null,
+              branch: readyBranch,
+              commitSha: commitSha ?? null,
+              verifyCmd: deps.verifyCmd || null,
+              escalationId,
+            });
+          } catch (submitErr) {
+            await deps.client.escalateToHuman(
+              escalationId,
+              `implemented+pushed branch ${readyBranch} but merge-request submit failed: ${errMessage(submitErr)}`,
+            );
+            deps.logger.warn(
+              { escalationId, projectId, branch: readyBranch, err: errMessage(submitErr) },
+              "implement merge-request submit failed; escalated to human (branch preserved)",
+            );
+            break;
+          }
+
           // Diff summary (best-effort — a failure just omits the stat).
           let diffSummary = "";
           try {
@@ -732,20 +759,23 @@ async function runImplementSession(
           }
 
           const body =
-            `Implemented a fix on branch \`${readyBranch}\`` +
+            `Submitted merge request \`${mr.id}\` for branch \`${readyBranch}\`` +
             (commitSha ? ` (\`${commitSha}\`)` : "") +
             `, pending land (A2).` +
             (diffSummary.length > 0 ? `\n\n${diffSummary}` : "");
           // addMessage leaves the escalation ACKNOWLEDGED (NOT answer/resolve — A2
-          // lands + resolves). The pendingLand marker stops the reclaim re-spawn.
+          // lands + resolves). pendingLand:true keeps the reclaim re-spawn skip
+          // byte-identical (hasPendingLandMarker checks only that flag); the MR id
+          // augments the handoff for P2's land/reject post-back.
           await deps.client.addMessage(escalationId, body, "diagnosis", {
             pendingLand: true,
+            mergeRequestId: mr.id,
             branch: readyBranch,
             commitSha: commitSha ?? null,
           });
           deps.logger.info(
-            { escalationId, projectId, branch: readyBranch, commitSha },
-            "implemented + pushed branch; appended pending-land handoff (stays acknowledged for A2)",
+            { escalationId, projectId, branch: readyBranch, commitSha, mergeRequestId: mr.id },
+            "implemented + pushed branch + submitted merge request; appended pending-land handoff (stays acknowledged for A2)",
           );
           break;
         }
