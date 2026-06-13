@@ -134,6 +134,7 @@ export interface ResponderDeps {
     | "listAcknowledgedByHolder"
     | "acknowledge"
     | "answer"
+    | "resolve"
     | "escalateToHuman"
     | "getEscalation"
     | "addMessage"
@@ -1348,17 +1349,32 @@ async function advanceArc(
     const body =
       `Autonomous arc COMPLETE: all ${epic.tasks.length} phase(s) of epic \`${epicId}\` ` +
       `landed (${landedShas.join(", ")}). Awaiting close.`;
-    // arcComplete marker — does NOT resolve/answer (P4 resolves the escalation). The
-    // marker keeps the escalation acknowledged + arc-routed (a no-op re-park next cycle).
+    // arcComplete marker FIRST — the idempotence gate (above) keys off it, so a
+    // marked thread takes the early-return and NEVER resolves twice. The marker
+    // keeps the escalation arc-routed if the close below throws (re-park retries).
     await deps.client.addMessage(escalationId, body, "diagnosis", {
       pendingArc: true,
       arcComplete: true,
       epicId,
       landedShas,
     });
+    // Close the escalation as the holder — A2's answer→resolve sequence over HTTP.
+    // The origin auto-notices the summary via C2 (the holder answer + resolve
+    // messages surface as undelivered directed replies).
+    const summary =
+      `Autonomous arc COMPLETE: epic "${epic.name}" (${epicId}) — ` +
+      `all ${epic.tasks.length} phase(s) landed: ${landedShas.join(", ")}. ` +
+      `Resolved by the responder drive.`;
+    // acknowledged → answered → resolved (legal + holder-authorized). Gate answer on
+    // the observed status so a re-entry from `answered` (a death between answer and
+    // resolve) resolves cleanly — mirrors A2's postBackToEscalation.
+    if (detail.status === "acknowledged") {
+      await deps.client.answer(escalationId, summary);
+    }
+    await deps.client.resolve(escalationId, summary);
     deps.logger.info(
       { escalationId, projectId, epicId, landedShas },
-      "arc_complete: all phases landed; appended arcComplete marker (P4 resolves)",
+      "arc_complete: all phases landed; appended arcComplete marker + resolved the escalation as holder (origin C2-notices)",
     );
     return;
   }

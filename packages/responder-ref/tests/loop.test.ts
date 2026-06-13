@@ -114,6 +114,12 @@ class FakeClient {
     return mkEscalation(id, { status: "answered", holderId: SELF });
   });
 
+  resolveCalls: { id: string; reason: string }[] = [];
+  resolve = vi.fn(async (id: string, reason: string): Promise<Escalation> => {
+    this.resolveCalls.push({ id, reason });
+    return mkEscalation(id, { status: "resolved", holderId: SELF });
+  });
+
   escalateCalls: { id: string; reason: string }[] = [];
   escalateToHuman = vi.fn(async (id: string, reason: string): Promise<Escalation> => {
     this.escalateCalls.push({ id, reason });
@@ -1928,11 +1934,11 @@ describe("responderTick", () => {
       expect(client.submitMergeRequestCalls[0].body).toMatchObject({ taskId: "task-2", escalationId: "e1" });
     });
 
-    it("arc_complete: both MRs 'landed' → arcComplete marker appended; escalation NOT resolved/answered (P4's job)", async () => {
+    it("arc_complete: both MRs 'landed' (not-yet-marked) → arcComplete marker appended, THEN answer+resolve as holder with a summary naming the epic + landed shas; order marker→answer→resolve", async () => {
       const client = arcClient("e1", arcThread("e1"));
       client.epicResult = {
         id: "epic1",
-        name: "E",
+        name: "Repo Quality Consolidation",
         tasks: [
           { id: "task-1", title: "Phase 1", description: "d1" },
           { id: "task-2", title: "Phase 2", description: "d2" },
@@ -1954,12 +1960,26 @@ describe("responderTick", () => {
         landedShas: ["s1", "s2"],
         epicId: "epic1",
       });
-      // P4 resolves — NOT the loop.
-      expect(client.answer).not.toHaveBeenCalled();
+      // P4: close as holder — answer once + resolve once, same summary, naming the
+      // epic NAME + the landed shas.
+      expect(client.answerCalls).toHaveLength(1);
+      expect(client.resolveCalls).toHaveLength(1);
+      const summary = client.resolveCalls[0].reason;
+      expect(summary).toContain("Repo Quality Consolidation"); // epic NAME, not just id
+      expect(summary).toContain("s1");
+      expect(summary).toContain("s2");
+      expect(client.answerCalls[0]).toEqual({ id: "e1", body: summary });
+      expect(client.resolveCalls[0]).toEqual({ id: "e1", reason: summary });
+      // Order: marker appended → answer → resolve.
+      const markerOrder = client.addMessage.mock.invocationCallOrder[0];
+      const answerOrder = client.answer.mock.invocationCallOrder[0];
+      const resolveOrder = client.resolve.mock.invocationCallOrder[0];
+      expect(markerOrder).toBeLessThan(answerOrder);
+      expect(answerOrder).toBeLessThan(resolveOrder);
       expect(client.escalateToHuman).not.toHaveBeenCalled();
     });
 
-    it("arc_complete is idempotent: an arcComplete-marked thread re-parks (no second marker)", async () => {
+    it("arc_complete is idempotent: an arcComplete-marked thread re-parks (no second marker, no double answer/resolve)", async () => {
       const client = arcClient("e1", arcThread("e1", { arcComplete: true }));
       client.epicResult = {
         id: "epic1",
@@ -1973,6 +1993,47 @@ describe("responderTick", () => {
       await responderTick(arcDeps(client, impl), createResponderState());
       expect(client.addMessage).not.toHaveBeenCalled();
       expect(client.answer).not.toHaveBeenCalled();
+      expect(client.resolve).not.toHaveBeenCalled();
+    });
+
+    it("arc_complete re-entry from 'answered' (death between answer and resolve) → answer NOT re-called (gated on acknowledged), resolve IS called", async () => {
+      const thread = arcThread("e1");
+      thread.status = "answered"; // a death struck after answer committed, before resolve.
+      const client = arcClient("e1", thread);
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [{ id: "task-1", title: "Phase 1", description: "d1" }],
+      };
+      client.mrResults = [
+        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+      ];
+      const impl = new FakeImplementRunner();
+      await responderTick(arcDeps(client, impl), createResponderState());
+
+      expect(client.addMessageCalls).toHaveLength(1); // marker still appended.
+      expect(client.answer).not.toHaveBeenCalled(); // gated: status !== acknowledged.
+      expect(client.resolveCalls).toHaveLength(1); // resolve still fires → clean close.
+    });
+
+    it("no-recursion seal: a resolved escalation is not acknowledged → never re-seeded; advanceArc/implement never run for it", async () => {
+      const client = arcClient("e1", arcThread("e1"));
+      // The thread already resolved: the ack list (the arc seed) is empty, the open
+      // list is empty — nothing re-drives it.
+      client.ackResults = [[]];
+      client.listResults = [[]];
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [{ id: "task-1", title: "Phase 1", description: "d1" }],
+      };
+      const impl = new FakeImplementRunner();
+      await responderTick(arcDeps(client, impl), createResponderState());
+
+      expect(impl.run).not.toHaveBeenCalled();
+      expect(client.getEscalation).not.toHaveBeenCalled(); // advanceArc never entered.
+      expect(client.answer).not.toHaveBeenCalled();
+      expect(client.resolve).not.toHaveBeenCalled();
     });
 
     it("arc_partial on reject: phase-1 landed, phase-2 rejected → escalateToHuman naming landed sha + remaining; no rollback; no further spawn; reject terminal (no re-submit)", async () => {

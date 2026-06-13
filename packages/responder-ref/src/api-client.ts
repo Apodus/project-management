@@ -256,6 +256,18 @@ export class ResponderClient {
   }
 
   /**
+   * Resolve an escalation the responder holds (answered → resolved). The
+   * reason is recorded as a `system` message — the origin C2-notices it.
+   */
+  resolve(id: string, reason: string): Promise<Escalation> {
+    return this.request<Escalation>(
+      "POST",
+      `/escalations/${encodeURIComponent(id)}/resolve`,
+      { reason },
+    );
+  }
+
+  /**
    * Escalate to a human (any non-terminal state → needs_human). A reason is
    * required and recorded as a `system` message. The responder routes
    * needs_human / give_up / error outcomes here so no proven work is discarded.
