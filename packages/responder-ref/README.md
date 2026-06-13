@@ -84,7 +84,7 @@ can land. The flow:
 1. **Assess + sniff** — the answering session may declare an `implement` intent
    (`bounded`/`systemic`). When auto-implement is enabled, an injection
    sniff-test gates admission first (suspicious/error ⇒ escalate, never spawn —
-   fail-safe). `systemic` always escalates to a human (A3 territory).
+   fail-safe). `systemic` drives the autonomous arc (see Autonomous drive below).
 2. **Isolated-worktree implement** — a `bounded` change runs a write-capable
    session in an **isolated worktree clone** (never the live repo / main),
    committing onto `pm/escalation-<id>`.
@@ -110,6 +110,49 @@ parsed and validated but has no behavioral branch.
 Fixed defaults (P1): `maxConcurrent` 1 (serial), `spawnBudget` {maxSpawns 10,
 windowSec 3600}, `timeBudgetSec` 900 — the last three are parsed for forward
 compatibility (P2 enforces them).
+
+## Autonomous drive (Campaign A3)
+
+Past landing a *bounded* fix, the responder can drive a *systemic* escalation
+through the full proven vision+campaign pipeline **unattended** — same opt-in
+kill-switch as auto-implement (`PM_AUTO_IMPLEMENT_ENABLED`, **default `false`**).
+The flow:
+
+1. **Assess → `implement{systemic}` → drive a vision** — when the answering session
+   declares `systemic` (and the injection sniff is clean), a bounded headless
+   **drive session** runs in an isolated worktree clone and produces an
+   adversarial-verified **vision** (`roadmaps/vision-*.md`). The vision file is
+   **cross-checked on disk** — `vision_ready` is never inferred from the sentinel.
+2. **The loop builds the arc over HTTP** — from the drive result the loop creates
+   the vision's **PM epic + one task per campaign** over HTTP (the worktree clone
+   has no PM MCP) and appends a `pendingDrive` marker, leaving the escalation
+   **acknowledged**. An early pre-epic intent marker closes the duplicate-epic
+   window on a daemon restart.
+3. **Each reclaim tick → `advanceArc`** — the self-held arc is routed to
+   `advanceArc`, which derives the arc's state **strictly from the server** (the
+   epic's campaign-tasks + each phase's MR land status by `escalationId`) and
+   advances **one phase per cycle**: it implements the next un-landed phase via the
+   A1 implement session onto `pm/escalation-<id>-<taskId>` and lands it via the A2
+   **verify-gated train** with a **task-LINKED, `escalationId`-linked** MR. The
+   task-link is load-bearing — the A2 land/reject post-back is gated on
+   `taskId === null`, so a phase land threads `escalationId` for attribution
+   **without** an early phase resolving the root; arc completion is driven solely by
+   `advanceArc`.
+4. **All phases landed → resolve-as-holder + C2 origin-notice** — `advanceArc`
+   resolves the escalation as the holder (`answer`→`resolve`) with a summary naming
+   the epic + landed shas; the origin **auto-notices it via the C2 delivery layer**.
+5. **Mid-arc reject → `needs_human`, proven phases preserved** — a rejected phase MR
+   escalates the root to a human with the partial payload (landed shas + remaining
+   phases). **No proven work is discarded, no rollback** — the landed phases stay
+   landed and the rejected task is never re-submitted.
+
+Restart-survival is **structural** — the arc carries no in-memory checkpoint (a
+fresh daemon state re-derives the arc from the server), and no-recursion is
+structural too (phase MRs are self-authored + `taskId`-gated + `resolved` is
+terminal). The drive is a **superset of the A1 bounded implement** (the per-phase
+executor IS the A1 session; the per-phase land IS the A2 train). Ships behind the
+auto-implement enable flag (**default `false`**); **no new env var, no new MCP
+tool**.
 
 Exit code 2 = configuration error (no token / no project / bad mode); exit 1 =
 unexpected runtime error (e.g. `/auth/me` unreachable when enabled).

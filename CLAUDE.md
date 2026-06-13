@@ -507,6 +507,29 @@ facing config + the sniff/allowlist/budget knobs live in `settings.integrator` (
 tool, no new env var. Roadmaps: `roadmaps/` A1 (assess + sniff + write session + allowlist) + A2 (escalationId
 post-back + resolver propagation + full-stack land seal).
 
+**Autonomous drive (Campaign A3).** Past landing a *bounded* fix, the responder drives a *systemic*
+escalation through the full proven vision+campaign pipeline UNATTENDED — same `auto_implement.enabled`
+(**default FALSE**; the arc ships **OFF**, like A1/A2). An answering session declaring `implement{systemic}`
+(clean injection sniff) spawns a bounded headless **drive session** producing an adversarial-verified
+**vision** (`roadmaps/vision-*.md`, **file-on-disk cross-checked** — never inferred from a sentinel); the
+**loop** then creates the vision's **PM epic + one task per campaign over HTTP** (the worktree clone has no PM
+MCP) + a `pendingDrive` marker, leaving the escalation **acknowledged**. Each reclaim tick routes the
+self-held arc to **`advanceArc`**, which derives the arc's state **strictly from the server** (the epic's
+campaign-tasks + each phase's MR land status by `escalationId`) and advances **one phase per cycle** —
+implementing the next un-landed phase via the A1 implement session onto `pm/escalation-<id>-<taskId>` and
+landing it via the A2 **verify-gated train** with a **task-LINKED, `escalationId`-linked** MR. The task-link is
+load-bearing: the A2 land/reject post-back is **gated on `taskId === null`**, so a phase land threads
+`escalationId` for attribution **without** an early phase resolving the root — arc completion is driven
+**solely** by `advanceArc`. On **all phases landed** it resolves the escalation **as holder**
+(`answer`→`resolve`) with a summary naming the epic + landed shas; the origin **auto-notices via C2**. A
+**mid-arc phase reject** → `needs_human` with the partial payload (landed shas + remaining; **no proven work
+discarded, no rollback**). **Restart-survival** is structural — the arc carries no in-memory checkpoint (a
+fresh daemon state is a faithful restart simulator); an **early pre-epic intent marker** closes the
+duplicate-epic window. **No-recursion is structural** — phase MRs are self-authored + `taskId`-gated +
+`resolved` is terminal. The drive is a **superset of the A1 bounded implement** (the per-phase executor IS the
+A1 session; the per-phase land IS the A2 train), additive, with answer-mode/bounded-implement/A2/C1-C4
+**byte-identical**. Spec: `roadmaps/roadmap-20260613-2210-a3-autonomous-drive.md`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:

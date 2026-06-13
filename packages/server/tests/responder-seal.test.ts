@@ -41,8 +41,14 @@ import type {
   ImplementRunResult,
   ImplementRunInput,
 } from "../../responder-ref/src/implement-runner.js";
+import type {
+  DriveRunner,
+  DriveRunInput,
+  DriveRunResult,
+} from "../../responder-ref/src/drive-runner.js";
 import type { Worktree } from "../../responder-ref/src/worktree.js";
 import type { InjectionSniffer, InjectionSniffResult } from "../../responder-ref/src/injection-sniffer.js";
+import { tasks as tasksTable, epics as epicsTable } from "../src/db/schema.js";
 
 const silentLogger = {
   info: () => {},
@@ -705,4 +711,451 @@ describe("A2 no-recursion lock", () => {
       .all();
     expect(msgs.length).toBe(1);
   });
+});
+
+// ─── A3 autonomous-drive arc seal (Campaign A3, FINAL) ───────────────
+//
+// The full-stack close of the autonomous /vision+/campaign drive, driving the
+// REAL responder loop end-to-end against an in-memory @pm/server over HTTP, then
+// driving the REAL merge train (land/reject) over HTTP as the integrator — the
+// per-phase land is the A2 train, the per-phase executor is the A1 implement
+// session. Only the LLM sessions (the answering runner, the drive runner, and the
+// implement runner) + git (the worktree) are injected — BY DESIGN, the runners +
+// worktree are the injectable seams.
+//
+// BOUNDARY (mirrors the A2 block's stated limit): this proves ORCHESTRATION
+// closure — assess→systemic→drive→per-phase implement+land→resolve→C2 — with
+// injected drive/implement runners + a scripted train land. It does NOT prove that
+// a real `claude -p` /vision+/campaign session produces correct code (the real
+// agent can't run in CI); the structural floor is that EVERY phase lands
+// verify-gated through the real train before main FFs.
+//
+// Chain proven (Seal 1, the headline):
+//   - a client agent raises an OPEN systemic escalation,
+//   - tick 1: assess → implement{systemic} (clean sniff) → drive vision_ready →
+//     the LOOP creates the REAL PM epic + one task per campaign over HTTP + the
+//     early intent marker + the terminal pendingDrive marker (epicId-bearing),
+//     leaving the escalation acknowledged,
+//   - tick 2 (after the clock advances past the reclaim staleness gate): the
+//     reclaim pass re-finds the self-held acknowledged escalation, routes to
+//     advanceArc, which implements + submits the phase-1 task-LINKED + escalationId-
+//     linked MR,
+//   - the train LANDS phase-1 over HTTP → THE GATE: the escalation is STILL
+//     acknowledged (the taskId !== null post-back skip — a phase land never
+//     resolves the root),
+//   - tick 3: advanceArc sees phase-1 landed → implements + submits phase-2; LAND it,
+//   - tick 4: advanceArc sees ALL phases landed → appends the arcComplete marker →
+//     answer→resolve as holder with a summary naming the epic + both landed shas,
+//   - C2: the origin auto-notices the holder summary (undelivered surfaces,
+//     mark-delivered drains).
+//
+// Seal 2 (arc_partial): same through phase-1 land, then phase-2 REJECTS → advanceArc
+// → arc_partial → escalateToHuman the ROOT (needs_human) with the landed sha + the
+// remaining phase named; phase-1's landed MR + branch untouched, the rejected task
+// never re-submitted.
+describe("A3 autonomous-drive arc seal", () => {
+  let testApp: TestApp;
+  afterEach(() => {
+    testApp?.cleanup();
+  });
+
+  /** A fake isolated worktree — no real git. Each phase checks out its own branch. */
+  class FakeWorktree implements Worktree {
+    readonly path = "/wt/pm-implement-0";
+    readonly logsDir = "/wt/logs";
+    pushCalls: { remote: string; branch: string }[] = [];
+    push = async (remote: string, branch: string): Promise<void> => {
+      this.pushCalls.push({ remote, branch });
+    };
+    // Empty name-only diff so the (empty) allowlist always passes; --stat is advisory.
+    diff = async (args: string[]): Promise<string> => {
+      if (args[0] === "--name-only") return "";
+      return " src/x.ts | 2 +-\n 1 file changed";
+    };
+    checkoutLocalBranch = async (): Promise<void> => {};
+    readonly git = {
+      push: this.push,
+      diff: this.diff,
+      checkoutLocalBranch: this.checkoutLocalBranch,
+    } as unknown as Worktree["git"];
+    ensureExists = async (): Promise<void> => {};
+    resetForAttempt = async (): Promise<void> => {};
+    detectCorruption = async (): Promise<boolean> => false;
+    repair = async (): Promise<void> => {};
+  }
+
+  /** The answering session always declares implement{systemic}. */
+  class SystemicDeclaringRunner implements ResponderRunner {
+    async run(_input: ResponderRunInput): Promise<ResponderRunResult> {
+      return { kind: "implement", size: "systemic", rationale: "needs a whole arc", durationMs: 1 };
+    }
+  }
+
+  /**
+   * The drive session declares vision_ready with the REAL DriveRunResult shape —
+   * a vision file path, an epic name, and 2 campaigns. NOTE: the result carries NO
+   * epicId — the LOOP creates the epic over HTTP from epicName + campaigns.
+   */
+  class VisionDriveRunner implements DriveRunner {
+    async run(_input: DriveRunInput): Promise<DriveRunResult> {
+      return {
+        kind: "vision_ready",
+        visionPath: "roadmaps/vision-x.md",
+        epicName: "Stale-cache resilience",
+        campaigns: [
+          { title: "Phase A — invalidate on write", priority: "high", description: "flush the cache on write" },
+          { title: "Phase B — TTL backstop", priority: "medium", description: "add a TTL backstop" },
+        ],
+        durationMs: 1,
+      };
+    }
+  }
+
+  /** The per-phase write session returns branch_ready on the pre-created phase branch. */
+  class BranchReadyRunner implements ImplementRunner {
+    async run(input: ImplementRunInput): Promise<ImplementRunResult> {
+      return { kind: "branch_ready", branch: input.branch, commitSha: "implcommit", durationMs: 1 };
+    }
+  }
+
+  const cleanSniffer: InjectionSniffer = {
+    sniff: async (): Promise<InjectionSniffResult> => ({ kind: "clean" }),
+  };
+
+  /**
+   * The A3 deps. CRITICAL: `driveRunner` is set explicitly (it is a required
+   * ResponderDeps field; the A2 implementDeps helper omits it because test files
+   * aren't typechecked, but runDriveSession calls deps.driveRunner.run at runtime).
+   * `now` is the injected clock — a closure over the test's mutable `clock`.
+   */
+  function arcDeps(
+    client: ResponderClient,
+    projectId: string,
+    selfId: string,
+    now: () => number,
+  ): ResponderDeps {
+    return {
+      client,
+      logger: silentLogger,
+      projectIds: [projectId],
+      selfId,
+      enabled: true,
+      mode: "on",
+      maxConcurrent: 10,
+      runner: new SystemicDeclaringRunner(),
+      autoImplementEnabled: true,
+      sniffer: cleanSniffer,
+      implementRunner: new BranchReadyRunner(),
+      driveRunner: new VisionDriveRunner(),
+      acquireWorktree: () => new FakeWorktree(),
+      worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: [] },
+      verifyCmd: "",
+      repoCwd: "/unused",
+      command: "unused",
+      budget: { timeBudgetSec: 900 },
+      excludeOriginRepos: [],
+      reclaimGraceSec: 120,
+      maxReclaimAttempts: 2,
+      spawnBudget: { maxSpawns: 1000, windowSec: 3600 },
+      now,
+    };
+  }
+
+  /** Raise an OPEN systemic escalation under the client author; return its id. */
+  async function raiseOpen(
+    app: TestApp["app"],
+    projectId: string,
+    clientToken: string,
+    originWorkerKey: string,
+  ): Promise<string> {
+    const res = await authRequest(app, "POST", `/api/v1/projects/${projectId}/escalations`, {
+      token: clientToken,
+      body: {
+        kind: "bug_report",
+        title: "foo widget shows stale data across the whole flow",
+        originRepo: "client-repo",
+        originWorkerKey,
+        severity: null,
+      },
+    });
+    expect(res.status).toBe(201);
+    return (await res.json()).data.id as string;
+  }
+
+  /** All phase MRs (task-LINKED) for this escalation, in DB order. */
+  function phaseMrs(
+    db: TestApp["db"],
+    escId: string,
+  ): { id: string; branch: string | null; taskId: string | null; escalationId: string | null; status: string }[] {
+    return db
+      .select()
+      .from(mergeRequests)
+      .where(eq(mergeRequests.escalationId, escId))
+      .all()
+      .filter((r) => r.taskId !== null)
+      .map((r) => ({
+        id: r.id,
+        branch: r.branch,
+        taskId: r.taskId,
+        escalationId: r.escalationId,
+        status: r.status,
+      }));
+  }
+
+  /**
+   * The ONE phase MR submitted since the previous count — the task advanceArc chose
+   * to implement this cycle (the API's created_at-desc order picks it; the test
+   * derives the phase task from the MR rather than presupposing the order).
+   */
+  function newestPhaseMr(
+    db: TestApp["db"],
+    escId: string,
+    priorCount: number,
+  ): { id: string; branch: string | null; taskId: string | null; escalationId: string | null } {
+    const all = phaseMrs(db, escId);
+    expect(all.length).toBe(priorCount + 1);
+    const mr = all[all.length - 1];
+    return { id: mr.id, branch: mr.branch, taskId: mr.taskId, escalationId: mr.escalationId };
+  }
+
+  /** Drive the REAL train land of an MR over HTTP (integrator ai_agent). */
+  async function landMr(
+    app: TestApp["app"],
+    db: TestApp["db"],
+    integratorToken: string,
+    mrId: string,
+    landedSha: string,
+  ): Promise<void> {
+    db.update(mergeRequests)
+      .set({ status: "integrating", pickedUpAt: new Date().toISOString() })
+      .where(eq(mergeRequests.id, mrId))
+      .run();
+    const res = await authRequest(app, "POST", `/api/v1/merge-requests/${mrId}/land`, {
+      token: integratorToken,
+      body: { landedSha },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.status).toBe("landed");
+  }
+
+  /** Read the escalation status over HTTP. */
+  async function escStatus(app: TestApp["app"], escId: string): Promise<string> {
+    const res = await authRequest(app, "GET", `/api/v1/escalations/${escId}`);
+    return (await res.json()).data.status as string;
+  }
+
+  it("the full arc closes: assess→systemic→drive→per-phase implement+land→resolve→C2 (the taskId-gate holds against the real land service)", async () => {
+    testApp = createTestApp();
+    const { app, db } = testApp;
+    const project = createTestProject(db);
+    const responder = createTestAiAgent(db); // the holder/driver
+    const integrator = createTestAiAgent(db); // the train lander
+    const client = createTestAiAgent(db); // the origin author (DISTINCT)
+
+    const responderClient = new ResponderClient({
+      baseUrl: "http://seal.test",
+      token: responder.token,
+      fetchImpl: (url, init) => app.request(url as string, init as RequestInit),
+    });
+
+    // The injected clock. Each tick we advance it well past the reclaim staleness
+    // gate (timeBudgetSec 900 + reclaimGraceSec 120 = 1020s ⇒ 1_020_000ms) relative
+    // to the escalation's last `updatedAt`, so the reclaim probe re-finds the
+    // acknowledged self-held escalation and routes it to advanceArc.
+    let clock = Date.now();
+    const now = (): number => clock;
+    const ADVANCE_MS = 5_000_000; // ≫ the 1_020_000ms staleness threshold.
+
+    const escId = await raiseOpen(app, project.id, client.token, "client-arc");
+
+    // ── Tick 1: assess → systemic → drive vision_ready → the LOOP creates the
+    // real epic + 2 tasks over HTTP + the intent + terminal pendingDrive markers. ──
+    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+
+    // The escalation is acknowledged + held by the responder.
+    expect(await escStatus(app, escId)).toBe("acknowledged");
+    const afterDrive = (await (await authRequest(app, "GET", `/api/v1/escalations/${escId}`)).json()).data;
+    expect(afterDrive.holderId).toBe(responder.user.id);
+
+    // Exactly one epic was created, with 2 child campaign-tasks.
+    const epicRows = db.select().from(epicsTable).where(eq(epicsTable.projectId, project.id)).all();
+    expect(epicRows).toHaveLength(1);
+    const epicId = epicRows[0].id;
+    const taskRows = db.select().from(tasksTable).where(eq(tasksTable.epicId, epicId)).all();
+    expect(taskRows).toHaveLength(2);
+
+    // The terminal pendingDrive marker carries the real epicId.
+    const terminalMarker = afterDrive.messages.find(
+      (m: { metadata?: { pendingDrive?: boolean; epicId?: string } }) =>
+        m.metadata?.pendingDrive === true && typeof m.metadata?.epicId === "string",
+    );
+    expect(terminalMarker).toBeTruthy();
+    expect(terminalMarker.metadata.epicId).toBe(epicId);
+
+    // The set of campaign-task ids (advanceArc implements `epic.tasks.find(no MR
+    // yet)` — the API's created_at-desc order picks which is phase-1; the test
+    // derives the phase task from the submitted MR rather than presupposing order).
+    const taskIds = new Set(taskRows.map((t) => t.id));
+
+    // ── Tick 2: advance the clock; reclaim re-finds the acknowledged escalation →
+    // advanceArc → implement + submit the phase-1 task-LINKED + escalationId MR. ──
+    clock += ADVANCE_MS;
+    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+
+    // The phase-1 MR is task-LINKED (to one of the campaign tasks), escalationId-
+    // linked, on the per-phase branch.
+    const mr1 = newestPhaseMr(db, escId, 0);
+    expect(taskIds.has(mr1.taskId!)).toBe(true);
+    expect(mr1.escalationId).toBe(escId);
+    expect(mr1.branch).toBe(`pm/escalation-${escId}-${mr1.taskId}`);
+
+    // ── Land phase-1 over real HTTP. THE GATE (load-bearing): the escalation is
+    // STILL acknowledged — a task-LINKED phase land NEVER resolves the root (the
+    // merge-request.service `taskId === null` post-back skip). Only advanceArc
+    // drives arc completion. This can ONLY be asserted against the real land service. ──
+    await landMr(app, db, integrator.token, mr1.id, "SHA-phase1");
+    expect(await escStatus(app, escId)).toBe("acknowledged");
+
+    // ── Tick 3: advanceArc sees phase-1 landed → implement + submit phase-2; land it. ──
+    clock += ADVANCE_MS;
+    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    const mr2 = newestPhaseMr(db, escId, 1);
+    expect(taskIds.has(mr2.taskId!)).toBe(true);
+    expect(mr2.taskId).not.toBe(mr1.taskId); // the OTHER campaign task.
+    expect(mr2.branch).toBe(`pm/escalation-${escId}-${mr2.taskId}`);
+    await landMr(app, db, integrator.token, mr2.id, "SHA-phase2");
+    expect(await escStatus(app, escId)).toBe("acknowledged");
+
+    // ── Tick 4: advanceArc sees ALL phases landed → arcComplete marker → answer→
+    // resolve as holder with a summary naming the epic + both landed shas. ──
+    clock += ADVANCE_MS;
+    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+
+    const escRow = db.select().from(escalations).where(eq(escalations.id, escId)).get();
+    expect(escRow?.status).toBe("resolved");
+    expect(escRow?.resolvedBy).toBe(responder.user.id);
+
+    // A holder message names the epic NAME + both landed shas.
+    const msgs = db
+      .select()
+      .from(escalationMessages)
+      .where(eq(escalationMessages.escalationId, escId))
+      .all();
+    expect(
+      msgs.some(
+        (m) =>
+          m.body.includes("Stale-cache resilience") &&
+          m.body.includes("SHA-phase1") &&
+          m.body.includes("SHA-phase2"),
+      ),
+    ).toBe(true);
+
+    // ── C2: the origin auto-notices the holder resolve/answer summary. ──
+    const undel = (
+      await (await authRequest(app, "GET", `/api/v1/escalations/undelivered?worker_key=client-arc`)).json()
+    ).data;
+    const entry = undel.find((u: { escalation: { id: string } }) => u.escalation.id === escId);
+    expect(entry).toBeTruthy();
+    const surfaced = entry.unreadMessages.find((m: { body: string }) => m.body.includes("SHA-phase1"));
+    expect(surfaced).toBeTruthy();
+
+    // mark-delivered up to the highest unread seq drains the thread.
+    const maxUnreadSeq = Math.max(...entry.unreadMessages.map((m: { seq: number }) => m.seq));
+    const markRes = await authRequest(app, "POST", `/api/v1/escalations/${escId}/mark-delivered`, {
+      body: { workerKey: "client-arc", uptoSeq: maxUnreadSeq },
+    });
+    expect(markRes.status).toBe(200);
+    const after = (
+      await (await authRequest(app, "GET", `/api/v1/escalations/undelivered?worker_key=client-arc`)).json()
+    ).data;
+    expect(after.find((u: { escalation: { id: string } }) => u.escalation.id === escId)).toBeFalsy();
+  }, 30000); // 4 ticks × real HTTP + on-demand TS transpile of the responder loop.
+
+  it("arc_partial: a mid-arc phase reject → needs_human with the proven phase preserved (no rollback, no re-submit)", async () => {
+    testApp = createTestApp();
+    const { app, db } = testApp;
+    const project = createTestProject(db);
+    const responder = createTestAiAgent(db);
+    const integrator = createTestAiAgent(db);
+    const client = createTestAiAgent(db);
+
+    const responderClient = new ResponderClient({
+      baseUrl: "http://seal.test",
+      token: responder.token,
+      fetchImpl: (url, init) => app.request(url as string, init as RequestInit),
+    });
+
+    let clock = Date.now();
+    const now = (): number => clock;
+    const ADVANCE_MS = 5_000_000;
+
+    const escId = await raiseOpen(app, project.id, client.token, "client-partial");
+
+    // Tick 1: drive → epic + 2 tasks.
+    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    const epicId = db.select().from(epicsTable).where(eq(epicsTable.projectId, project.id)).all()[0].id;
+    const taskRows = db.select().from(tasksTable).where(eq(tasksTable.epicId, epicId)).all();
+    expect(taskRows).toHaveLength(2);
+    const taskById = new Map(taskRows.map((t) => [t.id, t]));
+
+    // Tick 2: implement + submit phase-1; LAND it (still acknowledged).
+    clock += ADVANCE_MS;
+    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    const mr1 = newestPhaseMr(db, escId, 0);
+    const task1 = taskById.get(mr1.taskId!)!;
+    await landMr(app, db, integrator.token, mr1.id, "SHA-partial1");
+    expect(await escStatus(app, escId)).toBe("acknowledged");
+
+    // Tick 3: implement + submit phase-2; REJECT it (verify-fail) over HTTP.
+    clock += ADVANCE_MS;
+    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    const mr2 = newestPhaseMr(db, escId, 1);
+    const task2 = taskById.get(mr2.taskId!)!;
+    db.update(mergeRequests)
+      .set({ status: "integrating", pickedUpAt: new Date().toISOString() })
+      .where(eq(mergeRequests.id, mr2.id))
+      .run();
+    const rejRes = await authRequest(app, "POST", `/api/v1/merge-requests/${mr2.id}/reject`, {
+      token: integrator.token,
+      body: { category: "test_failed", reason: "verify red on phase B", logUrl: "https://ex/log" },
+    });
+    expect(rejRes.status).toBe(200);
+    expect((await rejRes.json()).data.status).toBe("rejected");
+    // The reject is a task-LINKED phase MR → the post-back is skipped (taskId !==
+    // null); the escalation is still acknowledged, not needs_human yet.
+    expect(await escStatus(app, escId)).toBe("acknowledged");
+
+    // Tick 4: advanceArc observes phase-1 landed + phase-2 rejected → arc_partial →
+    // escalateToHuman the ROOT (needs_human) with the landed sha + the remaining phase.
+    clock += ADVANCE_MS;
+    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+
+    const escRow = db.select().from(escalations).where(eq(escalations.id, escId)).get();
+    expect(escRow?.status).toBe("needs_human");
+
+    // The escalate reason names the landed sha (s1) + the rejected/remaining phase.
+    const msgs = db
+      .select()
+      .from(escalationMessages)
+      .where(eq(escalationMessages.escalationId, escId))
+      .all();
+    expect(
+      msgs.some(
+        (m) =>
+          m.messageType === "system" &&
+          m.body.includes("SHA-partial1") &&
+          m.body.includes(task2.title),
+      ),
+    ).toBe(true);
+
+    // Phase-1's landed MR + branch are untouched (no rollback).
+    const mr1Row = db.select().from(mergeRequests).where(eq(mergeRequests.id, mr1.id)).get();
+    expect(mr1Row?.status).toBe("landed");
+    expect(mr1Row?.landedSha).toBe("SHA-partial1");
+    expect(mr1Row?.branch).toBe(`pm/escalation-${escId}-${task1.id}`);
+
+    // The rejected phase-2 MR was NOT re-submitted — still exactly one MR per task.
+    const allMrs = db.select().from(mergeRequests).where(eq(mergeRequests.escalationId, escId)).all();
+    expect(allMrs.filter((m) => m.taskId === task2.id)).toHaveLength(1);
+  }, 30000); // 4 ticks × real HTTP + on-demand TS transpile of the responder loop.
 });
