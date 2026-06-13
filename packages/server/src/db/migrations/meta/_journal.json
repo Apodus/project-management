@@ -232,6 +232,13 @@
       "when": 1781375944957,
       "tag": "0032_fancy_abomination",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1781387434502,
+      "tag": "0033_bumpy_apocalypse",
+      "breakpoints": true
     }
   ]
 }

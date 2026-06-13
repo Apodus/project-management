@@ -31,6 +31,15 @@ export interface RebaseConflict {
 export type RebaseResult = RebaseSuccess | RebaseConflict;
 
 /**
+ * Campaign A4 P2. The result of `git revert <sha>` on the current worktree. On
+ * success the worktree HEAD is the revert commit (one new commit undoing `sha`);
+ * on a textual conflict the revert is `--abort`ed (no partial state) and
+ * `conflict: true`; any other git failure is `{ ok: false, conflict: false }`
+ * (fail-safe — never a partial state).
+ */
+export type RevertResult = { ok: true } | { ok: false; conflict: boolean; stderr: string };
+
+/**
  * Phase 7.6 §5.2 step 1. The result of materializing a textual rebase conflict
  * IN PLACE — the worktree is left mid-rebase with conflict markers + `UU` index
  * entries (the resolver agent's working material), unlike `rebaseOnto` which
@@ -101,6 +110,24 @@ export interface GitOps {
   fetchFromPath(fromPath: string, sha: string): Promise<void>;
   checkout(ref: string): Promise<void>;
   rebaseOnto(base: string, branch: string): Promise<RebaseResult>;
+  /**
+   * Campaign A4 P2 (fast revert). Run `git revert --no-edit <sha>` on the
+   * CURRENT (reset-to-main) worktree, creating one commit that undoes `sha`.
+   * Uses the same EXPLICIT commit identity as rebaseOnto (pool clones have no
+   * configured user). On a textual conflict, `git revert --abort` to leave NO
+   * partial state and return `{ ok: false, conflict: true }`; any other failure
+   * returns `{ ok: false, conflict: false }` (fail-safe). DETERMINISTIC — no LLM
+   * is ever invoked, so a revert carries no injection surface.
+   */
+  revert(sha: string): Promise<RevertResult>;
+  /**
+   * Campaign A4 P2. Point a LOCAL branch `name` at the current HEAD (force).
+   * After `revert` produces the commit in the worktree, the integrator creates
+   * the local branch so the downstream `rebaseOnto(baseSha, name)` — which
+   * `git checkout <name>`s — resolves it (a remote-only ref, the bare push
+   * target, is not checkout-able by short name).
+   */
+  createBranch(name: string): Promise<void>;
   /**
    * Phase 7.6 §5.2 step 1. REPRODUCE the conflict the train's rebase hit, but
    * leave the markers in the working tree (the resolver agent reconciles them)
@@ -543,6 +570,37 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     }
   }
 
+  async function revert(sha: string): Promise<RevertResult> {
+    // Revert `sha` on the CURRENT worktree (the caller has reset it to a clean
+    // main). `--no-edit` skips the commit-message editor; the EXPLICIT identity
+    // mirrors rebaseOnto (pool clones have no configured user, else the revert
+    // commit fails "Committer identity unknown"). On conflict `git revert`
+    // exits non-zero leaving conflict markers + a CHERRY_PICK/REVERT_HEAD — we
+    // `--abort` to restore a clean tree (no partial state) and report
+    // `conflict: true`. Any other failure also leaves NO partial state (best-
+    // effort abort) and reports `conflict: false` (fail-safe).
+    try {
+      await git.raw([...COMMIT_IDENTITY_ARGS, "revert", "--no-edit", sha]);
+      return { ok: true };
+    } catch (err) {
+      const stderr = errText(err);
+      // A textual conflict leaves the worktree mid-revert with `UU` entries.
+      const conflict = (await conflictingFilesNow()).length > 0;
+      try {
+        await git.raw(["revert", "--abort"]);
+      } catch {
+        /* ignore — abort may itself fail if no revert is in progress */
+      }
+      return { ok: false, conflict, stderr };
+    }
+  }
+
+  async function createBranch(name: string): Promise<void> {
+    // Force-point a local branch at the current HEAD (the revert commit), so a
+    // later `git checkout <name>` (in rebaseOnto) resolves it.
+    await git.raw(["branch", "-f", name, "HEAD"]);
+  }
+
   async function conflictingFilesNow(): Promise<string[]> {
     try {
       const diff = await git.raw(["diff", "--name-only", "--diff-filter=U"]);
@@ -957,6 +1015,8 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     fetchFromPath,
     checkout,
     rebaseOnto,
+    revert,
+    createBranch,
     materializeConflict,
     commitResolution,
     push,

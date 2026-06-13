@@ -36,6 +36,7 @@ const mergeRequestSchema = z
     taskId: z.string().nullable(),
     resolvedFrom: z.string().nullable(),
     escalationId: z.string().nullable(),
+    revertOf: z.string().nullable(),
     synthetic: z.boolean(),
     branch: z.string().nullable(),
     commitSha: z.string().nullable(),
@@ -211,6 +212,7 @@ const listQuery = z.object({
   taskId: z.string().optional(),
   resolvedFrom: z.string().optional(),
   escalationId: z.string().optional(),
+  revertOf: z.string().optional(),
   ungrouped: z
     .enum(["true", "false"])
     .optional()
@@ -249,6 +251,19 @@ const submitBody = z
     escalationId: z.string().nullable().optional(),
   })
   .openapi("MergeRequestSubmit");
+
+// Campaign A4 P2 (fast revert). The body the operator/responder posts to revert
+// a landed sha. `reason` is advisory (the revert is verify-gated either way);
+// `escalationId` links the revert to the escalation that flagged the bad land so
+// the A2 land/reject post-back fires.
+const revertBody = z
+  .object({
+    landedSha: z.string().min(1),
+    resource: z.string().min(1).default("main"),
+    reason: z.string().max(2048).optional(),
+    escalationId: z.string().nullable().optional(),
+  })
+  .openapi("MergeRequestRevert");
 
 const landBody = z.object({ landedSha: z.string().min(1) }).openapi("MergeRequestLand");
 
@@ -330,6 +345,37 @@ const submitRoute = createRoute({
     },
     404: {
       description: "Project or task not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const revertRoute = createRoute({
+  method: "post",
+  path: "/api/v1/projects/{projectId}/merge-requests/revert",
+  tags: ["Merge Requests"],
+  summary: "Submit a fast revert of a landed sha (Campaign A4 P2)",
+  description:
+    "Records a task-less, branchless, queued merge request that reverts the given landedSha. The integrator materializes `git revert <sha>` at pickup and lands it through the SAME verify-gated train — main never breaks even reverting (verify runs before fast-forward). Any authenticated user (NO admin gate: the revert is verify-gated, so a bad revert self-rejects). Deterministic (no LLM → no injection surface). When escalationId is supplied, the A2 land/reject post-back fires.",
+  request: {
+    params: z.object({ projectId: projectIdParam }),
+    body: { content: { "application/json": { schema: revertBody } }, required: true },
+  },
+  responses: {
+    201: {
+      description: "Queued revert request",
+      content: { "application/json": { schema: mergeRequestDataEnvelope } },
+    },
+    400: {
+      description: "Validation error (e.g. escalationId not in this project)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project or escalation not found",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -734,6 +780,20 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
     return c.json({ data: view }, 201);
   });
 
+  router.openapi(revertRoute, (c) => {
+    const { projectId } = c.req.valid("param");
+    const user = requireUser(c.get("currentUser") as AuthUser | null);
+    const body = c.req.valid("json");
+    const view = requestSvc.submitRevert({
+      projectId,
+      submittedBy: user.id,
+      landedSha: body.landedSha,
+      resource: body.resource,
+      escalationId: body.escalationId ?? null,
+    });
+    return c.json({ data: view }, 201);
+  });
+
   router.openapi(listRoute, (c) => {
     const { projectId } = c.req.valid("param");
     requireUser(c.get("currentUser") as AuthUser | null);
@@ -744,6 +804,7 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
       taskId: query.taskId,
       resolvedFrom: query.resolvedFrom,
       escalationId: query.escalationId,
+      revertOf: query.revertOf,
       ungrouped: query.ungrouped,
       page: query.page,
       perPage: query.perPage,

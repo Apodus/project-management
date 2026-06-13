@@ -265,6 +265,86 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
     expect(resolved).toBe(sha);
   });
 
+  it("revert(sha): a landed sha → a revert commit undoing it (Campaign A4 P2)", async () => {
+    // Dedicated fixture so the revert can't collide with the shared repo's
+    // cross-test state. A change lands on main; revert(sha) produces a commit
+    // that restores the tree to the pre-change state.
+    const rBare = path.join(tmpRoot, "revert-ok-bare.git");
+    const rWork = path.join(tmpRoot, "revert-ok-work");
+    await simpleGit().init(["--bare", "--initial-branch=main", rBare]);
+    await simpleGit().clone(rBare, rWork);
+    const rg = simpleGit(rWork);
+    await configIdentity(rg);
+    writeFileSync(path.join(rWork, "f.txt"), "original\n");
+    await rg.add(["f.txt"]);
+    await rg.commit("base");
+    await rg.branch(["-M", "main"]);
+    await rg.push(["-u", "origin", "main"]);
+    const baseSha = (await rg.revparse(["HEAD"])).trim();
+    // A "bad" change lands.
+    writeFileSync(path.join(rWork, "f.txt"), "bad change\n");
+    await rg.add(["f.txt"]);
+    await rg.commit("bad change");
+    const badSha = (await rg.revparse(["HEAD"])).trim();
+
+    const ops = createGitOps(rg);
+    const result = await ops.revert(badSha);
+    expect(result.ok).toBe(true);
+    // The revert commit's tree is byte-identical to the pre-bad-change tree.
+    expect(await ops.treesIdentical("HEAD", baseSha)).toBe(true);
+    // A NEW commit was created (HEAD advanced past badSha).
+    expect((await rg.revparse(["HEAD"])).trim()).not.toBe(badSha);
+  });
+
+  it("revert(sha): a conflicting revert → {ok:false, conflict:true}, aborted (no partial state)", async () => {
+    const rBare = path.join(tmpRoot, "revert-conflict-bare.git");
+    const rWork = path.join(tmpRoot, "revert-conflict-work");
+    await simpleGit().init(["--bare", "--initial-branch=main", rBare]);
+    await simpleGit().clone(rBare, rWork);
+    const rg = simpleGit(rWork);
+    await configIdentity(rg);
+    writeFileSync(path.join(rWork, "f.txt"), "line1\n");
+    await rg.add(["f.txt"]);
+    await rg.commit("base");
+    await rg.branch(["-M", "main"]);
+    await rg.push(["-u", "origin", "main"]);
+    // A change to revert.
+    writeFileSync(path.join(rWork, "f.txt"), "line1-edited\n");
+    await rg.add(["f.txt"]);
+    await rg.commit("edit");
+    const editSha = (await rg.revparse(["HEAD"])).trim();
+    // A LATER change to the same line, so reverting `editSha` conflicts.
+    writeFileSync(path.join(rWork, "f.txt"), "line1-edited-again\n");
+    await rg.add(["f.txt"]);
+    await rg.commit("edit again");
+    const headBefore = (await rg.revparse(["HEAD"])).trim();
+
+    const ops = createGitOps(rg);
+    const result = await ops.revert(editSha);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.conflict).toBe(true);
+    }
+    // Aborted: HEAD unchanged and the tree is clean (no UU/markers left).
+    expect((await rg.revparse(["HEAD"])).trim()).toBe(headBefore);
+    const status = await rg.status();
+    expect(status.conflicted).toHaveLength(0);
+    expect(status.isClean()).toBe(true);
+  });
+
+  it("createBranch points a local branch at HEAD (checkout-able)", async () => {
+    const ops = createGitOps(git);
+    await git.checkout("main");
+    await git.reset(["--hard", "origin/main"]);
+    const head = (await git.revparse(["HEAD"])).trim();
+    await ops.createBranch("pm/revert-test-branch");
+    // The local branch resolves to HEAD and is checkout-able.
+    const branchSha = (await git.revparse(["pm/revert-test-branch"])).trim();
+    expect(branchSha).toBe(head);
+    await git.checkout("pm/revert-test-branch");
+    await git.checkout("main");
+  });
+
   it("runVerify external AbortSignal kills the process well before the sleep", async () => {
     const ops = createGitOps(git);
     const logPath = path.join(tmpRoot, "verify-abort.log");

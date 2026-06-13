@@ -9357,6 +9357,7 @@ export interface paths {
                     taskId?: string;
                     resolvedFrom?: string;
                     escalationId?: string;
+                    revertOf?: string;
                     ungrouped?: "true" | "false";
                     page?: number;
                     perPage?: number;
@@ -9475,6 +9476,95 @@ export interface paths {
                     };
                 };
                 /** @description Project or task not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/merge-requests/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a fast revert of a landed sha (Campaign A4 P2)
+         * @description Records a task-less, branchless, queued merge request that reverts the given landedSha. The integrator materializes `git revert <sha>` at pickup and lands it through the SAME verify-gated train — main never breaks even reverting (verify runs before fast-forward). Any authenticated user (NO admin gate: the revert is verify-gated, so a bad revert self-rejects). Deterministic (no LLM → no injection surface). When escalationId is supplied, the A2 land/reject post-back fires.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MergeRequestRevert"];
+                };
+            };
+            responses: {
+                /** @description Queued revert request */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["MergeRequest"];
+                        };
+                    };
+                };
+                /** @description Validation error (e.g. escalationId not in this project) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project or escalation not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -15271,6 +15361,7 @@ export interface components {
             taskId: string | null;
             resolvedFrom: string | null;
             escalationId: string | null;
+            revertOf: string | null;
             synthetic: boolean;
             branch: string | null;
             commitSha: string | null;
@@ -15300,6 +15391,13 @@ export interface components {
             verifyCmd?: string | null;
             worktreePath?: string | null;
             resolvedFrom?: string | null;
+            escalationId?: string | null;
+        };
+        MergeRequestRevert: {
+            landedSha: string;
+            /** @default main */
+            resource: string;
+            reason?: string;
             escalationId?: string | null;
         };
         MergeRequestDetail: components["schemas"]["MergeRequest"] & {

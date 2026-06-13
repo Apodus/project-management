@@ -403,6 +403,9 @@ function makeRequest(over: Partial<MergeRequestView>): MergeRequestView {
     submittedBy: "worker-1",
     taskId: null,
     resolvedFrom: null,
+    escalationId: null,
+    revertOf: null,
+    synthetic: false,
     branch: null,
     commitSha: null,
     verifyCmd: null,
@@ -663,6 +666,90 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       "land",
       "releaseLock",
     ]);
+  });
+
+  it("revert: a branchless revertOf member → git-revert produced, pushed, landed (A4 P2 speculative path)", async () => {
+    const root = path.join(tmpRoot, "wt-revert");
+    // Land a "bad" change on main via the author clone, capture its sha.
+    const author = simpleGit(authorClone);
+    await author.checkout("main");
+    await author.pull("origin", "main");
+    writeFileSync(path.join(authorClone, "batch-bad.txt"), "bad\n");
+    await author.add(["batch-bad.txt"]);
+    await author.commit("batch bad change to revert");
+    await author.push("origin", "main");
+    const badSha = (await author.revparse(["HEAD"])).trim();
+
+    const req = makeRequest({
+      id: "req-batch-revert",
+      branch: null,
+      commitSha: null,
+      revertOf: badSha,
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      completeBodies: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(req.branch).toBe(`pm/revert-${badSha}`);
+    expect(state.lockHeld).toBe(false);
+    expect(state.calls).toContain("land");
+    // DETERMINISM: no reject, no resolver was wired/invoked on this path.
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(false);
+    expect(deps.pool.leasedCount).toBe(0);
+
+    await author.checkout("main");
+    await author.pull("origin", "main");
+  });
+
+  it("revert: a conflicting revert member → rejected(conflict), slot+lock released (A4 P2 speculative path)", async () => {
+    const root = path.join(tmpRoot, "wt-revert-conflict");
+    const author = simpleGit(authorClone);
+    await author.checkout("main");
+    await author.pull("origin", "main");
+    writeFileSync(path.join(authorClone, "base.txt"), "batch-edit-once\n");
+    await author.add(["base.txt"]);
+    await author.commit("batch edit base once");
+    await author.push("origin", "main");
+    const firstEditSha = (await author.revparse(["HEAD"])).trim();
+    writeFileSync(path.join(authorClone, "base.txt"), "batch-edit-twice\n");
+    await author.add(["base.txt"]);
+    await author.commit("batch edit base twice");
+    await author.push("origin", "main");
+
+    const req = makeRequest({
+      id: "req-batch-revert-conflict",
+      branch: null,
+      commitSha: null,
+      revertOf: firstEditSha,
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("rejected");
+    expect(req.rejectCategory).toBe("conflict");
+    expect(state.calls).toContain("reject:conflict");
+    expect(state.lockHeld).toBe(false);
+    expect(deps.pool.leasedCount).toBe(0);
+
+    await author.checkout("main");
+    await author.pull("origin", "main");
   });
 
   it("verify-fail → reject + categorize + slot+lock released", async () => {

@@ -561,6 +561,14 @@ export const mergeRequests = sqliteTable(
       (): AnySQLiteColumn => escalations.id,
       { onDelete: "set null" },
     ),
+    // Campaign A4 P2 (fast revert): on a revert request this holds the LANDED
+    // GIT SHA being reverted (the train materializes `git revert <sha>` at
+    // pickup). DELIBERATELY a PLAIN nullable text column, NOT an FK — the value
+    // is a landed git sha, not a merge_requests.id (the sha may have landed
+    // out-of-band under a SHA with no corresponding row), so there is nothing to
+    // reference. Null on every normal request. Queryable for the revert→original
+    // audit chain (A5).
+    revertOf: text("revert_of"),
     // Inner-only groups (campaign 2026-06-10): a SYNTHETIC member is born with no
     // branch/commit — the integrator synthesizes the outer candidate (live outer
     // main + gitlink commit → Ri) at assembly and fills landedSha at land. Only

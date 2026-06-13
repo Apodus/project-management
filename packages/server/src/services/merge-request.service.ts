@@ -72,6 +72,11 @@ export interface ListParams {
   taskId?: string;
   resolvedFrom?: string;
   /**
+   * Campaign A4 P2: filter to revert requests of a given landed sha (the
+   * revert→original audit chain for A5). The value is a landed git sha.
+   */
+  revertOf?: string;
+  /**
    * Campaign A3 P2: filter to requests linked to this escalation (the arc's
    * phase MRs + the A1 bounded-fix MR). advanceArc reads each phase's land
    * status via this filter to derive arc state strictly from the server.
@@ -108,6 +113,7 @@ interface MergeRequestRow {
   taskId: string | null;
   resolvedFrom: string | null;
   escalationId: string | null;
+  revertOf: string | null;
   synthetic: boolean;
   branch: string | null;
   commitSha: string | null;
@@ -401,6 +407,7 @@ function toView(row: MergeRequestRow): MergeRequestView {
     taskId: row.taskId,
     resolvedFrom: row.resolvedFrom,
     escalationId: row.escalationId,
+    revertOf: row.revertOf,
     synthetic: row.synthetic,
     branch: row.branch,
     commitSha: row.commitSha,
@@ -446,6 +453,8 @@ export interface InsertRequestRowParams {
   resolvedFrom?: string | null;
   /** Campaign A2 (§P1): escalation provenance link; null/absent on normal requests. */
   escalationId?: string | null;
+  /** Campaign A4 P2: the landed git sha this request reverts; null on normal requests. */
+  revertOf?: string | null;
   /** Defaults to false; only the inner-only group form sets true (the server-minted outer member). */
   synthetic?: boolean;
   /** Defaults to "queued". The atomic group-create path passes "queued" explicitly. */
@@ -480,6 +489,7 @@ export function insertRequestRow(dbOrTx: DbOrTx, params: InsertRequestRowParams)
       worktreePath: params.worktreePath ?? null,
       resolvedFrom: params.resolvedFrom ?? null,
       escalationId: params.escalationId ?? null,
+      revertOf: params.revertOf ?? null,
       synthetic: params.synthetic ?? false,
       status: params.status ?? "queued",
       groupId: params.groupId ?? null,
@@ -533,6 +543,80 @@ export function submit(params: SubmitParams): MergeRequestView {
   return toView(row);
 }
 
+export interface SubmitRevertParams {
+  projectId: string;
+  submittedBy: string;
+  /** The landed git sha to revert. The integrator materializes `git revert <sha>`. */
+  landedSha: string;
+  resource?: string;
+  escalationId?: string | null;
+}
+
+/**
+ * Campaign A4 P2 — submit a fast revert of a landed sha.
+ *
+ * Records a task-less, BRANCHLESS (server runs no git), `revertOf`-bearing
+ * queued merge request. The integrator materializes the revert branch at pickup
+ * (`git revert <landedSha>` against the just-reset main) and lands it through the
+ * SAME verify-gated train — main never breaks even reverting (verify runs against
+ * the rebased tree before main fast-forwards), and the revert is DETERMINISTIC
+ * (no LLM → no injection surface).
+ *
+ * verifyCmd: copy the verifyCmd of an existing landed MR for this sha if one
+ * exists, so the revert verifies with the SAME gate the original used (mirrors
+ * the resolver's verifyCmd-copy — gating with the project default would gate with
+ * the WRONG command). When no such row exists (the sha landed out-of-band), leave
+ * it null and the integrator falls back to the project default verify, exactly as
+ * for any null-verifyCmd MR.
+ *
+ * The revert MR is escalationId-linkable for the A2 land/reject post-back (a
+ * landed revert resolves the escalation; a rejected one → needs_human) and the
+ * revert→original audit chain (the `revertOf` column, filterable via list).
+ *
+ * Emits MERGE_REQUEST_QUEUED so the integrator picks it up.
+ */
+export function submitRevert(params: SubmitRevertParams): MergeRequestView {
+  ensureProjectExists(params.projectId);
+  ensureUserExists(params.submittedBy);
+  validateEscalationBelongsToProject(params.projectId, params.escalationId ?? null);
+
+  const resource = params.resource ?? "main";
+
+  // Copy the verifyCmd from an existing landed MR for this sha (so the revert
+  // is gated by the SAME command). The landed_sha is recorded on the landing
+  // MR's `landedSha`; pick the most recent if more than one (a re-land).
+  const db = getDb();
+  const original = db
+    .select({ verifyCmd: mergeRequests.verifyCmd })
+    .from(mergeRequests)
+    .where(
+      and(
+        eq(mergeRequests.projectId, params.projectId),
+        eq(mergeRequests.landedSha, params.landedSha),
+        eq(mergeRequests.status, "landed"),
+      ),
+    )
+    .orderBy(desc(mergeRequests.resolvedAt))
+    .get();
+
+  const id = insertRequestRow(db, {
+    projectId: params.projectId,
+    resource,
+    submittedBy: params.submittedBy,
+    taskId: null,
+    branch: null,
+    commitSha: null,
+    verifyCmd: original?.verifyCmd ?? null,
+    worktreePath: null,
+    escalationId: params.escalationId ?? null,
+    revertOf: params.landedSha,
+  });
+
+  const row = readRequestOrThrow(id);
+  emit(EVENT_NAMES.MERGE_REQUEST_QUEUED, row, params.submittedBy);
+  return toView(row);
+}
+
 /**
  * List merge requests for a project, with optional filters and pagination.
  * Default page=1, perPage=50.
@@ -547,6 +631,7 @@ export function list(projectId: string, params: ListParams = {}): ListResult {
   if (params.taskId) conditions.push(eq(mergeRequests.taskId, params.taskId));
   if (params.resolvedFrom) conditions.push(eq(mergeRequests.resolvedFrom, params.resolvedFrom));
   if (params.escalationId) conditions.push(eq(mergeRequests.escalationId, params.escalationId));
+  if (params.revertOf) conditions.push(eq(mergeRequests.revertOf, params.revertOf));
   if (params.ungrouped) {
     conditions.push(sql`${mergeRequests.groupId} IS NULL`);
   }

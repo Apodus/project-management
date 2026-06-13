@@ -1502,6 +1502,64 @@ async function admitAndRebase(
     }
 
     const gitOps = deps.gitOps(wt.path);
+
+    // Campaign A4 P2 (fast revert): a branchless `revertOf`-bearing request is a
+    // REVERT. The server runs no git, so the revert branch is produced HERE,
+    // against the just-reset clean main — BEFORE computeSpeculativeBase/rebase,
+    // so the revert is an ordinary PRE-BRANCHED member by the time chaining +
+    // verify touch it (byte-identical downstream). DETERMINISTIC — no LLM, so it
+    // carries no injection surface. Presence-guarded: a normal request
+    // (revertOf == null) skips this entirely → byte-identical to pre-A4.
+    //
+    // CRITICAL: producing the revert moves the worktree HEAD to the revert
+    // commit, but computeSpeculativeBase reads `resolveRef("HEAD")` as the prefix
+    // anchor's liveMainSha — so we reset the worktree BACK to clean main after
+    // pushing the local branch (the pushed `pm/revert-<sha>` branch survives the
+    // reset). The normal rebaseOnto(base, branch) then rebases it like any
+    // worker-submitted branch.
+    if (req.revertOf != null && req.branch == null) {
+      const revertSha = req.revertOf;
+      const revertResult = await gitOps.revert(revertSha);
+      if (!revertResult.ok) {
+        const category = revertResult.conflict ? "conflict" : "other";
+        const reason = `git revert of ${revertSha} ${
+          revertResult.conflict ? "conflicted" : "failed"
+        }: ${summaryLine(revertResult.stderr) || "(no detail)"}`;
+        await pmClient.rejectMergeRequest(req.id, {
+          category,
+          reason,
+          logExcerpt: revertResult.stderr.slice(0, LOG_EXCERPT_CAP),
+        });
+        member.state = "failed";
+        deps.pool.release(wt);
+        member.worktree = null;
+        ctx.rejected.push(req.id);
+        return member;
+      }
+      const revertBranch = `pm/revert-${revertSha}`;
+      await gitOps.createBranch(revertBranch);
+      const revertPush = await gitOps.push(deps.gitRemote, revertBranch);
+      if (!revertPush.ok) {
+        const reason = `push of revert branch ${revertBranch} failed (${revertPush.reason}): ${summaryLine(
+          revertPush.stderr,
+        )}`;
+        await pmClient.rejectMergeRequest(req.id, {
+          category: "other",
+          reason,
+          logExcerpt: revertPush.stderr.slice(0, LOG_EXCERPT_CAP),
+        });
+        member.state = "failed";
+        deps.pool.release(wt);
+        member.worktree = null;
+        ctx.rejected.push(req.id);
+        return member;
+      }
+      // Restore HEAD to clean main so computeSpeculativeBase anchors correctly;
+      // the pushed local branch survives the reset.
+      await wt.resetForAttempt();
+      req.branch = revertBranch;
+    }
+
     const base = await computeSpeculativeBase(member, batch, gitOps);
     member.base = base;
     member.predecessorChain = base.predecessorChain;

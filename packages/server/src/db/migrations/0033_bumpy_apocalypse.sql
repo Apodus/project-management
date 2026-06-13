@@ -1,0 +1,1 @@
+ALTER TABLE `merge_requests` ADD `revert_of` text;

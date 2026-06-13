@@ -217,6 +217,69 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
     const logPath = logPathFor(worktree.logsDir, attemptId);
     const logUrl = logUrlFor(worktree.logsDir, attemptId);
 
+    // Campaign A4 P2 (fast revert): a branchless `revertOf`-bearing request is
+    // a REVERT. The server runs no git, so the revert branch is produced HERE,
+    // against the just-reset main (HEAD == baseSha). `git revert <sha>` →
+    // push pm/revert-<sha> → set request.branch so `ref` resolves to it and
+    // everything downstream (rebase onto baseSha → verify → FF land → no-op
+    // guard → drift → reject) is BYTE-IDENTICAL. DETERMINISTIC — no LLM, so the
+    // revert carries no injection surface. Presence-guarded: a normal request
+    // (revertOf == null) skips this entirely and is byte-identical to pre-A4.
+    if (request.revertOf != null && request.branch == null) {
+      const revertSha = request.revertOf;
+      const revertResult = await gitOps.revert(revertSha);
+      if (!revertResult.ok) {
+        const category = revertResult.conflict ? "conflict" : "other";
+        const reason = `git revert of ${revertSha} ${
+          revertResult.conflict ? "conflicted" : "failed"
+        }: ${summaryLine(revertResult.stderr) || "(no detail)"}`;
+        await pmClient.completeAttempt(attemptId, {
+          status: "failed",
+          failureCategory: category,
+          failureReason: reason,
+          logExcerpt: revertResult.stderr.slice(0, LOG_EXCERPT_CAP),
+          logUrl,
+        });
+        await pmClient.rejectMergeRequest(request.id, {
+          category,
+          reason,
+          logExcerpt: revertResult.stderr.slice(0, LOG_EXCERPT_CAP),
+          logUrl,
+        });
+        await releaseLock({ reason });
+        return { kind: "rejected", requestId: request.id, category };
+      }
+      const revertBranch = `pm/revert-${revertSha}`;
+      // Create the LOCAL branch at the revert commit so the downstream
+      // rebaseOnto's `git checkout <branch>` resolves it (a bare push target is
+      // not checkout-able by short name).
+      await gitOps.createBranch(revertBranch);
+      const revertPush = await gitOps.push(gitRemote, revertBranch);
+      if (!revertPush.ok) {
+        const reason = `push of revert branch ${revertBranch} failed (${revertPush.reason}): ${summaryLine(
+          revertPush.stderr,
+        )}`;
+        await pmClient.completeAttempt(attemptId, {
+          status: "failed",
+          failureCategory: "other",
+          failureReason: reason,
+          logExcerpt: revertPush.stderr.slice(0, LOG_EXCERPT_CAP),
+          logUrl,
+        });
+        await pmClient.rejectMergeRequest(request.id, {
+          category: "other",
+          reason,
+          logExcerpt: revertPush.stderr.slice(0, LOG_EXCERPT_CAP),
+          logUrl,
+        });
+        await releaseLock({ reason });
+        return { kind: "rejected", requestId: request.id, category: "other" };
+      }
+      // The revert is now an ordinary pre-branched request. Set the branch so
+      // `ref` resolves to it; downstream rebase/verify/land are untouched.
+      request.branch = revertBranch;
+    }
+
     // 6. Rebase the request's branch/commit onto baseSha.
     const ref = request.branch ?? request.commitSha;
     if (!ref) {

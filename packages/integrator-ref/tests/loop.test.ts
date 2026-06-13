@@ -175,6 +175,9 @@ function makeRequest(over: Partial<MergeRequestView>): MergeRequestView {
     submittedBy: "worker-1",
     taskId: null,
     resolvedFrom: null,
+    escalationId: null,
+    revertOf: null,
+    synthetic: false,
     branch: null,
     commitSha: null,
     verifyCmd: null,
@@ -322,6 +325,85 @@ describe.skipIf(!GIT_AVAILABLE)("runOnce (real git + fake PM)", () => {
     expect(state.lockHeld).toBe(false);
     expect(state.calls).toContain("completeAttempt:failed");
     expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(true);
+  });
+
+  it("revert: a branchless revertOf request → git-revert produced, pushed, landed (A4 P2)", async () => {
+    const wt = await setupWorktree("revert-land");
+    // Land a "bad" change on main via the author clone, capture its sha.
+    const author = simpleGit(authorClone);
+    await author.checkout("main");
+    await author.pull("origin", "main");
+    writeFileSync(path.join(authorClone, "bad-feature.txt"), "bad\n");
+    await author.add(["bad-feature.txt"]);
+    await author.commit("bad change to revert");
+    await author.push("origin", "main");
+    const badSha = (await author.revparse(["HEAD"])).trim();
+
+    // A branchless, revertOf-bearing request (what submitRevert records).
+    const req = makeRequest({
+      id: "req-revert",
+      branch: null,
+      commitSha: null,
+      revertOf: badSha,
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = { requests: [req], attempts: [], lockHeld: false, calls: [] };
+    const outcome = await runOnce(depsFor(state, wt));
+
+    expect(outcome.kind).toBe("landed");
+    expect(req.status).toBe("landed");
+    // The branch was materialized by the integrator (server recorded none).
+    expect(req.branch).toBe(`pm/revert-${badSha}`);
+    expect(state.lockHeld).toBe(false);
+    expect(state.calls).toContain("completeAttempt:passed");
+    expect(state.calls).toContain("land");
+    // DETERMINISM: no reject, and the revert branch exists on the remote.
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(false);
+    const remoteBranches = await author.listRemote(["--heads", bareRepo, `pm/revert-${badSha}`]);
+    expect(remoteBranches).toContain(`pm/revert-${badSha}`);
+
+    // Cleanup: restore main to a known point for later tests.
+    await author.checkout("main");
+    await author.pull("origin", "main");
+  });
+
+  it("revert: a conflicting revert → rejected(conflict), never stranded (A4 P2)", async () => {
+    const wt = await setupWorktree("revert-conflict");
+    const author = simpleGit(authorClone);
+    await author.checkout("main");
+    await author.pull("origin", "main");
+    // Land an edit to a line, then a SECOND edit to the same line — reverting
+    // the first conflicts against the second.
+    writeFileSync(path.join(authorClone, "base.txt"), "edited-once\n");
+    await author.add(["base.txt"]);
+    await author.commit("edit base once");
+    await author.push("origin", "main");
+    const firstEditSha = (await author.revparse(["HEAD"])).trim();
+    writeFileSync(path.join(authorClone, "base.txt"), "edited-twice\n");
+    await author.add(["base.txt"]);
+    await author.commit("edit base twice");
+    await author.push("origin", "main");
+
+    const req = makeRequest({
+      id: "req-revert-conflict",
+      branch: null,
+      commitSha: null,
+      revertOf: firstEditSha,
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = { requests: [req], attempts: [], lockHeld: false, calls: [] };
+    const outcome = await runOnce(depsFor(state, wt));
+
+    expect(outcome.kind).toBe("rejected");
+    if (outcome.kind === "rejected") {
+      expect(outcome.category).toBe("conflict");
+    }
+    expect(req.status).toBe("rejected");
+    expect(state.lockHeld).toBe(false); // released, never stranded
+    expect(state.calls).toContain("reject:conflict");
+
+    await author.checkout("main");
+    await author.pull("origin", "main");
   });
 
   it("transition_lost + releases lock when pickup races to 409", async () => {

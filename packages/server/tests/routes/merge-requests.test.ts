@@ -1554,4 +1554,238 @@ describe("Merge Requests API", () => {
       expect((await res.json()).data.status).toBe("rejected");
     });
   });
+
+  // ─── K. Campaign A4 P2: fast revert path ─────────────────────────
+  //
+  // POST /merge-requests/revert records a task-less, branchless, revertOf-set
+  // queued MR (the integrator materializes `git revert <sha>` at pickup). It
+  // copies an existing landed MR's verifyCmd; threads escalationId; the
+  // revertOf list filter narrows to revert MRs; a landed/rejected revert fires
+  // the A2 post-back exactly like any escalationId-linked task-less MR.
+  describe("revert (A4 P2)", () => {
+    function seedHeldEscalation(projectId: string, holderId: string, originAuthorId: string): string {
+      const id = createId();
+      const ts = new Date().toISOString();
+      testApp.db
+        .insert(escalations)
+        .values({
+          id,
+          projectId,
+          kind: "bug_report",
+          status: "acknowledged",
+          title: "revert me",
+          originRepo: "game_one",
+          originWorkerKey: "origin-worker-revert",
+          holderId,
+          authorId: originAuthorId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+      return id;
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("creates a queued, task-less, branchless, revertOf-set MR + emits QUEUED", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests/revert`,
+        { token: agent.token, body: { landedSha: "badc0ffee" } },
+      );
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json.data.status).toBe("queued");
+      expect(json.data.revertOf).toBe("badc0ffee");
+      expect(json.data.taskId).toBeNull();
+      expect(json.data.branch).toBeNull();
+      expect(json.data.submittedBy).toBe(agent.user.id);
+
+      const row = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, json.data.id))
+        .get();
+      expect(row?.revertOf).toBe("badc0ffee");
+      expect(row?.taskId).toBeNull();
+      expect(row?.branch).toBeNull();
+    });
+
+    it("copies an existing landed MR's verifyCmd for the same sha", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+
+      // A landed MR for the sha, carrying a non-default verifyCmd.
+      const landedId = await submitRequest(project.id, agent.token, {
+        branch: "feature/orig",
+        verifyCmd: "pnpm verify:special",
+      });
+      forceIntegrating(landedId);
+      await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${landedId}/land`, {
+        token: agent.token,
+        body: { landedSha: "sha-to-revert" },
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests/revert`,
+        { token: agent.token, body: { landedSha: "sha-to-revert" } },
+      );
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json.data.verifyCmd).toBe("pnpm verify:special");
+    });
+
+    it("verifyCmd is null when no landed MR exists for the sha (project-default fallback)", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests/revert`,
+        { token: agent.token, body: { landedSha: "out-of-band-sha" } },
+      );
+      expect(res.status).toBe(201);
+      expect((await res.json()).data.verifyCmd).toBeNull();
+    });
+
+    it("revertOf list filter returns only revert MRs", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+
+      // A normal MR + a revert MR.
+      await submitRequest(project.id, agent.token, { branch: "feature/normal" });
+      const revertRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests/revert`,
+        { token: agent.token, body: { landedSha: "revert-target" } },
+      );
+      const revertId = (await revertRes.json()).data.id;
+
+      const listRes = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/merge-requests?revertOf=revert-target`,
+        { token: agent.token },
+      );
+      expect(listRes.status).toBe(200);
+      const list = await listRes.json();
+      expect(list.data).toHaveLength(1);
+      expect(list.data[0].id).toBe(revertId);
+      expect(list.data[0].revertOf).toBe("revert-target");
+    });
+
+    it("a normal MR view carries revertOf: null (byte-identical additive field)", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const id = await submitRequest(project.id, agent.token, { branch: "feature/plain" });
+      const getRes = await authRequest(testApp.app, "GET", `/api/v1/merge-requests/${id}`, {
+        token: agent.token,
+      });
+      expect((await getRes.json()).data.revertOf).toBeNull();
+    });
+
+    it("400 when escalationId belongs to a different project", async () => {
+      const project = createTestProject(testApp.db);
+      const otherProject = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      const otherEsc = seedHeldEscalation(otherProject.id, holder.user.id, origin.id);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests/revert`,
+        { token: agent.token, body: { landedSha: "x", escalationId: otherEsc } },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("a landed escalationId-linked revert fires the A2 post-back (resolves the escalation)", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+
+      const revertRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests/revert`,
+        { token: integrator.token, body: { landedSha: "wrong-sha", escalationId: escId } },
+      );
+      const requestId = (await revertRes.json()).data.id;
+      forceIntegrating(requestId);
+
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
+        token: integrator.token,
+        body: { landedSha: "revertLandedSha" },
+      });
+      expect(res.status).toBe(200);
+
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("resolved");
+      expect(escRow?.resolvedBy).toBe(holder.user.id);
+    });
+
+    it("a rejected escalationId-linked revert escalates to needs_human", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+
+      const revertRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests/revert`,
+        { token: integrator.token, body: { landedSha: "wrong-sha-2", escalationId: escId } },
+      );
+      const requestId = (await revertRes.json()).data.id;
+      forceIntegrating(requestId);
+
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/reject`, {
+        token: integrator.token,
+        body: { category: "test_failed", reason: "revert broke a test" },
+      });
+      expect(res.status).toBe(200);
+
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("needs_human");
+    });
+
+    it("a revert with NO escalationId leaves escalations untouched (byte-identical)", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+
+      const revertRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-requests/revert`,
+        { token: integrator.token, body: { landedSha: "plain-revert" } },
+      );
+      const requestId = (await revertRes.json()).data.id;
+      forceIntegrating(requestId);
+      await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
+        token: integrator.token,
+        body: { landedSha: "plainRevertLanded" },
+      });
+
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("acknowledged");
+    });
+  });
 });

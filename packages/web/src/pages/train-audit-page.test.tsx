@@ -111,6 +111,7 @@ function seededRequest(id: string, branch: string): MergeRequest {
     taskId: null,
     resolvedFrom: null,
     escalationId: null,
+    revertOf: null,
     synthetic: false,
     branch,
     commitSha: null,

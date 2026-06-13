@@ -64,6 +64,11 @@ export const mergeRequestSchema = z.object({
   // Campaign A2 (§P1): provenance link to the escalation an auto-implement
   // responder session produced this request from; null on every normal request.
   escalationId: z.string().nullable(),
+  // Campaign A4 P2 (fast revert): the LANDED git sha this request reverts (the
+  // integrator materializes `git revert <sha>` at pickup); null on every normal
+  // request. A plain sha string, NOT a merge_requests.id (the sha may have
+  // landed out-of-band) — the revert→original audit chain (A5).
+  revertOf: z.string().nullable(),
   // Inner-only groups (campaign 2026-06-10): true on the server-minted outer
   // member of a synthesizeOuter group — born with no branch/commit; the
   // integrator synthesizes the outer candidate at assembly. false elsewhere.

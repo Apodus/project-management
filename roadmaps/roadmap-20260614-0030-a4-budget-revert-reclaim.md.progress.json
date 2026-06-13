@@ -3,9 +3,11 @@
   "vision": "roadmaps/vision-20260613-responder-auto-implement.md",
   "branch": "campaign-responder-auto-implement",
   "status": "IN_PROGRESS",
-  "completed_phases": [],
-  "current_phase": "P1",
-  "phase_outcomes": {},
+  "completed_phases": ["P1"],
+  "current_phase": "P2",
+  "phase_outcomes": {
+    "P1": "Spend/concurrency budget — two NEW server-derived caps extending the existing spawn budget (canSpawn/recordSpawn/slot pool reused unchanged). (1) max concurrent ARCS: an admission gate in the systemic branch BEFORE runDriveSession (no epic created on hold) — escalateToHuman when inFlightArcs>=cap; arc count = a FRESH per-tick probe over the FULL listAcknowledgedByHolder list (pendingDrive||pendingArc && !arcComplete), GATED on autoImplementEnabled so answer-mode does zero new fetches (byte-identical). (2) max arc DURATION: a cap in advanceArc AFTER the arc_complete check (so an all-landed-this-cycle arc completes, not caps) — arcStartedAtMs reads the durable P3 pendingDrive intent-marker createdAt (fail-safe null⇒never caps); on cap → the existing arc_partial escalate (landed phases preserved on main, NO rollback — revert is P2). Both server-derived ⇒ restart-resilient. Config: autoImplement.budget{maxConcurrentArcs=100, maxArcDurationSec=604800} + 2 env vars (positiveInt); generous defaults ⇒ A1-A3 byte-identical. Noted honestly: a fixed tick-start snapshot can over-admit at maxConcurrent>1 (default 1 avoids it; cost governor not safety gate — train verify is the floor). 178 responder tests (+8). build/typecheck/lint green. Ships enabled=false. 8b8ac5e."
+  },
   "open_issues": [],
   "dag_drift": [],
   "notes": "A4 start. Depends on A2 (escalation-linked train land) + A3 (autonomous multi-phase drive — DONE @ 8460ca0). Trust-first guardrails: governance + insurance, NOT human-approval gates. P1 = spend/concurrency budget (max concurrent arcs + max arc duration) extending the existing spawn budget; exhaustion → pause+escalate. P2 = revert path (undo a landed_sha through the verify-gated train). P3 = reclaim stranded drives + submitted-but-unlanded MRs. P4 = metrics data for A5 + seal/docs/close. Ships enabled=false."

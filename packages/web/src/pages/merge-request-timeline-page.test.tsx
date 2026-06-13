@@ -53,6 +53,7 @@ function seededTimeline(): MergeRequestTimeline {
       taskId: "task-aaaa",
       resolvedFrom: null,
       escalationId: null,
+      revertOf: null,
       synthetic: false,
       branch: "feature/x",
       commitSha: "deadbeef",

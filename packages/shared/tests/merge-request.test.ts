@@ -93,6 +93,7 @@ describe("mergeRequestSchema", () => {
     taskId: VALID_ULID,
     resolvedFrom: null,
     escalationId: null,
+    revertOf: null,
     synthetic: false,
     branch: "feat/auth",
     commitSha: "abc123",
@@ -164,6 +165,12 @@ describe("mergeRequestSchema", () => {
     expect(mergeRequestSchema.parse({ ...validRequest, resolvedFrom: null })).toBeTruthy();
     const resolved = { ...validRequest, resolvedFrom: VALID_ULID };
     expect(mergeRequestSchema.parse(resolved).resolvedFrom).toBe(VALID_ULID);
+  });
+
+  it("accepts revertOf null (a normal request) and a sha string (a revert request, A4 P2)", () => {
+    expect(mergeRequestSchema.parse({ ...validRequest, revertOf: null })).toBeTruthy();
+    const revert = { ...validRequest, revertOf: "deadbeefcafe" };
+    expect(mergeRequestSchema.parse(revert).revertOf).toBe("deadbeefcafe");
   });
 
   it("accepts all valid statuses", () => {

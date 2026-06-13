@@ -4997,6 +4997,10 @@
             "type": "string",
             "nullable": true
           },
+          "revertOf": {
+            "type": "string",
+            "nullable": true
+          },
           "synthetic": {
             "type": "boolean"
           },
@@ -5090,6 +5094,7 @@
           "taskId",
           "resolvedFrom",
           "escalationId",
+          "revertOf",
           "synthetic",
           "branch",
           "commitSha",
@@ -5146,6 +5151,31 @@
             "nullable": true
           }
         }
+      },
+      "MergeRequestRevert": {
+        "type": "object",
+        "properties": {
+          "landedSha": {
+            "type": "string",
+            "minLength": 1
+          },
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "escalationId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "landedSha"
+        ]
       },
       "MergeRequestDetail": {
         "allOf": [
@@ -23423,6 +23453,14 @@
           },
           {
             "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "revertOf",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string",
               "enum": [
                 "true",
@@ -23529,6 +23567,147 @@
           },
           "404": {
             "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-requests/revert": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Submit a fast revert of a landed sha (Campaign A4 P2)",
+        "description": "Records a task-less, branchless, queued merge request that reverts the given landedSha. The integrator materializes `git revert <sha>` at pickup and lands it through the SAME verify-gated train — main never breaks even reverting (verify runs before fast-forward). Any authenticated user (NO admin gate: the revert is verify-gated, so a bad revert self-rejects). Deterministic (no LLM → no injection surface). When escalationId is supplied, the A2 land/reject post-back fires.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestRevert"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Queued revert request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (e.g. escalationId not in this project)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or escalation not found",
             "content": {
               "application/json": {
                 "schema": {

@@ -81,6 +81,7 @@ interface MergeRequestRow {
   taskId: string | null;
   resolvedFrom: string | null;
   escalationId: string | null;
+  revertOf: string | null;
   synthetic: boolean;
   branch: string | null;
   commitSha: string | null;
@@ -270,6 +271,7 @@ function toMemberView(row: MergeRequestRow): MergeRequestView {
     taskId: row.taskId,
     resolvedFrom: row.resolvedFrom,
     escalationId: row.escalationId,
+    revertOf: row.revertOf,
     synthetic: row.synthetic,
     branch: row.branch,
     commitSha: row.commitSha,
