@@ -65,6 +65,9 @@ interface FakeOrigin {
   id: string;
   taskId: string | null;
   verifyCmd: string | null;
+  // A2: the origin's escalation link (null for a plain task MR). Propagated
+  // onto the resubmit so a resolved-then-landed responder MR fires the post-back.
+  escalationId?: string | null;
 }
 
 function makeDeps(opts: {
@@ -153,6 +156,7 @@ describe("makeOnOutcome — resolved", () => {
       branch: string;
       verifyCmd: string | null;
       resolvedFrom: string | null;
+      escalationId: string | null;
     };
     expect(submitArgs.projectId).toBe("proj-1");
     expect(submitArgs.resource).toBe("main");
@@ -160,6 +164,9 @@ describe("makeOnOutcome — resolved", () => {
     expect(submitArgs.branch).toBe("pm/resolution-res-1");
     expect(submitArgs.verifyCmd).toBe("pnpm verify:special"); // PROPAGATED
     expect(submitArgs.resolvedFrom).toBe("req-origin"); // no-recursion marker
+    // A2 regression: a plain task MR (no escalation) propagates escalationId null
+    // — byte-identical to pre-A2.
+    expect(submitArgs.escalationId).toBeNull();
 
     // resolvedResolution cross-links the new request
     expect(pmClient.resolvedResolution).toHaveBeenCalledTimes(1);
@@ -170,6 +177,31 @@ describe("makeOnOutcome — resolved", () => {
     // never escalated, never commented
     expect(pmClient.escalateResolution).not.toHaveBeenCalled();
     expect(pmClient.postTaskComment).not.toHaveBeenCalled();
+  });
+
+  it("(a2) origin carries escalationId ⇒ resubmit propagates escalationId ALONGSIDE resolvedFrom/verifyCmd/taskId (A2 post-back link)", async () => {
+    const { onOutcome, pmClient } = makeDeps({
+      origin: {
+        id: "req-origin",
+        taskId: "task-7",
+        verifyCmd: "pnpm verify:special",
+        escalationId: "esc-1",
+      },
+    });
+    await onOutcome(makeResolvedOutcome());
+
+    expect(pmClient.submitMergeRequest).toHaveBeenCalledTimes(1);
+    const submitArgs = pmClient.submitMergeRequest.mock.calls[0][0] as {
+      taskId: string | null;
+      verifyCmd: string | null;
+      resolvedFrom: string | null;
+      escalationId: string | null;
+    };
+    // escalationId AND resolvedFrom COEXIST — neither dropped (a seal/post-back each)
+    expect(submitArgs.escalationId).toBe("esc-1");
+    expect(submitArgs.resolvedFrom).toBe("req-origin");
+    expect(submitArgs.verifyCmd).toBe("pnpm verify:special");
+    expect(submitArgs.taskId).toBe("task-7");
   });
 
   it("(c) push fails ⇒ escalate failed (resubmit_push_failed) + merge_rejection comment; NO submit", async () => {

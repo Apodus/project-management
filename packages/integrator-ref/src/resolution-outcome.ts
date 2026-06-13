@@ -168,6 +168,16 @@ export function makeOnOutcome(
     //    origin.verifyCmd (the train verifies with request.verifyCmd ?? default
     //    — omitting it gates with the WRONG command). resolvedFrom = originId is
     //    the no-recursion marker (§5.4).
+    //
+    //    A2 (trust-first): ALSO propagate origin.escalationId. When the origin
+    //    is an auto-implement responder MR (Campaign A1/A2), the resolver may
+    //    reconcile it; the resolution re-verifies before landing, so a
+    //    resolved-then-landed responder MR must STILL fire the P2 land post-back
+    //    (escalation → resolved, landed_sha summary on the thread). escalationId
+    //    and resolvedFrom COEXIST — resolvedFrom seals no-recursion, escalationId
+    //    carries the post-back link; dropping either loses a seal/post-back. A
+    //    null escalationId (the common case — a plain task MR) is byte-identical
+    //    to pre-A2.
     let newReq;
     try {
       newReq = await pmClient.submitMergeRequest({
@@ -177,6 +187,7 @@ export function makeOnOutcome(
         branch,
         verifyCmd: origin.verifyCmd,
         resolvedFrom: outcome.job.originRequestId,
+        escalationId: origin.escalationId ?? null,
       });
     } catch (err) {
       logger.warn(

@@ -768,6 +768,12 @@ export class PmClient {
    * design §5.4). MUST copy the origin's `verifyCmd` so the resubmitted request
    * is gated by the SAME verify command the origin would have used (omitting it
    * silently falls back to the project default = the WRONG gate).
+   *
+   * A2 provenance pass-through: `escalationId` carries the origin's escalation
+   * link onto the resubmitted request so a resolved-then-landed responder MR
+   * still fires the P2 land post-back (the resolver reconciles responder MRs;
+   * dropping it loses the post-back, just as dropping `resolvedFrom` loses the
+   * no-recursion seal — the two coexist).
    * POST /api/v1/projects/{projectId}/merge-requests.
    */
   submitMergeRequest(params: {
@@ -779,6 +785,7 @@ export class PmClient {
     verifyCmd?: string | null;
     worktreePath?: string | null;
     resolvedFrom?: string | null;
+    escalationId?: string | null;
   }): Promise<MergeRequestView> {
     const { projectId, ...body } = params;
     return this.request<MergeRequestView>(

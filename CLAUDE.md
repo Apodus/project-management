@@ -479,6 +479,34 @@ bounded, and self-alerting, so the responder (which **ships `enabled=false`**) c
 **shadow â†’ on** responsibly â€” a human always sees the backlog, is paged by the SLA alert, and approves
 high-severity/`needs_human` outcomes. Roadmap: `roadmaps/roadmap-20260613-1441-c4-legibility-sla.md`.
 
+**Auto-implement land path (Campaign A1+A2).** The responder can go past answering to **autonomously land
+a code fix** for a bounded escalation â€” gated by `settings.integrator` responder config `auto_implement.enabled`
+(**default FALSE**; the arc ships **OFF**, like the responder itself). The flow is **trust-first, additive, and
+verify-gated**: when enabled, an **injection sniff-test** gates session admission on the raw escalation
+(suspicious/un-runnable â†’ escalate-to-human, never spawn â€” fail-safe); a clean admission whose answering
+session declares `implement{bounded}` spawns an **isolated-worktree write session** (cwd = a git clone, never
+`main`); on `branch_ready` (commit-cross-checked, never inferred) the loop applies a **coarse blast-radius
+allowlist** (literal path prefixes; empty = the whole PM repo), **pushes `pm/escalation-<id>`**, and **submits
+a task-less, `escalationId`-linked merge request over HTTP** (NOT `pm_request_merge` â€” the responder is a
+separate `ai_agent`), then appends a `pendingLand` handoff message **leaving the escalation `acknowledged`**
+(the responder never self-resolves). The **merge train lands it VERIFY-GATED** â€” `main` is structurally
+unbreakable: a wrong diff is caught by verify and **never landed**. The land/reject **posts back** onto the
+escalation (`merge_requests.escalationId`, migration via P1): **land â†’ resolve-as-holder** (the responder
+holder authors the `landed_sha` summary; the origin auto-notices it via the C2 undelivered-delivery layer) /
+**reject â†’ `needs_human`** with the structured reject reason, the branch (MR row) **preserved** (no proven
+work discarded). The post-back is best-effort, runs AFTER the land/reject commit + event, and is guarded on a
+non-null `escalationId` â€” so a plain task MR (`escalationId` null) is **byte-identical to pre-A2**.
+**Resolver composition (trust-first):** when the 7.6 conflict resolver reconciles a responder MR, it
+**propagates `escalationId` ALONGSIDE `resolvedFrom`** on its resubmit â€” so a resolved-then-landed responder
+MR still fires the land post-back (the resolution re-verifies before landing; `resolvedFrom` seals
+no-recursion, `escalationId` carries the post-back; dropping either loses a seal/post-back). **No-recursion is
+structural** (NO new guard): `resolved` is terminal and never re-assessed, the seed gate seeds only
+`status==="open"` escalations not authored by self, a `pendingLand` self-held escalation is **reclaim-skipped**
+(awaiting the train, not stranded), and `resolvedFrom != null` already seals the resolver. Worker/operator
+facing config + the sniff/allowlist/budget knobs live in `settings.integrator` (responder block); no new MCP
+tool, no new env var. Roadmaps: `roadmaps/` A1 (assess + sniff + write session + allowlist) + A2 (escalationId
+post-back + resolver propagation + full-stack land seal).
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:

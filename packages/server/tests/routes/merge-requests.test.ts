@@ -1348,6 +1348,72 @@ describe("Merge Requests API", () => {
       expect((await res.json()).data.status).toBe("landed");
     });
 
+    // A2 §P4: the 7.6 resolver reconciles a responder MR. The RESUBMISSION
+    // carries BOTH resolvedFrom (no-recursion seal) AND escalationId (the
+    // post-back link, propagated from the origin) — so landing the RESOLUTION
+    // (not the origin) still fires the post-back: the escalation resolves and
+    // the landed_sha summary lands on the thread. This proves the propagated
+    // escalationId is load-bearing on the resolution's land.
+    it("resubmission (resolvedFrom + propagated escalationId) lands ⇒ post-back fires on the resolution", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db); // the responder
+      const origin = createTestUser(testApp.db); // a DIFFERENT user
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id, "origin-worker-resub");
+
+      // The origin responder MR (escalationId-linked) — the resolver's input.
+      const originReqId = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-origin",
+        escalationId: escId,
+      });
+
+      // The resolver resubmits: a NEW MR carrying resolvedFrom = origin AND the
+      // propagated escalationId (both coexist).
+      const resubId = await submitRequest(project.id, integrator.token, {
+        branch: "pm/resolution-resub",
+        resolvedFrom: originReqId,
+        escalationId: escId,
+      });
+      const resubRow = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, resubId))
+        .get();
+      expect(resubRow?.resolvedFrom).toBe(originReqId);
+      expect(resubRow?.escalationId).toBe(escId);
+
+      // Land the RESOLUTION (not the origin).
+      forceIntegrating(resubId);
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${resubId}/land`, {
+        token: integrator.token,
+        body: { landedSha: "resubLANDED" },
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.status).toBe("landed");
+
+      // The escalation resolves (post-back fired off the RESOLUTION's land).
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("resolved");
+      expect(escRow?.resolvedBy).toBe(holder.user.id);
+
+      // The landed_sha summary references the resolution MR + its sha.
+      const msgs = testApp.db
+        .select()
+        .from(escalationMessages)
+        .where(eq(escalationMessages.escalationId, escId))
+        .all();
+      const landedMsg = msgs.find(
+        (m) => m.body.includes("resubLANDED") && m.body.includes(resubId),
+      );
+      expect(landedMsg).toBeTruthy();
+
+      // The origin auto-notices via C2 (holder-authored message surfaces).
+      const undelivered = escalationService.listUndeliveredForWorker("origin-worker-resub", project.id);
+      const entry = undelivered.find((u) => u.escalation.id === escId);
+      expect(entry).toBeTruthy();
+      expect(entry!.unreadMessages.some((m) => m.body.includes("resubLANDED"))).toBe(true);
+    });
+
     it("reject post-back is non-fatal: an induced throw is caught, reject still 200", async () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
