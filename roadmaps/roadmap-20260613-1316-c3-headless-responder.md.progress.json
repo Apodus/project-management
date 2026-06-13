@@ -2,16 +2,18 @@
   "campaign": "C3 — Headless PM-side responder",
   "vision": "roadmaps/vision-20260613-agent-to-agent-escalation-channel.md",
   "branch": "campaign-agent-escalation-channel",
-  "completed_phases": ["P1", "P2", "P3", "P4", "P5", "P6a"],
-  "current_phase": "P6b",
+  "status": "COMPLETE",
+  "completed_phases": ["P1", "P2", "P3", "P4", "P5", "P6a", "P6b"],
+  "current_phase": null,
   "phase_outcomes": {
     "P1": "skeleton + claim loop. 77fa02e.",
     "P2": "responder-runner (4-state sentinel). d3f2ec9.",
     "P3+P4": "outcome handling, mode-gated. 0b8d81d.",
     "P5": "shadow draft-to-approval + permanent high-severity boundary. 54eca67.",
-    "P6a": "3 safety seals: no-recursion (excludeOriginRepos; no depth marker - responder has no raise action), reclaim sweep (stranded acknowledged self-held, poison cap, swallowed escalate), sliding-window spawn budget (synchronous admission + ack-failure refund). 61 tests. 61cc5b8."
+    "P6a": "3 safety seals (no-recursion, reclaim, spawn-budget). 61cc5b8.",
+    "P6b": "full-stack seal (C1->C3->C2 closes, in-memory server + injected runner) + docs (CLAUDE.md/integrator-deployment §20/worker-pm). Server 1646. C3 COMPLETE. 660ee9b."
   },
   "open_issues": [],
   "dag_drift": [],
-  "notes": "P6b: e2e/full-stack seal (client raises -> responder loop with REAL ResponderClient against in-memory @pm/server app + INJECTED fake runner returns answered -> acknowledged+answered -> answer becomes undelivered directed reply: closes C1->C2->C3) + docs (CLAUDE.md C3 paragraph, integrator-deployment responder section, worker-pm note) + C3 close. Ships enabled=false (shadow when enabled)."
+  "notes": "C3 sealed. Responder ships enabled=false (shadow when enabled). The full agent-to-agent loop (raise->answer->deliver, no human in transport) is proven end-to-end."
 }

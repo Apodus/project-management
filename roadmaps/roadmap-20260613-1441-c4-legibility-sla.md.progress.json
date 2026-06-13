@@ -1,0 +1,18 @@
+{
+  "campaign": "C4 — Legibility, safety rails & SLAs",
+  "vision": "roadmaps/vision-20260613-agent-to-agent-escalation-channel.md",
+  "branch": "campaign-agent-escalation-channel",
+  "status": "COMPLETE",
+  "completed_phases": ["P1", "P2", "P3", "P4", "P5"],
+  "current_phase": null,
+  "phase_outcomes": {
+    "P1": "web dashboard + timeline + nav/badge + SSE. 647631d.",
+    "P2": "on-read metrics endpoint + dashboard panel. 9d6cf55.",
+    "P3": "escalation.sla_breached edge-triggered alert (migration 0031). f2501e0.",
+    "P4": "escalations_fts dedup + exact-title auto-link + per-worker rate-limit. bf889e2.",
+    "P5": "e2e spec 09 (dashboard/timeline/dedup-fold/metrics, 4/4 isolation) + CLAUDE.md C4 paragraph + arc close. Server 1689. 37c4a26."
+  },
+  "open_issues": ["Full 9-spec sequential pnpm test:e2e flakes on PRE-EXISTING specs (03/05/06/07) under loaded box (CPU saturation, first-paint timeouts) — environmental, not a P5 regression; matches the documented pre-existing Linux-CI e2e flake. Spec 09 + unit suites green. Re-run full e2e on an unloaded box/CI for a clean gate."],
+  "dag_drift": [],
+  "notes": "C4 COMPLETE. WHOLE ARC (C1->C2->C3->C4) COMPLETE on branch campaign-agent-escalation-channel, NOT merged (operator decision). Responder ships enabled=false (shadow when enabled). Migrations added: 0029 (escalations+messages), 0030 (delivery cursor), 0031 (escalation_alert_state). New packages: @urtela/pm-wake-daemon, @urtela/pm-responder."
+}
