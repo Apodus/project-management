@@ -423,6 +423,7 @@ describe("Merge Groups API", () => {
         "commitSha",
         "createdAt",
         "enqueuedAt",
+        "escalationId",
         "failedFiles",
         "id",
         "landedSha",

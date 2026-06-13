@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   authRequest,
@@ -9,7 +9,14 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import { comments, escalations, gitRefs, mergeRequests } from "../../src/db/index.js";
+import {
+  comments,
+  escalationMessages,
+  escalations,
+  gitRefs,
+  mergeRequests,
+} from "../../src/db/index.js";
+import * as escalationService from "../../src/services/escalation.service.js";
 import { createId } from "@pm/shared";
 
 describe("Merge Requests API", () => {
@@ -1092,6 +1099,283 @@ describe("Merge Requests API", () => {
         },
       );
       expect(res.status).toBe(409);
+    });
+  });
+
+  // ─── J. Campaign A2 §P2+P3: escalation post-back ─────────────────
+  //
+  // A landed escalationId-linked merge request resolves its escalation as
+  // the HOLDER (answer→resolve), so the origin auto-notices the landed_sha
+  // via C2; a rejected one escalates the escalation to needs_human with the
+  // structured reject reason, the branch (MR row) preserved. The post-back
+  // runs after the land/reject commit + event, guarded on escalationId, and
+  // is best-effort (never breaks the land/reject).
+  describe("escalation post-back (A2 §P2+P3)", () => {
+    /**
+     * Seed an `acknowledged` escalation held by a RESPONDER ai_agent, with a
+     * DISTINCT origin author (so resolve() is not an author-withdrawal and
+     * the holder-authored message surfaces to the origin via C2). Returns the
+     * escalation id + the holder id + the origin worker key.
+     */
+    function seedHeldEscalation(
+      projectId: string,
+      holderId: string,
+      originAuthorId: string,
+      originWorkerKey = "origin-worker-1",
+    ): string {
+      const id = createId();
+      const ts = new Date().toISOString();
+      testApp.db
+        .insert(escalations)
+        .values({
+          id,
+          projectId,
+          kind: "bug_report",
+          status: "acknowledged",
+          title: "auto-implement me",
+          originRepo: "game_one",
+          originWorkerKey,
+          holderId,
+          authorId: originAuthorId,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+      return id;
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("land resolves the escalation as holder + origin auto-notices the sha", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db); // the responder
+      const origin = createTestUser(testApp.db); // a DIFFERENT user
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+
+      const requestId = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-land",
+        escalationId: escId,
+      });
+      forceIntegrating(requestId);
+
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
+        token: integrator.token,
+        body: { landedSha: "landedABC" },
+      });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.status).toBe("landed");
+
+      // Escalation resolved, by the holder.
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("resolved");
+      expect(escRow?.resolvedBy).toBe(holder.user.id);
+
+      // A message row carries the landed sha + the MR id.
+      const msgs = testApp.db
+        .select()
+        .from(escalationMessages)
+        .where(eq(escalationMessages.escalationId, escId))
+        .all();
+      const landedMsg = msgs.find(
+        (m) => m.body.includes("landedABC") && m.body.includes(requestId),
+      );
+      expect(landedMsg).toBeTruthy();
+
+      // The origin auto-notices via C2: holder-authored message surfaces.
+      const undelivered = escalationService.listUndeliveredForWorker("origin-worker-1", project.id);
+      const entry = undelivered.find((u) => u.escalation.id === escId);
+      expect(entry).toBeTruthy();
+      expect(entry!.unreadCount).toBeGreaterThanOrEqual(1);
+      expect(entry!.unreadMessages.some((m) => m.body.includes("landedABC"))).toBe(true);
+    });
+
+    it("reject escalates to needs_human + branch (MR row) preserved", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+
+      const requestId = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-reject",
+        escalationId: escId,
+      });
+      forceIntegrating(requestId);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/reject`,
+        {
+          token: integrator.token,
+          body: { category: "build_failed", reason: "TS2304 boom", logUrl: "https://ex/log" },
+        },
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.status).toBe("rejected");
+
+      // Escalation now needs_human.
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("needs_human");
+
+      // A system message carries the reject reason.
+      const msgs = testApp.db
+        .select()
+        .from(escalationMessages)
+        .where(eq(escalationMessages.escalationId, escId))
+        .all();
+      const rejectMsg = msgs.find(
+        (m) => m.messageType === "system" && m.body.includes("TS2304 boom"),
+      );
+      expect(rejectMsg).toBeTruthy();
+
+      // The MR row still exists with its branch intact (work preserved).
+      const mrRow = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.id, requestId))
+        .get();
+      expect(mrRow).toBeTruthy();
+      expect(mrRow?.branch).toBe("pm/escalation-reject");
+    });
+
+    it("no-escalationId land/reject leave escalations untouched (byte-identical)", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      // An UNRELATED held escalation that must NOT be mutated.
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+
+      // Land with no escalationId.
+      const landReq = await submitRequest(project.id, integrator.token, { branch: "feature/plain-land" });
+      forceIntegrating(landReq);
+      const landRes = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${landReq}/land`, {
+        token: integrator.token,
+        body: { landedSha: "plainland" },
+      });
+      expect(landRes.status).toBe(200);
+
+      // Reject with no escalationId.
+      const rejReq = await submitRequest(project.id, integrator.token, { branch: "feature/plain-rej" });
+      forceIntegrating(rejReq);
+      const rejRes = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${rejReq}/reject`, {
+        token: integrator.token,
+        body: { category: "policy", reason: "nope" },
+      });
+      expect(rejRes.status).toBe(200);
+
+      // The unrelated escalation is untouched + no messages were appended.
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("acknowledged");
+      const msgs = testApp.db
+        .select()
+        .from(escalationMessages)
+        .where(eq(escalationMessages.escalationId, escId))
+        .all();
+      expect(msgs.length).toBe(0);
+    });
+
+    it("land post-back is non-fatal: holderId=null skips, land still 200", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      // Holder-less escalation (no actor to assert) — seed with null holder.
+      const escId = createId();
+      const ts = new Date().toISOString();
+      testApp.db
+        .insert(escalations)
+        .values({
+          id: escId,
+          projectId: project.id,
+          kind: "bug_report",
+          status: "acknowledged",
+          title: "no holder",
+          originRepo: "game_one",
+          originWorkerKey: "origin-worker-1",
+          authorId: origin.id,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const requestId = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-noholder",
+        escalationId: escId,
+      });
+      forceIntegrating(requestId);
+
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
+        token: integrator.token,
+        body: { landedSha: "landedNH" },
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.status).toBe("landed");
+
+      // Skip path: escalation NOT resolved.
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("acknowledged");
+    });
+
+    it("land post-back is non-fatal: an induced throw is caught, land still 200", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+
+      vi.spyOn(escalationService, "resolve").mockImplementation(() => {
+        throw new Error("boom");
+      });
+
+      const requestId = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-throw",
+        escalationId: escId,
+      });
+      forceIntegrating(requestId);
+
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
+        token: integrator.token,
+        body: { landedSha: "landedThrow" },
+      });
+      // Land still succeeds — the post-back throw is swallowed.
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.status).toBe("landed");
+    });
+
+    it("reject post-back is non-fatal: an induced throw is caught, reject still 200", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+
+      vi.spyOn(escalationService, "escalateToHuman").mockImplementation(() => {
+        throw new Error("boom");
+      });
+
+      const requestId = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-reject-throw",
+        escalationId: escId,
+      });
+      forceIntegrating(requestId);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/reject`,
+        {
+          token: integrator.token,
+          body: { category: "build_failed", reason: "boom reason" },
+        },
+      );
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.status).toBe("rejected");
     });
   });
 });

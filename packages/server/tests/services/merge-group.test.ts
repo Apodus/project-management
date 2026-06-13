@@ -872,6 +872,7 @@ describe("merge-group service", () => {
         "commitSha",
         "createdAt",
         "enqueuedAt",
+        "escalationId",
         "failedFiles",
         "id",
         "landedSha",

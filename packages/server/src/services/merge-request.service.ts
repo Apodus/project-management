@@ -32,6 +32,7 @@ import {
 } from "./audit.service.js";
 import { list as listIncidents } from "./merge-incident.service.js";
 import { listByOriginRequest } from "./merge-resolution.service.js";
+import * as escalationService from "./escalation.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -1190,6 +1191,86 @@ export function resetToQueued(id: string, actor: Actor, reason: string): MergeRe
   return toView(updated);
 }
 
+// ─── Campaign A2 §P2+P3: escalation post-back ──────────────────────
+
+/**
+ * Post the outcome of an escalationId-linked merge request BACK onto its
+ * escalation, closing the auto-implement loop (Campaign A2 §P2/§P3).
+ *
+ * Runs AFTER the land/reject transaction commits AND after the
+ * MERGE_REQUEST_* event emits. Best-effort and NEVER throws out of
+ * land()/reject() — main has already advanced (land) / the MR is already
+ * rejected, so a post-back failure must not undo or fail that. Any error
+ * is swallowed with a warn.
+ *
+ * The acting identity is the escalation's HOLDER (the responder agent that
+ * picked up the escalation), which lives on the escalation row, NOT on the
+ * merge request. The holder is distinct from the origin author, so:
+ *   - resolve() is NOT an author-withdrawal (holder ≠ author) — it follows
+ *     the legal answered→resolved path with a real reason.
+ *   - the origin auto-notices the holder-authored messages via C2's
+ *     listUndeliveredForWorker (authorId != esc.authorId surfaces them).
+ *
+ * If the escalation is missing, or has no holder, we skip (never fabricate
+ * an actor). A mid-flight already-resolved / needs_human escalation makes
+ * answer/resolve a 409 — caught here, harmless.
+ */
+type PostBackPayload =
+  | { kind: "landed"; mergeRequestId: string; branch: string | null; landedSha: string }
+  | {
+      kind: "rejected";
+      mergeRequestId: string;
+      category: string;
+      reason: string;
+      branch: string | null;
+      logUrl: string | null;
+    };
+
+function postBackToEscalation(escalationId: string, payload: PostBackPayload): void {
+  try {
+    const db = getDb();
+    const esc = db
+      .select({ id: escalations.id, status: escalations.status, holderId: escalations.holderId })
+      .from(escalations)
+      .where(eq(escalations.id, escalationId))
+      .get();
+
+    if (esc === undefined) {
+      console.warn(`[a2-postback] escalation ${escalationId} not found; skipping post-back`);
+      return;
+    }
+    if (esc.holderId === null) {
+      console.warn(
+        `[a2-postback] escalation ${escalationId} has no holder; skipping post-back (no actor to assert)`,
+      );
+      return;
+    }
+
+    const holderActor = { id: esc.holderId, type: "ai_agent" as const };
+
+    if (payload.kind === "landed") {
+      const summary = `Landed merge request ${payload.mergeRequestId} (branch ${
+        payload.branch ?? "(none)"
+      }) at ${payload.landedSha}.`;
+      // acknowledged → answered → resolved (both legal + holder-authorized).
+      // If already answered (mid-flight), skip the answer and just resolve.
+      if (esc.status === "acknowledged") {
+        escalationService.answer(escalationId, { body: summary }, holderActor);
+      }
+      escalationService.resolve(escalationId, { reason: summary }, holderActor);
+    } else {
+      const rejectSummary =
+        `Merge rejected (${payload.category}): ${payload.reason}. ` +
+        `Branch ${payload.branch ?? "(unknown)"} preserved for human takeover. ` +
+        `Log: ${payload.logUrl ?? "(none)"}`;
+      // acknowledged → needs_human (legal from any non-terminal state).
+      escalationService.escalateToHuman(escalationId, { reason: rejectSummary }, holderActor);
+    }
+  } catch (err) {
+    console.warn(`[a2-postback] post-back failed for escalation ${escalationId}:`, err);
+  }
+}
+
 /**
  * Integrator land — integrating → landed.
  *
@@ -1279,6 +1360,17 @@ export function land(id: string, body: MergeRequestLand, actor: Actor): MergeReq
   });
   if (auditId !== null && auditView !== null) {
     emitAuditRecorded(auditId, row.projectId, actor.id, auditView);
+  }
+  // Campaign A2 §P2: close the auto-implement loop — a landed escalationId
+  // merge request resolves its escalation as the holder (best-effort, after
+  // the commit + event; never throws — main already advanced).
+  if (row.escalationId !== null) {
+    postBackToEscalation(row.escalationId, {
+      kind: "landed",
+      mergeRequestId: id,
+      branch: row.branch,
+      landedSha: body.landedSha,
+    });
   }
   return toView(updated);
 }
@@ -1414,6 +1506,20 @@ export function reject(id: string, body: MergeRequestReject, actor: Actor): Merg
   });
   if (auditId !== null && auditView !== null) {
     emitAuditRecorded(auditId, row.projectId, actor.id, auditView);
+  }
+  // Campaign A2 §P3: close the auto-implement loop — a rejected escalationId
+  // merge request escalates its escalation to needs_human with the structured
+  // reject reason (best-effort, after the commit + event; never throws). The
+  // branch is untouched by reject(), so the work is preserved for a human.
+  if (row.escalationId !== null) {
+    postBackToEscalation(row.escalationId, {
+      kind: "rejected",
+      mergeRequestId: id,
+      category: body.category,
+      reason: body.reason,
+      branch: row.branch,
+      logUrl: body.logUrl ?? null,
+    });
   }
   return toView(updated);
 }
