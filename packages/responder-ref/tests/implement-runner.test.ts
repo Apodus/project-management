@@ -269,7 +269,7 @@ describe.skipIf(!GIT_AVAILABLE)("createClaudeImplementRunner (real git)", () => 
 // ── buildImplementPrompt (pure — no git) ──
 describe("buildImplementPrompt", () => {
   it("substitutes {escalation}, {thread}, AND {branch} into the default", () => {
-    const out = buildImplementPrompt(escalation, thread, "pm/impl-esc-1");
+    const out = buildImplementPrompt(escalation, thread, "pm/impl-esc-1", "");
     expect(out).toContain("esc-1");
     expect(out).toContain("Fix the off-by-one");
     expect(out).toContain("first thread body here");
@@ -281,7 +281,7 @@ describe("buildImplementPrompt", () => {
   });
 
   it("mandates the implement sentinel + permits editing (no do-not-edit constraint)", () => {
-    const out = buildImplementPrompt(escalation, thread, "pm/impl-esc-1");
+    const out = buildImplementPrompt(escalation, thread, "pm/impl-esc-1", "");
     expect(out).toContain("PM_IMPLEMENT_STATUS_PATH");
     expect(out).toContain("branch_ready");
     expect(out).toContain("give_up");
@@ -292,7 +292,7 @@ describe("buildImplementPrompt", () => {
   });
 
   it("a custom template is preserved (replace-if-present)", () => {
-    const out = buildImplementPrompt(escalation, thread, "br", "ON {branch}: {escalation}");
+    const out = buildImplementPrompt(escalation, thread, "br", "", "ON {branch}: {escalation}");
     expect(out.startsWith("ON br: ")).toBe(true);
     expect(out).toContain("esc-1");
     expect(out).not.toContain("{thread}");

@@ -58,10 +58,19 @@ describe("loadConfig", () => {
   it("autoImplement.enabled defaults to false; PM_AUTO_IMPLEMENT_ENABLED truthy turns it on", () => {
     expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement).toEqual({
       enabled: false,
+      verifyCmd: "",
     });
     expect(
-      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "true" })
-        .autoImplement.enabled,
+      loadConfig(
+        {},
+        {
+          ...baseEnv,
+          PM_PROJECT_ID: "p",
+          PM_AUTO_IMPLEMENT_ENABLED: "true",
+          // P3: a repo url is required once auto_implement is enabled.
+          PM_RESPONDER_GIT_REPO_URL: "https://example.com/repo.git",
+        },
+      ).autoImplement.enabled,
     ).toBe(true);
     expect(
       loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "no" })
@@ -126,6 +135,65 @@ describe("loadConfig", () => {
     );
     expect(cfg.reclaimGraceSec).toBe(600);
     expect(cfg.maxReclaimAttempts).toBe(5);
+  });
+
+  it("autoImplement.verifyCmd defaults to '' and honors PM_AUTO_IMPLEMENT_VERIFY_CMD", () => {
+    expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement.verifyCmd).toBe("");
+    expect(
+      loadConfig(
+        {},
+        { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_VERIFY_CMD: "pnpm test" },
+      ).autoImplement.verifyCmd,
+    ).toBe("pnpm test");
+  });
+
+  it("worktreeGit defaults: empty repoUrl, origin, main, [] when auto_implement disabled", () => {
+    const cfg = loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" });
+    expect(cfg.worktreeGit).toEqual({
+      repoUrl: "",
+      remote: "origin",
+      mainBranch: "main",
+      cleanKeep: [],
+    });
+  });
+
+  it("gitRepoUrl is REQUIRED iff auto_implement.enabled (ConfigError when enabled+missing)", () => {
+    expect(() =>
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "true" }),
+    ).toThrow(ConfigError);
+    // OK when enabled + a repo url is given.
+    const cfg = loadConfig(
+      {},
+      {
+        ...baseEnv,
+        PM_PROJECT_ID: "p",
+        PM_AUTO_IMPLEMENT_ENABLED: "true",
+        PM_RESPONDER_GIT_REPO_URL: "https://example.com/repo.git",
+      },
+    );
+    expect(cfg.worktreeGit.repoUrl).toBe("https://example.com/repo.git");
+  });
+
+  it("does NOT require gitRepoUrl when auto_implement is disabled", () => {
+    expect(() =>
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "false" }),
+    ).not.toThrow();
+  });
+
+  it("honors worktree git remote/mainBranch/cleanKeep overrides", () => {
+    const cfg = loadConfig(
+      {},
+      {
+        ...baseEnv,
+        PM_PROJECT_ID: "p",
+        PM_RESPONDER_GIT_REMOTE: "upstream",
+        PM_RESPONDER_GIT_MAIN_BRANCH: "trunk",
+        PM_RESPONDER_GIT_CLEAN_KEEP: " node_modules , , dist ",
+      },
+    );
+    expect(cfg.worktreeGit.remote).toBe("upstream");
+    expect(cfg.worktreeGit.mainBranch).toBe("trunk");
+    expect(cfg.worktreeGit.cleanKeep).toEqual(["node_modules", "dist"]);
   });
 
   it("strips a trailing slash from the pm url; CLI overrides env", () => {

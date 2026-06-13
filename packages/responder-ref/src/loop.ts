@@ -72,13 +72,21 @@
  */
 import path from "node:path";
 import { tmpdir } from "node:os";
-import type { Escalation, EscalationSeverity } from "@pm/shared";
+import type {
+  Escalation,
+  EscalationMessage,
+  EscalationSeverity,
+  EscalationWithThread,
+} from "@pm/shared";
 import type { Logger } from "./logger.js";
 import type { ResponderClient } from "./api-client.js";
 import { PmApiError } from "./api-client.js";
 import type { ResponderRunner } from "./responder-runner.js";
 import type { InjectionSniffer } from "./injection-sniffer.js";
+import type { ImplementRunner } from "./implement-runner.js";
+import type { Worktree } from "./worktree.js";
 import { buildResponderPrompt } from "./prompt.js";
+import { buildImplementPrompt } from "./implement-prompt.js";
 import type { ResponderMode, SpawnBudget } from "./config.js";
 
 /**
@@ -125,6 +133,7 @@ export interface ResponderDeps {
     | "answer"
     | "escalateToHuman"
     | "getEscalation"
+    | "addMessage"
   >;
   logger: Logger;
   projectIds: string[];
@@ -158,6 +167,28 @@ export interface ResponderDeps {
    * spawn (FAIL-SAFE). Real classifier in prod; scripted fake in tests.
    */
   sniffer: InjectionSniffer;
+  /**
+   * The injectable write-capable implement runner (A1 P3). Spawned ONLY on the
+   * `implement{bounded}` path when auto_implement is enabled + the sniff is clean.
+   * Real spawn (`createClaudeImplementRunner`) in prod; scripted fake in tests.
+   */
+  implementRunner: ImplementRunner;
+  /**
+   * Acquire an isolated worktree for an implement session (A1 P3, REVISE FIX #1).
+   * Injectable: prod binds `createWorktree` to the git config + worktreeRoot; tests
+   * inject a fake (no real git). Called with a stable slot name `pm-implement-<i>`.
+   * The loop sizes the slot pool to `maxConcurrent` and leases a free slot per
+   * implement session (released in the session's `finally`).
+   */
+  acquireWorktree: (slotName: string) => Worktree;
+  /** Git config for the implement worktree (A1 P3): remote + main branch for push/diff. */
+  worktreeGit: { remote: string; mainBranch: string };
+  /**
+   * Project verify command the implement agent runs in-session before declaring
+   * branch_ready (A1 P3). "" ⇒ the agent skips in-session verify (A2 train re-verify
+   * is the floor). Threaded into `buildImplementPrompt`.
+   */
+  verifyCmd: string;
   /** Working directory the answering session runs in (the PM repo checkout). */
   repoCwd: string;
   /** Headless answering command passed to the runner. */
@@ -207,6 +238,13 @@ export interface ResponderState {
    * IN-MEMORY — reset on restart.
    */
   spawnTimestamps: number[];
+  /**
+   * Implement-worktree slot leases (A1 P3, REVISE FIX #1). Lazily populated up to
+   * `maxConcurrent` entries (slot names `pm-implement-<i>`); `leased` guards a slot
+   * against concurrent re-use. A session acquires a free slot, runs in its
+   * worktree, and releases it in `finally`. IN-MEMORY — reset on restart.
+   */
+  implementSlots: { name: string; wt: Worktree; leased: boolean }[];
 }
 
 export function createResponderState(): ResponderState {
@@ -215,7 +253,46 @@ export function createResponderState(): ResponderState {
     claimed: new Set(),
     reclaimAttempts: new Map(),
     spawnTimestamps: [],
+    implementSlots: [],
   };
+}
+
+/**
+ * Lease a free implement-worktree slot (A1 P3, REVISE FIX #1). The slot pool is
+ * sized to `maxConcurrent` (slot names `pm-implement-0..maxConcurrent-1`) and lazily
+ * populated via `acquireWorktree`. Returns the leased slot, or null when every slot
+ * is busy (rare — only at `maxConcurrent > 1` with all implement sessions in flight).
+ */
+function leaseImplementSlot(
+  deps: ResponderDeps,
+  state: ResponderState,
+): { name: string; wt: Worktree; leased: boolean } | null {
+  // Reuse an existing free slot first.
+  for (const slot of state.implementSlots) {
+    if (!slot.leased) {
+      slot.leased = true;
+      return slot;
+    }
+  }
+  // Lazily populate a new slot if the pool is below maxConcurrent.
+  if (state.implementSlots.length < deps.maxConcurrent) {
+    const name = `pm-implement-${state.implementSlots.length}`;
+    const slot = { name, wt: deps.acquireWorktree(name), leased: true };
+    state.implementSlots.push(slot);
+    return slot;
+  }
+  return null;
+}
+
+/**
+ * Does this escalation's thread carry a pending-land handoff marker (A1 P3,
+ * REVISE FIX #3)? A `branch_ready` implement session leaves a `diagnosis` message
+ * with `metadata.pendingLand === true`; the reclaim sweep keys off it to SKIP a
+ * landed-but-not-yet-merged escalation (it's waiting on A2/the train, not stranded —
+ * re-spawning a read-only answering session on it would march the poison cap).
+ */
+function hasPendingLandMarker(messages: EscalationMessage[]): boolean {
+  return messages.some((m) => m.metadata != null && m.metadata.pendingLand === true);
 }
 
 /**
@@ -446,11 +523,12 @@ async function runAnsweringSession(
             "implement (systemic) → escalated to human",
           );
         } else {
-          // bounded — P1 has NO write capability yet (the write session is P2).
-          deps.logger.info(
-            { escalationId, projectId, rationale: result.rationale },
-            "would implement (bounded) — write session is P2",
-          );
+          // bounded — A1 P3: acquire an isolated worktree, spawn the write session,
+          // and on branch_ready push + addMessage(pendingLand) leaving the
+          // escalation acknowledged (A2 lands + resolves). NOTE: this runs OUTSIDE
+          // the swallowing try/catch below (it owns its own non-fatal handling).
+          // We return here so the outer catch never re-wraps it.
+          await runImplementSession(deps, state, projectId, escalationId, detail);
         }
         break;
       }
@@ -460,6 +538,197 @@ async function runAnsweringSession(
       { escalationId, projectId, kind: result.kind, err: errMessage(postErr) },
       "post-spawn client call failed; escalation stays acknowledged (P6 reclaim recovers)",
     );
+  }
+}
+
+/**
+ * The write-capable implement session (A1 P3) — runs on the `implement{bounded}`
+ * path when auto_implement is enabled and the injection sniff was clean. Acquires an
+ * isolated worktree, pre-creates the escalation branch, spawns the write runner with
+ * the in-session-verify prompt, and on `branch_ready` PUSHES the branch + appends a
+ * `pendingLand` handoff message — LEAVING the escalation `acknowledged` (A2 lands +
+ * resolves; the responder never answers/resolves here). give_up/error escalate to a
+ * human (mode=off ⇒ silent). NO land yet (A2). All PM/git I/O is non-fatal — a
+ * failure escalates (no proven work discarded) and never escapes the job; the
+ * worktree is reset for reuse + the slot released in `finally`.
+ */
+async function runImplementSession(
+  deps: ResponderDeps,
+  state: ResponderState,
+  projectId: string,
+  escalationId: string,
+  detail: EscalationWithThread,
+): Promise<void> {
+  const branch = `pm/escalation-${escalationId}`;
+
+  // Lease a worktree slot (sized to maxConcurrent). None free ⇒ escalate (rare;
+  // only at maxConcurrent>1 with every implement session in flight).
+  const slot = leaseImplementSlot(deps, state);
+  if (slot === null) {
+    if (deps.mode === "off") return; // off is silent.
+    try {
+      await deps.client.escalateToHuman(
+        escalationId,
+        "no free implement worktree slot (all busy); needs a human or a retry",
+      );
+    } catch (err) {
+      deps.logger.error(
+        { escalationId, projectId, err: errMessage(err) },
+        "no-slot escalateToHuman failed; escalation stays acknowledged (reclaim recovers)",
+      );
+    }
+    return;
+  }
+
+  const wt = slot.wt;
+
+  // Prepare the worktree (clone-if-needed + reset to fresh main). A failure here is
+  // non-fatal: escalate, release the slot, return. The runner never spawns.
+  try {
+    await wt.ensureExists();
+    await wt.resetForAttempt();
+  } catch (err) {
+    slot.leased = false;
+    if (deps.mode === "off") return; // off is silent.
+    try {
+      await deps.client.escalateToHuman(
+        escalationId,
+        `could not prepare a worktree: ${errMessage(err)}`,
+      );
+    } catch (postErr) {
+      deps.logger.error(
+        { escalationId, projectId, err: errMessage(postErr) },
+        "worktree-prep escalateToHuman failed; escalation stays acknowledged (reclaim recovers)",
+      );
+    }
+    return;
+  }
+
+  try {
+    // Pre-create the branch the agent commits onto.
+    await wt.git.checkoutLocalBranch(branch);
+
+    const logsDir = deps.logsDir ?? tmpdir();
+    const statusPath = path.join(logsDir, `${escalationId}.implement.status.json`);
+    const logPath = path.join(logsDir, `${escalationId}.implement.log`);
+    const prompt = buildImplementPrompt(detail, detail.messages, branch, deps.verifyCmd);
+
+    const result = await deps.implementRunner.run({
+      escalation: detail,
+      thread: detail.messages,
+      branch,
+      worktreePath: wt.path,
+      budget: deps.budget,
+      command: deps.command,
+      prompt,
+      logPath,
+      statusPath,
+      signal: deps.signal,
+    });
+
+    // Outcome handling — every PM/git call wrapped so a transient failure never
+    // escapes the job (the escalation stays acknowledged; reclaim recovers it).
+    try {
+      switch (result.kind) {
+        case "branch_ready": {
+          const readyBranch = result.branch;
+          const commitSha = result.commitSha;
+          // Push the branch (no land — A2). A push failure escalates (work is
+          // committed locally; nothing lost) and does NOT addMessage.
+          try {
+            await wt.git.push(deps.worktreeGit.remote, readyBranch, ["--set-upstream"]);
+          } catch (pushErr) {
+            if (deps.mode === "off") break; // off is silent.
+            await deps.client.escalateToHuman(
+              escalationId,
+              `implemented on branch ${readyBranch} but push failed: ${errMessage(pushErr)}`,
+            );
+            deps.logger.warn(
+              { escalationId, projectId, branch: readyBranch, err: errMessage(pushErr) },
+              "implement push failed; escalated to human (no work lost)",
+            );
+            break;
+          }
+
+          if (deps.mode === "off") {
+            deps.logger.info(
+              { escalationId, projectId, branch: readyBranch, mode: deps.mode },
+              "implement branch_ready (mode=off) — pushed but not handing off; off is silent",
+            );
+            break;
+          }
+
+          // Diff summary (best-effort — a failure just omits the stat).
+          let diffSummary = "";
+          try {
+            const stat = await wt.git.diff([
+              "--stat",
+              `${deps.worktreeGit.mainBranch}..${readyBranch}`,
+            ]);
+            diffSummary = stat.length > 2000 ? `${stat.slice(0, 2000)}\n…(truncated)` : stat;
+          } catch {
+            /* diff is advisory; omit on failure */
+          }
+
+          const body =
+            `Implemented a fix on branch \`${readyBranch}\`` +
+            (commitSha ? ` (\`${commitSha}\`)` : "") +
+            `, pending land (A2).` +
+            (diffSummary.length > 0 ? `\n\n${diffSummary}` : "");
+          // addMessage leaves the escalation ACKNOWLEDGED (NOT answer/resolve — A2
+          // lands + resolves). The pendingLand marker stops the reclaim re-spawn.
+          await deps.client.addMessage(escalationId, body, "diagnosis", {
+            pendingLand: true,
+            branch: readyBranch,
+            commitSha: commitSha ?? null,
+          });
+          deps.logger.info(
+            { escalationId, projectId, branch: readyBranch, commitSha },
+            "implemented + pushed branch; appended pending-land handoff (stays acknowledged for A2)",
+          );
+          break;
+        }
+        case "give_up":
+          if (deps.mode === "off") break; // off is silent.
+          await deps.client.escalateToHuman(
+            escalationId,
+            `Responder could not implement: ${result.reason}`,
+          );
+          deps.logger.info(
+            { escalationId, projectId, reason: result.reason },
+            "implement give_up; escalated to human",
+          );
+          break;
+        case "error":
+          if (deps.mode === "off") break; // off is silent.
+          await deps.client.escalateToHuman(
+            escalationId,
+            `implement session failed (${result.reason}): ${result.detail ?? ""}`,
+          );
+          deps.logger.warn(
+            { escalationId, projectId, reason: result.reason, detail: result.detail },
+            "implement session failed; escalated to human",
+          );
+          break;
+      }
+    } catch (postErr) {
+      deps.logger.error(
+        { escalationId, projectId, kind: result.kind, err: errMessage(postErr) },
+        "post-implement client call failed; escalation stays acknowledged (reclaim recovers)",
+      );
+    }
+  } finally {
+    // Clean the worktree for reuse (safe — the branch is pushed to the remote) and
+    // release the slot. A reset failure is non-fatal (the next lease re-resets).
+    try {
+      await wt.resetForAttempt();
+    } catch (err) {
+      deps.logger.warn(
+        { escalationId, projectId, err: errMessage(err) },
+        "post-implement worktree reset failed; will re-reset on next lease",
+      );
+    }
+    slot.leased = false;
   }
 }
 
@@ -608,6 +877,28 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
     for (const esc of stale) {
       if (slot.available <= 0) break;
       const escalationId = esc.id;
+
+      // REVISE FIX #3 (reclaim guard): SKIP an escalation whose thread carries the
+      // pending-land marker — it's a landed-but-not-yet-merged implement handoff
+      // waiting on A2/the train, NOT a stranded read-only session. Re-spawning a
+      // read-only answering session on it would march the poison cap. A fetch
+      // failure is non-fatal: fall through (the existing reclaim path then handles
+      // it as before — a getEscalation failure inside the session is logged).
+      try {
+        const thread = await deps.client.getEscalation(escalationId);
+        if (hasPendingLandMarker(thread.messages)) {
+          deps.logger.debug(
+            { escalationId, projectId },
+            "reclaim skip: escalation has a pending-land handoff (awaiting A2); not re-spawning",
+          );
+          continue;
+        }
+      } catch (err) {
+        deps.logger.warn(
+          { escalationId, projectId, err: errMessage(err) },
+          "reclaim pending-land probe failed; proceeding with the normal reclaim path",
+        );
+      }
 
       // Poison cap: a thread re-spawned `maxReclaimAttempts` times without
       // resolving is handed to a human (→needs_human stops re-qualification).

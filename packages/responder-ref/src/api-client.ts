@@ -6,7 +6,12 @@
  * acknowledge (claim), and /auth/me (resolve selfId once at startup). Single
  * source of truth for the view types is @pm/shared.
  */
-import type { Escalation, EscalationWithThread } from "@pm/shared";
+import type {
+  Escalation,
+  EscalationMessage,
+  EscalationMessageType,
+  EscalationWithThread,
+} from "@pm/shared";
 
 export class PmApiError extends Error {
   constructor(
@@ -177,6 +182,26 @@ export class ResponderClient {
       "POST",
       `/escalations/${encodeURIComponent(id)}/escalate-to-human`,
       { reason },
+    );
+  }
+
+  /**
+   * Append a message to an escalation thread (the auto-implement pending-land
+   * handoff, A1 P3). Bumps `updatedAt` and emits ESCALATION_REPLIED but does NOT
+   * transition status — the escalation STAYS `acknowledged` (A2 lands + resolves).
+   * `metadata` carries the `{pendingLand:true, branch, commitSha}` marker the
+   * reclaim sweep keys off to skip re-spawning a landed-but-not-yet-merged thread.
+   */
+  addMessage(
+    id: string,
+    body: string,
+    messageType?: EscalationMessageType,
+    metadata?: Record<string, unknown>,
+  ): Promise<EscalationMessage> {
+    return this.request<EscalationMessage>(
+      "POST",
+      `/escalations/${encodeURIComponent(id)}/messages`,
+      { body, messageType, metadata },
     );
   }
 

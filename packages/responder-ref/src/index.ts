@@ -6,6 +6,8 @@ import { createLogger } from "./logger.js";
 import { runResponderLoop } from "./loop.js";
 import { createClaudeResponderRunner } from "./responder-runner.js";
 import { createClaudeInjectionSniffer } from "./injection-sniffer.js";
+import { createClaudeImplementRunner } from "./implement-runner.js";
+import { createWorktree, type Worktree } from "./worktree.js";
 import { VERSION } from "./version.js";
 
 function collect(value: string, prev: string[]): string[] {
@@ -71,6 +73,19 @@ async function main(): Promise<void> {
   await mkdir(cfg.logsDir, { recursive: true });
   const runner = createClaudeResponderRunner({ command: cfg.command });
   const sniffer = createClaudeInjectionSniffer({ command: cfg.command });
+  // A1 P3: the write-capable implement runner + the default worktree-acquire seam
+  // (createWorktree bound to the git config + worktreeRoot). The slot name maps to a
+  // distinct clone directory under worktreeRoot so concurrent sessions never collide.
+  const implementRunner = createClaudeImplementRunner({ command: cfg.command });
+  const acquireWorktree = (slotName: string): Worktree =>
+    createWorktree({
+      worktreeRoot: cfg.worktreeRoot,
+      worktreeName: slotName,
+      gitRepoUrl: cfg.worktreeGit.repoUrl,
+      gitRemote: cfg.worktreeGit.remote,
+      gitMainBranch: cfg.worktreeGit.mainBranch,
+      cleanKeep: cfg.worktreeGit.cleanKeep,
+    });
 
   // ── Resolve self identity (no-recursion seed). ──
   let selfId: string;
@@ -128,6 +143,10 @@ async function main(): Promise<void> {
       runner,
       autoImplementEnabled: cfg.autoImplement.enabled,
       sniffer,
+      implementRunner,
+      acquireWorktree,
+      worktreeGit: { remote: cfg.worktreeGit.remote, mainBranch: cfg.worktreeGit.mainBranch },
+      verifyCmd: cfg.autoImplement.verifyCmd,
       repoCwd: cfg.repoCwd,
       command: cfg.command,
       mode: cfg.mode,

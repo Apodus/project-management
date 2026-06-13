@@ -53,11 +53,27 @@ export interface ResponderConfig {
   /**
    * Auto-implement regime (Campaign A1). NESTED from the start so P4's
    * `allowed_paths` (and any future fields) are non-breaking adds. DEFAULT
-   * `{ enabled: false }` — the operator must opt into the write-capable regime.
-   * When enabled, the injection sniff-test gates session admission (P1); the
-   * write capability itself arrives in P2.
+   * `{ enabled: false, verifyCmd: "" }` — the operator must opt into the
+   * write-capable regime. When enabled, the injection sniff-test gates session
+   * admission (P1); the write session (P2) runs in an isolated worktree (P3).
+   * `verifyCmd` (P3) is the project verify command the implement agent runs
+   * in-session and iterates to green before declaring branch_ready (empty ⇒ the
+   * agent skips in-session verify; A2's train re-verify is the floor).
    */
-  autoImplement: { enabled: boolean };
+  autoImplement: { enabled: boolean; verifyCmd: string };
+  /**
+   * Git config for the auto-implement regime's isolated worktree clones
+   * (Campaign A1 P3). `repoUrl` is REQUIRED iff `autoImplement.enabled` (else a
+   * ConfigError) — a single URL shared by all watched projects (the real
+   * deployment shape; per-project fetch is future). `remote`/`mainBranch`/
+   * `cleanKeep` mirror the integrator's worktree contract.
+   */
+  worktreeGit: {
+    repoUrl: string;
+    remote: string;
+    mainBranch: string;
+    cleanKeep: string[];
+  };
   pollIntervalSec: number;
   maxConcurrent: number;
   /** Spawn-rate cap (parse only in P1 — P5 enforces). */
@@ -115,6 +131,11 @@ export interface ConfigEnv {
   PM_RESPONDER_ENABLED?: string;
   PM_RESPONDER_MODE?: string;
   PM_AUTO_IMPLEMENT_ENABLED?: string;
+  PM_AUTO_IMPLEMENT_VERIFY_CMD?: string;
+  PM_RESPONDER_GIT_REPO_URL?: string;
+  PM_RESPONDER_GIT_REMOTE?: string;
+  PM_RESPONDER_GIT_MAIN_BRANCH?: string;
+  PM_RESPONDER_GIT_CLEAN_KEEP?: string;
   PM_RESPONDER_COMMAND?: string;
   PM_RESPONDER_REPO_CWD?: string;
   PM_RESPONDER_LOGS_DIR?: string;
@@ -184,6 +205,29 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     env.PM_AUTO_IMPLEMENT_ENABLED !== undefined
       ? parseBool(env.PM_AUTO_IMPLEMENT_ENABLED)
       : false;
+  // auto_implement.verifyCmd (P3): the project verify command the implement agent
+  // runs in-session before declaring branch_ready. DEFAULT "" (skip in-session
+  // verify — A2's train re-verify is the floor).
+  const autoImplementVerifyCmd = env.PM_AUTO_IMPLEMENT_VERIFY_CMD ?? "";
+
+  // Worktree git config (P3): the isolated-clone source for the implement session.
+  // repoUrl is REQUIRED iff auto_implement is enabled — a write session must have a
+  // repo to clone. remote/mainBranch/cleanKeep mirror the integrator's contract.
+  const gitRepoUrl = env.PM_RESPONDER_GIT_REPO_URL ?? "";
+  if (autoImplementEnabled && gitRepoUrl.length === 0) {
+    throw new ConfigError(
+      "PM_RESPONDER_GIT_REPO_URL is required when auto_implement is enabled (the write session clones it)",
+    );
+  }
+  const gitRemote = env.PM_RESPONDER_GIT_REMOTE || "origin";
+  const gitMainBranch = env.PM_RESPONDER_GIT_MAIN_BRANCH || "main";
+  const cleanKeep: string[] = [];
+  if (env.PM_RESPONDER_GIT_CLEAN_KEEP) {
+    for (const token of env.PM_RESPONDER_GIT_CLEAN_KEEP.split(",")) {
+      const t = token.trim();
+      if (t.length > 0) cleanKeep.push(t);
+    }
+  }
 
   const pollIntervalSec = positiveInt(args.pollIntervalSec, DEFAULT_POLL_INTERVAL_SEC);
 
@@ -226,7 +270,13 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     projectIds,
     enabled,
     mode,
-    autoImplement: { enabled: autoImplementEnabled },
+    autoImplement: { enabled: autoImplementEnabled, verifyCmd: autoImplementVerifyCmd },
+    worktreeGit: {
+      repoUrl: gitRepoUrl,
+      remote: gitRemote,
+      mainBranch: gitMainBranch,
+      cleanKeep,
+    },
     pollIntervalSec,
     maxConcurrent: DEFAULT_MAX_CONCURRENT,
     spawnBudget: { maxSpawns: DEFAULT_MAX_SPAWNS, windowSec: DEFAULT_SPAWN_WINDOW_SEC },

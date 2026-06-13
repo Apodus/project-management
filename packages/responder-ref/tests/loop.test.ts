@@ -1,13 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import { responderTick, createResponderState, type ResponderDeps } from "../src/loop.js";
 import { PmApiError } from "../src/api-client.js";
-import type { Escalation, EscalationWithThread } from "@pm/shared";
+import type { Escalation, EscalationMessage, EscalationWithThread } from "@pm/shared";
 import type { Logger } from "../src/logger.js";
 import type { ResponderRunner, ResponderRunResult } from "../src/responder-runner.js";
 import type {
   InjectionSniffer,
   InjectionSniffResult,
 } from "../src/injection-sniffer.js";
+import type {
+  ImplementRunner,
+  ImplementRunInput,
+  ImplementRunResult,
+} from "../src/implement-runner.js";
+import type { Worktree } from "../src/worktree.js";
 
 // ── Fakes ──────────────────────────────────────────────────────────
 
@@ -103,6 +109,35 @@ class FakeClient {
     this.escalateCalls.push({ id, reason });
     return mkEscalation(id, { status: "needs_human", holderId: SELF });
   });
+
+  // A1 P3: the pending-land handoff message. Records the call; the escalation stays
+  // acknowledged (addMessage does NOT transition status).
+  addMessageCalls: {
+    id: string;
+    body: string;
+    messageType?: string;
+    metadata?: Record<string, unknown>;
+  }[] = [];
+  addMessage = vi.fn(
+    async (
+      id: string,
+      body: string,
+      messageType?: string,
+      metadata?: Record<string, unknown>,
+    ): Promise<EscalationMessage> => {
+      this.addMessageCalls.push({ id, body, messageType, metadata });
+      return {
+        id: `${id}-msg`,
+        escalationId: id,
+        seq: 1,
+        authorId: SELF,
+        body,
+        messageType: (messageType as EscalationMessage["messageType"]) ?? null,
+        metadata: metadata ?? null,
+        createdAt: "2026-06-13T00:00:00.000Z",
+      };
+    },
+  );
 }
 
 /**
@@ -128,6 +163,56 @@ class FakeInjectionSniffer implements InjectionSniffer {
   sniff = vi.fn(async (): Promise<InjectionSniffResult> => this.result);
 }
 
+/**
+ * A scripted write-capable implement runner (A1 P3). Defaults to a give_up so the
+ * implement path is a benign no-post unless a test scripts branch_ready/error.
+ */
+class FakeImplementRunner implements ImplementRunner {
+  result: ImplementRunResult = { kind: "give_up", reason: "noop", durationMs: 0 };
+  lastInput?: ImplementRunInput;
+  run = vi.fn(async (input: ImplementRunInput): Promise<ImplementRunResult> => {
+    this.lastInput = input;
+    return this.result;
+  });
+}
+
+/**
+ * A fake isolated worktree (A1 P3) — no real git. Records ensureExists/resetForAttempt
+ * + a fake git surface (checkoutLocalBranch/push/diff). `ensureFail`/`resetFail`/
+ * `pushFail` let a test drive the failure paths.
+ */
+class FakeWorktree implements Worktree {
+  readonly path = "/wt/pm-implement-0";
+  readonly logsDir = "/wt/logs";
+  ensureFail = false;
+  resetFail = false;
+  pushFail = false;
+  pushCalls: { remote: string; branch: string }[] = [];
+
+  push = vi.fn(async (remote: string, branch: string): Promise<void> => {
+    if (this.pushFail) throw new Error("push rejected");
+    this.pushCalls.push({ remote, branch });
+  });
+  diff = vi.fn(async (): Promise<string> => " src/x.ts | 2 +-\n 1 file changed");
+  checkoutLocalBranch = vi.fn(async (): Promise<void> => {});
+
+  // Only the members the loop touches are real; the rest satisfy the type.
+  readonly git = {
+    push: this.push,
+    diff: this.diff,
+    checkoutLocalBranch: this.checkoutLocalBranch,
+  } as unknown as Worktree["git"];
+
+  ensureExists = vi.fn(async (): Promise<void> => {
+    if (this.ensureFail) throw new Error("clone failed");
+  });
+  resetForAttempt = vi.fn(async (): Promise<void> => {
+    if (this.resetFail) throw new Error("reset failed");
+  });
+  detectCorruption = vi.fn(async (): Promise<boolean> => false);
+  repair = vi.fn(async (): Promise<void> => {});
+}
+
 function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): ResponderDeps {
   return {
     client,
@@ -145,6 +230,13 @@ function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): Respon
     // (the sniff never runs when disabled) stay byte-identical.
     autoImplementEnabled: false,
     sniffer: new FakeInjectionSniffer(),
+    // A1 P3 defaults: a give_up implement runner + a fake worktree-acquire (no real
+    // git) + empty verifyCmd + git defaults — so the implement path is inert unless a
+    // test scripts it, keeping every existing test byte-identical.
+    implementRunner: new FakeImplementRunner(),
+    acquireWorktree: () => new FakeWorktree(),
+    worktreeGit: { remote: "origin", mainBranch: "main" },
+    verifyCmd: "",
     repoCwd: "/repo",
     command: "claude -p",
     budget: { timeBudgetSec: 900 },
@@ -675,17 +767,34 @@ describe("responderTick", () => {
 
   // ── A1 P1: assess gate + injection sniff-test + auto_implement kill-switch ──
 
-  it("enabled(auto_implement) + clean sniff + implement{bounded} → session spawned, would-implement logged, no escalate/answer", async () => {
+  it("enabled(auto_implement) + clean sniff + implement{bounded} → implement session spawned; no answer/escalate (P3: branch_ready hands off)", async () => {
     const client = new FakeClient();
     client.listResults = [[mkEscalation("e1")]];
     const runner = implementRunner("bounded");
     const sniffer = snifferOf({ kind: "clean" });
+    // P3: the bounded path now spawns the WRITE runner. Provide a branch_ready so the
+    // outcome is the pending-land handoff (addMessage) — neither answer nor escalate.
+    const impl = new FakeImplementRunner();
+    impl.result = {
+      kind: "branch_ready",
+      branch: "pm/escalation-e1",
+      commitSha: "x",
+      durationMs: 1,
+    };
     await responderTick(
-      baseDeps(client, { mode: "on", runner, sniffer, autoImplementEnabled: true }),
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+      }),
       createResponderState(),
     );
     expect(sniffer.sniff).toHaveBeenCalledTimes(1);
-    expect(runner.run).toHaveBeenCalledTimes(1); // session spawned
+    expect(runner.run).toHaveBeenCalledTimes(1); // the answering (assess) session spawned
+    expect(impl.run).toHaveBeenCalledTimes(1); // the write session spawned (P3)
+    expect(client.addMessage).toHaveBeenCalledTimes(1); // pending-land handoff
     expect(client.answer).not.toHaveBeenCalled();
     expect(client.escalateToHuman).not.toHaveBeenCalled();
   });
@@ -802,5 +911,286 @@ describe("responderTick", () => {
     );
     expect(sniffer.sniff).toHaveBeenCalledTimes(1);
     expect(client.answerCalls).toEqual([{ id: "e1", body: "A" }]);
+  });
+
+  // ── A1 P3: implement session wiring ──────────────────────────────
+
+  /** An implement{bounded} answering runner + a scripted implement runner + worktree. */
+  function implementSetup(
+    implResult: ImplementRunResult,
+    over: Partial<{ wt: FakeWorktree }> = {},
+  ): {
+    client: FakeClient;
+    runner: FakeResponderRunner;
+    sniffer: FakeInjectionSniffer;
+    impl: FakeImplementRunner;
+    wt: FakeWorktree;
+  } {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    const impl = new FakeImplementRunner();
+    impl.result = implResult;
+    const wt = over.wt ?? new FakeWorktree();
+    return { client, runner, sniffer, impl, wt };
+  }
+
+  it("implement branch_ready → push + addMessage(pendingLand) called once; stays acknowledged (no answer/resolve); worktree prepared", async () => {
+    const { client, runner, sniffer, impl, wt } = implementSetup({
+      kind: "branch_ready",
+      branch: "pm/escalation-e1",
+      commitSha: "abc123",
+      durationMs: 1,
+    });
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    expect(impl.run).toHaveBeenCalledTimes(1);
+    expect(wt.ensureExists).toHaveBeenCalledTimes(1);
+    expect(wt.resetForAttempt).toHaveBeenCalled(); // prep + finally
+    expect(wt.pushCalls).toEqual([{ remote: "origin", branch: "pm/escalation-e1" }]);
+    expect(client.addMessageCalls).toHaveLength(1);
+    const msg = client.addMessageCalls[0];
+    expect(msg.id).toBe("e1");
+    expect(msg.body).toContain("pm/escalation-e1");
+    expect(msg.body).toContain("abc123");
+    expect(msg.body).toContain("pending land");
+    expect(msg.metadata).toMatchObject({ pendingLand: true, branch: "pm/escalation-e1" });
+    // Stays acknowledged — A2 lands + resolves.
+    expect(client.answer).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("implement give_up → escalateToHuman (reason); no addMessage", async () => {
+    const { client, runner, sniffer, impl, wt } = implementSetup({
+      kind: "give_up",
+      reason: "too hard",
+      durationMs: 1,
+    });
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    expect(client.addMessage).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("could not implement");
+    expect(client.escalateCalls[0].reason).toContain("too hard");
+  });
+
+  it("implement error → escalateToHuman (reason + detail); no addMessage", async () => {
+    const { client, runner, sniffer, impl, wt } = implementSetup({
+      kind: "error",
+      reason: "timeout",
+      detail: "budget",
+      durationMs: 1,
+    });
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    expect(client.addMessage).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("timeout");
+    expect(client.escalateCalls[0].reason).toContain("budget");
+  });
+
+  it("implement worktree prep failure (ensureExists throws) → escalateToHuman, implement runner NOT spawned, no throw", async () => {
+    const wt = new FakeWorktree();
+    wt.ensureFail = true;
+    const { client, runner, sniffer, impl } = implementSetup(
+      { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "x", durationMs: 1 },
+      { wt },
+    );
+    await expect(
+      responderTick(
+        baseDeps(client, {
+          mode: "on",
+          runner,
+          sniffer,
+          autoImplementEnabled: true,
+          implementRunner: impl,
+          acquireWorktree: () => wt,
+        }),
+        createResponderState(),
+      ),
+    ).resolves.toBeUndefined();
+    expect(impl.run).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("could not prepare a worktree");
+  });
+
+  it("implement reset failure on prep → escalateToHuman, slot released (no throw)", async () => {
+    const wt = new FakeWorktree();
+    wt.resetFail = true; // first reset (prep) throws
+    const { client, runner, sniffer, impl } = implementSetup(
+      { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "x", durationMs: 1 },
+      { wt },
+    );
+    const state = createResponderState();
+    await expect(
+      responderTick(
+        baseDeps(client, {
+          mode: "on",
+          runner,
+          sniffer,
+          autoImplementEnabled: true,
+          implementRunner: impl,
+          acquireWorktree: () => wt,
+        }),
+        state,
+      ),
+    ).resolves.toBeUndefined();
+    expect(impl.run).not.toHaveBeenCalled();
+    expect(client.escalateCalls[0].reason).toContain("could not prepare a worktree");
+    // The slot is released for reuse.
+    expect(state.implementSlots.every((s) => !s.leased)).toBe(true);
+  });
+
+  it("implement push failure → escalateToHuman ('push failed'); no addMessage (no work lost)", async () => {
+    const wt = new FakeWorktree();
+    wt.pushFail = true;
+    const { client, runner, sniffer, impl } = implementSetup(
+      { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "x", durationMs: 1 },
+      { wt },
+    );
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    expect(client.addMessage).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("push failed");
+  });
+
+  it("implement clean-after: resetForAttempt is called in finally on branch_ready (prep + finally = ≥2)", async () => {
+    const { client, runner, sniffer, impl, wt } = implementSetup({
+      kind: "branch_ready",
+      branch: "pm/escalation-e1",
+      commitSha: "x",
+      durationMs: 1,
+    });
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    expect(wt.resetForAttempt.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("implement mode=off → silent (no spawn? — spawn runs but no addMessage/escalate)", async () => {
+    const { client, runner, sniffer, impl, wt } = implementSetup({
+      kind: "branch_ready",
+      branch: "pm/escalation-e1",
+      commitSha: "x",
+      durationMs: 1,
+    });
+    await responderTick(
+      baseDeps(client, {
+        mode: "off",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    // mode=off is silent on the implement OUTCOME (the existing implement-off test
+    // already asserts the answering switch returns before reaching the bounded path).
+    expect(client.addMessage).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("implement verifyCmd is threaded into the implement prompt", async () => {
+    const { client, runner, sniffer, impl, wt } = implementSetup({
+      kind: "give_up",
+      reason: "x",
+      durationMs: 1,
+    });
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+        verifyCmd: "pnpm test",
+      }),
+      createResponderState(),
+    );
+    expect(impl.lastInput?.prompt).toContain("pnpm test");
+  });
+
+  // REVISE FIX #3: reclaim SKIPS a pending-land escalation.
+  it("reclaim SKIPS an acknowledged self-held escalation carrying a pendingLand marker (no re-spawn)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[]];
+    const stale = mkEscalation("r1", {
+      status: "acknowledged",
+      holderId: SELF,
+      updatedAt: "2026-06-13T00:00:00.000Z",
+    });
+    client.ackResults = [[stale]];
+    // getEscalation returns a thread WITH the pending-land marker.
+    client.getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => ({
+      ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+      messages: [
+        {
+          id: `${id}-m1`,
+          escalationId: id,
+          seq: 1,
+          authorId: SELF,
+          body: "Implemented a fix on branch ...",
+          messageType: "diagnosis",
+          metadata: { pendingLand: true, branch: "pm/escalation-r1", commitSha: "abc" },
+          createdAt: "2026-06-13T00:00:00.000Z",
+        },
+      ],
+    }));
+    const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+    await responderTick(
+      baseDeps(client, { mode: "on", maxConcurrent: 10, runner, now: () => STALE_NOW }),
+      createResponderState(),
+    );
+    // The read-only answering session is NOT re-spawned on the pending-land row.
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
   });
 });
