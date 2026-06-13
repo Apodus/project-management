@@ -2093,6 +2093,176 @@
           "originWorkerKey"
         ]
       },
+      "EscalationMetrics": {
+        "type": "object",
+        "properties": {
+          "time_to_first_response": {
+            "type": "object",
+            "properties": {
+              "p50_ms": {
+                "type": "number",
+                "nullable": true
+              },
+              "p95_ms": {
+                "type": "number",
+                "nullable": true
+              },
+              "sample_size": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "p50_ms",
+              "p95_ms",
+              "sample_size"
+            ]
+          },
+          "time_to_resolve": {
+            "type": "object",
+            "properties": {
+              "p50_ms": {
+                "type": "number",
+                "nullable": true
+              },
+              "p95_ms": {
+                "type": "number",
+                "nullable": true
+              },
+              "sample_size": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "p50_ms",
+              "p95_ms",
+              "sample_size"
+            ]
+          },
+          "auto_resolve_rate": {
+            "type": "object",
+            "properties": {
+              "rate": {
+                "type": "number",
+                "nullable": true
+              },
+              "answered": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "rate",
+              "answered",
+              "total"
+            ]
+          },
+          "human_escalation_rate": {
+            "type": "object",
+            "properties": {
+              "rate": {
+                "type": "number",
+                "nullable": true
+              },
+              "escalated": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "rate",
+              "escalated",
+              "total"
+            ]
+          },
+          "open_backlog": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "number"
+              },
+              "oldest_age_ms": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "required": [
+              "count",
+              "oldest_age_ms"
+            ]
+          },
+          "by_status": {
+            "type": "object",
+            "properties": {
+              "open": {
+                "type": "number"
+              },
+              "acknowledged": {
+                "type": "number"
+              },
+              "answered": {
+                "type": "number"
+              },
+              "resolved": {
+                "type": "number"
+              },
+              "needs_human": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "open",
+              "acknowledged",
+              "answered",
+              "resolved",
+              "needs_human"
+            ]
+          },
+          "by_kind": {
+            "type": "object",
+            "properties": {
+              "bug_report": {
+                "type": "number"
+              },
+              "question": {
+                "type": "number"
+              },
+              "request": {
+                "type": "number"
+              },
+              "blocked": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "bug_report",
+              "question",
+              "request",
+              "blocked"
+            ]
+          },
+          "total": {
+            "type": "number"
+          },
+          "computed_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "time_to_first_response",
+          "time_to_resolve",
+          "auto_resolve_rate",
+          "human_escalation_rate",
+          "open_backlog",
+          "by_status",
+          "by_kind",
+          "total",
+          "computed_at"
+        ]
+      },
       "UndeliveredEscalation": {
         "type": "object",
         "properties": {
@@ -14273,6 +14443,107 @@
                   "required": [
                     "data",
                     "pagination"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/escalations/metrics": {
+      "get": {
+        "tags": [
+          "Escalations"
+        ],
+        "summary": "Read the on-read escalation metrics for a project",
+        "description": "Returns the dashboard escalation metric bundle for a project: time-to-first-response + time-to-resolve p50/p95, auto-resolve rate (diagnosis-message presence), human-escalation rate (CURRENT needs_human share), open-backlog count + oldest age, and by_status/by_kind tallies. Derived live from escalations + escalation_messages (no new table). SEMANTIC NOTES: human_escalation_rate is the CURRENT needs_human share, not ever-reached; auto_resolve_rate counts any diagnosis message (including a manually-typed one); the figures are ALL-TIME (no 24h window). Any authenticated user (read-only).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The escalation metric bundle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EscalationMetrics"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
                   ]
                 }
               }

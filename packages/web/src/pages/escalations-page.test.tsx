@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { createContext, useContext, type ReactNode } from "react";
-import type { Escalation, EscalationFilters } from "@/lib/api";
+import type { Escalation, EscalationFilters, EscalationMetrics } from "@/lib/api";
 
 // ── Radix Select mock (mirrors notes-page.test.tsx) ────────────────
 // Each SelectItem renders as a clickable button that pushes its value through
@@ -85,6 +85,25 @@ vi.mock("@/hooks/use-projects", () => ({
   useProject: () => ({ data: { id: "proj-1", name: "Demo project" } }),
 }));
 
+// Metrics mock state.
+let metricsData: EscalationMetrics | null = null;
+let metricsLoading = false;
+
+function makeMetrics(overrides: Partial<EscalationMetrics> = {}): EscalationMetrics {
+  return {
+    time_to_first_response: { p50_ms: 5 * 60_000, p95_ms: 30 * 60_000, sample_size: 4 },
+    time_to_resolve: { p50_ms: 3600_000, p95_ms: 2 * 3600_000, sample_size: 3 },
+    auto_resolve_rate: { rate: 0.5, answered: 2, total: 4 },
+    human_escalation_rate: { rate: 0.25, escalated: 1, total: 4 },
+    open_backlog: { count: 7, oldest_age_ms: 2 * 3600_000 },
+    by_status: { open: 7, acknowledged: 1, answered: 0, resolved: 2, needs_human: 1 },
+    by_kind: { bug_report: 5, question: 2, request: 1, blocked: 1 },
+    total: 4,
+    computed_at: "2026-06-13T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
 vi.mock("@/hooks/use-escalations", () => ({
   useEscalations: (_projectId: string | undefined, filters: EscalationFilters) => {
     useEscalationsSpy(filters);
@@ -98,6 +117,7 @@ vi.mock("@/hooks/use-escalations", () => ({
       refetch: vi.fn(),
     };
   },
+  useEscalationMetrics: () => ({ data: metricsData, isLoading: metricsLoading }),
 }));
 
 vi.mock("@/stores/project-store", () => ({
@@ -110,6 +130,8 @@ import { EscalationsPage } from "./escalations-page";
 beforeEach(() => {
   vi.clearAllMocks();
   escalationsData = [];
+  metricsData = null;
+  metricsLoading = false;
   linkCalls.length = 0;
 });
 
@@ -175,6 +197,27 @@ describe("EscalationsPage", () => {
       expect(filters.originRepo).toBe("game_one");
       expect(filters.originWorkerKey).toBe("worker-7");
     });
+  });
+
+  it("renders the metric cards with seeded values", () => {
+    metricsData = makeMetrics();
+    render(<EscalationsPage />);
+    // Open backlog count.
+    expect(screen.getByText("7")).toBeInTheDocument();
+    // ttfr p95 = 30m → "30m 0s"; auto-resolve 50%, human-escalation 25%.
+    expect(screen.getByText("30m 0s")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText("25%")).toBeInTheDocument();
+    // A by_status chip + a by_kind chip.
+    expect(screen.getByText("Needs Human: 1")).toBeInTheDocument();
+    expect(screen.getByText("Bug Report: 5")).toBeInTheDocument();
+  });
+
+  it("shows skeletons while metrics are loading", () => {
+    metricsLoading = true;
+    const { container } = render(<EscalationsPage />);
+    // The skeleton path renders animate-pulse placeholders (no metric values).
+    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
   });
 
   it("each card links to the escalation timeline carrying the escalationId", () => {

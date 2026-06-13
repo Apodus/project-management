@@ -7,8 +7,11 @@ import {
   ESCALATION_MESSAGE_TYPES,
 } from "@pm/shared";
 import type { UserType } from "@pm/shared";
-import type { AppVariables } from "../types.js";
+import type { AppVariables, AuthUser } from "../types.js";
+import { AppError } from "../types.js";
 import * as escalationService from "../services/escalation.service.js";
+import * as escalationMetricsService from "../services/escalation-metrics.service.js";
+import type { EscalationMetricsBundle } from "../services/escalation-metrics.service.js";
 
 // ─── Escalation routes (Campaign C1 §P3) ──────────────────────────
 // Route-local Zod-4 schemas (via @hono/zod-openapi `z`), the established
@@ -81,6 +84,57 @@ const escalationListEnvelope = z.object({
     total: z.number(),
   }),
 });
+
+// ─── C4 §P2: on-read metrics schema ───────────────────────────────
+// snake_case on the wire (train.ts metricsBundleSchema precedent). Derived
+// live from escalations + escalation_messages — no new table. See the THREE
+// SEMANTIC FLAGS in escalation-metrics.service: human_escalation_rate is
+// CURRENT needs_human (not ever-reached); auto_resolve_rate counts any
+// diagnosis message (incl. a manually-typed one); ALL-TIME (no 24h window).
+
+const escalationPercentilePairSchema = z.object({
+  p50_ms: z.number().nullable(),
+  p95_ms: z.number().nullable(),
+  sample_size: z.number(),
+});
+
+const escalationMetricsSchema = z
+  .object({
+    time_to_first_response: escalationPercentilePairSchema,
+    time_to_resolve: escalationPercentilePairSchema,
+    auto_resolve_rate: z.object({
+      rate: z.number().nullable(),
+      answered: z.number(),
+      total: z.number(),
+    }),
+    human_escalation_rate: z.object({
+      rate: z.number().nullable(),
+      escalated: z.number(),
+      total: z.number(),
+    }),
+    open_backlog: z.object({
+      count: z.number(),
+      oldest_age_ms: z.number().nullable(),
+    }),
+    by_status: z.object({
+      open: z.number(),
+      acknowledged: z.number(),
+      answered: z.number(),
+      resolved: z.number(),
+      needs_human: z.number(),
+    }),
+    by_kind: z.object({
+      bug_report: z.number(),
+      question: z.number(),
+      request: z.number(),
+      blocked: z.number(),
+    }),
+    total: z.number(),
+    computed_at: z.string(),
+  })
+  .openapi("EscalationMetrics");
+
+const escalationMetricsEnvelope = z.object({ data: escalationMetricsSchema });
 
 // ─── C2 §P1: delivery-cursor schemas ──────────────────────────────
 
@@ -222,6 +276,32 @@ const listEscalationsRoute = createRoute({
     200: {
       description: "List of escalations",
       content: { "application/json": { schema: escalationListEnvelope } },
+    },
+  },
+});
+
+const getEscalationMetricsRoute = createRoute({
+  method: "get",
+  path: "/api/v1/projects/{projectId}/escalations/metrics",
+  tags: ["Escalations"],
+  summary: "Read the on-read escalation metrics for a project",
+  description:
+    "Returns the dashboard escalation metric bundle for a project: time-to-first-response + time-to-resolve p50/p95, auto-resolve rate (diagnosis-message presence), human-escalation rate (CURRENT needs_human share), open-backlog count + oldest age, and by_status/by_kind tallies. Derived live from escalations + escalation_messages (no new table). SEMANTIC NOTES: human_escalation_rate is the CURRENT needs_human share, not ever-reached; auto_resolve_rate counts any diagnosis message (including a manually-typed one); the figures are ALL-TIME (no 24h window). Any authenticated user (read-only).",
+  request: {
+    params: z.object({ projectId: projectIdParam }),
+  },
+  responses: {
+    200: {
+      description: "The escalation metric bundle",
+      content: { "application/json": { schema: escalationMetricsEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
     },
   },
 });
@@ -485,6 +565,63 @@ const escalateToHumanRoute = createRoute({
   },
 });
 
+// ─── Helpers ──────────────────────────────────────────────────────
+
+/** Explicit 401 (copy of train.ts's requireUser). */
+function requireUser(user: AuthUser | null): AuthUser {
+  if (!user) {
+    throw new AppError(401, "UNAUTHORIZED", "Authentication required");
+  }
+  return user;
+}
+
+/** camelCase escalation metric bundle → snake_case wire response (§P2). */
+function metricsToResponse(
+  bundle: EscalationMetricsBundle,
+): z.infer<typeof escalationMetricsSchema> {
+  return {
+    time_to_first_response: {
+      p50_ms: bundle.timeToFirstResponse.p50Ms,
+      p95_ms: bundle.timeToFirstResponse.p95Ms,
+      sample_size: bundle.timeToFirstResponse.sampleSize,
+    },
+    time_to_resolve: {
+      p50_ms: bundle.timeToResolve.p50Ms,
+      p95_ms: bundle.timeToResolve.p95Ms,
+      sample_size: bundle.timeToResolve.sampleSize,
+    },
+    auto_resolve_rate: {
+      rate: bundle.autoResolveRate.rate,
+      answered: bundle.autoResolveRate.answered,
+      total: bundle.autoResolveRate.total,
+    },
+    human_escalation_rate: {
+      rate: bundle.humanEscalationRate.rate,
+      escalated: bundle.humanEscalationRate.escalated,
+      total: bundle.humanEscalationRate.total,
+    },
+    open_backlog: {
+      count: bundle.openBacklog.count,
+      oldest_age_ms: bundle.openBacklog.oldestAgeMs,
+    },
+    by_status: {
+      open: bundle.byStatus.open,
+      acknowledged: bundle.byStatus.acknowledged,
+      answered: bundle.byStatus.answered,
+      resolved: bundle.byStatus.resolved,
+      needs_human: bundle.byStatus.needsHuman,
+    },
+    by_kind: {
+      bug_report: bundle.byKind.bugReport,
+      question: bundle.byKind.question,
+      request: bundle.byKind.request,
+      blocked: bundle.byKind.blocked,
+    },
+    total: bundle.total,
+    computed_at: bundle.computedAt,
+  };
+}
+
 // ─── Router ───────────────────────────────────────────────────────
 
 export function createEscalationRoutes(): OpenAPIHono<{
@@ -510,6 +647,16 @@ export function createEscalationRoutes(): OpenAPIHono<{
     const query = c.req.valid("query");
     const list = escalationService.list(projectId, query);
     return c.json({ data: list, pagination: { total: list.length } }, 200);
+  });
+
+  // GET /api/v1/projects/:projectId/escalations/metrics (on-read, no new
+  // table; mirrors train/metrics). The literal /metrics segment does not
+  // collide with the flat /escalations/{id} by-id route.
+  router.openapi(getEscalationMetricsRoute, (c) => {
+    const { projectId } = c.req.valid("param");
+    requireUser(c.get("currentUser") as AuthUser | null);
+    const bundle = escalationMetricsService.computeEscalationMetrics(projectId);
+    return c.json({ data: metricsToResponse(bundle) }, 200);
   });
 
   // GET /api/v1/escalations/undelivered (registered BEFORE /:id so the

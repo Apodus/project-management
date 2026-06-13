@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { Siren, X } from "lucide-react";
+import { Activity, Gauge, Layers, Siren, Timer, TrendingUp, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,9 +14,11 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProject } from "@/hooks/use-projects";
-import { useEscalations } from "@/hooks/use-escalations";
+import { useEscalations, useEscalationMetrics } from "@/hooks/use-escalations";
 import { useProjectStore } from "@/stores/project-store";
 import {
+  formatDurationMs,
+  formatPercent,
   formatRelativeTime,
   formatStatus,
   getPriorityColor,
@@ -54,6 +56,157 @@ function getKindColor(kind: string): string {
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900/40 dark:text-gray-300";
   }
+}
+
+// ─── Metrics panel (Campaign C4 §P2) ──────────────────────────────
+// Mirrors train-dashboard's MetricCard/MetricsSection. The figures are
+// ALL-TIME (no 24h window); human-escalation rate is the CURRENT needs_human
+// share; auto-resolve rate is diagnosis-message presence.
+
+function MetricCard({
+  label,
+  value,
+  icon: Icon,
+  sub,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+  sub?: string;
+}) {
+  return (
+    <Card className="py-4">
+      <CardContent className="flex items-center gap-3">
+        <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+          <Icon className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-2xl font-bold tabular-nums">{value}</p>
+          <p className="truncate text-xs text-muted-foreground">{label}</p>
+          {sub && (
+            <p className="truncate text-[10px] text-muted-foreground/70">{sub}</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const STATUS_CHIPS = [
+  ["open", "Open"],
+  ["acknowledged", "Acknowledged"],
+  ["answered", "Answered"],
+  ["resolved", "Resolved"],
+  ["needs_human", "Needs Human"],
+] as const;
+
+const KIND_CHIPS = [
+  ["bug_report", "Bug Report"],
+  ["question", "Question"],
+  ["request", "Request"],
+  ["blocked", "Blocked"],
+] as const;
+
+function EscalationMetricsSection({ projectId }: { projectId: string }) {
+  const { data: metrics, isLoading } = useEscalationMetrics(projectId);
+
+  if (isLoading) {
+    return (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Card key={i} className="py-4">
+            <CardContent>
+              <Skeleton className="h-8 w-16" />
+              <Skeleton className="mt-2 h-4 w-24" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (!metrics) {
+    return (
+      <Card className="py-4">
+        <CardContent className="flex flex-col items-center py-6">
+          <Gauge className="mb-2 size-8 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">No metrics available</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const ttfr = metrics.time_to_first_response;
+  const ttr = metrics.time_to_resolve;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <MetricCard
+          label="Open backlog"
+          value={String(metrics.open_backlog.count)}
+          icon={Layers}
+          sub={
+            metrics.open_backlog.oldest_age_ms != null
+              ? `oldest ${formatDurationMs(metrics.open_backlog.oldest_age_ms)}`
+              : "none open"
+          }
+        />
+        <MetricCard
+          label="Time to first response (p95)"
+          value={formatDurationMs(ttfr.p95_ms)}
+          icon={Timer}
+          sub={`p50 ${formatDurationMs(ttfr.p50_ms)} · n=${ttfr.sample_size}`}
+        />
+        <MetricCard
+          label="Time to resolve (p95)"
+          value={formatDurationMs(ttr.p95_ms)}
+          icon={Activity}
+          sub={`p50 ${formatDurationMs(ttr.p50_ms)} · n=${ttr.sample_size}`}
+        />
+        <MetricCard
+          label="Auto-resolve rate"
+          value={formatPercent(metrics.auto_resolve_rate.rate)}
+          icon={TrendingUp}
+          sub={`${metrics.auto_resolve_rate.answered}/${metrics.auto_resolve_rate.total} diagnosed`}
+        />
+        <MetricCard
+          label="Human-escalation rate"
+          value={formatPercent(metrics.human_escalation_rate.rate)}
+          icon={Gauge}
+          sub={`${metrics.human_escalation_rate.escalated}/${metrics.human_escalation_rate.total} needs_human`}
+        />
+        <MetricCard
+          label="Total escalations"
+          value={String(metrics.total)}
+          icon={Siren}
+        />
+      </div>
+
+      {/* by_status / by_kind chip row (reuse Badge + the color maps) */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {STATUS_CHIPS.map(([key, label]) => (
+          <Badge
+            key={key}
+            variant="secondary"
+            className={cn("text-[11px]", getStatusColor(key))}
+          >
+            {label}: {metrics.by_status[key]}
+          </Badge>
+        ))}
+        <span className="mx-1 text-muted-foreground/40">·</span>
+        {KIND_CHIPS.map(([key, label]) => (
+          <Badge
+            key={key}
+            variant="secondary"
+            className={cn("text-[11px]", getKindColor(key))}
+          >
+            {label}: {metrics.by_kind[key]}
+          </Badge>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function EscalationCard({ escalation }: { escalation: Escalation }) {
@@ -195,6 +348,9 @@ export function EscalationsPage() {
           </Badge>
         )}
       </div>
+
+      {/* Metrics panel (C4 §P2) */}
+      {projectId && <EscalationMetricsSection projectId={projectId} />}
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">

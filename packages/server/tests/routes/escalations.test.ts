@@ -699,4 +699,76 @@ describe("Escalations API", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  // ── GET /api/v1/projects/:projectId/escalations/metrics (C4 §P2) ──
+  describe("GET /api/v1/projects/:projectId/escalations/metrics", () => {
+    it("returns a snake_case metric bundle (200, any authed user)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/escalations/metrics`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const d = body.data;
+      expect(d.time_to_first_response).toEqual({
+        p50_ms: null,
+        p95_ms: null,
+        sample_size: 0,
+      });
+      expect(d.time_to_resolve).toHaveProperty("p95_ms");
+      expect(d.auto_resolve_rate).toEqual({ rate: null, answered: 0, total: 0 });
+      expect(d.human_escalation_rate).toEqual({ rate: null, escalated: 0, total: 0 });
+      expect(d.open_backlog).toEqual({ count: 0, oldest_age_ms: null });
+      expect(d.by_status).toEqual({
+        open: 0,
+        acknowledged: 0,
+        answered: 0,
+        resolved: 0,
+        needs_human: 0,
+      });
+      expect(d.by_kind).toEqual({ bug_report: 0, question: 0, request: 0, blocked: 0 });
+      expect(d.total).toBe(0);
+      expect(typeof d.computed_at).toBe("string");
+    });
+
+    it("reflects seeded escalations (open backlog + by_status/by_kind)", async () => {
+      const project = createTestProject(testApp.db);
+      await raise(testApp, project.id, { body: { kind: "bug_report", title: "b1" } });
+      await raise(testApp, project.id, { body: { kind: "question", title: "q1" } });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/escalations/metrics`,
+      );
+      expect(res.status).toBe(200);
+      const d = (await res.json()).data;
+      expect(d.total).toBe(2);
+      expect(d.open_backlog.count).toBe(2);
+      expect(d.open_backlog.oldest_age_ms).toBeGreaterThanOrEqual(0);
+      expect(d.by_status.open).toBe(2);
+      expect(d.by_kind.bug_report).toBe(1);
+      expect(d.by_kind.question).toBe(1);
+    });
+
+    it("returns 401 when unauthenticated", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await testApp.app.request(
+        `/api/v1/projects/${project.id}/escalations/metrics`,
+        { method: "GET" },
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 404 when the project does not exist", async () => {
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${createId()}/escalations/metrics`,
+      );
+      expect(res.status).toBe(404);
+    });
+  });
 });

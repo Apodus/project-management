@@ -3925,6 +3925,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/escalations/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the on-read escalation metrics for a project
+         * @description Returns the dashboard escalation metric bundle for a project: time-to-first-response + time-to-resolve p50/p95, auto-resolve rate (diagnosis-message presence), human-escalation rate (CURRENT needs_human share), open-backlog count + oldest age, and by_status/by_kind tallies. Derived live from escalations + escalation_messages (no new table). SEMANTIC NOTES: human_escalation_rate is the CURRENT needs_human share, not ever-reached; auto_resolve_rate counts any diagnosis message (including a manually-typed one); the figures are ALL-TIME (no 24h window). Any authenticated user (read-only).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The escalation metric bundle */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["EscalationMetrics"];
+                        };
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/escalations/undelivered": {
         parameters: {
             query?: never;
@@ -14479,6 +14550,47 @@ export interface components {
             anchorId?: string | null;
             originRepo: string;
             originWorkerKey: string;
+        };
+        EscalationMetrics: {
+            time_to_first_response: {
+                p50_ms: number | null;
+                p95_ms: number | null;
+                sample_size: number;
+            };
+            time_to_resolve: {
+                p50_ms: number | null;
+                p95_ms: number | null;
+                sample_size: number;
+            };
+            auto_resolve_rate: {
+                rate: number | null;
+                answered: number;
+                total: number;
+            };
+            human_escalation_rate: {
+                rate: number | null;
+                escalated: number;
+                total: number;
+            };
+            open_backlog: {
+                count: number;
+                oldest_age_ms: number | null;
+            };
+            by_status: {
+                open: number;
+                acknowledged: number;
+                answered: number;
+                resolved: number;
+                needs_human: number;
+            };
+            by_kind: {
+                bug_report: number;
+                question: number;
+                request: number;
+                blocked: number;
+            };
+            total: number;
+            computed_at: string;
         };
         UndeliveredEscalation: {
             escalation: components["schemas"]["Escalation"];

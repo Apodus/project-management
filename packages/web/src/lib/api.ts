@@ -487,6 +487,16 @@ export async function getEscalation(id: string): Promise<EscalationWithThread> {
   return apiFetch<EscalationWithThread>(`/escalations/${id}`);
 }
 
+// On-read escalation metrics (Campaign C4 §P2). Default apiFetch unwraps the
+// {data} envelope — mirrors getTrainMetrics (NOT rawResponse).
+export type EscalationMetrics = components["schemas"]["EscalationMetrics"];
+
+export async function getEscalationMetrics(
+  projectId: string,
+): Promise<EscalationMetrics> {
+  return apiFetch<EscalationMetrics>(`/projects/${projectId}/escalations/metrics`);
+}
+
 // ---- Search API (Campaign C4) ----
 
 export type SearchResult = components["schemas"]["SearchResult"];
