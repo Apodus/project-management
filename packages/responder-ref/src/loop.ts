@@ -87,8 +87,9 @@ import type { ImplementRunner } from "./implement-runner.js";
 import type { DriveRunner } from "./drive-runner.js";
 import type { Worktree } from "./worktree.js";
 import { buildResponderPrompt } from "./prompt.js";
-import { buildImplementPrompt } from "./implement-prompt.js";
+import { buildImplementPrompt, type PhaseBrief } from "./implement-prompt.js";
 import { buildDrivePrompt } from "./drive-prompt.js";
+import type { ArcEpic, ArcMergeRequest } from "./api-client.js";
 import type { ResponderMode, SpawnBudget } from "./config.js";
 
 /**
@@ -139,6 +140,8 @@ export interface ResponderDeps {
     | "submitMergeRequest"
     | "createEpic"
     | "createTask"
+    | "listMergeRequests"
+    | "getEpic"
   >;
   logger: Logger;
   projectIds: string[];
@@ -324,6 +327,62 @@ function hasPendingLandMarker(messages: EscalationMessage[]): boolean {
  */
 function hasPendingDriveMarker(messages: EscalationMessage[]): boolean {
   return messages.some((m) => m.metadata != null && m.metadata.pendingDrive === true);
+}
+
+/**
+ * Does this escalation's thread carry a pending-ARC handoff marker (A3 P2)? Each
+ * advanceArc phase submit leaves a `diagnosis` message with `metadata.pendingArc ===
+ * true` (carrying `{epicId, phaseTaskId, mergeRequestId}`). The marker-skip site keys
+ * off it (alongside pendingDrive) to ROUTE the escalation into advanceArc each reclaim
+ * cycle — the tick-driven advance — rather than re-spawning a read-only answering
+ * session (which would march the poison cap).
+ */
+function hasPendingArcMarker(messages: EscalationMessage[]): boolean {
+  return messages.some((m) => m.metadata != null && m.metadata.pendingArc === true);
+}
+
+/**
+ * Does this escalation's thread already carry the terminal `arcComplete` marker (A3
+ * P2)? advanceArc keys off it so an all-landed arc re-parks (idempotent) instead of
+ * re-appending the marker every cycle — the escalation stays acknowledged + marked
+ * (still arc-routed) until P4 resolves it.
+ */
+function hasArcCompleteMarker(messages: EscalationMessage[]): boolean {
+  return messages.some((m) => m.metadata != null && m.metadata.arcComplete === true);
+}
+
+/**
+ * Pull the epic id off the most-recent pendingDrive/pendingArc marker (A3 P2). P1's
+ * pendingDrive carries `{epicId, visionPath}`; each P2 pendingArc carries
+ * `{epicId, phaseTaskId, mergeRequestId}`. advanceArc reads the epic id from whichever
+ * marker is present (they all carry the same epicId for the arc). Returns null when no
+ * marker carries a string epicId (advanceArc then escalates — the arc is unrecoverable).
+ */
+function arcEpicId(messages: EscalationMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const md = messages[i].metadata;
+    if (md != null && (md.pendingArc === true || md.pendingDrive === true)) {
+      const e = md.epicId;
+      if (typeof e === "string" && e.length > 0) return e;
+    }
+  }
+  return null;
+}
+
+/**
+ * Pull the vision path off the most-recent pendingDrive/pendingArc marker (A3 P2) so
+ * the per-phase implement brief can name it. Best-effort: returns "" when absent (the
+ * brief still scopes by the campaign-task title+description).
+ */
+function arcVisionPath(messages: EscalationMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const md = messages[i].metadata;
+    if (md != null && (md.pendingArc === true || md.pendingDrive === true)) {
+      const v = md.visionPath;
+      if (typeof v === "string" && v.length > 0) return v;
+    }
+  }
+  return "";
 }
 
 /**
@@ -596,20 +655,58 @@ async function runAnsweringSession(
  * failure escalates (no proven work discarded) and never escapes the job; the
  * worktree is reset for reuse + the slot released in `finally`.
  */
-async function runImplementSession(
+/**
+ * The per-implement parameterization (A3 P2). The A1 bounded-fix call and the A3
+ * per-phase call share ONE machinery (`runImplementForBranch` below); only these
+ * fields differ:
+ *   - `branch`       — `pm/escalation-<id>` (A1) vs `pm/escalation-<id>-<taskId>` (phase).
+ *   - `submitTaskId` — null (A1, task-LESS — its land resolves the root) vs the
+ *                      campaign-task id (phase — its land does NOT resolve the root,
+ *                      gated by Directive 1's `taskId === null` post-back guard).
+ *   - `brief`        — undefined (A1, the escalation IS the scope) vs the phase brief.
+ *   - `handoffMeta`  — `{pendingLand:true,…}` (A1, reclaim-skip) vs
+ *                      `{pendingArc:true, epicId, phaseTaskId,…}` (phase, advanceArc-route).
+ *   - `handoffLabel` — the message-body suffix ("pending land (A2)" / "pending campaign
+ *                      phase land").
+ */
+interface ImplementPhaseConfig {
+  branch: string;
+  submitTaskId: string | null;
+  brief?: PhaseBrief;
+  /** Extra metadata merged onto the handoff message (besides mergeRequestId/branch/commitSha). */
+  handoffMeta: Record<string, unknown>;
+  /** The message-body suffix describing what the handoff is pending. */
+  handoffLabel: string;
+}
+
+/**
+ * The shared write-capable implement machinery (A1 P3 + A3 P2). Acquires an isolated
+ * worktree, pre-creates the branch, spawns the write runner with the in-session-verify
+ * prompt, and on `branch_ready` runs the allowlist check + PUSHES + submits an
+ * escalationId-linked merge request + appends a handoff message — LEAVING the escalation
+ * `acknowledged` (the responder never answers/resolves here). give_up/error escalate to a
+ * human (mode=off ⇒ silent). All PM/git I/O is non-fatal — a failure escalates (no proven
+ * work discarded) and never escapes the job; the worktree is reset for reuse + the slot
+ * released in `finally`. The `cfg` parameterizes the A1-bounded vs A3-phase shape (see
+ * ImplementPhaseConfig); returns whether a branch_ready handoff was appended (advanceArc
+ * keys off this to know a phase MR was submitted).
+ */
+async function runImplementForBranch(
   deps: ResponderDeps,
   state: ResponderState,
   projectId: string,
   escalationId: string,
   detail: EscalationWithThread,
-): Promise<void> {
-  const branch = `pm/escalation-${escalationId}`;
+  cfg: ImplementPhaseConfig,
+): Promise<boolean> {
+  const branch = cfg.branch;
+  let handedOff = false;
 
   // Lease a worktree slot (sized to maxConcurrent). None free ⇒ escalate (rare;
   // only at maxConcurrent>1 with every implement session in flight).
   const slot = leaseImplementSlot(deps, state);
   if (slot === null) {
-    if (deps.mode === "off") return; // off is silent.
+    if (deps.mode === "off") return false; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -621,7 +718,7 @@ async function runImplementSession(
         "no-slot escalateToHuman failed; escalation stays acknowledged (reclaim recovers)",
       );
     }
-    return;
+    return false;
   }
 
   const wt = slot.wt;
@@ -633,7 +730,7 @@ async function runImplementSession(
     await wt.resetForAttempt();
   } catch (err) {
     slot.leased = false;
-    if (deps.mode === "off") return; // off is silent.
+    if (deps.mode === "off") return false; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -645,7 +742,7 @@ async function runImplementSession(
         "worktree-prep escalateToHuman failed; escalation stays acknowledged (reclaim recovers)",
       );
     }
-    return;
+    return false;
   }
 
   try {
@@ -655,7 +752,14 @@ async function runImplementSession(
     const logsDir = deps.logsDir ?? tmpdir();
     const statusPath = path.join(logsDir, `${escalationId}.implement.status.json`);
     const logPath = path.join(logsDir, `${escalationId}.implement.log`);
-    const prompt = buildImplementPrompt(detail, detail.messages, branch, deps.verifyCmd);
+    const prompt = buildImplementPrompt(
+      detail,
+      detail.messages,
+      branch,
+      deps.verifyCmd,
+      undefined,
+      cfg.brief,
+    );
 
     const result = await deps.implementRunner.run({
       escalation: detail,
@@ -744,15 +848,17 @@ async function runImplementSession(
             break;
           }
 
-          // Submit the merge request (A2 P1) — task-less, escalationId-linked, over
-          // HTTP (NOT pm_request_merge MCP). The train lands it (P2). A submit
-          // failure escalates (the branch is pushed — no work lost) and does NOT
-          // addMessage, mirroring the push-failure handler.
+          // Submit the merge request (A2 P1) — escalationId-linked, over HTTP (NOT
+          // pm_request_merge MCP). The train lands it. A1: task-LESS (its land
+          // resolves the root). A3 phase: task-LINKED (Directive 1 gates the
+          // post-back on taskId===null, so a phase land does NOT resolve the root —
+          // advanceArc drives arc completion from server-observed land status). A
+          // submit failure escalates (the branch is pushed — no work lost).
           let mr: { id: string };
           try {
             mr = await deps.client.submitMergeRequest(projectId, {
               resource: "main",
-              taskId: null,
+              taskId: cfg.submitTaskId,
               branch: readyBranch,
               commitSha: commitSha ?? null,
               verifyCmd: deps.verifyCmd || null,
@@ -785,21 +891,21 @@ async function runImplementSession(
           const body =
             `Submitted merge request \`${mr.id}\` for branch \`${readyBranch}\`` +
             (commitSha ? ` (\`${commitSha}\`)` : "") +
-            `, pending land (A2).` +
+            `, ${cfg.handoffLabel}.` +
             (diffSummary.length > 0 ? `\n\n${diffSummary}` : "");
-          // addMessage leaves the escalation ACKNOWLEDGED (NOT answer/resolve — A2
-          // lands + resolves). pendingLand:true keeps the reclaim re-spawn skip
-          // byte-identical (hasPendingLandMarker checks only that flag); the MR id
-          // augments the handoff for P2's land/reject post-back.
+          // addMessage leaves the escalation ACKNOWLEDGED (NOT answer/resolve). The
+          // handoff metadata (pendingLand for A1; pendingArc for a phase) keys the
+          // reclaim sweep's skip/route; the MR id augments the handoff.
           await deps.client.addMessage(escalationId, body, "diagnosis", {
-            pendingLand: true,
+            ...cfg.handoffMeta,
             mergeRequestId: mr.id,
             branch: readyBranch,
             commitSha: commitSha ?? null,
           });
+          handedOff = true;
           deps.logger.info(
             { escalationId, projectId, branch: readyBranch, commitSha, mergeRequestId: mr.id },
-            "implemented + pushed branch + submitted merge request; appended pending-land handoff (stays acknowledged for A2)",
+            "implemented + pushed branch + submitted merge request; appended handoff (stays acknowledged)",
           );
           break;
         }
@@ -845,6 +951,30 @@ async function runImplementSession(
     }
     slot.leased = false;
   }
+  return handedOff;
+}
+
+/**
+ * The A1 bounded-fix implement session — runs on the `implement{bounded}` path. A thin
+ * wrapper over `runImplementForBranch` with the bounded-fix shape: the
+ * `pm/escalation-<id>` branch, a task-LESS submit (its land resolves the root via the
+ * A2 post-back), no per-phase brief, and the `pendingLand` handoff marker. BYTE-IDENTICAL
+ * to the pre-A3 behavior.
+ */
+async function runImplementSession(
+  deps: ResponderDeps,
+  state: ResponderState,
+  projectId: string,
+  escalationId: string,
+  detail: EscalationWithThread,
+): Promise<void> {
+  await runImplementForBranch(deps, state, projectId, escalationId, detail, {
+    branch: `pm/escalation-${escalationId}`,
+    submitTaskId: null,
+    brief: undefined,
+    handoffMeta: { pendingLand: true },
+    handoffLabel: "pending land (A2)",
+  });
 }
 
 /**
@@ -1056,6 +1186,191 @@ async function runDriveSession(
 }
 
 /**
+ * The tick-driven autonomous arc orchestrator (A3 P2 — the load-bearing addition).
+ *
+ * Runs once per reclaim cycle for a self-held `acknowledged` escalation carrying a
+ * pendingDrive (A3 P1, the arc's first cycle) or pendingArc (A3 P2, a mid-arc cycle)
+ * marker. It derives the arc's TRUE state STRICTLY FROM THE SERVER — never a
+ * self-asserted sentinel — by reading:
+ *   - the vision epic's campaign-tasks (`getEpic` → the phases), and
+ *   - every phase's merge-request land status (`listMergeRequests` filtered by
+ *     escalationId; each phase MR is matched to its campaign-task by `taskId`).
+ *
+ * Then it does EXACTLY ONE of (Model A, non-blocking — one phase per cycle):
+ *   1. a phase MR still `queued`/`integrating` → RE-PARK (return; the train lands it
+ *      out-of-band; next cycle re-checks). Never two phases in flight.
+ *   2. a phase MR `rejected`/`abandoned`/`orphaned` → **arc_partial** (TERMINAL):
+ *      escalateToHuman on the ROOT with the partial payload (landed shas preserved +
+ *      the rejected/remaining phases named); stop. A rejected phase MR is TERMINAL —
+ *      never re-submitted, never a second live MR for that task.
+ *   3. every campaign-task has a `landed` MR → **arc_complete**: append an
+ *      `arcComplete{epicId, landedShas[]}` marker. Do NOT resolve/answer (P4's job) —
+ *      leave it acknowledged + marked.
+ *   4. else (prior phase landed, more remain) → IMPLEMENT the next campaign-task with
+ *      no MR yet (reuse `runImplementForBranch`): branch `pm/escalation-<id>-<taskId>`,
+ *      a phase-scoped brief (campaign-task title+description + vision path), a
+ *      task-LINKED escalationId MR (Directive 1 gates its land post-back so it does
+ *      NOT resolve the root), and a `pendingArc` handoff. Reserves the spawn budget
+ *      (canSpawn/recordSpawn) but NEVER `state.reclaimAttempts` (Directive 2).
+ *
+ * All PM/git I/O is non-fatal (a throw is logged + retried next cycle; the escalation
+ * stays acknowledged + marked, so it re-qualifies). The epic id comes off the marker
+ * (`arcEpicId`); a missing epic id escalates the root (the arc is unrecoverable).
+ */
+async function advanceArc(
+  deps: ResponderDeps,
+  state: ResponderState,
+  projectId: string,
+  escalationId: string,
+  detail: EscalationWithThread,
+  now: number,
+): Promise<void> {
+  const epicId = arcEpicId(detail.messages);
+  if (epicId === null) {
+    if (deps.mode === "off") return; // off is silent.
+    await deps.client.escalateToHuman(
+      escalationId,
+      "autonomous arc has no recoverable epic id on its handoff marker; needs a human",
+    );
+    return;
+  }
+
+  // Derive arc state STRICTLY from the server: the epic's campaign-tasks + each
+  // phase's MR land status (matched by taskId).
+  const epic: ArcEpic = await deps.client.getEpic(projectId, epicId);
+  const phaseMrs: ArcMergeRequest[] = await deps.client.listMergeRequests(projectId, {
+    escalationId,
+  });
+  // Index the phase MRs by taskId (the A3 phase MRs are task-LINKED). The A1 task-LESS
+  // bounded MR (taskId null), if any, is irrelevant to the arc phases and ignored here.
+  const mrByTask = new Map<string, ArcMergeRequest>();
+  for (const mr of phaseMrs) {
+    if (mr.taskId !== null) mrByTask.set(mr.taskId, mr);
+  }
+
+  const inFlightStatuses = new Set(["queued", "integrating"]);
+  const failedStatuses = new Set(["rejected", "abandoned", "orphaned"]);
+
+  // ── (1) any phase still in flight → re-park (one phase per cycle). ──
+  for (const task of epic.tasks) {
+    const mr = mrByTask.get(task.id);
+    if (mr !== undefined && inFlightStatuses.has(mr.status)) {
+      deps.logger.info(
+        { escalationId, projectId, epicId, taskId: task.id, mr: mr.id, status: mr.status },
+        "arc re-park: a phase MR is still in flight; waiting for the train (next cycle re-checks)",
+      );
+      return;
+    }
+  }
+
+  // ── (2) any phase MR terminally failed → arc_partial (terminal). ──
+  const landedShas: string[] = [];
+  for (const task of epic.tasks) {
+    const mr = mrByTask.get(task.id);
+    if (mr !== undefined && mr.status === "landed" && mr.landedSha !== null) {
+      landedShas.push(mr.landedSha);
+    }
+  }
+  for (const task of epic.tasks) {
+    const mr = mrByTask.get(task.id);
+    if (mr !== undefined && failedStatuses.has(mr.status)) {
+      if (deps.mode === "off") return; // off is silent.
+      const remaining = epic.tasks
+        .filter((t) => {
+          const m = mrByTask.get(t.id);
+          return m === undefined || m.status !== "landed";
+        })
+        .map((t) => t.title);
+      const reason =
+        `Autonomous arc PARTIAL: phase "${task.title}" (MR ${mr.id}) ${mr.status}. ` +
+        `Landed phases preserved (${landedShas.length}: ${landedShas.join(", ") || "none"}). ` +
+        `Unlanded phases: ${remaining.join(", ") || "none"}. A human should take over the rest.`;
+      await deps.client.escalateToHuman(escalationId, reason);
+      deps.logger.warn(
+        { escalationId, projectId, epicId, failedTask: task.title, status: mr.status, landedShas },
+        "arc_partial: a phase MR terminally failed; escalated the root to needs_human (landed phases preserved)",
+      );
+      return;
+    }
+  }
+
+  // ── (3) every campaign-task has a landed MR → arc_complete. ──
+  const allLanded =
+    epic.tasks.length > 0 &&
+    epic.tasks.every((t) => {
+      const mr = mrByTask.get(t.id);
+      return mr !== undefined && mr.status === "landed";
+    });
+  if (allLanded) {
+    if (deps.mode === "off") return; // off is silent.
+    // Idempotent: if the arcComplete marker is already present, re-park (don't
+    // re-append every cycle). The escalation stays acknowledged + arc-marked until
+    // P4 resolves it.
+    if (hasArcCompleteMarker(detail.messages)) {
+      deps.logger.debug(
+        { escalationId, projectId, epicId },
+        "arc_complete already marked; re-park (awaiting P4 close)",
+      );
+      return;
+    }
+    const body =
+      `Autonomous arc COMPLETE: all ${epic.tasks.length} phase(s) of epic \`${epicId}\` ` +
+      `landed (${landedShas.join(", ")}). Awaiting close.`;
+    // arcComplete marker — does NOT resolve/answer (P4 resolves the escalation). The
+    // marker keeps the escalation acknowledged + arc-routed (a no-op re-park next cycle).
+    await deps.client.addMessage(escalationId, body, "diagnosis", {
+      pendingArc: true,
+      arcComplete: true,
+      epicId,
+      landedShas,
+    });
+    deps.logger.info(
+      { escalationId, projectId, epicId, landedShas },
+      "arc_complete: all phases landed; appended arcComplete marker (P4 resolves)",
+    );
+    return;
+  }
+
+  // ── (4) prior phases landed, more remain → implement the next phase with no MR. ──
+  const next = epic.tasks.find((t) => mrByTask.get(t.id) === undefined);
+  if (next === undefined) {
+    // Defensive: no in-flight, no failure, not all-landed, yet no task lacks an MR.
+    // (Shouldn't happen — a task with an MR is landed/in-flight/failed, all handled
+    // above.) Re-park; the next cycle re-derives.
+    deps.logger.info(
+      { escalationId, projectId, epicId },
+      "arc: no next phase to implement and not complete; re-park",
+    );
+    return;
+  }
+
+  if (deps.mode === "off") return; // off is silent — no spawn.
+
+  // Reserve the spawn budget (Directive 2: canSpawn/recordSpawn, NOT reclaimAttempts).
+  if (!canSpawn(state, deps.spawnBudget, now)) {
+    deps.logger.info(
+      { escalationId, projectId, epicId, spawned: state.spawnTimestamps.length },
+      "arc: spawn budget exhausted; deferring the next phase to a later cycle",
+    );
+    return;
+  }
+  recordSpawn(state, now);
+
+  const visionPath = arcVisionPath(detail.messages);
+  deps.logger.info(
+    { escalationId, projectId, epicId, taskId: next.id, phase: next.title },
+    "arc: implementing the next campaign phase",
+  );
+  await runImplementForBranch(deps, state, projectId, escalationId, detail, {
+    branch: `pm/escalation-${escalationId}-${next.id}`,
+    submitTaskId: next.id,
+    brief: { title: next.title, description: next.description ?? "", visionPath },
+    handoffMeta: { pendingArc: true, epicId, phaseTaskId: next.id },
+    handoffLabel: "pending campaign phase land",
+  });
+}
+
+/**
  * One poll pass over every watched project. Non-throwing per project: a poll
  * error is logged and the other projects still run. Claims are awaited only up
  * to the concurrency semaphore — a claim that would exceed `maxConcurrent` is
@@ -1201,25 +1516,56 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
       if (slot.available <= 0) break;
       const escalationId = esc.id;
 
-      // REVISE FIX #3 (reclaim guard): SKIP an escalation whose thread carries the
-      // pending-land marker — it's a landed-but-not-yet-merged implement handoff
-      // waiting on A2/the train, NOT a stranded read-only session. Re-spawning a
-      // read-only answering session on it would march the poison cap. A fetch
-      // failure is non-fatal: fall through (the existing reclaim path then handles
-      // it as before — a getEscalation failure inside the session is logged).
+      // REVISE FIX #3 (reclaim guard) + A3 P2 (arc route): probe the thread for a
+      // handoff marker and either SKIP or ROUTE-TO-advanceArc:
+      //   - pendingLand (A1 bounded fix) → SKIP: a landed-but-not-yet-merged implement
+      //     handoff waiting on A2/the train, NOT a stranded read-only session.
+      //   - pendingDrive (A3 P1) / pendingArc (A3 P2) → ROUTE to advanceArc: the
+      //     tick-driven autonomous arc advance. advanceArc reads the arc's TRUE state
+      //     from the server (the epic's campaign-tasks + each phase's MR land status)
+      //     and does ONE of {re-park | arc_partial | arc_complete | implement next
+      //     phase}. It NEVER touches state.reclaimAttempts (Directive 2: a >2-phase arc
+      //     would otherwise poison-cap to needs_human mid-drive); it reserves its own
+      //     spawn budget internally (canSpawn/recordSpawn) only when it implements.
+      //   - both absent → fall through to the normal read-only reclaim path.
+      // Re-spawning a read-only answering session on any of these would march the
+      // poison cap. A fetch failure is non-fatal: fall through to the normal path.
       try {
         const thread = await deps.client.getEscalation(escalationId);
-        if (hasPendingLandMarker(thread.messages) || hasPendingDriveMarker(thread.messages)) {
+        const arc =
+          hasPendingDriveMarker(thread.messages) || hasPendingArcMarker(thread.messages);
+        if (arc) {
+          // Route to advanceArc. Hold a concurrency slot + the in-flight marker while
+          // it runs (it may spawn an implement session), but DO NOT touch
+          // reclaimAttempts or the spawn budget here — advanceArc owns its own budget.
+          slot.available -= 1;
+          state.inFlight.add(escalationId);
+          const arcJob = (async (): Promise<void> => {
+            try {
+              await advanceArc(deps, state, projectId, escalationId, thread, now);
+            } catch (err) {
+              deps.logger.warn(
+                { escalationId, projectId, err: errMessage(err) },
+                "advanceArc failed; will retry next cycle",
+              );
+            } finally {
+              state.inFlight.delete(escalationId);
+            }
+          })();
+          pending.push(arcJob);
+          continue;
+        }
+        if (hasPendingLandMarker(thread.messages)) {
           deps.logger.debug(
             { escalationId, projectId },
-            "reclaim skip: escalation has a pending-land/pending-drive handoff (awaiting A2/P2); not re-spawning",
+            "reclaim skip: escalation has a pending-land handoff (awaiting A2/the train); not re-spawning",
           );
           continue;
         }
       } catch (err) {
         deps.logger.warn(
           { escalationId, projectId, err: errMessage(err) },
-          "reclaim pending-land probe failed; proceeding with the normal reclaim path",
+          "reclaim handoff-marker probe failed; proceeding with the normal reclaim path",
         );
       }
 

@@ -23415,6 +23415,14 @@
           },
           {
             "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "escalationId",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string",
               "enum": [
                 "true",

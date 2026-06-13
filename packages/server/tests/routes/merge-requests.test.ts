@@ -1281,6 +1281,116 @@ describe("Merge Requests API", () => {
       expect(msgs.length).toBe(0);
     });
 
+    // ── A3 P2 (Directive 1): the post-back is gated on taskId === null. A
+    // task-LINKED escalation MR is a campaign PHASE of an autonomous arc — its
+    // land must NOT resolve the root and its reject must NOT drive needs_human
+    // (only advanceArc drives arc completion/partial from server-observed land
+    // status). A task-LESS escalation MR (the A1 bounded-fix shape) keeps the
+    // A2 invariant: land resolves, reject → needs_human.
+    it("task-LINKED escalation MR land does NOT resolve the escalation (A3 P2 phase gate)", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+      const task = createTestTask(testApp.db, { projectId: project.id });
+
+      const requestId = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-e1-task-1",
+        escalationId: escId,
+        taskId: task.id,
+      });
+      forceIntegrating(requestId);
+
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
+        token: integrator.token,
+        body: { landedSha: "phaseSHA" },
+      });
+      expect(res.status).toBe(200);
+
+      // The escalation STAYS acknowledged — NOT resolved by a phase land.
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("acknowledged");
+      // No post-back message appended.
+      const msgs = testApp.db
+        .select()
+        .from(escalationMessages)
+        .where(eq(escalationMessages.escalationId, escId))
+        .all();
+      expect(msgs.length).toBe(0);
+    });
+
+    it("task-LINKED escalation MR reject does NOT drive needs_human (A3 P2 phase gate)", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
+      const task = createTestTask(testApp.db, { projectId: project.id });
+
+      const requestId = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-e1-task-2",
+        escalationId: escId,
+        taskId: task.id,
+      });
+      forceIntegrating(requestId);
+
+      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/reject`, {
+        token: integrator.token,
+        body: { category: "build_failed", reason: "phase boom" },
+      });
+      expect(res.status).toBe(200);
+
+      // The escalation STAYS acknowledged — a phase reject does NOT drive needs_human.
+      const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
+      expect(escRow?.status).toBe("acknowledged");
+      const msgs = testApp.db
+        .select()
+        .from(escalationMessages)
+        .where(eq(escalationMessages.escalationId, escId))
+        .all();
+      expect(msgs.length).toBe(0);
+    });
+
+    it("task-LESS escalation MR still resolves on land + needs_human on reject (A2 invariant preserved)", async () => {
+      const project = createTestProject(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const holder = createTestAiAgent(testApp.db);
+      const origin = createTestUser(testApp.db);
+
+      // Land (task-LESS) → resolved.
+      const escLand = seedHeldEscalation(project.id, holder.user.id, origin.id, "wk-land");
+      const landReq = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-bounded-land",
+        escalationId: escLand,
+        taskId: null,
+      });
+      forceIntegrating(landReq);
+      const landRes = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${landReq}/land`, {
+        token: integrator.token,
+        body: { landedSha: "boundedSHA" },
+      });
+      expect(landRes.status).toBe(200);
+      const landEsc = testApp.db.select().from(escalations).where(eq(escalations.id, escLand)).get();
+      expect(landEsc?.status).toBe("resolved");
+
+      // Reject (task-LESS) → needs_human.
+      const escRej = seedHeldEscalation(project.id, holder.user.id, origin.id, "wk-rej");
+      const rejReq = await submitRequest(project.id, integrator.token, {
+        branch: "pm/escalation-bounded-rej",
+        escalationId: escRej,
+        taskId: null,
+      });
+      forceIntegrating(rejReq);
+      const rejRes = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${rejReq}/reject`, {
+        token: integrator.token,
+        body: { category: "build_failed", reason: "bounded boom" },
+      });
+      expect(rejRes.status).toBe(200);
+      const rejEsc = testApp.db.select().from(escalations).where(eq(escalations.id, escRej)).get();
+      expect(rejEsc?.status).toBe("needs_human");
+    });
+
     it("land post-back is non-fatal: holderId=null skips, land still 200", async () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);

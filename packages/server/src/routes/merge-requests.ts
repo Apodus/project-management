@@ -210,6 +210,7 @@ const listQuery = z.object({
   status: z.enum(MERGE_REQUEST_STATUSES).optional(),
   taskId: z.string().optional(),
   resolvedFrom: z.string().optional(),
+  escalationId: z.string().optional(),
   ungrouped: z
     .enum(["true", "false"])
     .optional()
@@ -742,6 +743,7 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
       status: query.status,
       taskId: query.taskId,
       resolvedFrom: query.resolvedFrom,
+      escalationId: query.escalationId,
       ungrouped: query.ungrouped,
       page: query.page,
       perPage: query.perPage,

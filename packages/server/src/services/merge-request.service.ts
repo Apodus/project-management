@@ -71,6 +71,12 @@ export interface ListParams {
   status?: string;
   taskId?: string;
   resolvedFrom?: string;
+  /**
+   * Campaign A3 P2: filter to requests linked to this escalation (the arc's
+   * phase MRs + the A1 bounded-fix MR). advanceArc reads each phase's land
+   * status via this filter to derive arc state strictly from the server.
+   */
+  escalationId?: string;
   page?: number;
   perPage?: number;
   /**
@@ -540,6 +546,7 @@ export function list(projectId: string, params: ListParams = {}): ListResult {
   if (params.status) conditions.push(eq(mergeRequests.status, params.status));
   if (params.taskId) conditions.push(eq(mergeRequests.taskId, params.taskId));
   if (params.resolvedFrom) conditions.push(eq(mergeRequests.resolvedFrom, params.resolvedFrom));
+  if (params.escalationId) conditions.push(eq(mergeRequests.escalationId, params.escalationId));
   if (params.ungrouped) {
     conditions.push(sql`${mergeRequests.groupId} IS NULL`);
   }
@@ -1364,7 +1371,15 @@ export function land(id: string, body: MergeRequestLand, actor: Actor): MergeReq
   // Campaign A2 §P2: close the auto-implement loop — a landed escalationId
   // merge request resolves its escalation as the holder (best-effort, after
   // the commit + event; never throws — main already advanced).
-  if (row.escalationId !== null) {
+  //
+  // A3 P2 (Directive 1): gate on row.taskId === null so ONLY a task-LESS
+  // escalation MR (the A1 bounded-fix shape) resolves the root. A task-LINKED
+  // escalation MR is a campaign PHASE of an autonomous arc (A3 drive): its land
+  // must NOT resolve the root (phase 1 resolving would kill the multi-phase
+  // arc). Phase MRs still thread escalationId for attribution/the audit chain;
+  // arc completion is driven solely by advanceArc from server-observed land
+  // status, never by an early phase's post-back.
+  if (row.escalationId !== null && row.taskId === null) {
     postBackToEscalation(row.escalationId, {
       kind: "landed",
       mergeRequestId: id,
@@ -1511,7 +1526,14 @@ export function reject(id: string, body: MergeRequestReject, actor: Actor): Merg
   // merge request escalates its escalation to needs_human with the structured
   // reject reason (best-effort, after the commit + event; never throws). The
   // branch is untouched by reject(), so the work is preserved for a human.
-  if (row.escalationId !== null) {
+  //
+  // A3 P2 (Directive 1): gate on row.taskId === null, symmetric with land. A
+  // task-LINKED phase MR reject must NOT drive the root to needs_human —
+  // needs_human is TERMINAL in the escalation transition table, so a phase
+  // reject's post-back would (a) carry the wrong single-phase message and
+  // (b) make advanceArc's arc_partial escalateToHuman throw 409. ONLY
+  // advanceArc drives arc_partial from a phase reject (one coherent path).
+  if (row.escalationId !== null && row.taskId === null) {
     postBackToEscalation(row.escalationId, {
       kind: "rejected",
       mergeRequestId: id,

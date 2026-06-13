@@ -9356,6 +9356,7 @@ export interface paths {
                     status?: "queued" | "integrating" | "landed" | "rejected" | "abandoned" | "orphaned";
                     taskId?: string;
                     resolvedFrom?: string;
+                    escalationId?: string;
                     ungrouped?: "true" | "false";
                     page?: number;
                     perPage?: number;

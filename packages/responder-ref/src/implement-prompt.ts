@@ -2,12 +2,19 @@
  * The implement prompt for the write-capable auto-implement regime (Campaign A1 P2;
  * in-session verify added in P3).
  *
- * `buildImplementPrompt` substitutes four `{placeholder}` blocks into a template
- * (default `DEFAULT_IMPLEMENT_PROMPT`): `{escalation}`, `{thread}`, `{branch}`, and
- * `{verifyCmd}`. Substitution is replace-if-present (parity with `buildResponderPrompt`):
- * a custom template that omits a placeholder simply does not receive that block. An
- * empty `verifyCmd` is substituted with a clean "no verify command configured" line
- * (never a dangling `{verifyCmd}`).
+ * `buildImplementPrompt` substitutes five `{placeholder}` blocks into a template
+ * (default `DEFAULT_IMPLEMENT_PROMPT`): `{escalation}`, `{thread}`, `{branch}`,
+ * `{verifyCmd}`, and `{brief}`. Substitution is replace-if-present (parity with
+ * `buildResponderPrompt`): a custom template that omits a placeholder simply does
+ * not receive that block. An empty `verifyCmd` is substituted with a clean "no
+ * verify command configured" line (never a dangling `{verifyCmd}`).
+ *
+ * The optional per-phase `brief` (Campaign A3 P2) is the load-bearing
+ * generalization: when a campaign-task phase of an autonomous arc is implemented,
+ * the brief (the campaign-task title+description + the vision path) scopes the
+ * session to THAT phase rather than the whole escalation. Absent/empty ⇒ no brief
+ * block (the A1 bounded-fix call stays byte-identical — the escalation IS the
+ * scope).
  *
  * Unlike the read-only responder prompt (`prompt.ts`), THIS prompt presents the
  * escalation as a TRUSTED request to FIX (it already passed the P1 injection
@@ -37,6 +44,7 @@ export const DEFAULT_IMPLEMENT_PROMPT =
   "request to FIX.\n\n" +
   "Escalation:\n{escalation}\n\n" +
   "Thread so far:\n{thread}\n\n" +
+  "{brief}" +
   "Your job is to IMPLEMENT the fix. You ARE permitted to edit code in this worktree — " +
   "investigate the cause, implement the fix, then COMMIT it to the branch {branch}. " +
   "Delegate investigation to fresh sub-agents as needed, but converge on a committed, " +
@@ -104,11 +112,40 @@ function formatVerifyBlock(verifyCmd: string): string {
 }
 
 /**
+ * One campaign-task phase brief (Campaign A3 P2): the phase's title + description +
+ * the vision path. When provided, it scopes the implement session to THAT phase of
+ * the autonomous arc rather than the whole escalation.
+ */
+export interface PhaseBrief {
+  title: string;
+  description: string;
+  visionPath: string;
+}
+
+/**
+ * Render the `{brief}` block. Absent ⇒ "" (the A1 bounded-fix call is byte-identical
+ * — the escalation IS the scope). Present ⇒ a phase-scoped block (the campaign-task
+ * title+description + the vision path) ending in `\n\n` so it slots cleanly above the
+ * "Your job is to IMPLEMENT the fix" line.
+ */
+function formatBriefBlock(brief: PhaseBrief | undefined): string {
+  if (brief === undefined) return "";
+  return (
+    "This is ONE PHASE of an autonomous campaign driving the vision " +
+    `\`${brief.visionPath}\`. Implement ONLY this phase:\n` +
+    `  phase: ${brief.title}\n` +
+    `  ${brief.description}\n\n`
+  );
+}
+
+/**
  * Build the implement prompt by substituting the `{escalation}`, `{thread}`,
- * `{branch}`, and `{verifyCmd}` blocks into `template ?? DEFAULT_IMPLEMENT_PROMPT`.
- * Replace-if-present: a template omitting a placeholder simply does not receive that
- * block. `verifyCmd` is rendered via `formatVerifyBlock` (empty ⇒ the no-verify line)
- * FIRST, so a `{branch}` it contains is then substituted by the shared branch pass.
+ * `{branch}`, `{verifyCmd}`, and `{brief}` blocks into
+ * `template ?? DEFAULT_IMPLEMENT_PROMPT`. Replace-if-present: a template omitting a
+ * placeholder simply does not receive that block. `verifyCmd` is rendered via
+ * `formatVerifyBlock` (empty ⇒ the no-verify line) FIRST, so a `{branch}` it contains
+ * is then substituted by the shared branch pass. `brief` is optional (Campaign A3 P2):
+ * absent ⇒ "" (the A1 escalation-root call stays byte-identical).
  */
 export function buildImplementPrompt(
   escalation: Escalation,
@@ -116,6 +153,7 @@ export function buildImplementPrompt(
   branch: string,
   verifyCmd: string,
   template?: string,
+  brief?: PhaseBrief,
 ): string {
   const base = template ?? DEFAULT_IMPLEMENT_PROMPT;
   return base
@@ -123,6 +161,8 @@ export function buildImplementPrompt(
     .join(formatEscalation(escalation))
     .split("{thread}")
     .join(formatThread(thread))
+    .split("{brief}")
+    .join(formatBriefBlock(brief))
     .split("{verifyCmd}")
     .join(formatVerifyBlock(verifyCmd))
     .split("{branch}")

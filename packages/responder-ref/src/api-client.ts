@@ -52,6 +52,46 @@ export interface SubmittedMergeRequest {
 }
 
 /**
+ * The narrow merge-request view slice the A3 P2 arc orchestrator reads back when
+ * listing an escalation's phase MRs to derive arc state STRICTLY from the server
+ * (the land status, never a self-asserted sentinel). One row per submitted phase.
+ */
+export interface ArcMergeRequest {
+  id: string;
+  taskId: string | null;
+  escalationId: string | null;
+  status: string;
+  landedSha: string | null;
+  branch: string | null;
+  commitSha: string | null;
+}
+
+/** Optional filters for the merge-request list (A3 P2). */
+export interface ListMergeRequestsParams {
+  escalationId?: string;
+  status?: string;
+}
+
+/**
+ * The narrow campaign-task slice the A3 P2 arc orchestrator reads for an epic. One
+ * row per campaign-task; `id`/`title`/`description` drive the per-phase implement
+ * brief, and the per-phase MR land status (read separately via listMergeRequests)
+ * decides which phase to advance.
+ */
+export interface ArcCampaignTask {
+  id: string;
+  title: string;
+  description: string | null;
+}
+
+/** The epic + its campaign-tasks, composed by `getEpic` (A3 P2). */
+export interface ArcEpic {
+  id: string;
+  name: string;
+  tasks: ArcCampaignTask[];
+}
+
+/**
  * The body the daemon POSTs to create the vision's PM epic (A3 P1). The server
  * auto-attributes `createdBy` from the responder's ai_agent bearer token — no
  * creator field travels in the body.
@@ -290,6 +330,45 @@ export class ResponderClient {
       `/projects/${encodeURIComponent(projectId)}/tasks`,
       body,
     );
+  }
+
+  /**
+   * List a project's merge requests, optionally filtered by `escalationId`/`status`
+   * (A3 P2). The arc orchestrator reads an escalation's phase MRs to derive arc state
+   * (each phase's land status) STRICTLY from the server. `request<T>` unwraps the
+   * `{ data, pagination }` list envelope to the bare array.
+   */
+  listMergeRequests(
+    projectId: string,
+    params: ListMergeRequestsParams = {},
+  ): Promise<ArcMergeRequest[]> {
+    const q = new URLSearchParams();
+    if (params.escalationId !== undefined) q.set("escalationId", params.escalationId);
+    if (params.status !== undefined) q.set("status", params.status);
+    const qs = q.toString();
+    return this.request<ArcMergeRequest[]>(
+      "GET",
+      `/projects/${encodeURIComponent(projectId)}/merge-requests${qs ? `?${qs}` : ""}`,
+    );
+  }
+
+  /**
+   * Fetch an epic + its campaign-tasks (A3 P2). The GET epic response carries a task
+   * SUMMARY (counts), not the individual task rows the arc orchestrator needs, so this
+   * composes two reads: the epic (for its name) + the project's tasks filtered to this
+   * epic (for each campaign-task's id/title/description). Both unwrap the `{ data }`
+   * envelope; the task list's pagination envelope is discarded.
+   */
+  async getEpic(projectId: string, epicId: string): Promise<ArcEpic> {
+    const epic = await this.request<{ id: string; name: string }>(
+      "GET",
+      `/epics/${encodeURIComponent(epicId)}`,
+    );
+    const tasks = await this.request<ArcCampaignTask[]>(
+      "GET",
+      `/projects/${encodeURIComponent(projectId)}/tasks?epic=${encodeURIComponent(epicId)}&perPage=100`,
+    );
+    return { id: epic.id, name: epic.name, tasks };
   }
 
   /** Resolve this responder's own identity (used once at startup for selfId). */
