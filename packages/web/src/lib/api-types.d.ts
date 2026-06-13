@@ -3813,6 +3813,672 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/escalations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List escalations
+         * @description List escalations for a project, newest first, with optional filters.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "open" | "acknowledged" | "answered" | "resolved" | "needs_human";
+                    kind?: "bug_report" | "question" | "request" | "blocked";
+                    severity?: "low" | "medium" | "high";
+                    originRepo?: string;
+                    originWorkerKey?: string;
+                    holderId?: string;
+                };
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of escalations */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Escalation"][];
+                            pagination: {
+                                total: number;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Raise escalation
+         * @description Raise a new escalation (bug_report/question/request/blocked) for a project. Any authenticated caller may raise; the author is the caller (never accepted from the body). Status defaults `open`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateEscalation"];
+                };
+            };
+            responses: {
+                /** @description Escalation raised */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Escalation"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/escalations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get escalation
+         * @description Get a single escalation by ID with its full ordered thread (messages asc by seq).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Escalation with thread */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["EscalationWithThread"];
+                        };
+                    };
+                };
+                /** @description Escalation not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/escalations/{id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add thread message
+         * @description Append a message (reply/diagnosis/instruction) to an escalation thread. Authz: a human OR the author OR the holder may reply; else 403. A resolved thread is append-frozen (409).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateEscalationMessage"];
+                };
+            };
+            responses: {
+                /** @description Message appended; updated escalation returned */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Escalation"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Caller is not allowed to reply to this escalation */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation is resolved and append-frozen */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/escalations/{id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge escalation
+         * @description Acknowledge an open escalation (open → acknowledged) — the PM-side PICKUP. Authz: a human OR an unclaimed escalation OR the current holder; a different ai_agent on a held escalation gets 403. An ai_agent acknowledging an unclaimed escalation auto-claims it (becomes the holder).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Escalation acknowledged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Escalation"];
+                        };
+                    };
+                };
+                /** @description Caller is not allowed to acknowledge this escalation */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation cannot transition to acknowledged */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/escalations/{id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer escalation
+         * @description Answer an acknowledged escalation (acknowledged → answered). Authz: a human OR the holder OR an unclaimed escalation; else 403. Self-claim-on-answer: an unheld escalation binds to the answerer. An optional `body` is appended as a `diagnosis` message.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AnswerEscalation"];
+                };
+            };
+            responses: {
+                /** @description Escalation answered */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Escalation"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Caller is not allowed to answer this escalation */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation cannot transition to answered */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/escalations/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve escalation
+         * @description Resolve an escalation (→ resolved, terminal). Authz: a human OR the author OR the holder; else 403. The origin author may withdraw from any non-terminal state; a non-author may resolve only from answered/needs_human. A reason is required and recorded as a `system` message.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ResolveEscalation"];
+                };
+            };
+            responses: {
+                /** @description Escalation resolved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Escalation"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Caller is not allowed to resolve this escalation */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation cannot be resolved from its current state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/escalations/{id}/escalate-to-human": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Escalate to human
+         * @description Escalate to a human (any non-terminal state → needs_human). Authz: a human OR the author OR the holder; else 403. A reason is required and recorded as a `system` message.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EscalateToHuman"];
+                };
+            };
+            responses: {
+                /** @description Escalation marked needs_human */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Escalation"];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Caller is not allowed to escalate this escalation to a human */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Escalation cannot transition to needs_human */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/epics": {
         parameters: {
             query?: never;
@@ -13620,6 +14286,85 @@ export interface components {
         NotesHealth: {
             open_count: number;
             oldest_untriaged_age_ms: number | null;
+        };
+        Escalation: {
+            id: string;
+            projectId: string;
+            /** @enum {string} */
+            kind: "bug_report" | "question" | "request" | "blocked";
+            /** @enum {string} */
+            status: "open" | "acknowledged" | "answered" | "resolved" | "needs_human";
+            /** @enum {string|null} */
+            severity: "low" | "medium" | "high" | null;
+            title: string;
+            body: string | null;
+            codeLocator: {
+                path: string;
+                line?: number;
+                commitSha?: string;
+            } | null;
+            /** @enum {string|null} */
+            anchorType: "task" | "epic" | "proposal" | null;
+            anchorId: string | null;
+            originRepo: string;
+            originWorkerKey: string;
+            holderId: string | null;
+            authorId: string;
+            createdAt: string;
+            updatedAt: string;
+            resolvedAt: string | null;
+            resolvedBy: string | null;
+        };
+        CreateEscalation: {
+            /** @enum {string} */
+            kind: "bug_report" | "question" | "request" | "blocked";
+            title: string;
+            body?: string | null;
+            /** @enum {string|null} */
+            severity?: "low" | "medium" | "high" | null;
+            codeLocator?: {
+                path: string;
+                line?: number;
+                commitSha?: string;
+            } | null;
+            /** @enum {string|null} */
+            anchorType?: "task" | "epic" | "proposal" | null;
+            anchorId?: string | null;
+            originRepo: string;
+            originWorkerKey: string;
+        };
+        EscalationWithThread: components["schemas"]["Escalation"] & {
+            messages: components["schemas"]["EscalationMessage"][];
+        };
+        EscalationMessage: {
+            id: string;
+            escalationId: string;
+            seq: number;
+            authorId: string;
+            body: string;
+            /** @enum {string|null} */
+            messageType: "reply" | "diagnosis" | "instruction" | "system" | null;
+            metadata: {
+                [key: string]: unknown;
+            } | null;
+            createdAt: string;
+        };
+        CreateEscalationMessage: {
+            body: string;
+            /** @enum {string} */
+            messageType?: "reply" | "diagnosis" | "instruction" | "system";
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        AnswerEscalation: {
+            body?: string;
+        };
+        ResolveEscalation: {
+            reason: string;
+        };
+        EscalateToHuman: {
+            reason: string;
         };
         Epic: {
             id: string;
