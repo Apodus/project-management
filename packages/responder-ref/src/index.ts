@@ -145,7 +145,11 @@ async function main(): Promise<void> {
       sniffer,
       implementRunner,
       acquireWorktree,
-      worktreeGit: { remote: cfg.worktreeGit.remote, mainBranch: cfg.worktreeGit.mainBranch },
+      worktreeGit: {
+        remote: cfg.worktreeGit.remote,
+        mainBranch: cfg.worktreeGit.mainBranch,
+        allowedPaths: cfg.autoImplement.allowedPaths,
+      },
       verifyCmd: cfg.autoImplement.verifyCmd,
       repoCwd: cfg.repoCwd,
       command: cfg.command,

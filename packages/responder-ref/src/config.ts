@@ -59,8 +59,15 @@ export interface ResponderConfig {
    * `verifyCmd` (P3) is the project verify command the implement agent runs
    * in-session and iterates to green before declaring branch_ready (empty ⇒ the
    * agent skips in-session verify; A2's train re-verify is the floor).
+   * `allowedPaths` (P4) is a COARSE blast-radius allowlist (literal path
+   * prefixes). DEFAULT `[]` is **permissive-by-design**: the implement worktree
+   * IS a clone of the PM repo, so `[]` means the whole PM repo is allowed.
+   * `allowedPaths` is an OPT-IN operator narrowing — NOT a mandatory gate
+   * (trust-first; the merge-train verify gate at A2 is the real floor). When
+   * non-empty, a branch_ready whose diff touches a path outside every prefix is
+   * NOT pushed — it escalates to a human instead.
    */
-  autoImplement: { enabled: boolean; verifyCmd: string };
+  autoImplement: { enabled: boolean; verifyCmd: string; allowedPaths: string[] };
   /**
    * Git config for the auto-implement regime's isolated worktree clones
    * (Campaign A1 P3). `repoUrl` is REQUIRED iff `autoImplement.enabled` (else a
@@ -132,6 +139,7 @@ export interface ConfigEnv {
   PM_RESPONDER_MODE?: string;
   PM_AUTO_IMPLEMENT_ENABLED?: string;
   PM_AUTO_IMPLEMENT_VERIFY_CMD?: string;
+  PM_AUTO_IMPLEMENT_ALLOWED_PATHS?: string;
   PM_RESPONDER_GIT_REPO_URL?: string;
   PM_RESPONDER_GIT_REMOTE?: string;
   PM_RESPONDER_GIT_MAIN_BRANCH?: string;
@@ -209,6 +217,17 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   // runs in-session before declaring branch_ready. DEFAULT "" (skip in-session
   // verify — A2's train re-verify is the floor).
   const autoImplementVerifyCmd = env.PM_AUTO_IMPLEMENT_VERIFY_CMD ?? "";
+  // auto_implement.allowedPaths (P4): a COARSE blast-radius allowlist of literal
+  // path prefixes. CSV → trimmed, non-empty tokens (same idiom as cleanKeep /
+  // excludeOriginRepos). DEFAULT [] = permissive-by-design (no restriction; the
+  // clone IS the PM repo) — an OPT-IN operator narrowing, never a mandatory gate.
+  const autoImplementAllowedPaths: string[] = [];
+  if (env.PM_AUTO_IMPLEMENT_ALLOWED_PATHS) {
+    for (const token of env.PM_AUTO_IMPLEMENT_ALLOWED_PATHS.split(",")) {
+      const t = token.trim();
+      if (t.length > 0) autoImplementAllowedPaths.push(t);
+    }
+  }
 
   // Worktree git config (P3): the isolated-clone source for the implement session.
   // repoUrl is REQUIRED iff auto_implement is enabled — a write session must have a
@@ -270,7 +289,11 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     projectIds,
     enabled,
     mode,
-    autoImplement: { enabled: autoImplementEnabled, verifyCmd: autoImplementVerifyCmd },
+    autoImplement: {
+      enabled: autoImplementEnabled,
+      verifyCmd: autoImplementVerifyCmd,
+      allowedPaths: autoImplementAllowedPaths,
+    },
     worktreeGit: {
       repoUrl: gitRepoUrl,
       remote: gitRemote,

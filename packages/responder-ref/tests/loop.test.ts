@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { responderTick, createResponderState, type ResponderDeps } from "../src/loop.js";
+import {
+  responderTick,
+  createResponderState,
+  pathsOutsideAllowlist,
+  type ResponderDeps,
+} from "../src/loop.js";
 import { PmApiError } from "../src/api-client.js";
 import type { Escalation, EscalationMessage, EscalationWithThread } from "@pm/shared";
 import type { Logger } from "../src/logger.js";
@@ -188,12 +193,25 @@ class FakeWorktree implements Worktree {
   resetFail = false;
   pushFail = false;
   pushCalls: { remote: string; branch: string }[] = [];
+  // A1 P4: the paths the `--name-only` diff reports as touched. Default a single
+  // package src path so the (empty-allowlist) existing tests proceed unchanged.
+  touchedPaths: string[] = ["packages/responder-ref/src/foo.ts"];
+  // A1 P4: set to throw on the `--name-only` diff (the allowlist fail-safe path).
+  nameOnlyDiffFail = false;
 
   push = vi.fn(async (remote: string, branch: string): Promise<void> => {
     if (this.pushFail) throw new Error("push rejected");
     this.pushCalls.push({ remote, branch });
   });
-  diff = vi.fn(async (): Promise<string> => " src/x.ts | 2 +-\n 1 file changed");
+  // Discriminate the two diff invocations: `--name-only` (the P4 allowlist path
+  // list) vs `--stat` (the advisory summary). args[0] selects.
+  diff = vi.fn(async (args: string[]): Promise<string> => {
+    if (args[0] === "--name-only") {
+      if (this.nameOnlyDiffFail) throw new Error("diff failed");
+      return this.touchedPaths.join("\n");
+    }
+    return " src/x.ts | 2 +-\n 1 file changed";
+  });
   checkoutLocalBranch = vi.fn(async (): Promise<void> => {});
 
   // Only the members the loop touches are real; the rest satisfy the type.
@@ -235,7 +253,9 @@ function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): Respon
     // test scripts it, keeping every existing test byte-identical.
     implementRunner: new FakeImplementRunner(),
     acquireWorktree: () => new FakeWorktree(),
-    worktreeGit: { remote: "origin", mainBranch: "main" },
+    // A1 P4: empty allowlist by default = no restriction (every existing implement
+    // test proceeds unchanged).
+    worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: [] },
     verifyCmd: "",
     repoCwd: "/repo",
     command: "claude -p",
@@ -1156,6 +1176,181 @@ describe("responderTick", () => {
       createResponderState(),
     );
     expect(impl.lastInput?.prompt).toContain("pnpm test");
+  });
+
+  // ── A1 P4: coarse blast-radius allowlist ─────────────────────────
+
+  it("allowlist: branch_ready with all touched paths INSIDE allowed_paths → push + addMessage (no escalate)", async () => {
+    const wt = new FakeWorktree();
+    wt.touchedPaths = ["packages/responder-ref/src/foo.ts", "packages/server/src/bar.ts"];
+    const { client, runner, sniffer, impl } = implementSetup(
+      { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "x", durationMs: 1 },
+      { wt },
+    );
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+        worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: ["packages/"] },
+      }),
+      createResponderState(),
+    );
+    expect(wt.pushCalls).toEqual([{ remote: "origin", branch: "pm/escalation-e1" }]);
+    expect(client.addMessageCalls).toHaveLength(1);
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("allowlist: branch_ready with a path OUTSIDE allowed_paths → escalate (reason names the path), NOT pushed, no addMessage", async () => {
+    const wt = new FakeWorktree();
+    wt.touchedPaths = ["packages/responder-ref/src/foo.ts", "infra/secrets.ts"];
+    const { client, runner, sniffer, impl } = implementSetup(
+      { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "x", durationMs: 1 },
+      { wt },
+    );
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+        worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: ["packages/"] },
+      }),
+      createResponderState(),
+    );
+    expect(wt.pushCalls).toEqual([]);
+    expect(client.addMessage).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("outside the allowed set");
+    expect(client.escalateCalls[0].reason).toContain("infra/secrets.ts");
+  });
+
+  it("allowlist: empty allowed_paths → NO restriction (out-of-package path still pushes)", async () => {
+    const wt = new FakeWorktree();
+    wt.touchedPaths = ["infra/secrets.ts"];
+    const { client, runner, sniffer, impl } = implementSetup(
+      { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "x", durationMs: 1 },
+      { wt },
+    );
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+        worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: [] },
+      }),
+      createResponderState(),
+    );
+    expect(wt.pushCalls).toEqual([{ remote: "origin", branch: "pm/escalation-e1" }]);
+    expect(client.addMessageCalls).toHaveLength(1);
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("allowlist: diff-check error (the --name-only diff throws) → escalate (fail-safe), NOT pushed", async () => {
+    const wt = new FakeWorktree();
+    wt.nameOnlyDiffFail = true;
+    const { client, runner, sniffer, impl } = implementSetup(
+      { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "x", durationMs: 1 },
+      { wt },
+    );
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+        worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: ["packages/"] },
+      }),
+      createResponderState(),
+    );
+    expect(wt.pushCalls).toEqual([]);
+    expect(client.addMessage).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("could not compute the implement diff");
+  });
+
+  it("allowlist: a path OUTSIDE + mode=off → silent (no escalate, no push)", async () => {
+    const wt = new FakeWorktree();
+    wt.touchedPaths = ["infra/secrets.ts"];
+    const { client, runner, sniffer, impl } = implementSetup(
+      { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "x", durationMs: 1 },
+      { wt },
+    );
+    await responderTick(
+      baseDeps(client, {
+        mode: "off",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+        worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: ["packages/"] },
+      }),
+      createResponderState(),
+    );
+    expect(wt.pushCalls).toEqual([]);
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+    expect(client.addMessage).not.toHaveBeenCalled();
+  });
+
+  it("allowlist: autoImplementEnabled=false → the whole implement path stays inert (impl.run + acquireWorktree untouched)", async () => {
+    const wt = new FakeWorktree();
+    const acquire = vi.fn(() => wt);
+    const { client, runner, sniffer, impl } = implementSetup(
+      { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "x", durationMs: 1 },
+      { wt },
+    );
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: false,
+        implementRunner: impl,
+        acquireWorktree: acquire,
+        worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: ["packages/"] },
+      }),
+      createResponderState(),
+    );
+    // Disabled: an `implement` declaration falls back to needs_human; the write
+    // runner + worktree are NEVER touched, and the sniffer never runs.
+    expect(impl.run).not.toHaveBeenCalled();
+    expect(acquire).not.toHaveBeenCalled();
+    expect(sniffer.sniff).not.toHaveBeenCalled();
+    expect(wt.pushCalls).toEqual([]);
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
+  });
+
+  describe("pathsOutsideAllowlist (pure)", () => {
+    it("empty allowlist → [] (no restriction)", () => {
+      expect(pathsOutsideAllowlist(["a/x.ts", "b/y.ts"], [])).toEqual([]);
+    });
+    it("all touched inside → []", () => {
+      expect(pathsOutsideAllowlist(["packages/a.ts", "packages/b.ts"], ["packages/"])).toEqual([]);
+    });
+    it("mixed → only the outside paths", () => {
+      expect(
+        pathsOutsideAllowlist(["packages/a.ts", "infra/b.ts", "docs/c.md"], ["packages/", "docs/"]),
+      ).toEqual(["infra/b.ts"]);
+    });
+    it("prefix boundary: a literal prefix matches by startsWith", () => {
+      // "packages" (no slash) is a prefix of "packages-extra/x.ts" — coarse by design.
+      expect(pathsOutsideAllowlist(["packages-extra/x.ts"], ["packages"])).toEqual([]);
+      expect(pathsOutsideAllowlist(["packages-extra/x.ts"], ["packages/"])).toEqual([
+        "packages-extra/x.ts",
+      ]);
+    });
   });
 
   // REVISE FIX #3: reclaim SKIPS a pending-land escalation.

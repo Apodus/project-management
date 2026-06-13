@@ -59,6 +59,7 @@ describe("loadConfig", () => {
     expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement).toEqual({
       enabled: false,
       verifyCmd: "",
+      allowedPaths: [],
     });
     expect(
       loadConfig(
@@ -145,6 +146,22 @@ describe("loadConfig", () => {
         { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_VERIFY_CMD: "pnpm test" },
       ).autoImplement.verifyCmd,
     ).toBe("pnpm test");
+  });
+
+  it("autoImplement.allowedPaths defaults to [] and parses PM_AUTO_IMPLEMENT_ALLOWED_PATHS as a trimmed, non-empty CSV", () => {
+    expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement.allowedPaths).toEqual(
+      [],
+    );
+    expect(
+      loadConfig(
+        {},
+        {
+          ...baseEnv,
+          PM_PROJECT_ID: "p",
+          PM_AUTO_IMPLEMENT_ALLOWED_PATHS: " packages/ , , docs/ ",
+        },
+      ).autoImplement.allowedPaths,
+    ).toEqual(["packages/", "docs/"]);
   });
 
   it("worktreeGit defaults: empty repoUrl, origin, main, [] when auto_implement disabled", () => {

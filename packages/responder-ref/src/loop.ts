@@ -181,8 +181,14 @@ export interface ResponderDeps {
    * implement session (released in the session's `finally`).
    */
   acquireWorktree: (slotName: string) => Worktree;
-  /** Git config for the implement worktree (A1 P3): remote + main branch for push/diff. */
-  worktreeGit: { remote: string; mainBranch: string };
+  /**
+   * Git config for the implement worktree (A1 P3 + P4): remote + main branch for
+   * push/diff, plus `allowedPaths` — the coarse blast-radius allowlist (literal
+   * path prefixes). EMPTY ⇒ no restriction (permissive-by-design; the clone IS
+   * the PM repo). When non-empty, a branch_ready whose diff touches a path
+   * outside every prefix is NOT pushed — it escalates to a human.
+   */
+  worktreeGit: { remote: string; mainBranch: string; allowedPaths: string[] };
   /**
    * Project verify command the implement agent runs in-session before declaring
    * branch_ready (A1 P3). "" ⇒ the agent skips in-session verify (A2 train re-verify
@@ -293,6 +299,19 @@ function leaseImplementSlot(
  */
 function hasPendingLandMarker(messages: EscalationMessage[]): boolean {
   return messages.some((m) => m.metadata != null && m.metadata.pendingLand === true);
+}
+
+/**
+ * Coarse blast-radius allowlist check (A1 P4, pure). Returns the subset of
+ * `touched` paths that fall OUTSIDE every allowed prefix. EMPTY `allowedPaths`
+ * ⇒ NO restriction (permissive-by-design: the implement worktree IS a clone of
+ * the PM repo, so [] means the whole PM repo is allowed) — returns []. A literal
+ * coarse prefix match (`path.startsWith(prefix)`): a touched path is allowed iff
+ * it starts with ANY allowed prefix.
+ */
+export function pathsOutsideAllowlist(touched: string[], allowedPaths: string[]): string[] {
+  if (allowedPaths.length === 0) return [];
+  return touched.filter((p) => !allowedPaths.some((prefix) => p.startsWith(prefix)));
 }
 
 /**
@@ -633,6 +652,48 @@ async function runImplementSession(
         case "branch_ready": {
           const readyBranch = result.branch;
           const commitSha = result.commitSha;
+
+          // ── Coarse blast-radius allowlist check (A1 P4) — BEFORE push. ──
+          // Compute the set of paths this branch touched vs main, then gate it
+          // against `allowedPaths`. EMPTY allowlist ⇒ no restriction. A diff
+          // failure FAILS SAFE: we do NOT push (we cannot prove the blast radius).
+          // The local branch is wiped by the existing `finally` resetForAttempt.
+          let touched: string[];
+          try {
+            const nameOnly = await wt.git.diff([
+              "--name-only",
+              `${deps.worktreeGit.mainBranch}..${readyBranch}`,
+            ]);
+            touched = nameOnly
+              .split("\n")
+              .map((s) => s.trim())
+              .filter(Boolean);
+          } catch (diffErr) {
+            if (deps.mode === "off") break; // off is silent.
+            await deps.client.escalateToHuman(
+              escalationId,
+              `could not compute the implement diff for the allowlist check: ${errMessage(diffErr)}; not landing`,
+            );
+            deps.logger.warn(
+              { escalationId, projectId, branch: readyBranch, err: errMessage(diffErr) },
+              "implement allowlist diff failed; escalated to human (fail-safe — not pushed)",
+            );
+            break;
+          }
+          const outside = pathsOutsideAllowlist(touched, deps.worktreeGit.allowedPaths);
+          if (outside.length > 0) {
+            if (deps.mode === "off") break; // off is silent.
+            await deps.client.escalateToHuman(
+              escalationId,
+              `auto-implement edited paths outside the allowed set: ${outside.join(", ")}; not landing`,
+            );
+            deps.logger.warn(
+              { escalationId, projectId, branch: readyBranch, outside },
+              "implement touched paths outside the allowlist; escalated to human (not pushed)",
+            );
+            break;
+          }
+
           // Push the branch (no land — A2). A push failure escalates (work is
           // committed locally; nothing lost) and does NOT addMessage.
           try {
