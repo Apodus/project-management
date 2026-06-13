@@ -51,7 +51,7 @@ function raiseAndAcknowledge(testApp: TestApp, projectId: string, originWorkerKe
       severity: "high",
     } as Parameters<typeof escalationService.create>[1],
     actor,
-  );
+  ).escalation;
   escalationService.acknowledge(esc.id, actor);
   return { id: esc.id, actor };
 }
@@ -112,7 +112,7 @@ describe("Discord needs-human bridge (Campaign C2 §P5)", () => {
         originWorkerKey: "worker-no-bridge",
       } as Parameters<typeof escalationService.create>[1],
       actor,
-    );
+    ).escalation;
     escalationService.acknowledge(esc.id, actor); // open → acknowledged
     escalationService.answer(esc.id, { body: "diagnosis here" }, actor); // → answered
     escalationService.addMessage(esc.id, { body: "a reply" }, actor); // a reply

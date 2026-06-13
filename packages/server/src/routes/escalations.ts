@@ -12,6 +12,10 @@ import { AppError } from "../types.js";
 import * as escalationService from "../services/escalation.service.js";
 import * as escalationMetricsService from "../services/escalation-metrics.service.js";
 import type { EscalationMetricsBundle } from "../services/escalation-metrics.service.js";
+import {
+  checkRaiseRate,
+  raiseRateLimitHard,
+} from "../services/escalation-rate-limit.js";
 
 // ─── Escalation routes (Campaign C1 §P3) ──────────────────────────
 // Route-local Zod-4 schemas (via @hono/zod-openapi `z`), the established
@@ -73,6 +77,28 @@ const escalationWithThreadSchema = escalationSchema
 const escalationDataEnvelope = z.object({
   data: escalationSchema,
 });
+
+// ─── C4 §P4: advisory dedup + create response ─────────────────────
+// Identity-light advisory similar-escalation candidate (mirrors notes'
+// similarNoteSchema). The create 201 now carries `similar`/`merged`/
+// `mergedInto`/`rateLimited` alongside `data`.
+const similarEscalationSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    kind: z.enum(ESCALATION_KINDS),
+  })
+  .openapi("SimilarEscalation");
+
+const createEscalationResponseEnvelope = z
+  .object({
+    data: escalationSchema,
+    similar: z.array(similarEscalationSchema),
+    merged: z.boolean(),
+    mergedInto: z.string().nullable(),
+    rateLimited: z.boolean(),
+  })
+  .openapi("CreateEscalationResponse");
 
 const escalationWithThreadEnvelope = z.object({
   data: escalationWithThreadSchema,
@@ -238,7 +264,7 @@ const createEscalationRoute = createRoute({
   tags: ["Escalations"],
   summary: "Raise escalation",
   description:
-    "Raise a new escalation (bug_report/question/request/blocked) for a project. Any authenticated caller may raise; the author is the caller (never accepted from the body). Status defaults `open`.",
+    "Raise a new escalation (bug_report/question/request/blocked) for a project. Any authenticated caller may raise; the author is the caller (never accepted from the body). Status defaults `open`. The response carries advisory `similar` open-escalation candidates (FTS5 dedup, `[]` when none) and never blocks the 201. A STRICT duplicate (exact normalized title + same originRepo + open) auto-folds: the raise is appended as a reply onto the existing thread (`merged: true`, `mergedInto` is that thread's id, emits escalation.replied not escalation.opened — one thread, one responder) — the raise is never dropped. `rateLimited` is true when the per-origin sliding-window raise budget was exceeded (soft-advisory by default — the raise still proceeds; a hard 429 only when ESCALATION_RAISE_RATELIMIT_HARD=true).",
   request: {
     params: z.object({ projectId: projectIdParam }),
     body: {
@@ -248,8 +274,9 @@ const createEscalationRoute = createRoute({
   },
   responses: {
     201: {
-      description: "Escalation raised",
-      content: { "application/json": { schema: escalationDataEnvelope } },
+      description:
+        "Escalation raised (or folded into an existing open thread) with advisory `similar` candidates + `merged`/`mergedInto`/`rateLimited`",
+      content: { "application/json": { schema: createEscalationResponseEnvelope } },
     },
     400: {
       description: "Validation error",
@@ -257,6 +284,10 @@ const createEscalationRoute = createRoute({
     },
     404: {
       description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    429: {
+      description: "Raise rate-limit exceeded (only when ESCALATION_RAISE_RATELIMIT_HARD=true)",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -634,11 +665,42 @@ export function createEscalationRoutes(): OpenAPIHono<{
     const { projectId } = c.req.valid("param");
     const body = c.req.valid("json");
     const user = c.get("currentUser")!;
-    const escalation = escalationService.create(projectId, body, {
+
+    // C4 §P4 rate-limit (DB-pure, FAIL-OPEN). SOFT default → the raise
+    // proceeds with rateLimited:true; HARD (env) → 429 before create.
+    let rateLimited = false;
+    try {
+      const admitted = checkRaiseRate(body.originWorkerKey);
+      if (!admitted) {
+        if (raiseRateLimitHard()) {
+          throw new AppError(
+            429,
+            "RATE_LIMITED",
+            `Escalation raise rate-limit exceeded for origin "${body.originWorkerKey}"`,
+          );
+        }
+        rateLimited = true;
+      }
+    } catch (err) {
+      // A hard-mode 429 must propagate; any OTHER limiter error fails open.
+      if (err instanceof AppError) throw err;
+      rateLimited = false;
+    }
+
+    const result = escalationService.create(projectId, body, {
       id: user.id,
       type: user.type as UserType,
     });
-    return c.json({ data: escalation }, 201);
+    return c.json(
+      {
+        data: result.escalation,
+        similar: result.similar,
+        merged: result.merged,
+        mergedInto: result.mergedInto,
+        rateLimited,
+      },
+      201,
+    );
   });
 
   // GET /api/v1/projects/:projectId/escalations

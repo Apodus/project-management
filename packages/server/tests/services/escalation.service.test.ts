@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import {
@@ -35,7 +35,7 @@ function raise(
       ...ORIGIN,
     },
     actor,
-  );
+  ).escalation;
 }
 
 describe("escalation service", () => {
@@ -656,6 +656,301 @@ describe("escalation service", () => {
         .where(eq(escalations.id, esc.id))
         .get()!.originLastSeenSeq;
       expect(seq).toBe(0);
+    });
+  });
+
+  // ── C4 §P4: FTS dedup + strict auto-link ─────────────────────────
+  describe("findSimilarOpenEscalations (advisory dedup)", () => {
+    function rawRaise(
+      projectId: string,
+      actor: { id: string; type: "human" | "ai_agent" },
+      overrides: Partial<{
+        kind: "bug_report" | "question" | "request" | "blocked";
+        title: string;
+        body: string;
+        originRepo: string;
+        originWorkerKey: string;
+      }> = {},
+    ) {
+      return escalationService.create(
+        projectId,
+        {
+          kind: overrides.kind ?? "bug_report",
+          title: overrides.title ?? "Build is red",
+          body: overrides.body,
+          originRepo: overrides.originRepo ?? ORIGIN.originRepo,
+          originWorkerKey: overrides.originWorkerKey ?? ORIGIN.originWorkerKey,
+        },
+        actor,
+      );
+    }
+
+    it("surfaces a near-duplicate OPEN escalation sharing a distinctive title term", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      const existing = rawRaise(project.id, actorOf(author), {
+        title: "Login flickers on the dashboard",
+      }).escalation;
+
+      const hits = escalationService.findSimilarOpenEscalations(project.id, "Login flickers");
+      expect(hits.some((h) => h.id === existing.id)).toBe(true);
+      const hit = hits.find((h) => h.id === existing.id)!;
+      expect(hit).toMatchObject({ id: existing.id, title: existing.title, kind: "bug_report" });
+    });
+
+    it("excludes a resolved near-duplicate (status != open)", () => {
+      const project = createTestProject(testApp.db);
+      const author = human();
+      const esc = rawRaise(project.id, actorOf(author), {
+        title: "Login flickers on the dashboard",
+      }).escalation;
+      // Drive to resolved (open→ack→answer→resolve).
+      escalationService.acknowledge(esc.id, actorOf(author));
+      escalationService.answer(esc.id, {}, actorOf(author));
+      escalationService.resolve(esc.id, { reason: "fixed" }, actorOf(author));
+
+      const hits = escalationService.findSimilarOpenEscalations(project.id, "Login flickers");
+      expect(hits).toHaveLength(0);
+    });
+
+    it("excludes a near-duplicate in another project", () => {
+      const projectA = createTestProject(testApp.db);
+      const projectB = createTestProject(testApp.db);
+      const author = agent();
+      rawRaise(projectB.id, actorOf(author), { title: "Login flickers on the dashboard" });
+
+      const hits = escalationService.findSimilarOpenEscalations(projectA.id, "Login flickers");
+      expect(hits).toHaveLength(0);
+    });
+
+    it("returns [] for empty/whitespace input", () => {
+      const project = createTestProject(testApp.db);
+      expect(escalationService.findSimilarOpenEscalations(project.id, "")).toEqual([]);
+      expect(escalationService.findSimilarOpenEscalations(project.id, "   ")).toEqual([]);
+    });
+
+    it("a throwing FTS query → [] AND a console.warn (de-silence: never silent)", () => {
+      const project = createTestProject(testApp.db);
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        getRawDb().exec("DROP TABLE escalations_fts");
+        const hits = escalationService.findSimilarOpenEscalations(project.id, "anything here");
+        expect(hits).toEqual([]);
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(String(warnSpy.mock.calls[0][0])).toContain("[escalation-dedup]");
+        expect(String(warnSpy.mock.calls[0][0])).toContain("advisory");
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it("an AND hit suppresses the OR fallback (precise pass wins)", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      const full = rawRaise(project.id, actorOf(author), {
+        title: "alpha bravo charlie delta echo",
+      }).escalation;
+      rawRaise(project.id, actorOf(author), { title: "charlie delta yankee" });
+
+      const hits = escalationService.findSimilarOpenEscalations(
+        project.id,
+        "alpha bravo charlie delta echo",
+      );
+      const ids = hits.map((h) => h.id);
+      expect(ids).toContain(full.id);
+    });
+
+    it("OR fallback recalls a partial-overlap when AND finds nothing", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      const partial = rawRaise(project.id, actorOf(author), {
+        title: "alpha bravo unrelated topic here",
+      }).escalation;
+
+      const hits = escalationService.findSimilarOpenEscalations(
+        project.id,
+        "alpha bravo charlie delta echo",
+      );
+      expect(hits.some((h) => h.id === partial.id)).toBe(true);
+    });
+
+    it("caps the OR fallback at 3 candidates (token-flood guard)", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      for (const word of ["alpha", "bravo", "charlie", "delta", "echo"]) {
+        rawRaise(project.id, actorOf(author), { title: `${word} solo overlap line` });
+      }
+
+      const hits = escalationService.findSimilarOpenEscalations(
+        project.id,
+        "alpha bravo charlie delta echo",
+      );
+      expect(hits.length).toBeLessThanOrEqual(3);
+    });
+  });
+
+  describe("create dedup auto-link", () => {
+    function rawRaise(
+      projectId: string,
+      actor: { id: string; type: "human" | "ai_agent" },
+      overrides: Partial<{ title: string; body: string; originRepo: string }> = {},
+    ) {
+      return escalationService.create(
+        projectId,
+        {
+          kind: "bug_report",
+          title: overrides.title ?? "Build is red",
+          body: overrides.body,
+          originRepo: overrides.originRepo ?? ORIGIN.originRepo,
+          originWorkerKey: ORIGIN.originWorkerKey,
+        },
+        actor,
+      );
+    }
+
+    it("an exact-title+same-origin+open dup folds: appends a reply, NO new row, emits replied not opened", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      const first = rawRaise(project.id, actorOf(author), { title: "merge train wedged" });
+      expect(first.merged).toBe(false);
+
+      const events: string[] = [];
+      const stop = getEventBus().onAll((event) => {
+        if (event === EVENT_NAMES.ESCALATION_OPENED || event === EVENT_NAMES.ESCALATION_REPLIED) {
+          events.push(event);
+        }
+      });
+
+      // Re-raise with a whitespace/case variant of the SAME title.
+      const second = rawRaise(project.id, actorOf(author), { title: "  MERGE   train wedged  " });
+
+      stop();
+
+      expect(second.merged).toBe(true);
+      expect(second.mergedInto).toBe(first.escalation.id);
+      expect(second.escalation.id).toBe(first.escalation.id);
+      expect(events).toEqual([EVENT_NAMES.ESCALATION_REPLIED]);
+
+      // No NEW escalation row was created (still exactly one).
+      const all = testApp.db
+        .select()
+        .from(escalations)
+        .where(eq(escalations.projectId, project.id))
+        .all();
+      expect(all).toHaveLength(1);
+
+      // The thread grew (the folded raise is appended as a reply).
+      const thread = escalationService.getById(first.escalation.id);
+      expect(thread.messages.length).toBe(1);
+      expect(thread.messages[0].messageType).toBe("reply");
+    });
+
+    it("a fuzzy-not-exact near-dup creates a NEW escalation (merged:false) + populates similar", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      const first = rawRaise(project.id, actorOf(author), {
+        title: "Login flickers on the dashboard",
+      });
+
+      const second = rawRaise(project.id, actorOf(author), {
+        title: "Login flickers intermittently on the dashboard panel",
+      });
+
+      expect(second.merged).toBe(false);
+      expect(second.mergedInto).toBeNull();
+      expect(second.escalation.id).not.toBe(first.escalation.id);
+      expect(second.similar.some((s) => s.id === first.escalation.id)).toBe(true);
+    });
+
+    it("exact title but DIFFERENT origin does NOT fold (new escalation)", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      const first = rawRaise(project.id, actorOf(author), {
+        title: "same title here",
+        originRepo: "repo_a",
+      });
+      const second = rawRaise(project.id, actorOf(author), {
+        title: "same title here",
+        originRepo: "repo_b",
+      });
+      expect(second.merged).toBe(false);
+      expect(second.escalation.id).not.toBe(first.escalation.id);
+    });
+
+    it("after a fold, list(status:open) returns exactly one open thread (responder short-circuit)", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      rawRaise(project.id, actorOf(author), { title: "the one true thread" });
+      rawRaise(project.id, actorOf(author), { title: "the one true thread" });
+
+      const open = escalationService.list(project.id, { status: "open" });
+      expect(open).toHaveLength(1);
+    });
+
+    it("fail-safe: a broken escalations_fts (dropped table+triggers) → raise still succeeds as a normal create (merged:false, similar:[])", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        // Drop the sync triggers FIRST (else the escalations INSERT would
+        // fault on a now-missing FTS table), then the FTS table — so the
+        // dedup MATCH query throws but the underlying write is unaffected.
+        const raw = getRawDb();
+        raw.exec("DROP TRIGGER IF EXISTS escalations_fts_ai");
+        raw.exec("DROP TRIGGER IF EXISTS escalations_fts_au");
+        raw.exec("DROP TRIGGER IF EXISTS escalations_fts_ad");
+        raw.exec("DROP TABLE escalations_fts");
+        const res = rawRaise(project.id, actorOf(author), { title: "still works" });
+        expect(res.merged).toBe(false);
+        expect(res.similar).toEqual([]);
+        expect(res.escalation.id).toBeTruthy();
+        expect(res.escalation.status).toBe("open");
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+  });
+
+  // ── C4 §P4: escalations_fts smoke ─────────────────────────────────
+  describe("escalations_fts (programmatic FTS5)", () => {
+    it("the table + 3 triggers exist on a fresh DB", () => {
+      const raw = getRawDb();
+      const tbl = raw
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='escalations_fts'")
+        .get();
+      expect(tbl).toBeTruthy();
+      const trigs = raw
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN ('escalations_fts_ai','escalations_fts_au','escalations_fts_ad') ORDER BY name",
+        )
+        .all() as Array<{ name: string }>;
+      expect(trigs.map((t) => t.name)).toEqual([
+        "escalations_fts_ad",
+        "escalations_fts_ai",
+        "escalations_fts_au",
+      ]);
+    });
+
+    it("a raised escalation is indexed (MATCH on a title term returns it)", () => {
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      const esc = escalationService.create(
+        project.id,
+        {
+          kind: "bug_report",
+          title: "indexed distinctiveterm here",
+          originRepo: ORIGIN.originRepo,
+          originWorkerKey: ORIGIN.originWorkerKey,
+        },
+        actorOf(author),
+      ).escalation;
+
+      const rows = getRawDb()
+        .prepare(
+          "SELECT e.id FROM escalations_fts JOIN escalations e ON e.rowid = escalations_fts.rowid WHERE escalations_fts MATCH ?",
+        )
+        .all('"distinctiveterm"') as Array<{ id: string }>;
+      expect(rows.some((r) => r.id === esc.id)).toBe(true);
     });
   });
 });

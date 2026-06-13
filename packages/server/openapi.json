@@ -1883,6 +1883,37 @@
           "oldest_untriaged_age_ms"
         ]
       },
+      "CreateEscalationResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Escalation"
+          },
+          "similar": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimilarEscalation"
+            }
+          },
+          "merged": {
+            "type": "boolean"
+          },
+          "mergedInto": {
+            "type": "string",
+            "nullable": true
+          },
+          "rateLimited": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data",
+          "similar",
+          "merged",
+          "mergedInto",
+          "rateLimited"
+        ]
+      },
       "Escalation": {
         "type": "object",
         "properties": {
@@ -2010,6 +2041,31 @@
           "updatedAt",
           "resolvedAt",
           "resolvedBy"
+        ]
+      },
+      "SimilarEscalation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bug_report",
+              "question",
+              "request",
+              "blocked"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind"
         ]
       },
       "CreateEscalation": {
@@ -14226,7 +14282,7 @@
           "Escalations"
         ],
         "summary": "Raise escalation",
-        "description": "Raise a new escalation (bug_report/question/request/blocked) for a project. Any authenticated caller may raise; the author is the caller (never accepted from the body). Status defaults `open`.",
+        "description": "Raise a new escalation (bug_report/question/request/blocked) for a project. Any authenticated caller may raise; the author is the caller (never accepted from the body). Status defaults `open`. The response carries advisory `similar` open-escalation candidates (FTS5 dedup, `[]` when none) and never blocks the 201. A STRICT duplicate (exact normalized title + same originRepo + open) auto-folds: the raise is appended as a reply onto the existing thread (`merged: true`, `mergedInto` is that thread's id, emits escalation.replied not escalation.opened — one thread, one responder) — the raise is never dropped. `rateLimited` is true when the per-origin sliding-window raise budget was exceeded (soft-advisory by default — the raise still proceeds; a hard 429 only when ESCALATION_RAISE_RATELIMIT_HARD=true).",
         "parameters": [
           {
             "schema": {
@@ -14251,19 +14307,11 @@
         },
         "responses": {
           "201": {
-            "description": "Escalation raised",
+            "description": "Escalation raised (or folded into an existing open thread) with advisory `similar` candidates + `merged`/`mergedInto`/`rateLimited`",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "$ref": "#/components/schemas/Escalation"
-                    }
-                  },
-                  "required": [
-                    "data"
-                  ]
+                  "$ref": "#/components/schemas/CreateEscalationResponse"
                 }
               }
             }
@@ -14300,6 +14348,36 @@
           },
           "404": {
             "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Raise rate-limit exceeded (only when ESCALATION_RAISE_RATELIMIT_HARD=true)",
             "content": {
               "application/json": {
                 "schema": {

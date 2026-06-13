@@ -3861,7 +3861,7 @@ export interface paths {
         put?: never;
         /**
          * Raise escalation
-         * @description Raise a new escalation (bug_report/question/request/blocked) for a project. Any authenticated caller may raise; the author is the caller (never accepted from the body). Status defaults `open`.
+         * @description Raise a new escalation (bug_report/question/request/blocked) for a project. Any authenticated caller may raise; the author is the caller (never accepted from the body). Status defaults `open`. The response carries advisory `similar` open-escalation candidates (FTS5 dedup, `[]` when none) and never blocks the 201. A STRICT duplicate (exact normalized title + same originRepo + open) auto-folds: the raise is appended as a reply onto the existing thread (`merged: true`, `mergedInto` is that thread's id, emits escalation.replied not escalation.opened — one thread, one responder) — the raise is never dropped. `rateLimited` is true when the per-origin sliding-window raise budget was exceeded (soft-advisory by default — the raise still proceeds; a hard 429 only when ESCALATION_RAISE_RATELIMIT_HARD=true).
          */
         post: {
             parameters: {
@@ -3878,15 +3878,13 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Escalation raised */
+                /** @description Escalation raised (or folded into an existing open thread) with advisory `similar` candidates + `merged`/`mergedInto`/`rateLimited` */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            data: components["schemas"]["Escalation"];
-                        };
+                        "application/json": components["schemas"]["CreateEscalationResponse"];
                     };
                 };
                 /** @description Validation error */
@@ -3905,6 +3903,20 @@ export interface paths {
                 };
                 /** @description Project not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Raise rate-limit exceeded (only when ESCALATION_RAISE_RATELIMIT_HARD=true) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -14505,6 +14517,13 @@ export interface components {
             open_count: number;
             oldest_untriaged_age_ms: number | null;
         };
+        CreateEscalationResponse: {
+            data: components["schemas"]["Escalation"];
+            similar: components["schemas"]["SimilarEscalation"][];
+            merged: boolean;
+            mergedInto: string | null;
+            rateLimited: boolean;
+        };
         Escalation: {
             id: string;
             projectId: string;
@@ -14532,6 +14551,12 @@ export interface components {
             updatedAt: string;
             resolvedAt: string | null;
             resolvedBy: string | null;
+        };
+        SimilarEscalation: {
+            id: string;
+            title: string;
+            /** @enum {string} */
+            kind: "bug_report" | "question" | "request" | "blocked";
         };
         CreateEscalation: {
             /** @enum {string} */

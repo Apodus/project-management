@@ -11,9 +11,10 @@ import type {
   ListEscalationsQuery,
   UserType,
 } from "@pm/shared";
-import { getDb, escalations, escalationMessages, projects } from "../db/index.js";
+import { getDb, getRawDb, escalations, escalationMessages, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
+import { sanitizeFtsQuery, sanitizeFtsQueryOr } from "./search.service.js";
 
 // ─── Escalation service (Campaign C1 §P2) ─────────────────────────
 // The lifecycle core for the bidirectional cross-team escalation channel.
@@ -157,17 +158,174 @@ function appendMessageTx(
     .run();
 }
 
+// ─── C4 §P4: advisory dedup (FTS) + strict auto-link ──────────────
+// escalations_fts is a programmatic external-content FTS5 table (db/fts.ts +
+// db/fts-triggers.ts), NOT a migration — like notes_fts. findSimilar* mirrors
+// note.service's findSimilarOpenNotes EXACTLY (sanitize → AND pass → OR top-3
+// fallback → try/catch → [] + de-silenced console.warn) so a broken/dropped
+// escalations_fts NEVER breaks a raise (advisory-only).
+
+/**
+ * Normalize a title for exact-equality matching: lowercase, trim, collapse
+ * internal whitespace runs to a single space. Used by the strict auto-link
+ * gate (exact-title + same-origin + open).
+ */
+function normalizeTitle(title: string): string {
+  return title.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Advisory dedup: find OPEN escalations in the same project whose title/body
+ * fuzzily match the given text (FTS5 MATCH on escalations_fts). Returns up to
+ * `limit` candidates, best-ranked first. Identity-light shape
+ * ({id, title, kind}) for surfacing on the create response.
+ *
+ * Best-effort and fail-safe: an empty/whitespace query short-circuits to [],
+ * and any SQL throw also returns [] + a de-silenced console.warn — advisory
+ * dedup must NEVER break a raise.
+ */
+export function findSimilarOpenEscalations(
+  projectId: string,
+  titleAndBody: string,
+  limit = 5,
+): Array<{ id: string; title: string; kind: EscalationKind }> {
+  const sanitized = sanitizeFtsQuery(titleAndBody);
+  if (!sanitized) return [];
+
+  try {
+    const rawDb = getRawDb();
+    const sql = `
+        SELECT e.id, e.title, e.kind, escalations_fts.rank as rank
+        FROM escalations_fts
+        JOIN escalations e ON e.rowid = escalations_fts.rowid
+        WHERE escalations_fts MATCH ?
+          AND e.project_id = ?
+          AND e.status = 'open'
+        ORDER BY rank LIMIT ?
+        `;
+    type Row = { id: string; title: string; kind: EscalationKind; rank: number };
+
+    // Pass 1: implicit-AND (precise). If it hits, return those — no top-up.
+    const rows = rawDb.prepare(sql).all(sanitized, projectId, limit) as Row[];
+    if (rows.length > 0) {
+      return rows.map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+    }
+
+    // Pass 2: OR fallback — the recall floor for the zero-AND-hit case
+    // (advisory-only). Top-3 by rank, independent of the limit param.
+    const orSanitized = sanitizeFtsQueryOr(titleAndBody);
+    if (!orSanitized) return [];
+    const orRows = rawDb.prepare(sql).all(orSanitized, projectId, 3) as Row[];
+    return orRows.map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+  } catch (err) {
+    console.warn(
+      `[escalation-dedup] findSimilarOpenEscalations failed (advisory, returning []): ${err}`,
+    );
+    return [];
+  }
+}
+
+/**
+ * Strict auto-link probe: find an OPEN escalation in the project with the
+ * SAME originRepo and an EXACT normalized-title match. Returns the row or
+ * null. Normalization (lower + trim + collapse-whitespace) is applied in JS
+ * over the candidate set (a small set scoped by project+origin+title). This
+ * is the precise gate behind the merge decision — distinct from the fuzzy
+ * advisory `findSimilarOpenEscalations`.
+ */
+export function findExactOpenEscalation(
+  projectId: string,
+  originRepo: string,
+  normalizedTitle: string,
+): EscalationRow | null {
+  const db = getDb();
+  const candidates = db
+    .select()
+    .from(escalations)
+    .where(
+      and(
+        eq(escalations.projectId, projectId),
+        eq(escalations.originRepo, originRepo),
+        eq(escalations.status, "open"),
+      ),
+    )
+    .all();
+  return candidates.find((c) => normalizeTitle(c.title) === normalizedTitle) ?? null;
+}
+
 /**
  * Create (raise) a new escalation (status defaults "open"). Any
  * authenticated caller may raise — no extra gate. The author is the
  * caller, never accepted from the body.
+ *
+ * C4 §P4 — advisory dedup + strict auto-link: BEFORE the insert (in a
+ * fail-safe try/catch — ANY error falls through to a normal create with
+ * `similar: []`), compute the advisory `similar` candidate list, and if a
+ * STRICT duplicate exists (exact normalized title + same originRepo + open)
+ * FOLD this raise into that existing thread: append it as a `reply` message
+ * (bypassing addMessage's authz — the raiser is allowed here by design),
+ * bump the existing thread's updatedAt, and emit ESCALATION_REPLIED (NOT
+ * ESCALATION_OPENED — this prevents a SECOND responder spawn). Returns a
+ * tagged shape `{ escalation, merged, mergedInto, similar }`; the route
+ * shapes the wire response (+ rateLimited from the limiter).
  */
 export function create(projectId: string, input: CreateEscalation, actor: Actor) {
   ensureProjectExists(projectId);
 
   const db = getDb();
-  const id = createId();
   const now = new Date().toISOString();
+
+  // ── Advisory dedup + strict auto-link (fail-safe) ──────────────
+  // ANY throw here falls through to a normal create with similar:[].
+  try {
+    const similar = findSimilarOpenEscalations(
+      projectId,
+      `${input.title} ${input.body ?? ""}`,
+    );
+    const existing = findExactOpenEscalation(
+      projectId,
+      input.originRepo,
+      normalizeTitle(input.title),
+    );
+
+    if (existing) {
+      // FOLD: append the raise as a reply onto the existing open thread.
+      const mergeBody = `${input.title}\n\n${input.body ?? ""}`;
+      db.transaction((tx) => {
+        appendMessageTx(tx, existing.id, actor.id, mergeBody, "reply", null, now);
+        tx.update(escalations).set({ updatedAt: now }).where(eq(escalations.id, existing.id)).run();
+      });
+
+      const merged = toView(getRowOr404(existing.id));
+      getEventBus().emit(EVENT_NAMES.ESCALATION_REPLIED, {
+        entity: merged,
+        entityType: "escalation",
+        entityId: existing.id,
+        projectId: merged.projectId,
+        actorId: actor.id,
+        timestamp: now,
+      });
+
+      return { escalation: merged, merged: true, mergedInto: existing.id, similar };
+    }
+
+    return { ...insertNew(projectId, input, actor, now), similar };
+  } catch (err) {
+    console.warn(
+      `[escalation-dedup] create dedup failed (advisory, falling through to normal create): ${err}`,
+    );
+    return { ...insertNew(projectId, input, actor, now), similar: [] };
+  }
+}
+
+/**
+ * The normal insert path (no merge): insert a fresh open escalation and emit
+ * ESCALATION_OPENED. Returns the tagged shape sans `similar` (the caller
+ * attaches it).
+ */
+function insertNew(projectId: string, input: CreateEscalation, actor: Actor, now: string) {
+  const db = getDb();
+  const id = createId();
 
   db.insert(escalations)
     .values({
@@ -203,7 +361,7 @@ export function create(projectId: string, input: CreateEscalation, actor: Actor)
     timestamp: now,
   });
 
-  return row;
+  return { escalation: row, merged: false as const, mergedInto: null };
 }
 
 /**

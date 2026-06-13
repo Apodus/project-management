@@ -112,6 +112,34 @@ export const createEscalationSchema = z.object({
 });
 export type CreateEscalation = z.infer<typeof createEscalationSchema>;
 
+// ─── C4 §P4: advisory dedup + create response ─────────────────────
+// An advisory similar-escalation candidate surfaced on the create
+// response. Identity-light ({id, title, kind}) — mirrors the notes
+// `similarNoteSchema` precedent.
+export const similarEscalationSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  kind: z.enum(ESCALATION_KINDS),
+});
+export type SimilarEscalation = z.infer<typeof similarEscalationSchema>;
+
+// The create (raise) response envelope. `data` is the escalation row
+// (the new one, OR — when a strict exact-title+same-origin+open
+// duplicate auto-links — the EXISTING thread the raise folded into).
+// `similar` is the advisory candidate list ([] when none). `merged` is
+// true when the raise folded into an existing open thread; `mergedInto`
+// carries that thread's id (else null). `rateLimited` is true when the
+// per-origin sliding-window raise budget was exceeded (soft-advisory
+// default — the raise still proceeds).
+export const createEscalationResponseSchema = z.object({
+  data: escalationSchema,
+  similar: z.array(similarEscalationSchema),
+  merged: z.boolean(),
+  mergedInto: z.string().nullable(),
+  rateLimited: z.boolean(),
+});
+export type CreateEscalationResponse = z.infer<typeof createEscalationResponseSchema>;
+
 // Add a message (reply/diagnosis/instruction) to a thread. messageType is
 // optional (the service classifies system messages itself).
 export const createMessageSchema = z.object({

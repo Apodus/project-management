@@ -114,6 +114,31 @@ CREATE TRIGGER IF NOT EXISTS notes_fts_ad AFTER DELETE ON notes BEGIN
 END;
 `.trim();
 
+// ─── escalations_fts triggers ───────────────────────────────────
+
+export const ESCALATIONS_FTS_INSERT_TRIGGER = `
+CREATE TRIGGER IF NOT EXISTS escalations_fts_ai AFTER INSERT ON escalations BEGIN
+  INSERT INTO escalations_fts(rowid, title, body)
+    VALUES (NEW.rowid, NEW.title, NEW.body);
+END;
+`.trim();
+
+export const ESCALATIONS_FTS_UPDATE_TRIGGER = `
+CREATE TRIGGER IF NOT EXISTS escalations_fts_au AFTER UPDATE ON escalations BEGIN
+  INSERT INTO escalations_fts(escalations_fts, rowid, title, body)
+    VALUES ('delete', OLD.rowid, OLD.title, OLD.body);
+  INSERT INTO escalations_fts(rowid, title, body)
+    VALUES (NEW.rowid, NEW.title, NEW.body);
+END;
+`.trim();
+
+export const ESCALATIONS_FTS_DELETE_TRIGGER = `
+CREATE TRIGGER IF NOT EXISTS escalations_fts_ad AFTER DELETE ON escalations BEGIN
+  INSERT INTO escalations_fts(escalations_fts, rowid, title, body)
+    VALUES ('delete', OLD.rowid, OLD.title, OLD.body);
+END;
+`.trim();
+
 /** All FTS trigger creation statements, in order. */
 export const ALL_FTS_TRIGGER_STATEMENTS = [
   PROPOSALS_FTS_INSERT_TRIGGER,
@@ -128,4 +153,7 @@ export const ALL_FTS_TRIGGER_STATEMENTS = [
   NOTES_FTS_INSERT_TRIGGER,
   NOTES_FTS_UPDATE_TRIGGER,
   NOTES_FTS_DELETE_TRIGGER,
+  ESCALATIONS_FTS_INSERT_TRIGGER,
+  ESCALATIONS_FTS_UPDATE_TRIGGER,
+  ESCALATIONS_FTS_DELETE_TRIGGER,
 ] as const;

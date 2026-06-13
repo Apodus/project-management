@@ -91,6 +91,65 @@ describe("Escalations API", () => {
       expect(body.data.authorId).not.toBe("bogus-spoofed-id");
     });
 
+    it("C4 P4: the 201 body carries similar/merged/mergedInto/rateLimited", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/escalations`,
+        { body: escBody() },
+      );
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(Array.isArray(body.similar)).toBe(true);
+      expect(body.merged).toBe(false);
+      expect(body.mergedInto).toBeNull();
+      expect(body.rateLimited).toBe(false);
+    });
+
+    it("C4 P4: a duplicate POST folds into the existing thread (merged:true, thread grows, no new row)", async () => {
+      const project = createTestProject(testApp.db);
+      const first = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/escalations`,
+        { body: escBody({ title: "duplicate title here" }) },
+      );
+      const firstBody = await first.json();
+      expect(firstBody.merged).toBe(false);
+
+      const second = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/escalations`,
+        { body: escBody({ title: "  DUPLICATE   title here " }) },
+      );
+      expect(second.status).toBe(201);
+      const secondBody = await second.json();
+      expect(secondBody.merged).toBe(true);
+      expect(secondBody.mergedInto).toBe(firstBody.data.id);
+      expect(secondBody.data.id).toBe(firstBody.data.id);
+
+      // No new escalation row.
+      const listRes = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/escalations`,
+      );
+      const listBody = await listRes.json();
+      expect(listBody.data).toHaveLength(1);
+
+      // The thread grew (the folded raise appended as a reply).
+      const getRes = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/escalations/${firstBody.data.id}`,
+      );
+      const getBody = await getRes.json();
+      expect(getBody.data.messages).toHaveLength(1);
+      expect(getBody.data.messages[0].messageType).toBe("reply");
+    });
+
     it("returns 404 when the project does not exist", async () => {
       const res = await authRequest(
         testApp.app,

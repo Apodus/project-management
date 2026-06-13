@@ -45,10 +45,20 @@ CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
 );
 `.trim();
 
+export const CREATE_ESCALATIONS_FTS = `
+CREATE VIRTUAL TABLE IF NOT EXISTS escalations_fts USING fts5(
+  title,
+  body,
+  content=escalations,
+  content_rowid=rowid
+);
+`.trim();
+
 /** All FTS table creation statements, in order. */
 export const ALL_FTS_STATEMENTS = [
   CREATE_PROPOSALS_FTS,
   CREATE_TASKS_FTS,
   CREATE_COMMENTS_FTS,
   CREATE_NOTES_FTS,
+  CREATE_ESCALATIONS_FTS,
 ] as const;
