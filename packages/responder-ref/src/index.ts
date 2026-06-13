@@ -156,6 +156,8 @@ async function main(): Promise<void> {
         allowedPaths: cfg.autoImplement.allowedPaths,
       },
       verifyCmd: cfg.autoImplement.verifyCmd,
+      maxConcurrentArcs: cfg.autoImplement.budget.maxConcurrentArcs,
+      maxArcDurationSec: cfg.autoImplement.budget.maxArcDurationSec,
       repoCwd: cfg.repoCwd,
       command: cfg.command,
       mode: cfg.mode,

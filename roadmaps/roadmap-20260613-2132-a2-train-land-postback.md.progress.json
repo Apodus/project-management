@@ -1,0 +1,16 @@
+{
+  "campaign": "A2 — Land via merge train + escalation post-back (auto-implement arc)",
+  "vision": "roadmaps/vision-20260613-responder-auto-implement.md",
+  "branch": "campaign-responder-auto-implement",
+  "status": "COMPLETE",
+  "completed_phases": ["P1", "P2", "P3", "P4", "P5"],
+  "current_phase": null,
+  "phase_outcomes": {
+    "P1": "escalationId FK (migration 0032) + create threading + validateEscalationBelongsToProject + responder submits the MR over HTTP. Server 1695. 4a01137.",
+    "P2+P3": "land→resolve-as-holder (answer→resolve through legal transitions; origin auto-notices landed_sha via C2) + reject→needs_human (branch preserved). postBackToEscalation helper (after-commit, non-fatal, guarded on escalationId, fetches escalation for holderId). escalation.service untouched; no-escalationId byte-identical. Server 1701. 49a9f1d. (also fixed pre-existing P1 gap: 2 merge-group test key lists missing escalationId.)",
+    "P4+P5": "resolver composition — the 7.6 conflict resolver propagates escalationId alongside resolvedFrom on its resubmit (origin view already carries escalationId; ~2-line propagation), so a resolved-then-landed responder MR still fires the land post-back. No-recursion confirmed STRUCTURAL (no new guard): seed gate status=open only + resolved terminal + needs_human never→open + pendingLand reclaim-skip + resolvedFrom resolver-seal. Full-stack seal (responder-seal.test.ts: assess→implement→submit→land→resolved→C2 notify; reject→needs_human; no-recursion lock). CLAUDE.md A1+A2 auto-implement-land-path paragraph. Ships auto_implement.enabled=false. 4363a86."
+  },
+  "open_issues": [],
+  "dag_drift": [],
+  "notes": "A2 COMPLETE (P1-P5). The full loop spine exists: a client escalation → autonomous implement (A1) → verify-gated train land → escalation resolved + origin notified (C2), no human in transport. Main never breaks (train verifies the rebased tree before FF). Test counts: @pm/shared 513, @pm/server 1707, @urtela/pm-responder 122, @urtela/pm-integrator 322. build/typecheck/lint green. A3 next: autonomous /vision+/campaign drive for SYSTEMIC (size:systemic) escalations — A1/A2 handle bounded; systemic currently routes to needs_human placeholder."
+}

@@ -67,7 +67,25 @@ export interface ResponderConfig {
    * non-empty, a branch_ready whose diff touches a path outside every prefix is
    * NOT pushed — it escalates to a human instead.
    */
-  autoImplement: { enabled: boolean; verifyCmd: string; allowedPaths: string[] };
+  autoImplement: {
+    enabled: boolean;
+    verifyCmd: string;
+    allowedPaths: string[];
+    /**
+     * Cost/concurrency budget for the autonomous drive (Campaign A4 P1). EXTENDS
+     * the responder's existing spawn-rate budget with two NEW caps governing
+     * multi-phase A3 ARCS (a self-held acknowledged escalation carrying a
+     * pendingDrive/pendingArc marker but NOT arcComplete):
+     *   - `maxConcurrentArcs`  — the most in-flight arcs admitted at once. A fresh
+     *     systemic disposition that would exceed it is HELD → escalate-to-human
+     *     (governance, NOT distrust). DEFAULT 100 (generous ⇒ A1-A3 byte-identical).
+     *   - `maxArcDurationSec`  — the per-arc lifetime cap (the never-ending-arc
+     *     bound). An arc whose first pendingDrive intent marker is older than this
+     *     is CAPPED → escalate-to-human with the partial progress (landed phases
+     *     preserved, no rollback). DEFAULT 604800 (7 days ⇒ A1-A3 byte-identical).
+     */
+    budget: { maxConcurrentArcs: number; maxArcDurationSec: number };
+  };
   /**
    * Git config for the auto-implement regime's isolated worktree clones
    * (Campaign A1 P3). `repoUrl` is REQUIRED iff `autoImplement.enabled` (else a
@@ -140,6 +158,8 @@ export interface ConfigEnv {
   PM_AUTO_IMPLEMENT_ENABLED?: string;
   PM_AUTO_IMPLEMENT_VERIFY_CMD?: string;
   PM_AUTO_IMPLEMENT_ALLOWED_PATHS?: string;
+  PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS?: string;
+  PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC?: string;
   PM_RESPONDER_GIT_REPO_URL?: string;
   PM_RESPONDER_GIT_REMOTE?: string;
   PM_RESPONDER_GIT_MAIN_BRANCH?: string;
@@ -161,6 +181,10 @@ const DEFAULT_MAX_SPAWNS = 10;
 const DEFAULT_SPAWN_WINDOW_SEC = 3600;
 const DEFAULT_TIME_BUDGET_SEC = 900;
 const DEFAULT_MAX_RECLAIM_ATTEMPTS = 2;
+// A4 P1: GENEROUS budget defaults so A1-A3 stay byte-identical (the caps never
+// bite at default — they are a COST governor the operator tightens, not a gate).
+const DEFAULT_MAX_CONCURRENT_ARCS = 100;
+const DEFAULT_MAX_ARC_DURATION_SEC = 604800; // 7 days
 
 export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   const pmUrl = (args.pmUrl ?? env.PM_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
@@ -229,6 +253,19 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     }
   }
 
+  // auto_implement.budget (A4 P1): the cost/concurrency caps for the autonomous
+  // drive, parsed via the existing positiveInt with GENEROUS defaults (so A1-A3
+  // stay byte-identical). maxConcurrentArcs bounds in-flight arcs; maxArcDurationSec
+  // bounds a single arc's lifetime.
+  const maxConcurrentArcs = positiveInt(
+    env.PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS,
+    DEFAULT_MAX_CONCURRENT_ARCS,
+  );
+  const maxArcDurationSec = positiveInt(
+    env.PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC,
+    DEFAULT_MAX_ARC_DURATION_SEC,
+  );
+
   // Worktree git config (P3): the isolated-clone source for the implement session.
   // repoUrl is REQUIRED iff auto_implement is enabled — a write session must have a
   // repo to clone. remote/mainBranch/cleanKeep mirror the integrator's contract.
@@ -293,6 +330,7 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
       enabled: autoImplementEnabled,
       verifyCmd: autoImplementVerifyCmd,
       allowedPaths: autoImplementAllowedPaths,
+      budget: { maxConcurrentArcs, maxArcDurationSec },
     },
     worktreeGit: {
       repoUrl: gitRepoUrl,

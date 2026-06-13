@@ -382,6 +382,10 @@ function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): Respon
     // test proceeds unchanged).
     worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: [] },
     verifyCmd: "",
+    // A4 P1: GENEROUS budget defaults so every existing A1-A3 test stays
+    // byte-identical (the caps never bite at default).
+    maxConcurrentArcs: 100,
+    maxArcDurationSec: 604800,
     repoCwd: "/repo",
     command: "claude -p",
     budget: { timeBudgetSec: 900 },
@@ -1738,7 +1742,9 @@ describe("responderTick", () => {
       holderId: SELF,
       updatedAt: "2026-06-13T00:00:00.000Z",
     });
-    client.ackResults = [[stale]];
+    // Twice: the A4 P1 in-flight-arc probe + the reclaim pass each shift one entry
+    // (autoImplementEnabled ⇒ the probe runs).
+    client.ackResults = [[stale], [stale]];
     client.getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => ({
       ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
       messages: [
@@ -1830,9 +1836,15 @@ describe("responderTick", () => {
     function arcClient(id: string, thread: EscalationWithThread): FakeClient {
       const client = new FakeClient();
       client.listResults = [[]];
-      client.ackResults = [
-        [mkEscalation(id, { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" })],
-      ];
+      // listAcknowledgedByHolder is called TWICE per tick under autoImplementEnabled:
+      // once by the A4 P1 in-flight-arc probe, once by the reclaim pass. Both shift one
+      // entry — script the row twice so both see it.
+      const row = mkEscalation(id, {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
+      client.ackResults = [[row], [row]];
       client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => thread);
       return client;
     }
@@ -2203,9 +2215,13 @@ describe("responderTick", () => {
     function arcClient(id: string, detail: EscalationWithThread): FakeClient {
       const client = new FakeClient();
       client.listResults = [[]];
-      client.ackResults = [
-        [mkEscalation(id, { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" })],
-      ];
+      // Twice: the A4 P1 in-flight-arc probe + the reclaim pass each shift one entry.
+      const row = mkEscalation(id, {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
+      client.ackResults = [[row], [row]];
       client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => detail);
       return client;
     }
@@ -2483,6 +2499,315 @@ describe("responderTick", () => {
       expect(client.getEpic).not.toHaveBeenCalled();
       expect(client.listMergeRequests).not.toHaveBeenCalled();
       expect(impl.run).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── A4 P1: cost/concurrency budget (max concurrent arcs + max arc duration) ──
+  //
+  // Two NEW caps extending the responder's existing spawn budget:
+  //   - maxConcurrentArcs: a fresh systemic disposition that would exceed the
+  //     in-flight-arc count is HELD → escalate-to-human (NO epic created).
+  //   - maxArcDurationSec: an arc whose first pendingDrive intent marker is older
+  //     than the cap is CAPPED → escalate-to-human with the partial progress
+  //     (landed phases preserved, no rollback). Placed AFTER the arc_complete
+  //     check so an all-landed arc COMPLETES rather than being capped.
+  // Both are server-derived (arc count from listAcknowledgedByHolder markers;
+  // arc-start from the durable pendingDrive createdAt) ⇒ restart-resilient. The
+  // probe is gated on autoImplementEnabled so answer-mode stays byte-identical.
+  describe("A4 P1 — cost/concurrency budget", () => {
+    const STALE = Date.parse("2026-06-14T00:00:00.000Z");
+
+    /** A self-held acknowledged arc thread carrying a pendingDrive INTENT marker at `createdAt`. */
+    function driveArcThread(id: string, createdAt: string): EscalationWithThread {
+      return {
+        ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+        messages: [
+          {
+            id: `${id}-intent`,
+            escalationId: id,
+            seq: 1,
+            authorId: SELF,
+            body: "intent",
+            messageType: "diagnosis",
+            metadata: { pendingDrive: true, visionPath: "roadmaps/v.md", epicId: "epic1" },
+            createdAt,
+          },
+        ],
+      };
+    }
+
+    // ── Case 1: maxConcurrentArcs hold ──
+    it("max-concurrent-arcs reached → a fresh implement{systemic} is HELD: escalateToHuman with the budget reason; NO drive, NO epic, NO pendingDrive marker", async () => {
+      const client = new FakeClient();
+      // The claim pass seeds a NEW open escalation that will declare systemic.
+      client.listResults = [[mkEscalation("e-new")]];
+      // The in-flight-arc probe + the reclaim pass both call listAcknowledgedByHolder
+      // (shifted per call): the probe sees one existing arc; reclaim sees it too but it
+      // is NOT stale (updatedAt == now) so reclaim skips it.
+      const existingArc = mkEscalation("e-arc", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-14T00:00:00.000Z", // == STALE ⇒ not stale ⇒ reclaim skips.
+      });
+      client.ackResults = [[existingArc], [existingArc]];
+      // getEscalation dispatches: the existing arc carries a pendingArc marker (counts
+      // as in-flight); the new escalation is a plain open thread.
+      client.getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => {
+        if (id === "e-arc") return driveArcThread("e-arc", "2026-06-13T00:00:00.000Z");
+        return { ...mkEscalation(id, { status: "acknowledged", holderId: SELF }), messages: [] };
+      });
+
+      const runner = implementRunner("systemic");
+      const drive = new FakeDriveRunner();
+      const deps = baseDeps(client, {
+        mode: "on",
+        now: () => STALE,
+        autoImplementEnabled: true,
+        maxConcurrentArcs: 1, // already 1 in flight ⇒ the new one is held.
+        runner,
+        driveRunner: drive,
+      });
+      await responderTick(deps, createResponderState());
+
+      // The systemic ask was HELD, not driven.
+      expect(drive.run).not.toHaveBeenCalled();
+      expect(client.createEpic).not.toHaveBeenCalled();
+      // No pendingDrive handoff marker appended (no epic created on a hold).
+      expect(client.addMessage).not.toHaveBeenCalled();
+      // Escalated to a human with the budget reason naming the count.
+      const budgetEsc = client.escalateCalls.find((e) => e.id === "e-new");
+      expect(budgetEsc).toBeDefined();
+      expect(budgetEsc?.reason).toContain("auto-drive budget");
+      expect(budgetEsc?.reason).toContain("1/1");
+      expect(budgetEsc?.reason).toContain("concurrent arcs");
+    });
+
+    // ── Case 2: maxArcDuration cap → arc_partial ──
+    it("max-arc-duration exceeded → arc CAPPED: escalateToHuman naming the landed sha (preserved) + the remaining phase; the next phase NOT implemented", async () => {
+      // arcThread with a pendingDrive intent marker far in the past; now is past
+      // createdAt + maxArcDurationSec. Phase 1 landed, phase 2 unlanded.
+      const thread = driveArcThread("e1", "2026-01-01T00:00:00.000Z");
+      const client = new FakeClient();
+      client.listResults = [[]];
+      // Probe call + reclaim call: both return the (stale) self-held arc.
+      const heldArc = mkEscalation("e1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-01-01T00:00:00.000Z", // stale ⇒ reclaim routes it to advanceArc.
+      });
+      client.ackResults = [[heldArc], [heldArc]];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => thread);
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [
+          { id: "task-1", title: "Phase 1", description: "d1" },
+          { id: "task-2", title: "Phase 2", description: "d2" },
+        ],
+      };
+      // Phase 1 landed, phase 2 has no MR yet (would normally implement next).
+      client.mrResults = [
+        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "sha-1", branch: "b1", commitSha: "c1" }],
+      ];
+      const impl = new FakeImplementRunner();
+      impl.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-2", commitSha: "c", durationMs: 1 };
+      const deps = baseDeps(client, {
+        mode: "on",
+        now: () => STALE,
+        autoImplementEnabled: true,
+        maxConcurrent: 10,
+        maxArcDurationSec: 60, // STALE - 2026-01-01 ≫ 60s ⇒ capped.
+        implementRunner: impl,
+      });
+      await responderTick(deps, createResponderState());
+
+      // Capped → the next phase is NOT implemented.
+      expect(impl.run).not.toHaveBeenCalled();
+      expect(client.submitMergeRequest).not.toHaveBeenCalled();
+      // Escalated with the partial payload naming the landed sha + the remaining phase.
+      expect(client.escalateCalls).toHaveLength(1);
+      expect(client.escalateCalls[0].id).toBe("e1");
+      expect(client.escalateCalls[0].reason).toContain("exceeded max duration");
+      expect(client.escalateCalls[0].reason).toContain("sha-1"); // landed phase preserved
+      expect(client.escalateCalls[0].reason).toContain("Phase 2"); // remaining phase named
+    });
+
+    // ── Case 6: an all-landed arc at/over the deadline COMPLETES (not capped) — Refinement 4 ──
+    it("all-landed arc over the duration deadline COMPLETES (arc_complete), NOT the duration cap", async () => {
+      const thread = driveArcThread("e1", "2026-01-01T00:00:00.000Z"); // far past the deadline.
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const heldArc = mkEscalation("e1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+      client.ackResults = [[heldArc], [heldArc]];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => thread);
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [
+          { id: "task-1", title: "Phase 1", description: "d1" },
+          { id: "task-2", title: "Phase 2", description: "d2" },
+        ],
+      };
+      // BOTH phases landed (no arcComplete marker yet).
+      client.mrResults = [
+        [
+          { id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" },
+          { id: "mr2", taskId: "task-2", escalationId: "e1", status: "landed", landedSha: "s2", branch: "b2", commitSha: "c2" },
+        ],
+      ];
+      const impl = new FakeImplementRunner();
+      const deps = baseDeps(client, {
+        mode: "on",
+        now: () => STALE,
+        autoImplementEnabled: true,
+        maxConcurrent: 10,
+        maxArcDurationSec: 60, // would cap if reached — but arc_complete returns first.
+        implementRunner: impl,
+      });
+      await responderTick(deps, createResponderState());
+
+      // arc_complete fired (marker + resolve), NOT the duration escalate.
+      const completeMarker = client.addMessageCalls.find((m) => m.metadata?.arcComplete === true);
+      expect(completeMarker).toBeDefined();
+      expect(client.resolve).toHaveBeenCalledTimes(1);
+      // No duration-cap escalate.
+      expect(client.escalateCalls.find((e) => e.reason.includes("exceeded max duration"))).toBeUndefined();
+    });
+
+    // ── Case 3a: generous/off default ⇒ A1-A3 byte-identical (cycle-1 implements) ──
+    it("generous default caps ⇒ a systemic drive runs unchanged (no spurious budget escalate)", async () => {
+      const client = new FakeClient();
+      client.listResults = [[mkEscalation("e1")]];
+      // No existing arcs ⇒ the probe counts 0.
+      client.ackResults = [[], []];
+      const runner = implementRunner("systemic");
+      const drive = new FakeDriveRunner();
+      drive.result = {
+        kind: "vision_ready",
+        visionPath: "roadmaps/v.md",
+        epicName: "E",
+        campaigns: [{ title: "C1", priority: "high", description: "d" }],
+        durationMs: 1,
+      };
+      const deps = baseDeps(client, {
+        mode: "on",
+        now: () => STALE,
+        autoImplementEnabled: true,
+        // default maxConcurrentArcs=100 / maxArcDurationSec=604800 from baseDeps.
+        runner,
+        driveRunner: drive,
+        acquireWorktree: () => new FakeWorktree(),
+      });
+      await responderTick(deps, createResponderState());
+
+      // The drive ran + the epic was created — no budget hold.
+      expect(drive.run).toHaveBeenCalledTimes(1);
+      expect(client.createEpic).toHaveBeenCalledTimes(1);
+      expect(client.escalateCalls.find((e) => e.reason.includes("auto-drive budget"))).toBeUndefined();
+    });
+
+    // ── Case 5: a normal arc under the caps is NOT falsely held/capped (advances) ──
+    it("a normal arc within the caps advances normally (implements the next phase, no escalate)", async () => {
+      const thread = driveArcThread("e1", "2026-06-13T23:00:00.000Z"); // 1h before STALE.
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const heldArc = mkEscalation("e1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z", // stale ⇒ routed to advanceArc.
+      });
+      client.ackResults = [[heldArc], [heldArc]];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => thread);
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [
+          { id: "task-1", title: "Phase 1", description: "d1" },
+          { id: "task-2", title: "Phase 2", description: "d2" },
+        ],
+      };
+      client.mrResults = [
+        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+      ];
+      const impl = new FakeImplementRunner();
+      impl.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-2", commitSha: "c", durationMs: 1 };
+      const deps = baseDeps(client, {
+        mode: "on",
+        now: () => STALE,
+        autoImplementEnabled: true,
+        maxConcurrent: 10,
+        maxConcurrentArcs: 5,
+        maxArcDurationSec: 604800, // now well within the cap.
+        implementRunner: impl,
+      });
+      await responderTick(deps, createResponderState());
+
+      // Advanced normally — implemented the next phase, no budget/duration escalate.
+      expect(impl.run).toHaveBeenCalledTimes(1);
+      expect(client.submitMergeRequestCalls[0].body).toMatchObject({ taskId: "task-2" });
+      expect(client.escalateCalls).toHaveLength(0);
+    });
+
+    // ── Case 4: the existing spawn budget still governs bounded implements ──
+    it("a bounded implement with spawn budget exhausted is deferred by the EXISTING gate; the arc caps do NOT interfere", async () => {
+      const client = new FakeClient();
+      client.listResults = [[mkEscalation("e1")]];
+      client.ackResults = [[], []]; // no in-flight arcs.
+      const runner = implementRunner("bounded");
+      const impl = new FakeImplementRunner();
+      const state = createResponderState();
+      // Pre-fill the spawn window to the cap so canSpawn gates this tick's spawn.
+      state.spawnTimestamps = [STALE];
+      const deps = baseDeps(client, {
+        mode: "on",
+        now: () => STALE,
+        autoImplementEnabled: true,
+        // generous arc caps ⇒ they never fire.
+        maxConcurrentArcs: 100,
+        spawnBudget: { maxSpawns: 1, windowSec: 3600 }, // already 1 spawn in window ⇒ exhausted.
+        runner,
+        implementRunner: impl,
+      });
+      await responderTick(deps, state);
+
+      // The existing spawn-budget gate deferred the claim (no acknowledge, no spawn).
+      expect(client.acknowledge).not.toHaveBeenCalled();
+      expect(runner.run).not.toHaveBeenCalled();
+      expect(impl.run).not.toHaveBeenCalled();
+      // NO arc-budget escalate (the arc caps did not interfere).
+      expect(client.escalateCalls.find((e) => e.reason.includes("auto-drive budget"))).toBeUndefined();
+    });
+
+    // ── Case 7: answer-mode byte-identical when auto_implement off (Refinement 2 seal) ──
+    it("answer-mode (autoImplementEnabled:false): the tick-start arc probe does NOT run — no extra getEscalation/listAcknowledgedByHolder fetches", async () => {
+      const client = new FakeClient();
+      // One open escalation answered normally; no acks.
+      client.listResults = [[mkEscalation("e1")]];
+      client.ackResults = [[]]; // ONE entry: only the reclaim pass consumes it.
+      const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+      const deps = baseDeps(client, {
+        mode: "on",
+        // maxConcurrent>1 so the reclaim pass is reached (it would call
+        // listAcknowledgedByHolder once); the probe — gated off — adds no call.
+        maxConcurrent: 10,
+        now: () => STALE,
+        autoImplementEnabled: false, // answer-mode.
+        runner,
+      });
+      await responderTick(deps, createResponderState());
+
+      // listAcknowledgedByHolder is called ONCE (the reclaim pass only) — the probe
+      // did NOT add a second call. (If the probe ran it would shift a 2nd ackResults
+      // entry and be called twice.)
+      expect(client.listAcknowledgedByHolder).toHaveBeenCalledTimes(1);
+      // getEscalation is called ONCE — by the answering session for e1 — NOT by the
+      // probe (which is gated off). The answer still posted (byte-identical path).
+      expect(client.getEscalation).toHaveBeenCalledTimes(1);
+      expect(client.answerCalls).toEqual([{ id: "e1", body: "A" }]);
     });
   });
 });

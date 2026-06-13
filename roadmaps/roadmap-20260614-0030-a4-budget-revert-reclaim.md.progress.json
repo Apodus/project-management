@@ -1,0 +1,12 @@
+{
+  "campaign": "A4 — Cost/concurrency budget + revert path + reclaim (trust-first guardrails)",
+  "vision": "roadmaps/vision-20260613-responder-auto-implement.md",
+  "branch": "campaign-responder-auto-implement",
+  "status": "IN_PROGRESS",
+  "completed_phases": [],
+  "current_phase": "P1",
+  "phase_outcomes": {},
+  "open_issues": [],
+  "dag_drift": [],
+  "notes": "A4 start. Depends on A2 (escalation-linked train land) + A3 (autonomous multi-phase drive — DONE @ 8460ca0). Trust-first guardrails: governance + insurance, NOT human-approval gates. P1 = spend/concurrency budget (max concurrent arcs + max arc duration) extending the existing spawn budget; exhaustion → pause+escalate. P2 = revert path (undo a landed_sha through the verify-gated train). P3 = reclaim stranded drives + submitted-but-unlanded MRs. P4 = metrics data for A5 + seal/docs/close. Ships enabled=false."
+}

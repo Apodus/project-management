@@ -60,6 +60,8 @@ describe("loadConfig", () => {
       enabled: false,
       verifyCmd: "",
       allowedPaths: [],
+      // A4 P1: generous budget defaults (⇒ A1-A3 byte-identical).
+      budget: { maxConcurrentArcs: 100, maxArcDurationSec: 604800 },
     });
     expect(
       loadConfig(
@@ -77,6 +79,32 @@ describe("loadConfig", () => {
       loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "no" })
         .autoImplement.enabled,
     ).toBe(false);
+  });
+
+  it("A4 P1: autoImplement.budget defaults generous; env overrides via positiveInt", () => {
+    const def = loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement.budget;
+    expect(def).toEqual({ maxConcurrentArcs: 100, maxArcDurationSec: 604800 });
+    const over = loadConfig(
+      {},
+      {
+        ...baseEnv,
+        PM_PROJECT_ID: "p",
+        PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS: "3",
+        PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC: "7200",
+      },
+    ).autoImplement.budget;
+    expect(over).toEqual({ maxConcurrentArcs: 3, maxArcDurationSec: 7200 });
+    // Invalid (≤0 / non-finite) falls back to the default (positiveInt contract).
+    const bad = loadConfig(
+      {},
+      {
+        ...baseEnv,
+        PM_PROJECT_ID: "p",
+        PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS: "0",
+        PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC: "nope",
+      },
+    ).autoImplement.budget;
+    expect(bad).toEqual({ maxConcurrentArcs: 100, maxArcDurationSec: 604800 });
   });
 
   it("accepts off/shadow/on and honors CLI over env for mode", () => {

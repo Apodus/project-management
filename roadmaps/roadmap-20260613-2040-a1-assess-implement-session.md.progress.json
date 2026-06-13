@@ -1,0 +1,17 @@
+{
+  "campaign": "A1 — Assess + sniff-test + implement session (auto-implement arc)",
+  "vision": "roadmaps/vision-20260613-responder-auto-implement.md",
+  "branch": "campaign-responder-auto-implement",
+  "status": "COMPLETE",
+  "completed_phases": ["P1", "P2", "P3", "P4", "P5"],
+  "current_phase": null,
+  "phase_outcomes": {
+    "P1": "assess disposition + InjectionSniffer (gates admission) + kill-switch. 763154f.",
+    "P2": "write ImplementRunner + isolated worktree.ts + implement-prompt (branch_ready commit-cross-checked). bddee81.",
+    "P3": "loop-wired: worktree acquire → in-session verify prompt → push pm/escalation-<id> + addMessage(pendingLand) acknowledged → give_up/error escalate; reclaim skips pendingLand; responder git config. cdad241.",
+    "P4+P5": "coarse blast-radius allowlist (default []=no-restriction, opt-in, fail-safe, before-push) + README docs + close. 119 tests. c86dce6, e7839ec."
+  },
+  "open_issues": [],
+  "dag_drift": [],
+  "notes": "A1 COMPLETE. Ships enabled=false. A2 lands the pushed branch via the merge train + closes the escalation (escalationId column + land/reject post-back + resolver composition + no-recursion)."
+}

@@ -212,6 +212,23 @@ export interface ResponderDeps {
    * is the floor). Threaded into `buildImplementPrompt`.
    */
   verifyCmd: string;
+  /**
+   * Max in-flight ARCS admitted at once (A4 P1, FLAT — mirrors maxConcurrent).
+   * An arc = a self-held acknowledged escalation carrying a pendingDrive/pendingArc
+   * marker but NOT arcComplete. A fresh systemic disposition that would exceed this
+   * is HELD → escalate-to-human (governance). Wired from
+   * `config.autoImplement.budget.maxConcurrentArcs`. Generous default ⇒ A1-A3
+   * byte-identical.
+   */
+  maxConcurrentArcs: number;
+  /**
+   * Max per-arc lifetime in seconds (A4 P1, FLAT). An arc whose first pendingDrive
+   * intent marker is older than this is CAPPED → escalate-to-human with the partial
+   * progress (landed phases preserved, no rollback). Wired from
+   * `config.autoImplement.budget.maxArcDurationSec`. Generous default ⇒ A1-A3
+   * byte-identical.
+   */
+  maxArcDurationSec: number;
   /** Working directory the answering session runs in (the PM repo checkout). */
   repoCwd: string;
   /** Headless answering command passed to the runner. */
@@ -387,6 +404,35 @@ function arcVisionPath(messages: EscalationMessage[]): string {
 }
 
 /**
+ * The arc's TRUE start time in ms (A4 P1, pure) — the durable clock the
+ * max-arc-duration cap measures against. Scans messages OLDEST-FIRST and returns
+ * the `createdAt` (ms) of the FIRST message carrying `metadata.pendingDrive ===
+ * true` — the A3 P3 EARLY intent marker, written BEFORE createEpic, confirmed the
+ * true arc start (loop.ts ~runDriveSession). Defensively falls back to the first
+ * `pendingArc` if no pendingDrive exists (a checkpoint that lost the intent marker).
+ * Server-derived (the marker timestamp), so the cap is restart-resilient.
+ *
+ * Fail-safe: returns `null` when neither marker is present OR the chosen marker's
+ * createdAt is unparseable ⇒ advanceArc NEVER caps (mirrors the `updatedAtMs`
+ * fail-safe-to-live — a bad/absent date never aggressively escalates an arc).
+ */
+function arcStartedAtMs(messages: EscalationMessage[]): number | null {
+  let pendingArcFallback: number | null = null;
+  for (const m of messages) {
+    if (m.metadata == null) continue;
+    if (m.metadata.pendingDrive === true) {
+      const t = Date.parse(m.createdAt);
+      return Number.isFinite(t) ? t : null;
+    }
+    if (m.metadata.pendingArc === true && pendingArcFallback === null) {
+      const t = Date.parse(m.createdAt);
+      pendingArcFallback = Number.isFinite(t) ? t : null;
+    }
+  }
+  return pendingArcFallback;
+}
+
+/**
  * Coarse blast-radius allowlist check (A1 P4, pure). Returns the subset of
  * `touched` paths that fall OUTSIDE every allowed prefix. EMPTY `allowedPaths`
  * ⇒ NO restriction (permissive-by-design: the implement worktree IS a clone of
@@ -448,6 +494,15 @@ async function runAnsweringSession(
   state: ResponderState,
   projectId: string,
   escalationId: string,
+  /**
+   * The tick-start in-flight ARC count (A4 P1). Threaded down to the systemic
+   * branch's admission gate — a fresh systemic drive is HELD when this is already
+   * at `deps.maxConcurrentArcs`. Snapshotted ONCE at tick start (see responderTick);
+   * 0 in answer-mode (the probe is gated on autoImplementEnabled). Defaults 0 for
+   * the reclaim caller (the reclaim path never opens a NEW arc — advanceArc only
+   * advances already-counted ones — so it never consults this gate).
+   */
+  inFlightArcs = 0,
 ): Promise<void> {
   // ── Answering session (holds the concurrency slot for its budget). ──
   const detail = await deps.client.getEscalation(escalationId);
@@ -618,6 +673,30 @@ async function runAnsweringSession(
         }
         // auto_implement ENABLED (the sniff already passed at admission).
         if (result.size === "systemic") {
+          // A4 P1: max-concurrent-arcs admission gate — BEFORE runDriveSession (so NO
+          // epic is created on a hold). A systemic disposition opens a NEW arc; if the
+          // tick-start in-flight arc count is already at the cap, HOLD it →
+          // escalate-to-human (governance, NOT distrust — the operator decides). At
+          // mode=off this is silent (the existing off idiom). HONEST LIMITATION: the
+          // inFlightArcs snapshot is fixed at tick start, so at maxConcurrent>1 two
+          // systemic dispositions admitted in the SAME claim pass could both pass this
+          // gate; at the default maxConcurrent=1 only one write job runs/tick so it can't
+          // bite, and the cap re-snapshots each tick so long-lived arcs ARE bounded
+          // across ticks. Acceptable for P1 (the cap is a COST governor; the merge-train
+          // verify is the safety floor).
+          if (inFlightArcs >= deps.maxConcurrentArcs) {
+            // (mode==="off" already returned at the top of the implement case, so
+            // no off-silence guard is needed here — it would be dead code.)
+            await deps.client.escalateToHuman(
+              escalationId,
+              `auto-drive budget: ${inFlightArcs}/${deps.maxConcurrentArcs} concurrent arcs in flight; this systemic ask is held for a human`,
+            );
+            deps.logger.info(
+              { escalationId, projectId, inFlightArcs, maxConcurrentArcs: deps.maxConcurrentArcs },
+              "max-concurrent-arcs budget reached; held the systemic ask for a human (no drive spawned, no epic created)",
+            );
+            return; // NO runDriveSession → no epic created.
+          }
           // A3 P1: a systemic change drives an autonomous VISION. Acquire an isolated
           // worktree, spawn the drive session (writes a vision .md), and on
           // vision_ready CREATE the PM epic + tasks over HTTP + addMessage(pendingDrive)
@@ -1379,6 +1458,40 @@ async function advanceArc(
     return;
   }
 
+  // ── (3b) max-arc-DURATION cap (A4 P1) — the never-ending-arc bound. Placed AFTER
+  // the arc_complete check (which returns above), so an arc that just became
+  // all-landed this cycle COMPLETES rather than being capped as arc_partial
+  // (Refinement 4). An arc whose first pendingDrive intent marker is older than
+  // maxArcDurationSec — and that is NOT already marked complete — is CAPPED:
+  // escalate-to-human with the partial progress (landed phases preserved on main, NO
+  // rollback — revert is P2's job; capping just STOPS advancing). arcStartedAtMs is
+  // fail-safe (null ⇒ never cap; mirrors the updatedAtMs fail-safe). Reuses the
+  // step-(2) arc_partial remaining + payload shape. ──
+  const arcStartedAt = arcStartedAtMs(detail.messages);
+  if (
+    arcStartedAt !== null &&
+    now - arcStartedAt > deps.maxArcDurationSec * 1000 &&
+    !hasArcCompleteMarker(detail.messages)
+  ) {
+    if (deps.mode === "off") return; // off is silent.
+    const remaining = epic.tasks
+      .filter((t) => {
+        const m = mrByTask.get(t.id);
+        return m === undefined || m.status !== "landed";
+      })
+      .map((t) => t.title);
+    const reason =
+      `arc exceeded max duration (${deps.maxArcDurationSec}s); capping. ` +
+      `Landed phases preserved (${landedShas.join(", ") || "none"}). ` +
+      `Unlanded: ${remaining.join(", ") || "none"}. A human takes over.`;
+    await deps.client.escalateToHuman(escalationId, reason);
+    deps.logger.warn(
+      { escalationId, projectId, epicId, arcStartedAt, maxArcDurationSec: deps.maxArcDurationSec, landedShas },
+      "arc duration cap reached; escalated the root to needs_human (landed phases preserved, no rollback, no further spawn)",
+    );
+    return; // arc_partial — landed work preserved on main, no rollback, no further spawn.
+  }
+
   // ── (4) prior phases landed, more remain → implement the next phase with no MR. ──
   const next = epic.tasks.find((t) => mrByTask.get(t.id) === undefined);
   if (next === undefined) {
@@ -1430,6 +1543,49 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
   if (!deps.enabled) return; // kill-switch — inert tick.
 
   const now = (deps.now ?? Date.now)();
+
+  // ── In-flight ARC count (A4 P1) — the tick-start snapshot the max-concurrent-arcs
+  // admission gate consults. An arc = a self-held acknowledged escalation whose
+  // thread carries pendingDrive||pendingArc && !arcComplete. This is a FRESH probe
+  // over the FULL listAcknowledgedByHolder list (a young, non-stale arc still
+  // consumes a slot — NOT the reclaim pass's stale-only subset, and NOT a share of
+  // its getEscalation probe, which would change reclaim staleness/ordering). It is
+  // GATED on autoImplementEnabled: in pure answer-mode no pendingDrive/pendingArc
+  // marker ever exists (count is always 0), so we skip the N getEscalation fetches
+  // entirely — keeping answer-mode BYTE-IDENTICAL (no new per-tick fetches). When
+  // disabled, inFlightArcs stays 0 (unused — the gate lives in the systemic branch,
+  // reached only when autoImplementEnabled). A probe error is non-fatal: a failed
+  // list/fetch just under-counts (fail-open — the cost governor never blocks on a
+  // probe glitch).
+  let inFlightArcs = 0;
+  if (deps.autoImplementEnabled) {
+    for (const projectId of deps.projectIds) {
+      let held: Escalation[];
+      try {
+        held = await deps.client.listAcknowledgedByHolder(projectId, deps.selfId);
+      } catch (err) {
+        deps.logger.warn(
+          { projectId, err: errMessage(err) },
+          "in-flight-arc probe: listAcknowledgedByHolder failed; under-counting (fail-open)",
+        );
+        continue;
+      }
+      for (const esc of held) {
+        try {
+          const thread = await deps.client.getEscalation(esc.id);
+          const isArc =
+            (hasPendingDriveMarker(thread.messages) || hasPendingArcMarker(thread.messages)) &&
+            !hasArcCompleteMarker(thread.messages);
+          if (isArc) inFlightArcs += 1;
+        } catch (err) {
+          deps.logger.warn(
+            { escalationId: esc.id, projectId, err: errMessage(err) },
+            "in-flight-arc probe: getEscalation failed; skipping this thread (fail-open)",
+          );
+        }
+      }
+    }
+  }
 
   // The concurrency budget is GLOBAL across all watched projects this tick.
   const slot = { available: deps.maxConcurrent - state.inFlight.size };
@@ -1499,7 +1655,10 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
             { escalationId, projectId },
             `claimed escalation ${escalationId}; spawning answering session`,
           );
-          await runAnsweringSession(deps, state, projectId, escalationId);
+          // Thread the tick-start in-flight arc snapshot into the systemic
+          // admission gate (A4 P1). The reclaim caller below passes the default 0
+          // (it never opens a NEW arc).
+          await runAnsweringSession(deps, state, projectId, escalationId, inFlightArcs);
         } catch (err) {
           // The acknowledge failed → no real spawn happened → REFUND the budget
           // reservation (Seal 3: a 403/409/transient ack consumes no budget).
