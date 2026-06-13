@@ -106,6 +106,35 @@ describe("createClaudeResponderRunner", () => {
     if (result.kind === "give_up") expect(result.reason).toBe("R");
   });
 
+  it("implement{bounded} carries size + rationale", async () => {
+    const runner = createClaudeResponderRunner({});
+    const cmd = writeSentinelCmd(
+      JSON.stringify({ status: "implement", size: "bounded", rationale: "small fix" }),
+    );
+    const result = await runner.run(baseInput(cmd, 30));
+    expect(result.kind).toBe("implement");
+    if (result.kind === "implement") {
+      expect(result.size).toBe("bounded");
+      expect(result.rationale).toBe("small fix");
+    }
+  });
+
+  it("implement{systemic} carries size", async () => {
+    const runner = createClaudeResponderRunner({});
+    const cmd = writeSentinelCmd(JSON.stringify({ status: "implement", size: "systemic" }));
+    const result = await runner.run(baseInput(cmd, 30));
+    expect(result.kind).toBe("implement");
+    if (result.kind === "implement") expect(result.size).toBe("systemic");
+  });
+
+  it("implement with an unknown/missing size falls back to error (a code change must be scoped)", async () => {
+    const runner = createClaudeResponderRunner({});
+    const cmd = writeSentinelCmd(JSON.stringify({ status: "implement", size: "huge" }));
+    const result = await runner.run(baseInput(cmd, 30));
+    expect(result.kind).toBe("error");
+    if (result.kind === "error") expect(result.reason).toBe("spawn_error");
+  });
+
   it("a sleep beyond a tiny budget → error(timeout)", async () => {
     const runner = createClaudeResponderRunner({});
     const cmd = `node -e "setTimeout(()=>{},10000)"`;
@@ -189,6 +218,7 @@ describe("buildResponderPrompt", () => {
     expect(DEFAULT_RESPONDER_PROMPT).toContain("answered");
     expect(DEFAULT_RESPONDER_PROMPT).toContain("needs_human");
     expect(DEFAULT_RESPONDER_PROMPT).toContain("give_up");
+    expect(DEFAULT_RESPONDER_PROMPT).toContain("implement");
   });
 
   it("a custom template is preserved (replace-if-present)", () => {

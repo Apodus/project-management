@@ -77,6 +77,7 @@ import type { Logger } from "./logger.js";
 import type { ResponderClient } from "./api-client.js";
 import { PmApiError } from "./api-client.js";
 import type { ResponderRunner } from "./responder-runner.js";
+import type { InjectionSniffer } from "./injection-sniffer.js";
 import { buildResponderPrompt } from "./prompt.js";
 import type { ResponderMode, SpawnBudget } from "./config.js";
 
@@ -142,6 +143,21 @@ export interface ResponderDeps {
   spawnBudget: SpawnBudget;
   /** The injectable answering session (real spawn in prod; scripted in tests). */
   runner: ResponderRunner;
+  /**
+   * Auto-implement kill-switch (Campaign A1 P1, FLAT — matches enabled/mode).
+   * DEFAULT-effectively false. When TRUE the responder enters the write-capable
+   * regime: the injection sniff-test gates session admission (P1 declares
+   * `implement` intent; the write capability arrives in P2). When false the
+   * session is answer-only/read-only (the existing safe path) — no sniff runs.
+   */
+  autoImplementEnabled: boolean;
+  /**
+   * Injectable injection sniff-test (Campaign A1 P1). Runs BEFORE the answering
+   * session, ONLY when `autoImplementEnabled` — gating the write-capable
+   * regime's entry on the RAW escalation. suspicious/error → escalate, do NOT
+   * spawn (FAIL-SAFE). Real classifier in prod; scripted fake in tests.
+   */
+  sniffer: InjectionSniffer;
   /** Working directory the answering session runs in (the PM repo checkout). */
   repoCwd: string;
   /** Headless answering command passed to the runner. */
@@ -258,6 +274,52 @@ async function runAnsweringSession(
   const logsDir = deps.logsDir ?? tmpdir();
   const statusPath = path.join(logsDir, `${escalationId}.status.json`);
   const logPath = path.join(logsDir, `${escalationId}.log`);
+
+  // ── Injection sniff-test (A1 P1) — gates session admission for the
+  // write-capable regime. ONLY when auto_implement is enabled (when disabled the
+  // session is answer-only/read-only — the existing safe path — so no sniff).
+  // suspicious/error → escalate-to-human and do NOT spawn (FAIL-SAFE: a tripwire
+  // that can't run must not grant trust). Respect mode==="off"→silent. ──
+  if (deps.autoImplementEnabled) {
+    const sniffStatusPath = path.join(logsDir, `${escalationId}.sniff.status.json`);
+    const sniffLogPath = path.join(logsDir, `${escalationId}.sniff.log`);
+    const sniff = await deps.sniffer.sniff({
+      escalation: detail,
+      messages: detail.messages,
+      budget: deps.budget,
+      cwd: deps.repoCwd,
+      logPath: sniffLogPath,
+      statusPath: sniffStatusPath,
+      signal: deps.signal,
+    });
+    if (sniff.kind !== "clean") {
+      const reason =
+        sniff.kind === "suspicious"
+          ? `flagged by injection sniff-test: ${sniff.reason}`
+          : `injection sniff-test could not run (${sniff.reason}); denying admission (fail-safe)`;
+      if (deps.mode === "off") {
+        deps.logger.info(
+          { escalationId, projectId, sniff: sniff.kind, mode: deps.mode },
+          "injection sniff-test gated admission (mode=off) — not escalating; off is silent",
+        );
+        return;
+      }
+      try {
+        await deps.client.escalateToHuman(escalationId, reason);
+        deps.logger.warn(
+          { escalationId, projectId, sniff: sniff.kind },
+          "injection sniff-test gated admission; escalated to human (session NOT spawned)",
+        );
+      } catch (postErr) {
+        deps.logger.error(
+          { escalationId, projectId, sniff: sniff.kind, err: errMessage(postErr) },
+          "post-sniff escalateToHuman failed; escalation stays acknowledged (P6 reclaim recovers)",
+        );
+      }
+      return; // session NOT spawned.
+    }
+  }
+
   const result = await deps.runner.run({
     escalation: detail,
     prompt,
@@ -349,6 +411,49 @@ async function runAnsweringSession(
           "responder session failed; escalated to human",
         );
         break;
+      case "implement": {
+        if (deps.mode === "off") {
+          deps.logger.info(
+            { escalationId, kind: result.kind, size: result.size, mode: deps.mode },
+            "implement (mode=off) — not acting; off is silent",
+          );
+          return;
+        }
+        if (!deps.autoImplementEnabled) {
+          // REVISE FIX #1: auto_implement disabled (the default kill-switch) →
+          // an `implement` declaration falls back to needs_human with the
+          // rationale embedded. NEVER strand-acknowledged: the reclaim sweep only
+          // re-spawns the read-only session, which would loop to the poison cap
+          // with a misleading reason.
+          await deps.client.escalateToHuman(
+            escalationId,
+            `Responder declared a code change (${result.size}) but auto_implement is disabled; needs a human. Rationale: ${result.rationale}`,
+          );
+          deps.logger.info(
+            { escalationId, projectId, size: result.size },
+            "implement declared but auto_implement disabled; escalated to human (fall-back)",
+          );
+          break;
+        }
+        // auto_implement ENABLED (the sniff already passed at admission).
+        if (result.size === "systemic") {
+          await deps.client.escalateToHuman(
+            escalationId,
+            `Systemic change — needs human (A3 drives systemic later). Rationale: ${result.rationale}`,
+          );
+          deps.logger.info(
+            { escalationId, projectId },
+            "implement (systemic) → escalated to human",
+          );
+        } else {
+          // bounded — P1 has NO write capability yet (the write session is P2).
+          deps.logger.info(
+            { escalationId, projectId, rationale: result.rationale },
+            "would implement (bounded) — write session is P2",
+          );
+        }
+        break;
+      }
     }
   } catch (postErr) {
     deps.logger.error(

@@ -55,6 +55,20 @@ describe("loadConfig", () => {
     expect(cfg.mode).toBe("shadow");
   });
 
+  it("autoImplement.enabled defaults to false; PM_AUTO_IMPLEMENT_ENABLED truthy turns it on", () => {
+    expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement).toEqual({
+      enabled: false,
+    });
+    expect(
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "true" })
+        .autoImplement.enabled,
+    ).toBe(true);
+    expect(
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "no" })
+        .autoImplement.enabled,
+    ).toBe(false);
+  });
+
   it("accepts off/shadow/on and honors CLI over env for mode", () => {
     expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_RESPONDER_MODE: "on" }).mode).toBe(
       "on",

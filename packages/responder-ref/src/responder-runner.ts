@@ -21,10 +21,17 @@
  * working-tree change). Precedence on exit is STRICT (see `finish`):
  *   1. timeout      ⇒ {kind:"error", reason:"timeout"}
  *   2. spawn_error  ⇒ {kind:"error", reason:"spawn_error"}
- *   3. sentinel     ⇒ the agent's own `answered`/`needs_human`/`give_up`
+ *   3. sentinel     ⇒ the agent's own `answered`/`needs_human`/`give_up`/`implement`
  *   4. fallback     ⇒ absent / unparseable / unrecognized / answered-without-answer
  *                     all map to {kind:"error", reason:"spawn_error"}. An
  *                     `answered` is NEVER inferred from a clean exit.
+ *
+ * A1 P1 adds a fifth disposition the agent may declare: `implement` — a code
+ * change is warranted. Its sentinel shape is
+ * `{"status":"implement","size":"bounded"|"systemic","rationale":"<why>"}`. The
+ * session is STILL read-only in P1: it DECLARES intent to implement; it does not
+ * write. An `implement` with an unknown/missing `size` is NOT trusted — it falls
+ * through to the fallback (a code change must be explicitly scoped).
  */
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
@@ -69,6 +76,12 @@ export type ResponderRunResult =
   | { kind: "answered"; answer: string; durationMs: number }
   | { kind: "needs_human"; reason: string; durationMs: number }
   | { kind: "give_up"; reason: string; durationMs: number }
+  | {
+      kind: "implement";
+      size: "bounded" | "systemic";
+      rationale: string;
+      durationMs: number;
+    }
   | {
       kind: "error";
       reason: "timeout" | "spawn_error";
@@ -193,6 +206,8 @@ export function createClaudeResponderRunner(cfg: { command?: string }): Responde
               status?: unknown;
               answer?: unknown;
               reason?: unknown;
+              size?: unknown;
+              rationale?: unknown;
             };
             if (
               parsed.status === "answered" &&
@@ -215,8 +230,19 @@ export function createClaudeResponderRunner(cfg: { command?: string }): Responde
                 durationMs,
               };
             }
-            // Recognized file but no usable status (incl. answered-without-answer)
-            // → fall through.
+            if (
+              parsed.status === "implement" &&
+              (parsed.size === "bounded" || parsed.size === "systemic")
+            ) {
+              return {
+                kind: "implement",
+                size: parsed.size,
+                rationale: String(parsed.rationale ?? parsed.reason ?? "implement"),
+                durationMs,
+              };
+            }
+            // Recognized file but no usable status (incl. answered-without-answer,
+            // and an `implement` with an unknown/missing size) → fall through.
           } catch {
             // Absent / unreadable / unparseable sentinel → fall through.
           }

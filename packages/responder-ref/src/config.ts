@@ -50,6 +50,14 @@ export interface ResponderConfig {
   enabled: boolean;
   /** off|shadow|on. DEFAULT shadow. Consumed in P3 (gates the POST). */
   mode: ResponderMode;
+  /**
+   * Auto-implement regime (Campaign A1). NESTED from the start so P4's
+   * `allowed_paths` (and any future fields) are non-breaking adds. DEFAULT
+   * `{ enabled: false }` — the operator must opt into the write-capable regime.
+   * When enabled, the injection sniff-test gates session admission (P1); the
+   * write capability itself arrives in P2.
+   */
+  autoImplement: { enabled: boolean };
   pollIntervalSec: number;
   maxConcurrent: number;
   /** Spawn-rate cap (parse only in P1 — P5 enforces). */
@@ -99,6 +107,7 @@ export interface ConfigEnv {
   PM_PROJECT_ID?: string;
   PM_RESPONDER_ENABLED?: string;
   PM_RESPONDER_MODE?: string;
+  PM_AUTO_IMPLEMENT_ENABLED?: string;
   PM_RESPONDER_COMMAND?: string;
   PM_RESPONDER_REPO_CWD?: string;
   PM_RESPONDER_LOGS_DIR?: string;
@@ -161,6 +170,13 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   }
   const mode = rawMode as ResponderMode;
 
+  // auto_implement.enabled: DEFAULT FALSE (kill-switch for the write-capable
+  // regime). env PM_AUTO_IMPLEMENT_ENABLED parsed with the existing parseBool.
+  const autoImplementEnabled =
+    env.PM_AUTO_IMPLEMENT_ENABLED !== undefined
+      ? parseBool(env.PM_AUTO_IMPLEMENT_ENABLED)
+      : false;
+
   const pollIntervalSec = positiveInt(args.pollIntervalSec, DEFAULT_POLL_INTERVAL_SEC);
 
   // Answering-session wiring (P3). command: env-or-default; repoCwd: the PM repo
@@ -198,6 +214,7 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     projectIds,
     enabled,
     mode,
+    autoImplement: { enabled: autoImplementEnabled },
     pollIntervalSec,
     maxConcurrent: DEFAULT_MAX_CONCURRENT,
     spawnBudget: { maxSpawns: DEFAULT_MAX_SPAWNS, windowSec: DEFAULT_SPAWN_WINDOW_SEC },

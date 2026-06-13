@@ -44,7 +44,10 @@ export const DEFAULT_RESPONDER_PROMPT =
   '  {"status":"answered","answer":"<self-contained diagnosis / answer / workaround the ' +
   'client receives>"}\n' +
   '  {"status":"needs_human","reason":"<why a human is required>"}\n' +
-  '  {"status":"give_up","reason":"<why you could not make progress>"}\n\n' +
+  '  {"status":"give_up","reason":"<why you could not make progress>"}\n' +
+  '  {"status":"implement","size":"bounded"|"systemic","rationale":"<why a code change is ' +
+  'warranted + why localized vs large>"}\n\n' +
+  "If the fix is a localized code change, declare implement rather than answering.\n\n" +
   "The `answer` field IS the message posted back to the client — make it complete and " +
   "actionable on its own (the client does not see your investigation, only this answer). " +
   "Writing this file is MANDATORY: if it is absent the session is treated as failed and the " +

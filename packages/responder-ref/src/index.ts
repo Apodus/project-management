@@ -5,6 +5,7 @@ import { ResponderClient } from "./api-client.js";
 import { createLogger } from "./logger.js";
 import { runResponderLoop } from "./loop.js";
 import { createClaudeResponderRunner } from "./responder-runner.js";
+import { createClaudeInjectionSniffer } from "./injection-sniffer.js";
 import { VERSION } from "./version.js";
 
 function collect(value: string, prev: string[]): string[] {
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
   // disabled process never mkdirs). It lives OUTSIDE any git tree.
   await mkdir(cfg.logsDir, { recursive: true });
   const runner = createClaudeResponderRunner({ command: cfg.command });
+  const sniffer = createClaudeInjectionSniffer({ command: cfg.command });
 
   // ── Resolve self identity (no-recursion seed). ──
   let selfId: string;
@@ -124,6 +126,8 @@ async function main(): Promise<void> {
       maxReclaimAttempts: cfg.maxReclaimAttempts,
       spawnBudget: cfg.spawnBudget,
       runner,
+      autoImplementEnabled: cfg.autoImplement.enabled,
+      sniffer,
       repoCwd: cfg.repoCwd,
       command: cfg.command,
       mode: cfg.mode,

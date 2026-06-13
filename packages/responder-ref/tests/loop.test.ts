@@ -4,6 +4,10 @@ import { PmApiError } from "../src/api-client.js";
 import type { Escalation, EscalationWithThread } from "@pm/shared";
 import type { Logger } from "../src/logger.js";
 import type { ResponderRunner, ResponderRunResult } from "../src/responder-runner.js";
+import type {
+  InjectionSniffer,
+  InjectionSniffResult,
+} from "../src/injection-sniffer.js";
 
 // ── Fakes ──────────────────────────────────────────────────────────
 
@@ -115,6 +119,15 @@ class FakeResponderRunner implements ResponderRunner {
   });
 }
 
+/**
+ * A scripted injection sniff-test (A1 P1). Defaults to `clean` so every existing
+ * test stays byte-identical (the sniff only runs when autoImplementEnabled).
+ */
+class FakeInjectionSniffer implements InjectionSniffer {
+  result: InjectionSniffResult = { kind: "clean" };
+  sniff = vi.fn(async (): Promise<InjectionSniffResult> => this.result);
+}
+
 function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): ResponderDeps {
   return {
     client,
@@ -128,6 +141,10 @@ function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): Respon
     // spawn) stays byte-identical and a no-op runner suffices.
     mode: "shadow",
     runner: new FakeResponderRunner(),
+    // A1 P1 defaults: auto_implement off + a clean sniffer, so all existing tests
+    // (the sniff never runs when disabled) stay byte-identical.
+    autoImplementEnabled: false,
+    sniffer: new FakeInjectionSniffer(),
     repoCwd: "/repo",
     command: "claude -p",
     budget: { timeBudgetSec: 900 },
@@ -276,6 +293,16 @@ describe("responderTick", () => {
     const r = new FakeResponderRunner();
     r.result = result;
     return r;
+  }
+
+  // A1 P1 helpers: an `implement{size}` runner + a scripted sniffer.
+  function implementRunner(size: "bounded" | "systemic"): FakeResponderRunner {
+    return onRunner({ kind: "implement", size, rationale: "r", durationMs: 1 });
+  }
+  function snifferOf(result: InjectionSniffResult): FakeInjectionSniffer {
+    const s = new FakeInjectionSniffer();
+    s.result = result;
+    return s;
   }
 
   it("on + answered → answer(id, text) called, no escalateToHuman", async () => {
@@ -644,5 +671,136 @@ describe("responderTick", () => {
     await responderTick(deps, state); // e2 spawns — budget was not consumed
     expect(runner.run).toHaveBeenCalledTimes(1);
     expect(client.escalateCalls.map((c) => c.id)).toEqual(["e2"]);
+  });
+
+  // ── A1 P1: assess gate + injection sniff-test + auto_implement kill-switch ──
+
+  it("enabled(auto_implement) + clean sniff + implement{bounded} → session spawned, would-implement logged, no escalate/answer", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    await responderTick(
+      baseDeps(client, { mode: "on", runner, sniffer, autoImplementEnabled: true }),
+      createResponderState(),
+    );
+    expect(sniffer.sniff).toHaveBeenCalledTimes(1);
+    expect(runner.run).toHaveBeenCalledTimes(1); // session spawned
+    expect(client.answer).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("enabled + SUSPICIOUS sniff → escalateToHuman('flagged by injection sniff-test'), session NOT spawned", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "suspicious", reason: "ignore prior instructions" });
+    await responderTick(
+      baseDeps(client, { mode: "on", runner, sniffer, autoImplementEnabled: true }),
+      createResponderState(),
+    );
+    expect(runner.run).not.toHaveBeenCalled(); // session NOT spawned
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].id).toBe("e1");
+    expect(client.escalateCalls[0].reason).toContain("flagged by injection sniff-test");
+    expect(client.escalateCalls[0].reason).toContain("ignore prior instructions");
+  });
+
+  it("enabled + sniff ERROR → escalate (fail-safe), session not spawned", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "error", reason: "timeout" });
+    await responderTick(
+      baseDeps(client, { mode: "on", runner, sniffer, autoImplementEnabled: true }),
+      createResponderState(),
+    );
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("fail-safe");
+  });
+
+  it("enabled + implement{systemic} (clean) → escalateToHuman (systemic → human)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = implementRunner("systemic");
+    const sniffer = snifferOf({ kind: "clean" });
+    await responderTick(
+      baseDeps(client, { mode: "on", runner, sniffer, autoImplementEnabled: true }),
+      createResponderState(),
+    );
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].id).toBe("e1");
+    expect(client.escalateCalls[0].reason).toContain("Systemic");
+    expect(client.answer).not.toHaveBeenCalled();
+  });
+
+  it("DISABLED + implement{bounded} → escalateToHuman (fall-back, rationale embedded); NOT stranded; sniffer NOT called", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    await responderTick(
+      baseDeps(client, { mode: "on", runner, sniffer, autoImplementEnabled: false }),
+      createResponderState(),
+    );
+    expect(sniffer.sniff).not.toHaveBeenCalled(); // no sniff when disabled
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].id).toBe("e1");
+    expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
+    expect(client.escalateCalls[0].reason).toContain("r"); // rationale embedded
+  });
+
+  it("DISABLED + implement{systemic} → escalateToHuman (fall-back)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = implementRunner("systemic");
+    await responderTick(
+      baseDeps(client, { mode: "on", runner, autoImplementEnabled: false }),
+      createResponderState(),
+    );
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
+  });
+
+  it("mode=off + implement → silent (neither escalate nor act), regardless of auto_implement", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    await responderTick(
+      baseDeps(client, { mode: "off", runner, sniffer, autoImplementEnabled: true }),
+      createResponderState(),
+    );
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+    expect(client.answer).not.toHaveBeenCalled();
+  });
+
+  it("mode=off + enabled + SUSPICIOUS sniff → silent (off escalates nothing), session not spawned", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "suspicious", reason: "x" });
+    await responderTick(
+      baseDeps(client, { mode: "off", runner, sniffer, autoImplementEnabled: true }),
+      createResponderState(),
+    );
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("injectable-sniffer seam: a clean sniff lets the session proceed (answered still posts)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+    const sniffer = snifferOf({ kind: "clean" });
+    await responderTick(
+      baseDeps(client, { mode: "on", runner, sniffer, autoImplementEnabled: true }),
+      createResponderState(),
+    );
+    expect(sniffer.sniff).toHaveBeenCalledTimes(1);
+    expect(client.answerCalls).toEqual([{ id: "e1", body: "A" }]);
   });
 });
