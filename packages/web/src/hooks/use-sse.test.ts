@@ -3,6 +3,7 @@ import { getInvalidationKeys, maybeShowToast } from "./use-sse";
 import { trainKeys } from "./use-train";
 import { noteKeys } from "./use-notes";
 import { claimKeys } from "./use-claims";
+import { escalationKeys } from "./use-escalations";
 
 const toastMock = vi.hoisted(() => ({
   success: vi.fn(),
@@ -141,5 +142,52 @@ describe("maybeShowToast — claim.stale_alert action", () => {
     expect(toastMock.warning).toHaveBeenCalledTimes(1);
     const opts = toastMock.warning.mock.calls[0][1] as { action?: unknown };
     expect(opts.action).toBeUndefined();
+  });
+});
+
+// ─── escalation.sla_breached — unanswered-SLA toast (Campaign C4 P3) ──
+
+describe("maybeShowToast — escalation.sla_breached", () => {
+  beforeEach(() => {
+    toastMock.warning.mockClear();
+  });
+
+  const slaPayload = {
+    entity_type: "project",
+    entity_id: "proj-42",
+    action: "sla_breached",
+    actor: { id: null, name: "system", type: "system" },
+    timestamp: "2026-06-13T00:00:00.000Z",
+  };
+
+  it("raises a masked unanswered-SLA warning toast (no ids/counts)", () => {
+    maybeShowToast("escalation.sla_breached", slaPayload);
+    expect(toastMock.warning).toHaveBeenCalledTimes(1);
+    const [title, opts] = toastMock.warning.mock.calls[0] as [
+      string,
+      { description?: string },
+    ];
+    expect(title).toBe("Escalations going unanswered");
+    // Masked copy — no ids/counts leak.
+    expect(opts.description).not.toMatch(/proj-42/);
+  });
+});
+
+// escalation.sla_breached is a toast-only banner (the toast is raised in
+// maybeShowToast; the useEscalationMetrics poll owns the authoritative dashboard
+// refresh). It shares the "escalation" prefix so it still maps to
+// escalationKeys.all (harmless redundant refresh, never a stale view) — mirroring
+// note.backlog_alert mapping to noteKeys.all.
+describe("getInvalidationKeys — escalation.sla_breached prefix mapping", () => {
+  it("maps escalation.sla_breached via prefix to escalationKeys.all (toast raised separately)", () => {
+    expect(getInvalidationKeys("escalation.sla_breached")).toEqual([
+      escalationKeys.all,
+    ]);
+  });
+
+  it("subscribes to escalation.sla_breached (assert via the prefix invalidation)", () => {
+    // The eventTypes subscription list includes escalation.sla_breached; its
+    // handler invalidates via the shared "escalation" prefix.
+    expect(getInvalidationKeys("escalation.sla_breached")).not.toEqual([]);
   });
 });

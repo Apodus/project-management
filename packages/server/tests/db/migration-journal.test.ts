@@ -100,10 +100,10 @@ describe("migration log heal + boot assertion", () => {
     // migration's schema effect. When you add a migration, update LAST_REVERT
     // + LAST_COLUMN_CHECK — this test fails loudly (duplicate column on
     // re-apply) if they fall behind.
-    const LAST_REVERT = "ALTER TABLE escalations DROP COLUMN origin_last_seen_seq;"; // 0030
+    const LAST_REVERT = "DROP TABLE escalation_alert_state;"; // 0031
     const LAST_COLUMN_CHECK = {
-      table: "escalations",
-      column: "origin_last_seen_seq",
+      table: "escalation_alert_state",
+      column: "sla_notified",
     };
     const raw = new Database(dbPath);
     const last = raw

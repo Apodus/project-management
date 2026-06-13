@@ -120,6 +120,13 @@ export const LEASE_GRACE_MS_DEFAULT = 24 * 60 * 60 * 1000;
 // LEASE_GRACE_MS_DEFAULT (detection is a side effect of an on-read aggregate,
 // latched on notes_alert_state). 7 days.
 export const NOTES_BACKLOG_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+// Campaign C4 (agent escalation channel §P3) — a NON-RESOLVED escalation with NO
+// directed reply aging past this threshold fires the edge-triggered unanswered-SLA
+// alert (escalation.sla_breached). Same on-read constant idiom as
+// NOTES_BACKLOG_THRESHOLD_MS (detection is a side effect of an on-read aggregate,
+// latched on escalation_alert_state). 1 hour — an unanswered escalation is far
+// more time-sensitive than an untriaged note.
+export const ESCALATION_SLA_BREACH_THRESHOLD_MS = 60 * 60 * 1000;
 // A stricter-than-sweep margin (60s) ADDED to the grace when pick-next decides
 // whether to reclaim-then-claim a stale-claimed task (C3.P3, mode `on` only).
 // A pick is a hostile takeover of another holder's work, so it demands a lease

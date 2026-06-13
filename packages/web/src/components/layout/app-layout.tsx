@@ -12,6 +12,7 @@ import {
 import { useSSE } from "@/hooks/use-sse";
 import { useClaimsHealth } from "@/hooks/use-train";
 import { useNotesHealth } from "@/hooks/use-notes";
+import { useEscalationMetrics } from "@/hooks/use-escalations";
 import { useFaviconBadge } from "@/hooks/use-favicon-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -37,6 +38,13 @@ export function AppLayout() {
   // read is the detection trigger — it fires the edge-triggered note.backlog_alert
   // (SSE toast + Discord) once per backlog episode. Guarded on a current project.
   useNotesHealth(currentProjectId ?? undefined);
+
+  // Poll escalation metrics (Campaign C4 §P3) from the always-open layout: the
+  // on-read computeEscalationMetrics is the detection trigger — it fires the
+  // edge-triggered escalation.sla_breached (SSE toast + Discord) once per breach
+  // episode. Mounting it here (not just on the Escalations tab) means the poll
+  // runs whenever any project view is open. Guarded on a current project.
+  useEscalationMetrics(currentProjectId ?? undefined);
 
   // Favicon badge + document title reflect unread event count
   useFaviconBadge();

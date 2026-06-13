@@ -72,6 +72,7 @@ describe("Database schema", () => {
         "comments",
         "epic_dependencies",
         "epics",
+        "escalation_alert_state",
         "escalation_messages",
         "escalations",
         "git_refs",
@@ -213,6 +214,7 @@ describe("Database schema", () => {
         "idx_agent_claims_worker",
         "idx_claims_alert_state_project",
         "idx_notes_alert_state_project",
+        "idx_escalation_alert_state_project",
       ].sort();
 
       for (const idx of expected) {

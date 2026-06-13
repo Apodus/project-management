@@ -148,6 +148,17 @@ export function maybeShowToast(
     });
     return;
   }
+  // Unanswered-SLA alert (Campaign C4 §P3) — identity-masked, aggregate copy
+  // (no ids/counts), mirroring the note.backlog_alert toast. Toast-only: the
+  // useEscalationMetrics poll owns the dashboard refresh; this frame just
+  // surfaces the warning.
+  if (eventType === "escalation.sla_breached") {
+    toast.warning("Escalations going unanswered", {
+      description:
+        "Some escalations have been open past the SLA window. Acknowledge or answer.",
+    });
+    return;
+  }
 
   const titleLabel = payload.entity_title
     ? `'${payload.entity_title}'`
@@ -317,6 +328,9 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       "escalation.answered",
       "escalation.resolved",
       "escalation.needs_human",
+      // The unanswered-SLA alert (Campaign C4 §P3) is a toast-only banner
+      // (handled in maybeShowToast); the useEscalationMetrics poll owns refresh.
+      "escalation.sla_breached",
       // Break-glass audit — an R1-override was recorded → refresh the audit log.
       "audit.recorded",
     ];

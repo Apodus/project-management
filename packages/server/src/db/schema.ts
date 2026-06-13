@@ -1156,6 +1156,28 @@ export const notesAlertState = sqliteTable(
   (table) => [uniqueIndex("idx_notes_alert_state_project").on(table.projectId)],
 );
 
+// ─── escalation_alert_state ─────────────────────────────────────────
+// Campaign C4 (agent escalation channel §P3): the per-project latch for the
+// on-read, edge-triggered unanswered-SLA alert. Mirrors notes_alert_state
+// exactly — a single edge-trigger debounce flag set true when the alert fires
+// and reset to false when no escalation is breaching, so the alert fires
+// exactly ONCE per breach episode and re-arms on resolution. Lazy-created on
+// first read/write; the unique (project_id) index makes the upsert race-safe.
+// PM-owned, durable.
+export const escalationAlertState = sqliteTable(
+  "escalation_alert_state",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    slaNotified: integer("sla_notified", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [uniqueIndex("idx_escalation_alert_state_project").on(table.projectId)],
+);
+
 // ─── escalations ────────────────────────────────────────────────────
 // Campaign C1 (§P1): a bidirectional cross-team escalation channel — a
 // worker raises a bug_report/question/request/blocked against a project,

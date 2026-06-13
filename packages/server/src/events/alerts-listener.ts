@@ -97,6 +97,17 @@ function formatAlert(event: EventName, payload: EventPayload): string {
       const oldest = ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 86_400_000))}d)`;
       return `:warning: Note backlog on project — ${items}${oldest}. Triage or dismiss.`;
     }
+    case EVENT_NAMES.ESCALATION_SLA_BREACHED: {
+      // Identity-masked (Campaign C4 §P3): aggregate count + oldest breaching
+      // age only — never an escalation/holder id. Mirrors NOTE_BACKLOG_ALERT.
+      const count = Number(e.breachCount ?? 0);
+      const items =
+        count === 1 ? "1 escalation unanswered" : `${count} escalations unanswered`;
+      const ageMs = e.oldestBreachingAgeMs == null ? null : Number(e.oldestBreachingAgeMs);
+      const oldest =
+        ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 3_600_000))}h)`;
+      return `:warning: Escalation SLA breach — ${items} past SLA${oldest}. Acknowledge or answer.`;
+    }
     case EVENT_NAMES.ESCALATION_NEEDS_HUMAN: {
       // Campaign C2 §P5 — the ONE out-of-band escalation notification: a human
       // hand-off. Reads from payload.entity (the escalation toView — there is
@@ -190,5 +201,11 @@ export function registerWebhookAlertListener(): void {
   // resilience of the shared handler.
   bus.on(EVENT_NAMES.ESCALATION_NEEDS_HUMAN, (p) =>
     handler(EVENT_NAMES.ESCALATION_NEEDS_HUMAN, p),
+  );
+  // Campaign C4 §P3 — the unanswered-SLA alert rides the same outbound Discord
+  // path (explicit wiring, NOT auto). Identity-masked message; the handler's
+  // settings read + format are guarded, the fetch un-awaited (NOTE 2).
+  bus.on(EVENT_NAMES.ESCALATION_SLA_BREACHED, (p) =>
+    handler(EVENT_NAMES.ESCALATION_SLA_BREACHED, p),
   );
 }

@@ -39,6 +39,13 @@ export const EVENT_NAMES = {
   ESCALATION_ANSWERED: "escalation.answered",
   ESCALATION_RESOLVED: "escalation.resolved",
   ESCALATION_NEEDS_HUMAN: "escalation.needs_human",
+  // Campaign C4 §P3 — the on-read, edge-triggered unanswered-SLA alert. Fired
+  // as a side effect of computeEscalationMetrics once per breach episode,
+  // latched on escalation_alert_state, identity-masked (aggregate count +
+  // oldest age, NO escalation/holder id). onAll auto-forwards (entityType
+  // "project" → project frame action "sla_breached"); drives the SSE toast +
+  // Discord alerts-listener case. Mirrors NOTE_BACKLOG_ALERT.
+  ESCALATION_SLA_BREACHED: "escalation.sla_breached",
 
   // Epic events
   EPIC_CREATED: "epic.created",

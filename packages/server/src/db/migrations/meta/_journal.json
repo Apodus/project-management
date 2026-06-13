@@ -218,6 +218,13 @@
       "when": 1781341417063,
       "tag": "0030_careful_karma",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1781353148649,
+      "tag": "0031_fluffy_expediter",
+      "breakpoints": true
     }
   ]
 }
