@@ -60,6 +60,14 @@ const NotesPage = lazyRouteComponent(
   () => import("@/pages/notes-page"),
   "NotesPage",
 );
+const EscalationsPage = lazyRouteComponent(
+  () => import("@/pages/escalations-page"),
+  "EscalationsPage",
+);
+const EscalationTimelinePage = lazyRouteComponent(
+  () => import("@/pages/escalation-timeline-page"),
+  "EscalationTimelinePage",
+);
 const TaskDetailPage = lazyRouteComponent(
   () => import("@/pages/task-detail-page"),
   "TaskDetailPage",
@@ -234,6 +242,35 @@ const projectNotesRoute = createRoute({
     status: typeof search.status === "string" ? search.status : undefined,
     q: typeof search.q === "string" ? search.q : undefined,
   }),
+});
+
+// Search params type for the escalations dashboard (deep-link filters)
+export interface EscalationsSearch {
+  status?: string;
+  kind?: string;
+  severity?: string;
+  originRepo?: string;
+}
+
+// /projects/$projectId/escalations — agent escalation dashboard (Campaign C4)
+const projectEscalationsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/escalations",
+  component: EscalationsPage,
+  validateSearch: (search: Record<string, unknown>): EscalationsSearch => ({
+    status: typeof search.status === "string" ? search.status : undefined,
+    kind: typeof search.kind === "string" ? search.kind : undefined,
+    severity: typeof search.severity === "string" ? search.severity : undefined,
+    originRepo:
+      typeof search.originRepo === "string" ? search.originRepo : undefined,
+  }),
+});
+
+// /projects/$projectId/escalations/$escalationId — per-escalation timeline
+const projectEscalationTimelineRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/escalations/$escalationId",
+  component: EscalationTimelinePage,
 });
 
 // Search params type for task list
@@ -441,6 +478,8 @@ const routeTree = rootRoute.addChildren([
       projectRoadmapRoute,
       projectActivityRoute,
       projectClaimsRoute,
+      projectEscalationsRoute,
+      projectEscalationTimelineRoute,
       projectMilestonesRoute,
       projectTrainRoute,
       projectTrainAuditRoute,

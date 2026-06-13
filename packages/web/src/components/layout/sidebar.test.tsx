@@ -14,6 +14,9 @@ vi.mock("@tanstack/react-router", () => ({
 const mocks = vi.hoisted(() => ({
   useProjects: vi.fn(() => ({ data: [] })),
   useNotesHealth: vi.fn(),
+  useEscalations: vi.fn(
+    (): { data?: { pagination: { total: number } } } => ({ data: undefined }),
+  ),
   useClaimsHealth: vi.fn(
     (): { data?: { stale_count: number; oldest_stale_age_ms: number | null } } => ({
       data: undefined,
@@ -23,6 +26,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/hooks/use-projects", () => ({ useProjects: mocks.useProjects }));
 vi.mock("@/hooks/use-notes", () => ({ useNotesHealth: mocks.useNotesHealth }));
+vi.mock("@/hooks/use-escalations", () => ({ useEscalations: mocks.useEscalations }));
 vi.mock("@/hooks/use-train", () => ({ useClaimsHealth: mocks.useClaimsHealth }));
 vi.mock("@/hooks/use-auth", () => ({ useCurrentUser: mocks.useCurrentUser }));
 
@@ -44,6 +48,7 @@ describe("Sidebar Inbox count badge", () => {
   beforeEach(() => {
     mocks.useNotesHealth.mockReset();
     mocks.useClaimsHealth.mockReturnValue({ data: undefined });
+    mocks.useEscalations.mockReturnValue({ data: undefined });
   });
 
   it("shows the open-note count next to Inbox when > 0", () => {
@@ -109,6 +114,32 @@ describe("Sidebar Inbox count badge", () => {
       </TooltipProvider>,
     );
     expect(screen.getByText("Claims")).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  // Campaign C4 (escalation channel) — the Escalations entry surfaces the open
+  // escalation count from useEscalations(status:open).
+  it("shows the open-escalation count next to Escalations when > 0", () => {
+    mocks.useNotesHealth.mockReturnValue({ data: undefined });
+    mocks.useEscalations.mockReturnValue({ data: { pagination: { total: 5 } } });
+    render(
+      <TooltipProvider>
+        <Sidebar />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("Escalations")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+  });
+
+  it("hides the Escalations count when total is 0", () => {
+    mocks.useNotesHealth.mockReturnValue({ data: undefined });
+    mocks.useEscalations.mockReturnValue({ data: { pagination: { total: 0 } } });
+    render(
+      <TooltipProvider>
+        <Sidebar />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("Escalations")).toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 });

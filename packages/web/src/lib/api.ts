@@ -41,6 +41,9 @@ export type CreateNote = components["schemas"]["CreateNote"];
 export type PatchNote = components["schemas"]["PatchNote"];
 export type PromotedProposal = components["schemas"]["PromotedProposal"];
 export type PromotedTask = components["schemas"]["PromotedTask"];
+export type Escalation = components["schemas"]["Escalation"];
+export type EscalationMessage = components["schemas"]["EscalationMessage"];
+export type EscalationWithThread = components["schemas"]["EscalationWithThread"];
 
 /**
  * The persisted `settings.integrator.resolver` shape (Phase 7.6). `command` is
@@ -442,6 +445,46 @@ export async function promoteNoteToTask(
     body: JSON.stringify(body ?? {}),
     rawResponse: true,
   });
+}
+
+// ---- Escalations API (Campaign C4 — agent escalation channel, read-only web) ----
+
+// The list envelope is an inline server shape (not a named schema), so type it
+// locally — mirrors how getNotes types its {data,pagination}.
+export interface EscalationListResult {
+  data: Escalation[];
+  pagination: { total: number };
+}
+
+export interface EscalationFilters {
+  status?: Escalation["status"];
+  kind?: Escalation["kind"];
+  severity?: NonNullable<Escalation["severity"]>;
+  originRepo?: string;
+  originWorkerKey?: string;
+  holderId?: string;
+}
+
+export async function getEscalations(
+  projectId: string,
+  filters?: EscalationFilters,
+): Promise<EscalationListResult> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.kind) params.set("kind", filters.kind);
+  if (filters?.severity) params.set("severity", filters.severity);
+  if (filters?.originRepo) params.set("originRepo", filters.originRepo);
+  if (filters?.originWorkerKey) params.set("originWorkerKey", filters.originWorkerKey);
+  if (filters?.holderId) params.set("holderId", filters.holderId);
+  const query = params.toString();
+  return apiFetch<EscalationListResult>(
+    `/projects/${projectId}/escalations${query ? `?${query}` : ""}`,
+    { rawResponse: true },
+  );
+}
+
+export async function getEscalation(id: string): Promise<EscalationWithThread> {
+  return apiFetch<EscalationWithThread>(`/escalations/${id}`);
 }
 
 // ---- Search API (Campaign C4) ----

@@ -17,6 +17,7 @@ import {
   HelpCircle,
   Bell,
   Settings,
+  Siren,
   Tags,
   TrainFront,
   Wrench,
@@ -40,6 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/hooks/use-projects";
 import { useNotesHealth } from "@/hooks/use-notes";
+import { useEscalations } from "@/hooks/use-escalations";
 import { useClaimsHealth } from "@/hooks/use-train";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
@@ -100,6 +102,12 @@ function getNavItems(projectId: string | null): NavItem[] {
       icon: Hand,
       href: projectId ? `${base}/claims` : "/projects",
       matchPath: "/claims",
+    },
+    {
+      label: "Escalations",
+      icon: Siren,
+      href: projectId ? `${base}/escalations` : "/projects",
+      matchPath: "/escalations",
     },
     {
       label: "Train",
@@ -183,6 +191,11 @@ export function Sidebar() {
   // Dedups with app-layout's stale-claim poll via the shared trainKeys.claimsHealth
   // key — no extra fetch. Surfaces the STALE count (the actionable number).
   const { data: claimsHealth } = useClaimsHealth(currentProjectId ?? undefined);
+  // Open-escalation count for the Escalations badge (Campaign C4). Scoped to
+  // status:open — the actionable backlog. Hidden when 0/undefined (NavLink guard).
+  const { data: openEscalations } = useEscalations(currentProjectId ?? undefined, {
+    status: "open",
+  });
   const { data: projects } = useProjects();
   const { data: user } = useCurrentUser();
   const isAdmin = user?.role === "admin";
@@ -304,7 +317,9 @@ export function Sidebar() {
                 ? { ...item, badgeCount: notesHealth?.open_count }
                 : item.label === "Claims"
                   ? { ...item, badgeCount: claimsHealth?.stale_count }
-                  : item
+                  : item.label === "Escalations"
+                    ? { ...item, badgeCount: openEscalations?.pagination.total }
+                    : item
             }
             collapsed={collapsed}
           />

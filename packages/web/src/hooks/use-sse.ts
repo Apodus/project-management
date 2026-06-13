@@ -10,6 +10,7 @@ import { taskKeys } from "./use-tasks";
 import { epicKeys } from "./use-epics";
 import { trainKeys } from "./use-train";
 import { noteKeys } from "./use-notes";
+import { escalationKeys } from "./use-escalations";
 import { claimKeys } from "./use-claims";
 import { useConnectionStore } from "@/stores/connection-store";
 
@@ -60,6 +61,12 @@ export function getInvalidationKeys(
       // note detail, and notes health together (note.backlog_alert is toast-only,
       // handled in maybeShowToast — the health poll owns its refresh).
       return [noteKeys.all];
+    case "escalation":
+      // escalation.* (Campaign C4) — escalationKeys.all = ["escalations"] is the
+      // prefix of lists()/detail(): one entry refreshes the dashboard list and
+      // any open escalation timeline together. (SLA toast is a later phase —
+      // P1 is pure invalidation.)
+      return [escalationKeys.all];
     default:
       return [];
   }
@@ -301,6 +308,15 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       "note.dismissed",
       "note.promoted",
       "note.backlog_alert",
+      // Agent escalation channel (Campaign C4) — lifecycle invalidates
+      // escalationKeys.all (dashboard list + any open timeline). Pure
+      // invalidation in P1 (no toast).
+      "escalation.opened",
+      "escalation.acknowledged",
+      "escalation.replied",
+      "escalation.answered",
+      "escalation.resolved",
+      "escalation.needs_human",
       // Break-glass audit — an R1-override was recorded → refresh the audit log.
       "audit.recorded",
     ];
