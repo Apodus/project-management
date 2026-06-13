@@ -1,0 +1,136 @@
+/**
+ * Standalone HTTP client for the PM escalation REST surface (responder slice).
+ *
+ * A deliberately minimal trim of the wake daemon's pm-client: the responder
+ * only ever touches three endpoints — open-escalations list (per project),
+ * acknowledge (claim), and /auth/me (resolve selfId once at startup). Single
+ * source of truth for the view types is @pm/shared.
+ */
+import type { Escalation } from "@pm/shared";
+
+export class PmApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "PmApiError";
+  }
+}
+
+/** The minimal self-identity slice the responder reads from /auth/me. */
+export interface SelfIdentity {
+  id: string;
+  type: string;
+}
+
+export interface ResponderClientOptions {
+  baseUrl: string;
+  token: string;
+  fetchImpl?: typeof fetch;
+}
+
+export class ResponderClient {
+  private readonly baseUrl: string;
+  private readonly token: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(opts: ResponderClientOptions) {
+    this.baseUrl = opts.baseUrl.replace(/\/+$/, "");
+    this.token = opts.token;
+    this.fetchImpl = opts.fetchImpl ?? fetch;
+  }
+
+  private async request<T>(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
+    const url = `${this.baseUrl}/api/v1${path}`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.token}`,
+      Accept: "application/json",
+    };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    // Wrap EVERY transport failure as a PmApiError so the loop can discriminate
+    // an infra fault (status 0) from a real HTTP status (403/409/5xx). A `fetch`
+    // rejection (connection refused/reset/DNS/abort → raw TypeError) would
+    // otherwise escape un-typed.
+    let res: Awaited<ReturnType<typeof fetch>>;
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch (err) {
+      throw new PmApiError(
+        0,
+        "NETWORK",
+        `network error calling ${method} ${url}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      if (!res.ok) {
+        throw new PmApiError(res.status, "UNKNOWN_ERROR", `HTTP ${res.status}`);
+      }
+      return undefined as T;
+    }
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch (err) {
+      throw new PmApiError(
+        0,
+        "PARSE",
+        `failed to parse JSON from ${method} ${url}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (!res.ok) {
+      const err = (json as { error?: { code?: string; message?: string } })?.error;
+      throw new PmApiError(
+        res.status,
+        err?.code ?? "UNKNOWN_ERROR",
+        err?.message ?? `HTTP ${res.status}`,
+      );
+    }
+    // Both the list (`{ data, pagination }`) and the single-entity responses
+    // (`{ data }`) carry the payload under `.data` — unwrap it uniformly. The
+    // list's pagination envelope is discarded; the responder reads only `.data`.
+    if (json && typeof json === "object" && "data" in json) {
+      return (json as { data: T }).data;
+    }
+    return json as T;
+  }
+
+  /**
+   * The project's OPEN escalations. Unwraps the `{ data, pagination }` list
+   * envelope to the bare array. The seed/no-recursion filter (holder null,
+   * author != self) lives in the loop, not here.
+   */
+  listOpenEscalations(projectId: string): Promise<Escalation[]> {
+    return this.request<Escalation[]>(
+      "GET",
+      `/projects/${encodeURIComponent(projectId)}/escalations?status=open`,
+    );
+  }
+
+  /**
+   * Acknowledge (claim) an escalation. No body. An ai_agent acking an unclaimed
+   * open escalation auto-claims it (holderId ← actor). A DIFFERENT agent acking
+   * a held one → 403; acking a non-open → 409.
+   */
+  acknowledge(id: string): Promise<Escalation> {
+    return this.request<Escalation>(
+      "POST",
+      `/escalations/${encodeURIComponent(id)}/acknowledge`,
+    );
+  }
+
+  /** Resolve this responder's own identity (used once at startup for selfId). */
+  getMe(): Promise<SelfIdentity> {
+    return this.request<SelfIdentity>("GET", "/auth/me");
+  }
+}
