@@ -8,7 +8,7 @@ import {
   type TestApp,
 } from "../utils.js";
 import { createId } from "@pm/shared";
-import { users, type AppDatabase } from "../../src/db/index.js";
+import { users, mergeRequests, type AppDatabase } from "../../src/db/index.js";
 
 // A token-bearing HUMAN distinct from the default admin (for non-author
 // human resolve/ack cases). createTestUser yields no token; createTestAiAgent
@@ -788,8 +788,75 @@ describe("Escalations API", () => {
         needs_human: 0,
       });
       expect(d.by_kind).toEqual({ bug_report: 0, question: 0, request: 0, blocked: 0 });
+      expect(d.auto_implement).toEqual({
+        auto_implemented_escalations: 0,
+        landed: 0,
+        rejected: 0,
+        reverts: 0,
+        land_rate: null,
+        reject_rate: null,
+        revert_rate: null,
+      });
       expect(d.total).toBe(0);
       expect(typeof d.computed_at).toBe("string");
+    });
+
+    it("auto_implement reflects escalation-linked merge_requests (snake_cased)", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const e1 = await raise(testApp, project.id, { body: { title: "a1" } });
+      const e2 = await raise(testApp, project.id, { body: { title: "a2" } });
+      const now = new Date().toISOString();
+      const seedMr = (status: string, escalationId: string, revertOf: string | null = null) => {
+        testApp.db
+          .insert(mergeRequests)
+          .values({
+            id: createId(),
+            projectId: project.id,
+            resource: "main",
+            submittedBy: agent.user.id,
+            taskId: null,
+            branch: null,
+            commitSha: null,
+            verifyCmd: null,
+            worktreePath: null,
+            groupId: null,
+            escalationId,
+            revertOf,
+            status,
+            enqueuedAt: now,
+            pickedUpAt: null,
+            resolvedAt: null,
+            landedSha: null,
+            rejectCategory: null,
+            rejectReason: null,
+            failedFiles: null,
+            logExcerpt: null,
+            logUrl: null,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run();
+      };
+      seedMr("landed", e1.id);
+      seedMr("landed", e2.id);
+      seedMr("rejected", e1.id);
+      seedMr("landed", e1.id, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/escalations/metrics`,
+      );
+      expect(res.status).toBe(200);
+      const d = (await res.json()).data;
+      expect(d.auto_implement.auto_implemented_escalations).toBe(2);
+      expect(d.auto_implement.landed).toBe(3);
+      expect(d.auto_implement.rejected).toBe(1);
+      expect(d.auto_implement.reverts).toBe(1);
+      expect(d.auto_implement.land_rate).toBe(0.75);
+      expect(d.auto_implement.reject_rate).toBe(0.25);
+      expect(d.auto_implement.revert_rate).toBeCloseTo(1 / 3);
     });
 
     it("reflects seeded escalations (open backlog + by_status/by_kind)", async () => {

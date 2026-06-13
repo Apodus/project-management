@@ -885,6 +885,7 @@ describe("merge-group service", () => {
         "resolvedAt",
         "resolvedFrom",
         "resource",
+        "revertOf",
         "status",
         "submittedBy",
         "synthetic",

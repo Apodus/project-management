@@ -436,6 +436,7 @@ describe("Merge Groups API", () => {
         "resolvedAt",
         "resolvedFrom",
         "resource",
+        "revertOf",
         "status",
         "submittedBy",
         "synthetic",

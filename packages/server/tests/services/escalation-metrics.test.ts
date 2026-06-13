@@ -6,7 +6,7 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import { escalations, escalationMessages } from "../../src/db/index.js";
+import { escalations, escalationMessages, mergeRequests } from "../../src/db/index.js";
 import * as metrics from "../../src/services/escalation-metrics.service.js";
 
 // A fixed reference "now" so oldest-age / durations are deterministic.
@@ -90,6 +90,51 @@ function seedMessage(
     .run();
 }
 
+// A4 §P4: seed a merge_request. escalationId IS NOT NULL = the auto-implement
+// universe (null on every normal worker/MCP MR); revertOf marks a revert MR.
+function seedMergeRequest(
+  testApp: TestApp,
+  args: {
+    projectId: string;
+    submittedBy: string;
+    status: string;
+    escalationId?: string | null;
+    revertOf?: string | null;
+  },
+): void {
+  const id = createId();
+  const now = ago(HOUR);
+  testApp.db
+    .insert(mergeRequests)
+    .values({
+      id,
+      projectId: args.projectId,
+      resource: "main",
+      submittedBy: args.submittedBy,
+      taskId: null,
+      branch: null,
+      commitSha: null,
+      verifyCmd: null,
+      worktreePath: null,
+      groupId: null,
+      escalationId: args.escalationId ?? null,
+      revertOf: args.revertOf ?? null,
+      status: args.status,
+      enqueuedAt: now,
+      pickedUpAt: null,
+      resolvedAt: null,
+      landedSha: null,
+      rejectCategory: null,
+      rejectReason: null,
+      failedFiles: null,
+      logExcerpt: null,
+      logUrl: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+}
+
 describe("escalation-metrics.service", () => {
   let testApp: TestApp;
   let projectId: string;
@@ -125,6 +170,15 @@ describe("escalation-metrics.service", () => {
       needsHuman: 0,
     });
     expect(m.byKind).toEqual({ bugReport: 0, question: 0, request: 0, blocked: 0 });
+    expect(m.autoImplement).toEqual({
+      autoImplementedEscalations: 0,
+      landed: 0,
+      rejected: 0,
+      reverts: 0,
+      landRate: null,
+      rejectRate: null,
+      revertRate: null,
+    });
     expect(m.computedAt).toBe(NOW);
   });
 
@@ -264,5 +318,80 @@ describe("escalation-metrics.service", () => {
     });
     expect(m.byKind).toEqual({ bugReport: 2, question: 1, request: 1, blocked: 1 });
     expect(m.total).toBe(5);
+  });
+
+  // ── auto_implement (Campaign A4 §P4) ────────────────────────────
+
+  it("auto_implement is inert (zeros, null rates) when no escalation-linked MRs exist", () => {
+    // A normal worker/MCP MR (escalationId null) must NOT contribute.
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "landed",
+      escalationId: null,
+    });
+
+    const m = metrics.computeEscalationMetrics(projectId, NOW);
+    expect(m.autoImplement).toEqual({
+      autoImplementedEscalations: 0,
+      landed: 0,
+      rejected: 0,
+      reverts: 0,
+      landRate: null,
+      rejectRate: null,
+      revertRate: null,
+    });
+  });
+
+  it("auto_implement land/reject rates over escalation-linked MRs", () => {
+    const e1 = seedEscalation(testApp, { projectId, authorId });
+    const e2 = seedEscalation(testApp, { projectId, authorId });
+    const e3 = seedEscalation(testApp, { projectId, authorId });
+    // 3 landed + 1 rejected, all escalation-linked.
+    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e1 });
+    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e2 });
+    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e3 });
+    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "rejected", escalationId: e1 });
+
+    const m = metrics.computeEscalationMetrics(projectId, NOW);
+    expect(m.autoImplement.landed).toBe(3);
+    expect(m.autoImplement.rejected).toBe(1);
+    expect(m.autoImplement.landRate).toBe(0.75);
+    expect(m.autoImplement.rejectRate).toBe(0.25);
+    expect(m.autoImplement.revertRate).toBe(0); // 0 reverts / 3 landed
+  });
+
+  it("auto_implement counts a revertOf-bearing MR + revert_rate over landed", () => {
+    const e1 = seedEscalation(testApp, { projectId, authorId });
+    const e2 = seedEscalation(testApp, { projectId, authorId });
+    // 2 landed, 1 of which is later reverted (the revert MR is itself
+    // escalation-linked, status landed, revertOf set).
+    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e1 });
+    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e2 });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "landed",
+      escalationId: e1,
+      revertOf: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    });
+
+    const m = metrics.computeEscalationMetrics(projectId, NOW);
+    expect(m.autoImplement.reverts).toBe(1);
+    // landed=3 (2 originals + the revert MR itself landed); revert_rate = 1/3.
+    expect(m.autoImplement.landed).toBe(3);
+    expect(m.autoImplement.revertRate).toBeCloseTo(1 / 3);
+  });
+
+  it("auto_implemented_escalations is the DISTINCT escalationId count", () => {
+    const e1 = seedEscalation(testApp, { projectId, authorId });
+    const e2 = seedEscalation(testApp, { projectId, authorId });
+    // 3 MRs but only 2 distinct escalations (e1 has two MRs).
+    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e1 });
+    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "rejected", escalationId: e1 });
+    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e2 });
+
+    const m = metrics.computeEscalationMetrics(projectId, NOW);
+    expect(m.autoImplement.autoImplementedEscalations).toBe(2);
   });
 });

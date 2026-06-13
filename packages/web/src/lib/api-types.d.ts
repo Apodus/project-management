@@ -14705,6 +14705,15 @@ export interface components {
                 request: number;
                 blocked: number;
             };
+            auto_implement: {
+                auto_implemented_escalations: number;
+                landed: number;
+                rejected: number;
+                reverts: number;
+                land_rate: number | null;
+                reject_rate: number | null;
+                revert_rate: number | null;
+            };
             total: number;
             computed_at: string;
         };

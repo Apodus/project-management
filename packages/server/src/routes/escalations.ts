@@ -155,6 +155,19 @@ const escalationMetricsSchema = z
       request: z.number(),
       blocked: z.number(),
     }),
+    // Campaign A4 §P4 — auto-implement DATA surface (A5 visualizes). Derived
+    // from merge_requests scoped to (project AND escalationId IS NOT NULL):
+    // land/reject/revert rates. No spend (no token source). Inert (zeros, null
+    // rates) when no escalation-linked MRs exist ⇒ byte-identical pre-A4.
+    auto_implement: z.object({
+      auto_implemented_escalations: z.number(),
+      landed: z.number(),
+      rejected: z.number(),
+      reverts: z.number(),
+      land_rate: z.number().nullable(),
+      reject_rate: z.number().nullable(),
+      revert_rate: z.number().nullable(),
+    }),
     total: z.number(),
     computed_at: z.string(),
   })
@@ -647,6 +660,15 @@ function metricsToResponse(
       question: bundle.byKind.question,
       request: bundle.byKind.request,
       blocked: bundle.byKind.blocked,
+    },
+    auto_implement: {
+      auto_implemented_escalations: bundle.autoImplement.autoImplementedEscalations,
+      landed: bundle.autoImplement.landed,
+      rejected: bundle.autoImplement.rejected,
+      reverts: bundle.autoImplement.reverts,
+      land_rate: bundle.autoImplement.landRate,
+      reject_rate: bundle.autoImplement.rejectRate,
+      revert_rate: bundle.autoImplement.revertRate,
     },
     total: bundle.total,
     computed_at: bundle.computedAt,

@@ -530,6 +530,32 @@ duplicate-epic window. **No-recursion is structural** — phase MRs are self-aut
 A1 session; the per-phase land IS the A2 train), additive, with answer-mode/bounded-implement/A2/C1-C4
 **byte-identical**. Spec: `roadmaps/roadmap-20260613-2210-a3-autonomous-drive.md`.
 
+**Auto-implement guardrails — budget + revert + reclaim + metrics (Campaign A4).** The trust-first
+arc that makes turning A3 **loose** safe **for cost** — governance + insurance, NOT a human-approval
+gate (the merge-train verify gate is the structural floor; `main` never breaks). Same
+`auto_implement.enabled` (**default FALSE**; ships **OFF**). Four levers. (1) **Budget** — a
+**max-concurrent-arcs** admission gate + a **max-arc-duration** lifetime cap, both **server-derived**
+(an arc's in-flight set + age are re-derived from PM rows each tick, so they survive a daemon restart);
+generous defaults (`PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS=100`, `..._MAX_ARC_DURATION_SEC=604800`).
+On admission-over-budget → the disposition is **held + escalated** (governance, not distrust); on a
+duration-cap breach → **escalate-to-human with the partial progress** (no proven work discarded). A
+**token budget is DEFERRED** — no token source (runners declare `tokensConsumed` but never report it
+back). (2) **Revert** — a landed auto-fix judged wrong is undone by `POST
+/projects/{id}/merge-requests/revert` (a **branchless** MR carrying `revertOf=<landed_sha>`; the
+integrator materializes `git revert <sha>` at pickup and the **verify-gated train lands it** — `main`
+never breaks even reverting). Deterministic, **no injection** (no model in the loop), migration 0033
+(`merge_requests.revert_of`), reuses the **A2 land/reject post-back**, **single-sha v1**. (3)
+**Reclaim** — `isMrStalled` is now checked at **both** the submit-then-wait points (it fixed a latent
+P1 dead duration-cap), and a stranded/stalled drive is **reconciled** (work landed out-of-band →
+resolve) **or escalated** (→ needs_human + comment) with the **branch (MR row) preserved** — no arc
+stuck forever. (4) **Metrics** for A5 — an **additive** `auto_implement` sub-block on `GET
+…/escalations/metrics` (land/reject/**revert** rates **derived from `merge_requests`** scoped to
+`escalationId IS NOT NULL` — the auto-implement universe — via `status` + `revertOf`); **spend
+omitted** (no token source); A4 produces the **DATA**, A5 visualizes (no dashboard here). Inert (zeros,
+null rates) with no linked MRs. **No migration for the metrics** (derived). Everything additive:
+auto-implement/A1–A3/answer-mode/C1–C4 **byte-identical**; ships `enabled=false`. Spec:
+`roadmaps/roadmap-20260614-0030-a4-budget-revert-reclaim.md`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:

@@ -1,10 +1,11 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { createId, ESCALATION_SLA_BREACH_THRESHOLD_MS } from "@pm/shared";
 import {
   getDb,
   escalations,
   escalationMessages,
   escalationAlertState,
+  mergeRequests,
   projects,
 } from "../db/index.js";
 import { AppError } from "../types.js";
@@ -69,6 +70,31 @@ export interface EscalationByKind {
   blocked: number;
 }
 
+// ─── Auto-implement metric (Campaign A4 §P4) ──────────────────────
+//
+// The DATA surface A5 visualizes — the vision's "monitored verify-quality
+// dependency" made legible (autonomous land is only as good as the verify
+// suite; this surfaces the land/reject/revert rates so the dependency is
+// monitored, not blind). It is **escalation-LINKED-MR-derived**: every figure
+// comes from merge_requests scoped to (projectId AND escalationId IS NOT NULL)
+// — the auto-implement/drive universe, since escalationId is null on every
+// normal worker/MCP request. So it counts escalations the auto-implement path
+// LANDED-or-attempted, NOT escalations merely routed (routing is
+// responder-local — there is no PM row for it). NO spend figure: A4 P1 deferred
+// token accounting (runners declare tokensConsumed but never report it back),
+// so spend-per-arc is parked to a later campaign. INERT (all zeros, null rates)
+// when no linked MRs exist ⇒ byte-identical to pre-A4.
+export interface AutoImplementMetric {
+  autoImplementedEscalations: number; // COUNT(DISTINCT escalationId) over escalation-linked MRs
+  landed: number; // status='landed'
+  rejected: number; // status='rejected'
+  reverts: number; // revertOf IS NOT NULL
+  landRate: number | null; // landed / (landed+rejected); null if (landed+rejected)===0
+  rejectRate: number | null; // rejected / (landed+rejected); null if 0
+  revertRate: number | null; // reverts / landed; null if landed===0
+  // spendPerArc OMITTED — no token source (A4 P1 deferred token accounting).
+}
+
 export interface EscalationMetricsBundle {
   timeToFirstResponse: EscalationPercentilePair;
   timeToResolve: EscalationPercentilePair;
@@ -77,6 +103,7 @@ export interface EscalationMetricsBundle {
   openBacklog: OpenBacklogMetric;
   byStatus: EscalationByStatus;
   byKind: EscalationByKind;
+  autoImplement: AutoImplementMetric;
   total: number;
   computedAt: string;
 }
@@ -172,6 +199,51 @@ function percentile(sortedAsc: number[], p: number): number | null {
   if (n === 0) return null;
   const idx = Math.min(Math.max(Math.ceil((p / 100) * n) - 1, 0), n - 1);
   return sortedAsc[idx];
+}
+
+/**
+ * Compute the auto-implement metric sub-block (Campaign A4 §P4) for a project.
+ * ONE fetch over merge_requests scoped to (projectId AND escalationId IS NOT
+ * NULL) — the auto-implement/drive universe — then aggregate in memory (the
+ * single-fetch-then-aggregate idiom of computeEscalationMetrics). See the
+ * AutoImplementMetric doc comment for the semantics. INERT (zeros, null rates)
+ * when no linked MRs exist ⇒ byte-identical to pre-A4.
+ */
+function computeAutoImplement(projectId: string): AutoImplementMetric {
+  const db = getDb();
+  const rows = db
+    .select({
+      escalationId: mergeRequests.escalationId,
+      status: mergeRequests.status,
+      revertOf: mergeRequests.revertOf,
+    })
+    .from(mergeRequests)
+    .where(
+      and(eq(mergeRequests.projectId, projectId), isNotNull(mergeRequests.escalationId)),
+    )
+    .all();
+
+  const escalationIds = new Set<string>();
+  let landed = 0;
+  let rejected = 0;
+  let reverts = 0;
+  for (const r of rows) {
+    if (r.escalationId !== null) escalationIds.add(r.escalationId);
+    if (r.status === "landed") landed++;
+    else if (r.status === "rejected") rejected++;
+    if (r.revertOf !== null) reverts++;
+  }
+
+  const decided = landed + rejected;
+  return {
+    autoImplementedEscalations: escalationIds.size,
+    landed,
+    rejected,
+    reverts,
+    landRate: decided === 0 ? null : landed / decided,
+    rejectRate: decided === 0 ? null : rejected / decided,
+    revertRate: landed === 0 ? null : reverts / landed,
+  };
 }
 
 // ─── Public API ───────────────────────────────────────────────────
@@ -401,6 +473,7 @@ export function computeEscalationMetrics(
     openBacklog,
     byStatus,
     byKind,
+    autoImplement: computeAutoImplement(projectId),
     total,
     computedAt: nowIso,
   };

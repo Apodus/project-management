@@ -2300,6 +2300,44 @@
               "blocked"
             ]
           },
+          "auto_implement": {
+            "type": "object",
+            "properties": {
+              "auto_implemented_escalations": {
+                "type": "number"
+              },
+              "landed": {
+                "type": "number"
+              },
+              "rejected": {
+                "type": "number"
+              },
+              "reverts": {
+                "type": "number"
+              },
+              "land_rate": {
+                "type": "number",
+                "nullable": true
+              },
+              "reject_rate": {
+                "type": "number",
+                "nullable": true
+              },
+              "revert_rate": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "required": [
+              "auto_implemented_escalations",
+              "landed",
+              "rejected",
+              "reverts",
+              "land_rate",
+              "reject_rate",
+              "revert_rate"
+            ]
+          },
           "total": {
             "type": "number"
           },
@@ -2315,6 +2353,7 @@
           "open_backlog",
           "by_status",
           "by_kind",
+          "auto_implement",
           "total",
           "computed_at"
         ]

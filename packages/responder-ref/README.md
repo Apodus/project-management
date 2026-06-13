@@ -74,6 +74,9 @@ projects the operator has opted in (no project ⇒ config error, exit 2).
 | `PM_RESPONDER_GIT_REMOTE`         | `origin`                | Remote the implement branch pushes to                      |
 | `PM_RESPONDER_GIT_MAIN_BRANCH`    | `main`                  | Main branch the worktree resets to / diffs against         |
 | `PM_RESPONDER_GIT_CLEAN_KEEP`     | (empty)                 | CSV of paths to preserve across the worktree git-clean      |
+| `PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS` | `100`             | Budget (Campaign A4): max in-flight auto-implement/drive arcs; admission over budget holds + escalates the disposition (governance, not a gate) |
+| `PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC` | `604800`         | Budget (A4): per-arc lifetime cap (server-derived from arc age, restart-resilient); a breach escalates-to-human with the partial progress |
+| `PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC` | `86400`             | Reclaim (A4): a submitted-but-unlanded phase MR idle past this is reconciled-or-escalated (branch preserved); no arc stuck forever |
 
 ## Auto-implement (Campaign A1)
 
@@ -153,6 +156,34 @@ terminal). The drive is a **superset of the A1 bounded implement** (the per-phas
 executor IS the A1 session; the per-phase land IS the A2 train). Ships behind the
 auto-implement enable flag (**default `false`**); **no new env var, no new MCP
 tool**.
+
+## Guardrails (Campaign A4)
+
+The trust-first guardrails that make turning the autonomous drive **loose** safe
+**for cost** — governance + insurance, NOT a human-approval gate (the merge-train
+verify gate stays the structural floor; `main` never breaks). All behind the same
+`PM_AUTO_IMPLEMENT_ENABLED` (**default `false`**).
+
+1. **Budget** — a **max-concurrent-arcs** admission gate
+   (`PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS`, default 100) + a **max-arc-duration**
+   lifetime cap (`PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC`, default 604800), both
+   **server-derived** (the in-flight set + arc age are re-derived from PM rows each
+   tick — restart-resilient). Admission over budget **holds + escalates** the
+   disposition; a duration-cap breach **escalates-to-human with the partial
+   progress** (no proven work discarded). A token budget is **deferred** (no token
+   source — runners declare `tokensConsumed` but never report it back).
+2. **Revert** — a landed auto-fix judged wrong is undone by `POST
+   /projects/{id}/merge-requests/revert`, a **branchless** MR carrying
+   `revertOf=<landed_sha>`; the integrator materializes `git revert <sha>` at pickup
+   and the **verify-gated train lands it** (`main` never breaks even reverting).
+   Deterministic, no model in the loop, reuses the A2 post-back; single-sha v1.
+3. **Reclaim** — a submitted-but-unlanded phase MR idle past
+   `PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC` (default 86400) is **reconciled** (landed
+   out-of-band → resolve) **or escalated** (→ needs_human + comment) with the branch
+   (MR row) **preserved** — no arc stuck forever.
+4. **Metrics** — the PM side exposes an additive `auto_implement` sub-block on `GET
+   …/escalations/metrics` (land/reject/**revert** rates from `merge_requests`); A4
+   produces the DATA, A5's dashboard visualizes. Spend is omitted (no token source).
 
 Exit code 2 = configuration error (no token / no project / bad mode); exit 1 =
 unexpected runtime error (e.g. `/auth/me` unreachable when enabled).
