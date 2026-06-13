@@ -1,0 +1,22 @@
+{
+  "campaign": "Repo-wide quality consolidation (vision arc)",
+  "roadmap": "roadmaps/vision-20260610-repo-quality-consolidation.md",
+  "status": "COMPLETE — all 5 campaigns shipped and merged to local main @ bfdf079 (2026-06-11)",
+  "campaigns": [
+    { "id": "C1", "title": "CI guardrail & config truth", "status": "SHIPPED @ 77389bd", "highlight": "ci.yml deliberate-red-proven; first run caught + fixed a real rebase-identity production bug; release gates; config truth; vitest unified ^4.1.7; structural de-flakes" },
+    { "id": "C3", "title": "Claims operations web surface", "status": "SHIPPED @ 733aa83", "highlight": "claims panel + release-to/request-takeover dialogs + actionable stale toast + badge parity + epic picker; main chunk 1197→609 KB (60 chunks); e2e spec 07" },
+    { "id": "C5", "title": "Agent-surface symmetry", "status": "SHIPPED @ 40fef05", "highlight": "pm_get_epic_graph + pm_list_labels + proposals liveness render + render-audit id fixes; masking boundary preserved" },
+    { "id": "C2", "title": "Failure legibility & break-glass completeness", "status": "SHIPPED @ e272f80", "highlight": "force-land legality matrix + partial-group incident auto-resolve (R1 gap closed); durable releaseLock surfacing (migration 0028); resolver no-recursion seal; verify-cache guardrail; de-silence pass; env-driven alert grace" },
+    { "id": "C4", "title": "Notes truth layer", "status": "SHIPPED @ bfdf079", "highlight": "anchor/promotedTarget enrichment ('(removed)' on positive evidence); hybrid FTS inbox (78ms/500 notes); palette on FTS with Notes group; spec-01 root-cause de-flake; spec-06 load-gating; e2e 23/23 ×2" }
+  ],
+  "residuals": [
+    "main is 51 commits ahead of origin/main and NOT pushed — user decision; pushing activates the CI guardrail on GitHub",
+    "CI e2e job (non-blocking) is red on Linux runners PRE-EXISTING (worse on base than on C4's branch — strictly improved): local 23/23 ×2; documented cause hypothesis = module-level projectId state not surviving Playwright retry-in-fresh-worker + runner slowness; fix before flipping e2e to required",
+    "format:check CI step shipped DISABLED (main never prettier-clean — 359 files; enable via one dedicated tree-wide pnpm format commit)",
+    "pm_implement_proposal renders counts not created ids — needs a server response change (future slot-in)",
+    "backlog task 01KTS4ESZ29RJ4KA5N902QAWV0: bare lane can't ref-resolve single-repo INNER (rynx-only) branches — outside this arc; synthesize_outer is the documented workaround",
+    "campaign branches left on origin (campaign-c1-ci-guardrail/c2/c3/c4/c5) — deletable after main is pushed"
+  ],
+  "worktrees": "all five removed 2026-06-11",
+  "pm": "epic 01KTQS5YJ5XF6XK3H41Z6R901N with 5 campaign tasks — each carries a SHIPPED progress_update comment; statuses still backlog (claim-gated) — close via web UI"
+}

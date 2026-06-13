@@ -1,0 +1,20 @@
+{
+  "roadmap": "roadmap-20260610-xrepo-inner-only-groups.md",
+  "branch": "campaign-xrepo-inner-only-groups",
+  "worktree": "D:\\code\\pm-xrepo-inner-only-groups",
+  "base": "f42054c",
+  "completed": ["P0", "P1", "P2", "P3", "P4", "P5", "P6"],
+  "current": null,
+  "status": "COMPLETE",
+  "commits": {
+    "P1": "1d11d0a",
+    "P2": "d6a715b",
+    "P3": "c1fa85b",
+    "P5": "2ef4435",
+    "P4": "e3690f4"
+  },
+  "final_gate": "typecheck 6/6, lint 6/6, test 10/10 turbo (integrator 308 passed | 1 skipped), build 5/5 — green on e3690f4",
+  "open_issues": [],
+  "handoff": "See '## Ops handoff' in the roadmap: merge branch -> main, distribute.mjs redeploy to game_one, daemon restart (clean shell env), worker MCP reconnect, broadcast stop-minting-bump-branches.",
+  "dag_drift": []
+}
