@@ -245,6 +245,33 @@ export async function assignTaskViaAPI(
 }
 
 /**
+ * Helper to raise an escalation via the API directly (Campaign C1 — escalation
+ * channel). `originRepo` and `originWorkerKey` are REQUIRED provenance params.
+ * Returns the created escalation (POST → 201).
+ */
+export async function raiseEscalationViaAPI(
+  page: Page,
+  projectId: string,
+  data: {
+    kind: string;
+    title: string;
+    originRepo: string;
+    originWorkerKey: string;
+    body?: string;
+    severity?: string;
+  },
+): Promise<{ id: string; status: string; originRepo: string; originWorkerKey: string }> {
+  const response = await page.request.post(
+    `/api/v1/projects/${projectId}/escalations`,
+    { data },
+  );
+
+  expect(response.status()).toBe(201);
+  const json = await response.json();
+  return json.data;
+}
+
+/**
  * Wait for the page to settle after navigation (avoid networkidle with SSE).
  */
 export async function waitForPageReady(page: Page): Promise<void> {

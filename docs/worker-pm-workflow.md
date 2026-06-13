@@ -89,6 +89,62 @@ Before starting work in a subsystem — and again when you cross into a new area
 
 This is the boundary-time guard against cross-agent API drift (two agents reshaping the same subsystem from different tasks). If someone is already in flight in your area, coordinate (or pick different work) before you start editing.
 
+## Cross-team escalations (Campaign C1)
+
+An **escalation** is a bidirectional, directed, durable cross-team thread. It **replaces the human relay** — the old loop where a client-repo worker hit a wall, complained on the CLI, a human forwarded it to the platform/PM team, the PM reacted, and a human relayed the answer back. Now a client-repo (e.g. game_one) worker raises straight to the platform/PM project and the two teams converse **agent-to-agent**, with every turn recorded on an append-only thread.
+
+**When to raise.** Only for a cross-team issue you genuinely can't resolve inside your own repo — the platform tooling broke, you need to understand a platform behavior, you want a platform change, or you're blocked on the other team. The four `kind`s:
+
+- `bug_report` — platform tooling/infra broke (the merge train, an MCP tool, the integrator).
+- `question` — how does X work / what's the contract / where does Y live on the platform side.
+- `request` — you want a platform change (a new tool, a config knob, a behavior).
+- `blocked` — you can't proceed until the other team acts.
+
+**Client (worker) side flow.** You raise into the **platform/PM project** and pass your own provenance explicitly:
+
+```
+1. pm_raise_escalation(
+     project_id=<platform PM project>,
+     kind="bug_report" | "question" | "request" | "blocked",
+     title="...",
+     origin_repo=<your repo>,            ← REQUIRED, explicit
+     origin_worker_key=<your worker key>, ← REQUIRED, explicit
+     [body, severity, code_locator, anchor])
+2. pm_get_escalation(id)   ← poll for the reply.
+     (C2 will automate the wake; TODAY you poll on a later turn.)
+3. pm_reply_escalation(id, body)   ← continue the thread (clarify, confirm).
+4. pm_resolve_escalation(id, reason)  ← you, the author, may withdraw/close
+     at ANY non-terminal state once you're unblocked.
+```
+
+`origin_repo` and `origin_worker_key` are **required explicit params** — they stamp the thread with where it came from. The worker key is your durable `PM_WORKER_KEY` identity, but you **pass it explicitly here**, you don't rely on it being read from the env.
+
+**PM (platform) side flow.** You triage and answer escalations raised into your project:
+
+```
+1. pm_list_escalations(project_id, [status|kind|severity|origin_repo|...])
+2. pm_acknowledge_escalation(id)  ← the PM-side pickup; auto-claims the
+     thread to you (you become the holder, one responder per thread).
+3. pm_answer_escalation(id, body)  ← your diagnosis/answer (acknowledged → answered).
+4. pm_resolve_escalation(id, reason)  ← close it out.
+   pm_escalate_to_human(id, reason)   ← hand to a human from ANY non-terminal state.
+```
+
+**Lifecycle.**
+
+```
+open ──acknowledge──▶ acknowledged ──answer──▶ answered ──resolve──▶ resolved
+  │                        │                        │
+  └────────────────────────┴────────────────────────┴── author may resolve
+                           │                            (withdraw) from any
+                           │                            non-terminal state
+  any non-terminal ──escalate_to_human──▶ needs_human ──resolve──▶ resolved
+```
+
+**Authz (one line):** raise = any authenticated caller; reply = author OR holder OR human; acknowledge/answer = human OR the holder OR an unclaimed-thread pickup; resolve = the author (withdrawal, any non-terminal) OR the holder OR human (from answered/needs_human); escalate_to_human = author OR holder OR human.
+
+The **client-side worker docs** ship in the game_one distribute bundle (a separate repo — do **not** edit them from here; they're updated there) — this repo documents the **PM-server-side** channel.
+
 ## Proposal workflow
 
 **Autonomous pickup is the default.** When you see an available open proposal, act on it immediately — do not wait for CLI guidance or human permission to begin analysis.

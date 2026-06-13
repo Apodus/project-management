@@ -378,6 +378,35 @@ the holder and returns `notified_holder`). The arc does **NOT** flip `PM_LEASE_M
 decision; C1 made `on` safe; the lease still ships in `shadow`). Full spec:
 `docs/design/phase-c3-liveness-surfacing.md`.
 
+**Escalation channel (Campaign C1 â€” escalation primitive).** A bidirectional, directed, durable
+**cross-team channel** that **replaces the human relay** (client worker complains â†’ human forwards â†’
+PM reacts â†’ human relays back): a client-repo (game_one) worker now raises straight to the platform/PM
+project and the teams converse **agent-to-agent** on an append-only thread. Two PM-owned tables
+(migration 0029): `escalations` (one row per thread â€” `kind`, `severity`, `status`, `origin_repo`,
+`origin_worker_key`, `holder_id`, `author_id`, optional `code_locator`/anchor) + `escalation_messages`
+(the thread, `UNIQUE(escalation_id, seq)` with the next 1-based `seq` allocated **atomically** under the
+write txn; `message_type` âˆˆ `{reply, diagnosis, instruction, system}`). **Lifecycle**
+`open â†’ acknowledged â†’ answered â†’ resolved` (centralized `ESCALATION_TRANSITIONS` + `assertTransition`),
+with **`needs_human`** reachable as a side-channel from **any non-terminal** state and the **origin
+author** able to **withdraw-resolve** from any non-terminal state (a non-author resolves only from
+`answered`/`needs_human`); `resolved` is terminal + append-frozen. `kind` âˆˆ
+`{bug_report, question, request, blocked}` + optional `severity`. **`origin_repo` + `origin_worker_key`
+are REQUIRED provenance params** (`.min(1)`, passed explicitly by the worker â€” NOT read from env).
+Surface: **8 MCP tools** (`pm_raise_escalation`, `pm_reply_escalation`, `pm_get_escalation`,
+`pm_list_escalations`, `pm_acknowledge_escalation`, `pm_answer_escalation`, `pm_resolve_escalation`,
+`pm_escalate_to_human`), **8 REST routes** (raise/list under `/projects/{id}/escalations`;
+get/messages/acknowledge/answer/resolve/escalate-to-human under `/escalations/{id}/...`), **SSE
+`escalation.*` frames** (`opened`/`acknowledged`/`replied`/`answered`/`resolved`/`needs_human`, with
+`escalation_id` + `origin_worker_key` projected onto the frame), and **activity-feed verbs** â€” **one
+activity_log row per transition IS the durable audit trail** (the governance-specific train `audit_log`
+enum table is **deliberately NOT** extended). **Authz:** raise = any authed; reply = author|holder|
+human; acknowledge/answer = human|holder|unclaimed-pickup (acknowledge is the PM-side pickup that
+auto-claims the thread); resolve = author-withdrawal|holder|human; escalate_to_human = author|holder|
+human. **Future:** C2 (auto-delivery/wake daemon â€” **today an agent polls `pm_get_escalation` for the
+reply**), C3 (auto-responder), C4 (web UI). Everything is **additive** â€”
+notes/comments/proposals/tasks/merge-train stay byte-identical. Docs: `docs/worker-pm-workflow.md`
+(Â§ Cross-team escalations) + the roadmap/vision files under `roadmaps/`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:
