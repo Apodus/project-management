@@ -249,16 +249,21 @@ export function addMessage(id: string, input: CreateEscalationMessage, actor: Ac
 }
 
 /**
- * Acknowledge an open escalation (open → acknowledged). Authz: a human OR
- * the holder; else 403. Auto-claim: a non-human acknowledger with no
- * holder set becomes the holder in the SAME update.
+ * Acknowledge an open escalation (open → acknowledged). This is the PM-side
+ * PICKUP action. Authz: a human OR an UNCLAIMED escalation (holderId null —
+ * open for pickup by any PM actor) OR the current holder re-acknowledging;
+ * else 403. Once an ai_agent holds it, a DIFFERENT ai_agent is gated (403 —
+ * one responder per thread). Auto-claim: an ai_agent acknowledging an
+ * unclaimed escalation becomes the holder in the SAME update (a human ack
+ * does NOT claim — it leaves holderId null so an agent can later self-claim
+ * on answer, per Amendment A).
  * 404 → 403 gate → assertTransition → mutate.
  */
 export function acknowledge(id: string, actor: Actor) {
   const db = getDb();
   const esc = getRowOr404(id);
 
-  if (actor.type !== "human" && actor.id !== esc.holderId) {
+  if (actor.type !== "human" && esc.holderId != null && actor.id !== esc.holderId) {
     throw new AppError(403, "FORBIDDEN", `User "${actor.id}" is not allowed to acknowledge escalation ${id}`);
   }
   assertTransition(toView(esc), "acknowledged");

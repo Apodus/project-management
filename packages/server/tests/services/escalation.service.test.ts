@@ -204,6 +204,38 @@ describe("escalation service", () => {
     });
   });
 
+  // ── C3 autonomous-responder pickup path (regression) ─────────────
+  describe("autonomous responder pickup (acknowledge is PM pickup)", () => {
+    it("an ai_agent can pick up (acknowledge) an unclaimed open escalation then answer it", () => {
+      // Regression for the C1 P2 lifecycle dead-end: the acknowledge gate
+      // rejected any ai_agent on an unclaimed (holderId null) escalation, so
+      // the C3 autonomous responder could neither acknowledge nor (via the
+      // status guard) answer an open escalation. Full C3-style flow:
+      const project = createTestProject(testApp.db);
+      const author = agent();
+      const responder = agent();
+
+      const esc = raise(testApp.db, project.id, actorOf(author));
+      expect(esc.status).toBe("open");
+      expect(esc.holderId).toBeNull();
+
+      // raise → ai_agent acknowledge (claims, →acknowledged)
+      const acked = escalationService.acknowledge(esc.id, actorOf(responder));
+      expect(acked.status).toBe("acknowledged");
+      expect(acked.holderId).toBe(responder.id);
+
+      // same ai_agent answer (→answered)
+      const answered = escalationService.answer(esc.id, { body: "fixed it" }, actorOf(responder));
+      expect(answered.status).toBe("answered");
+      expect(answered.holderId).toBe(responder.id);
+
+      // resolve
+      const resolved = escalationService.resolve(esc.id, { reason: "shipped" }, actorOf(responder));
+      expect(resolved.status).toBe("resolved");
+      expect(resolved.resolvedBy).toBe(responder.id);
+    });
+  });
+
   // ── AMENDMENT B — author withdrawal ──────────────────────────────
   describe("Amendment B — author withdrawal", () => {
     it("origin author resolves from open → ok; system message notes withdrawn", () => {
@@ -263,15 +295,30 @@ describe("escalation service", () => {
       expect(escalationService.addMessage(esc.id, { body: "m" }, actorOf(human())).id).toBeTruthy();
     });
 
-    it("acknowledge by author or stranger agent → 403; by holder/human → ok", () => {
+    it("acknowledge is PM pickup: unclaimed open is acknowledgeable by any PM actor; a 2nd agent on a held thread → 403", () => {
+      // An unclaimed (holderId null) open escalation is open for pickup by
+      // ANY PM actor — an ai_agent picking it up auto-claims; a human ack does
+      // not claim. The real "other-agent" rejection is a DIFFERENT agent
+      // acknowledging a thread an agent already holds.
       const project = createTestProject(testApp.db);
       const author = agent();
-      const esc = raise(testApp.db, project.id, actorOf(author));
-      // author is an ai_agent and not the holder (null) → 403.
-      expect403(() => escalationService.acknowledge(esc.id, actorOf(author)));
-      expect403(() => escalationService.acknowledge(esc.id, actorOf(agent())));
-      // human → ok.
-      expect(escalationService.acknowledge(esc.id, actorOf(human())).status).toBe("acknowledged");
+
+      // (a) ai_agent acknowledges an unclaimed open escalation → succeeds + claims.
+      const escA = raise(testApp.db, project.id, actorOf(author));
+      const agentA = agent();
+      const ackedA = escalationService.acknowledge(escA.id, actorOf(agentA));
+      expect(ackedA.status).toBe("acknowledged");
+      expect(ackedA.holderId).toBe(agentA.id); // auto-claim on pickup
+
+      // (b) a DIFFERENT agent acknowledging the now-held thread → 403.
+      const agentB = agent();
+      expect403(() => escalationService.acknowledge(escA.id, actorOf(agentB)));
+
+      // (c) a human acknowledging an unclaimed open escalation → succeeds, holder stays null.
+      const escB = raise(testApp.db, project.id, actorOf(author));
+      const ackedB = escalationService.acknowledge(escB.id, actorOf(human()));
+      expect(ackedB.status).toBe("acknowledged");
+      expect(ackedB.holderId).toBeNull(); // human ack does NOT claim
     });
 
     it("answer by an author who is NOT holder when holder already set → 403", () => {
