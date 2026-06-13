@@ -88,6 +88,13 @@ export interface ResponderConfig {
   repoCwd: string;
   /** Directory for per-escalation status sentinels + logs (OUTSIDE any git tree). */
   logsDir: string;
+  /**
+   * Root directory for the auto-implement regime's isolated worktree clones
+   * (Campaign A1). A write-capable implement session runs in a clone under this
+   * root — NEVER the live repo / main. Default the OS temp dir. Additive in P2
+   * (consumed by the loop wiring in P3).
+   */
+  worktreeRoot: string;
   logLevel: string;
 }
 
@@ -111,6 +118,7 @@ export interface ConfigEnv {
   PM_RESPONDER_COMMAND?: string;
   PM_RESPONDER_REPO_CWD?: string;
   PM_RESPONDER_LOGS_DIR?: string;
+  PM_RESPONDER_WORKTREE_ROOT?: string;
   PM_RESPONDER_EXCLUDE_ORIGIN_REPOS?: string;
   PM_RESPONDER_RECLAIM_GRACE_SEC?: string;
   PM_RESPONDER_MAX_RECLAIM_ATTEMPTS?: string;
@@ -187,6 +195,10 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   const command = env.PM_RESPONDER_COMMAND || DEFAULT_RESPONDER_COMMAND;
   const repoCwd = args.repoCwd ?? env.PM_RESPONDER_REPO_CWD ?? process.cwd();
   const logsDir = env.PM_RESPONDER_LOGS_DIR ?? path.join(os.tmpdir(), "pm-responder-logs");
+  // worktreeRoot: root for the auto-implement regime's isolated worktree clones
+  // (Campaign A1). Additive in P2; consumed by the loop wiring in P3.
+  const worktreeRoot =
+    env.PM_RESPONDER_WORKTREE_ROOT ?? path.join(os.tmpdir(), "pm-responder-worktrees");
 
   // P6a safety-seal config. excludeOriginRepos: comma-separated CSV → trimmed,
   // non-empty tokens (mirrors the projectIds CSV parse contract). Default [].
@@ -226,6 +238,7 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     command,
     repoCwd,
     logsDir,
+    worktreeRoot,
     logLevel: args.logLevel ?? env.PM_LOG_LEVEL ?? "info",
   };
 }
