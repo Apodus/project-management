@@ -172,6 +172,58 @@ describe("Activity API", () => {
     });
   });
 
+  // ── Escalation lifecycle → activity feed (Campaign C1 §P5) ────
+
+  describe("Escalation activity logging", () => {
+    it("logs opened + acknowledged for a raise→acknowledge transition", async () => {
+      const project = createTestProject(testApp.db);
+
+      // Raise (open) then acknowledge — each emits one event → one activity row.
+      const raiseRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/escalations`,
+        {
+          body: {
+            kind: "bug_report",
+            title: "Activity-logged escalation",
+            originRepo: "game_one",
+            originWorkerKey: "worker-1",
+          },
+        },
+      );
+      expect(raiseRes.status).toBe(201);
+      const esc = (await raiseRes.json()).data;
+
+      const ackRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/escalations/${esc.id}/acknowledge`,
+      );
+      expect(ackRes.status).toBe(200);
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/activity`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const opened = body.data.find(
+        (a: any) => a.entityType === "escalation" && a.action === "opened",
+      );
+      expect(opened).toBeDefined();
+      expect(opened.entityId).toBe(esc.id);
+
+      const acknowledged = body.data.find(
+        (a: any) => a.entityType === "escalation" && a.action === "acknowledged",
+      );
+      expect(acknowledged).toBeDefined();
+      expect(acknowledged.entityId).toBe(esc.id);
+    });
+  });
+
   // ── GET /api/v1/projects/:projectId/activity ──────────────────
 
   describe("GET /api/v1/projects/:projectId/activity", () => {

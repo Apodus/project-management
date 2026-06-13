@@ -70,6 +70,23 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.NOTE_PROMOTED:
       return "promoted";
 
+    // Escalation lifecycle (Campaign C1 §P5). Bespoke verbs — logActivity.action
+    // is free-form (no enum); onAll auto-enrolls each. The activity_log row per
+    // emitted event IS the durable escalation audit trail (the train audit_log is
+    // a governance-specific enum table, deliberately not extended here).
+    case EVENT_NAMES.ESCALATION_OPENED:
+      return "opened";
+    case EVENT_NAMES.ESCALATION_ACKNOWLEDGED:
+      return "acknowledged";
+    case EVENT_NAMES.ESCALATION_REPLIED:
+      return "replied";
+    case EVENT_NAMES.ESCALATION_ANSWERED:
+      return "answered";
+    case EVENT_NAMES.ESCALATION_RESOLVED:
+      return "resolved";
+    case EVENT_NAMES.ESCALATION_NEEDS_HUMAN:
+      return "needs_human";
+
     // Commented events
     case EVENT_NAMES.PROPOSAL_COMMENTED:
     case EVENT_NAMES.TASK_COMMENTED:

@@ -258,6 +258,79 @@ describe("SSE Events API", () => {
     });
   });
 
+  // ── Escalation events over SSE (Campaign C1 §P5) ─────────────
+
+  describe("Escalation events over SSE", () => {
+    it("projects escalation_id/origin_worker_key/entity_title onto the escalation.opened frame", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(testApp.app, "GET", "/api/v1/events");
+      const bus = getEventBus();
+
+      setTimeout(() => {
+        const payload: EventPayload = {
+          entity: {
+            id: "esc_001",
+            title: "Auth bug in shared lib",
+            originRepo: "client-app",
+            originWorkerKey: "client-app/worker-7",
+            status: "open",
+            kind: "bug_report",
+          },
+          entityType: "escalation",
+          entityId: "esc_001",
+          projectId: project.id,
+          actorId: testApp.testUser.id,
+          timestamp: new Date().toISOString(),
+        };
+        bus.emit(EVENT_NAMES.ESCALATION_OPENED, payload);
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 2, timeoutMs: 2000 });
+      const events = parseSSEEvents(text);
+
+      const escEvent = events.find((e) => e.event === "escalation.opened");
+      expect(escEvent).toBeDefined();
+
+      const data = JSON.parse(escEvent!.data!);
+      expect(data.entity_type).toBe("escalation");
+      expect(data.entity_id).toBe("esc_001");
+      expect(data.action).toBe("opened");
+      expect(data.entity_title).toBe("Auth bug in shared lib");
+      expect(data.escalation_id).toBe("esc_001");
+      expect(data.origin_worker_key).toBe("client-app/worker-7");
+    });
+
+    it("byte-identical: a non-escalation frame carries no escalation_id/origin_worker_key", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(testApp.app, "GET", "/api/v1/events");
+      const bus = getEventBus();
+
+      setTimeout(() => {
+        const payload: EventPayload = {
+          entity: { id: "note_002", title: "Stray TODO in parser" },
+          entityType: "note",
+          entityId: "note_002",
+          projectId: project.id,
+          actorId: testApp.testUser.id,
+          timestamp: new Date().toISOString(),
+        };
+        bus.emit(EVENT_NAMES.NOTE_CREATED, payload);
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 2, timeoutMs: 2000 });
+      const events = parseSSEEvents(text);
+
+      const noteEvent = events.find((e) => e.event === "note.created");
+      expect(noteEvent).toBeDefined();
+
+      const data = JSON.parse(noteEvent!.data!);
+      expect("escalation_id" in data).toBe(false);
+      expect("origin_worker_key" in data).toBe(false);
+    });
+  });
+
   // ── Project filter ───────────────────────────────────────────
 
   describe("Project filter", () => {

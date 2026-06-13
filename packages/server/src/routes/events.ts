@@ -99,6 +99,13 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
         let resolutionId: string | undefined;
         let originRequestId: string | undefined;
         let resolvedRequestId: string | undefined;
+        // Campaign C1 (P5): escalation identifying fields, read additively off
+        // payload.entity ONLY inside the gated `case "escalation":` arm below
+        // (escalation_id comes from entity.id, which every entity has — gating
+        // keeps all non-escalation frames byte-identical). Absent → omitted, so
+        // all prior frames stay byte-identical.
+        let escalationId: string | undefined;
+        let originWorkerKey: string | undefined;
         if (payload.entity && typeof payload.entity === "object") {
           const entity = payload.entity as Record<string, unknown>;
           switch (payload.entityType) {
@@ -112,6 +119,15 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
               break;
             case "note":
               entity_title = typeof entity.title === "string" ? entity.title : undefined;
+              break;
+            case "escalation":
+              // Campaign C1 (P5): all escalation reads live in this gated arm so
+              // non-escalation frames are untouched (escalation_id from entity.id).
+              entity_title = typeof entity.title === "string" ? entity.title : undefined;
+              if (typeof entity.id === "string") escalationId = entity.id;
+              if (typeof entity.originWorkerKey === "string") {
+                originWorkerKey = entity.originWorkerKey;
+              }
               break;
             // comments have no title — omit
           }
@@ -159,6 +175,8 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           ...(resolutionId ? { resolution_id: resolutionId } : {}),
           ...(originRequestId ? { origin_request_id: originRequestId } : {}),
           ...(resolvedRequestId ? { resolved_request_id: resolvedRequestId } : {}),
+          ...(escalationId ? { escalation_id: escalationId } : {}),
+          ...(originWorkerKey ? { origin_worker_key: originWorkerKey } : {}),
         };
 
         stream.writeSSE({
