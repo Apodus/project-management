@@ -3,6 +3,7 @@ import {
   getEscalations,
   getEscalation,
   getEscalationMetrics,
+  getMergeRequests,
   type EscalationFilters,
 } from "@/lib/api";
 
@@ -52,5 +53,23 @@ export function useEscalationMetrics(projectId: string | undefined) {
     // Poll floor so the panel stays live between SSE pushes (mirrors
     // useTrainMetrics).
     refetchInterval: 10_000,
+  });
+}
+
+// The escalation-linked merge requests powering the A5 audit-chain card on the
+// timeline page. Keyed UNDER escalationKeys.detail(id) (a `["merge-requests"]`
+// suffix) so the existing escalation.* SSE invalidation — which targets
+// escalationKeys.all / detail(id) — refreshes the MR rows along with the thread.
+// `projectId` is derived from the loaded escalation.projectId (the MR route is
+// project-scoped); the enabled gate keeps it from firing for an escalation that
+// has not loaded yet.
+export function useEscalationMergeRequests(
+  projectId: string | undefined,
+  escalationId: string | undefined,
+) {
+  return useQuery({
+    queryKey: [...escalationKeys.detail(escalationId!), "merge-requests"] as const,
+    queryFn: () => getMergeRequests(projectId!, { escalationId: escalationId! }),
+    enabled: !!projectId && !!escalationId,
   });
 }

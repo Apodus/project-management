@@ -222,6 +222,44 @@ describe("EscalationsPage", () => {
     expect(screen.getByText("Bug Report: 5")).toBeInTheDocument();
   });
 
+  it("renders the auto-implement row when auto_implemented_escalations > 0", () => {
+    metricsData = makeMetrics({
+      auto_implement: {
+        auto_implemented_escalations: 8,
+        landed: 6,
+        rejected: 1,
+        reverts: 1,
+        land_rate: 0.75,
+        reject_rate: 0.125,
+        revert_rate: 0.125,
+      },
+    });
+    render(<EscalationsPage />);
+
+    // The section header + the four rate cards.
+    expect(screen.getByText("Auto-implement")).toBeInTheDocument();
+    expect(screen.getByText("Auto-implemented")).toBeInTheDocument();
+    expect(screen.getByText("Land rate")).toBeInTheDocument();
+    expect(screen.getByText("75%")).toBeInTheDocument(); // land_rate
+    // reject_rate (12.5% → rounds to 13%) — also the revert rate; assert ≥1.
+    expect(screen.getAllByText("13%").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("6/8 landed")).toBeInTheDocument();
+    // The honest spend gap: an explicit N/A note (no token source).
+    expect(screen.getByText("Spend per arc")).toBeInTheDocument();
+    expect(screen.getByText("N/A")).toBeInTheDocument();
+    expect(screen.getByText("no token source")).toBeInTheDocument();
+  });
+
+  it("hides the auto-implement row when auto_implemented_escalations === 0", () => {
+    metricsData = makeMetrics(); // auto_implemented_escalations: 0
+    render(<EscalationsPage />);
+
+    expect(screen.queryByText("Auto-implement")).toBeNull();
+    expect(screen.queryByText("Spend per arc")).toBeNull();
+    // The existing C4 metric cards are unchanged.
+    expect(screen.getByText("Open backlog")).toBeInTheDocument();
+  });
+
   it("shows skeletons while metrics are loading", () => {
     metricsLoading = true;
     const { container } = render(<EscalationsPage />);

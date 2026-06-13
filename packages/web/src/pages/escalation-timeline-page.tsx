@@ -4,13 +4,18 @@ import {
   ArrowLeft,
   CheckCircle2,
   CircleDot,
+  GitBranch,
+  GitMerge,
   MessageSquare,
   Siren,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useEscalation } from "@/hooks/use-escalations";
+import {
+  useEscalation,
+  useEscalationMergeRequests,
+} from "@/hooks/use-escalations";
 import {
   formatRelativeTime,
   formatStatus,
@@ -18,13 +23,18 @@ import {
   getStatusColor,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Escalation, EscalationMessage } from "@/lib/api";
+import type { Escalation, EscalationMessage, MergeRequest } from "@/lib/api";
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
 function safeRelative(at: string | null | undefined): string {
   if (!at) return "—";
   return formatRelativeTime(at);
+}
+
+function shortSha(sha: string | null | undefined): string {
+  if (!sha) return "—";
+  return sha.length > 10 ? sha.slice(0, 10) : sha;
 }
 
 function getKindColor(kind: string): string {
@@ -253,6 +263,255 @@ function EscalationHeader({ escalation }: { escalation: Escalation }) {
   );
 }
 
+// ─── Audit chain (A5 P2 — auto-implement legibility) ─────────────
+//
+// The responder writes thread markers as it drives an escalation through the
+// autonomous implement/drive → train → land arc (see responder-ref/src/loop.ts):
+//   - pendingDrive {visionPath, epicId}          — a vision + epic was created
+//   - pendingArc   {epicId, phaseTaskId, ...}     — a campaign phase MR is in flight
+//   - arcComplete  {epicId, landedShas}           — every phase landed
+//   - pendingLand  {mergeRequestId, branch, ...}  — a bounded fix MR is in flight
+//   - shadowProposal {branch, commitSha, ...}     — shadow mode produced, did NOT land
+// extractAuditChain walks the messages newest-first and reads those markers to
+// classify the disposition + pull the vision epic. Pure + unit-testable; mirrors
+// loop.ts's own marker selection (a `metadata.<flag> === true` membership test).
+
+type MarkerMeta = Record<string, unknown>;
+
+function markerOf(m: EscalationMessage): MarkerMeta | null {
+  return m.metadata != null ? (m.metadata as MarkerMeta) : null;
+}
+
+function readString(meta: MarkerMeta, key: string): string | null {
+  const v = meta[key];
+  return typeof v === "string" ? v : null;
+}
+
+export type AuditChain = {
+  disposition: "auto_driven" | "auto_implemented" | "shadow_proposal" | null;
+  epicId: string | null;
+  visionPath: string | null;
+  arcComplete: boolean;
+  hasShadow: boolean;
+};
+
+/**
+ * Classify an escalation's auto-implement disposition from its thread markers.
+ * Walks newest-first so the LATEST drive/arc marker wins for the vision epic.
+ * Returns `disposition: null` when no auto-implement marker is present at all
+ * (a plain human escalation — the card renders nothing).
+ */
+export function extractAuditChain(messages: EscalationMessage[]): AuditChain {
+  const newestFirst = [...messages].sort((a, b) => b.seq - a.seq);
+
+  let epicId: string | null = null;
+  let visionPath: string | null = null;
+  let hasDrive = false;
+  let hasLand = false;
+  let hasShadow = false;
+  let arcComplete = false;
+
+  for (const m of newestFirst) {
+    const meta = markerOf(m);
+    if (!meta) continue;
+
+    if (meta.pendingDrive === true || meta.pendingArc === true) {
+      hasDrive = true;
+      // Newest-first walk → keep the FIRST (latest) epicId/visionPath seen.
+      if (epicId === null) epicId = readString(meta, "epicId");
+      if (visionPath === null) visionPath = readString(meta, "visionPath");
+      if (meta.arcComplete === true) arcComplete = true;
+    }
+    if (meta.pendingLand === true) hasLand = true;
+    if (meta.shadowProposal === true) hasShadow = true;
+  }
+
+  let disposition: AuditChain["disposition"] = null;
+  if (hasDrive) disposition = "auto_driven";
+  else if (hasLand) disposition = "auto_implemented";
+  else if (hasShadow) disposition = "shadow_proposal";
+
+  return { disposition, epicId, visionPath, arcComplete, hasShadow };
+}
+
+function dispositionLabel(d: NonNullable<AuditChain["disposition"]>): string {
+  switch (d) {
+    case "auto_driven":
+      return "Auto-driven (arc)";
+    case "auto_implemented":
+      return "Auto-implemented (bounded)";
+    case "shadow_proposal":
+      return "Shadow proposal";
+  }
+}
+
+function mrStatusIsLanded(status: MergeRequest["status"]): boolean {
+  return status === "landed";
+}
+
+function MergeRequestRow({ mr }: { mr: MergeRequest }) {
+  return (
+    <li className="flex flex-col gap-1 rounded-md border px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <GitMerge className="text-muted-foreground size-3.5" />
+        <Link
+          to="/merge-requests/$requestId/timeline"
+          params={{ requestId: mr.id }}
+          className="font-mono text-xs text-blue-600 hover:underline dark:text-blue-400"
+        >
+          {mr.id.slice(0, 8)}
+        </Link>
+        <Badge
+          variant="secondary"
+          className={cn("text-[10px]", getStatusColor(mr.status))}
+        >
+          {formatStatus(mr.status)}
+        </Badge>
+        {mr.revertOf && (
+          <Badge
+            variant="secondary"
+            className="bg-orange-100 text-[10px] text-orange-800 dark:bg-orange-900/40 dark:text-orange-300"
+          >
+            revert of {shortSha(mr.revertOf)}
+          </Badge>
+        )}
+      </div>
+      <div className="text-muted-foreground/80 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+        {mr.branch && <span className="font-mono">{mr.branch}</span>}
+        {mr.landedSha && (
+          <span className="font-mono">landed {shortSha(mr.landedSha)}</span>
+        )}
+        {mr.taskId && (
+          <Link
+            to="/tasks/$taskId"
+            params={{ taskId: mr.taskId }}
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
+            phase task
+          </Link>
+        )}
+        <Link
+          to="/merge-requests/$requestId/timeline"
+          params={{ requestId: mr.id }}
+          className="text-blue-600 hover:underline dark:text-blue-400"
+        >
+          View timeline
+        </Link>
+      </div>
+    </li>
+  );
+}
+
+function AuditChainCard({ escalation }: { escalation: Escalation & { messages?: EscalationMessage[] } }) {
+  const chain = extractAuditChain(escalation.messages ?? []);
+  const { data: mrs } = useEscalationMergeRequests(escalation.projectId, escalation.id);
+  const mergeRequests = mrs ?? [];
+
+  // Render ONLY for an auto-implement escalation: it has a disposition marker OR
+  // at least one escalation-linked MR. A plain escalation → null (byte-identical).
+  if (chain.disposition === null && mergeRequests.length === 0) return null;
+
+  // If markers are absent but escalation-linked MRs exist, it was at least
+  // auto-implemented (a bounded fix submitted before any marker the thread shows).
+  const disposition = chain.disposition ?? "auto_implemented";
+
+  // Arc progress: phase MRs are those NOT reverts. Landed vs the rest.
+  const phaseMrs = mergeRequests.filter((m) => !m.revertOf);
+  const revertMrs = mergeRequests.filter((m) => m.revertOf);
+  const landedCount = phaseMrs.filter((m) => mrStatusIsLanded(m.status)).length;
+
+  return (
+    <Card className="py-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-muted-foreground text-sm font-medium">
+          Audit chain
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Disposition */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant="secondary"
+            className="bg-violet-100 text-[11px] text-violet-800 dark:bg-violet-900/40 dark:text-violet-300"
+          >
+            {dispositionLabel(disposition)}
+          </Badge>
+          {chain.arcComplete && (
+            <Badge
+              variant="secondary"
+              className="bg-green-100 text-[11px] text-green-800 dark:bg-green-900/40 dark:text-green-300"
+            >
+              <CheckCircle2 className="mr-1 size-3" />
+              arc complete
+            </Badge>
+          )}
+        </div>
+
+        {/* Vision epic (drive only) */}
+        {chain.epicId && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-muted-foreground/70">Vision epic</span>
+            <Link
+              to="/epics/$epicId"
+              params={{ epicId: chain.epicId }}
+              className="font-mono text-blue-600 hover:underline dark:text-blue-400"
+            >
+              {chain.epicId}
+            </Link>
+            {chain.visionPath && (
+              <span className="text-muted-foreground/60 font-mono">
+                {chain.visionPath}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Merge requests */}
+        {mergeRequests.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-muted-foreground/70 flex items-center gap-1.5 text-xs">
+              <GitBranch className="size-3.5" />
+              Merge requests
+            </div>
+            <ul className="m-0 list-none space-y-1.5 p-0">
+              {mergeRequests.map((mr) => (
+                <MergeRequestRow key={mr.id} mr={mr} />
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Arc progress (drive, >1 phase MR) */}
+        {disposition === "auto_driven" && phaseMrs.length > 1 && (
+          <p className="text-muted-foreground text-xs">
+            {landedCount} of {phaseMrs.length} phases landed
+          </p>
+        )}
+
+        {/* Revert chain */}
+        {revertMrs.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-muted-foreground/70 text-xs">Revert chain</p>
+            <ul className="m-0 list-none space-y-1 p-0">
+              {revertMrs.map((mr) => (
+                <li key={mr.id} className="text-xs">
+                  <Link
+                    to="/merge-requests/$requestId/timeline"
+                    params={{ requestId: mr.id }}
+                    className="text-orange-700 hover:underline dark:text-orange-300"
+                  >
+                    revert of {shortSha(mr.revertOf)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────────
 
 export function EscalationTimelinePage() {
@@ -304,6 +563,8 @@ export function EscalationTimelinePage() {
           <LifecycleStrip status={data.status} />
         </CardContent>
       </Card>
+
+      <AuditChainCard escalation={data} />
 
       <Card className="py-4">
         <CardHeader className="pb-2">

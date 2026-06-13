@@ -1,13 +1,33 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { ReactNode } from "react";
-import type { EscalationMessage, EscalationWithThread } from "@/lib/api";
+import type {
+  EscalationMessage,
+  EscalationWithThread,
+  MergeRequest,
+} from "@/lib/api";
 
 let timelineData: EscalationWithThread | undefined;
+let mergeRequestsData: MergeRequest[] = [];
+
+// Capture Link targets (route + params) so we can assert the deep links the
+// audit chain renders (epic / task / merge-request timeline).
+const linkCalls: Array<{ to?: string; params?: Record<string, string> }> = [];
 
 vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ escalationId: "esc-1" }),
-  Link: ({ children }: { children?: ReactNode }) => <a>{children}</a>,
+  Link: ({
+    to,
+    params,
+    children,
+  }: {
+    to?: string;
+    params?: Record<string, string>;
+    children?: ReactNode;
+  }) => {
+    linkCalls.push({ to, params });
+    return <a>{children}</a>;
+  },
 }));
 
 vi.mock("@/hooks/use-escalations", () => ({
@@ -16,7 +36,39 @@ vi.mock("@/hooks/use-escalations", () => ({
     isLoading: false,
     isError: false,
   }),
+  useEscalationMergeRequests: () => ({ data: mergeRequestsData }),
 }));
+
+function makeMergeRequest(overrides: Partial<MergeRequest>): MergeRequest {
+  return {
+    id: "mr-00000001",
+    projectId: "proj-1",
+    resource: "main",
+    submittedBy: "responder",
+    taskId: null,
+    resolvedFrom: null,
+    escalationId: "esc-1",
+    revertOf: null,
+    synthetic: false,
+    branch: "pm/escalation-esc-1",
+    commitSha: "abcdef1234567890",
+    verifyCmd: null,
+    worktreePath: null,
+    status: "landed",
+    enqueuedAt: "2026-06-10T00:00:00.000Z",
+    pickedUpAt: null,
+    resolvedAt: null,
+    landedSha: "deadbeef1234567890",
+    rejectCategory: null,
+    rejectReason: null,
+    failedFiles: null,
+    logExcerpt: null,
+    logUrl: null,
+    createdAt: "2026-06-10T00:00:00.000Z",
+    updatedAt: "2026-06-10T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 function makeMessage(overrides: Partial<EscalationMessage>): EscalationMessage {
   return {
@@ -59,11 +111,13 @@ function makeThread(
   };
 }
 
-import { EscalationTimelinePage } from "./escalation-timeline-page";
+import { EscalationTimelinePage, extractAuditChain } from "./escalation-timeline-page";
 
 beforeEach(() => {
   vi.clearAllMocks();
   timelineData = undefined;
+  mergeRequestsData = [];
+  linkCalls.length = 0;
 });
 
 describe("EscalationTimelinePage", () => {
@@ -122,5 +176,167 @@ describe("EscalationTimelinePage", () => {
     timelineData = makeThread({ status: "needs_human" });
     render(<EscalationTimelinePage />);
     expect(screen.getByText("Needs human")).toBeInTheDocument();
+  });
+
+  // ─── Audit chain (A5 P2) ───────────────────────────────────────
+
+  it("auto-implemented (bounded): renders the disposition badge, landed sha + a timeline link", () => {
+    timelineData = makeThread({
+      messages: [
+        makeMessage({
+          id: "m1",
+          seq: 1,
+          messageType: "diagnosis",
+          body: "submitted mr",
+          metadata: {
+            pendingLand: true,
+            mergeRequestId: "mr-00000001",
+            branch: "pm/escalation-esc-1",
+            commitSha: "abcdef1234567890",
+          },
+        }),
+      ],
+    });
+    mergeRequestsData = [makeMergeRequest({ id: "mr-00000001" })];
+    render(<EscalationTimelinePage />);
+
+    expect(screen.getByText("Auto-implemented (bounded)")).toBeInTheDocument();
+    expect(screen.getByText(/landed deadbeef12/)).toBeInTheDocument();
+    expect(screen.getByText("View timeline")).toBeInTheDocument();
+    // The MR id deep-links to the merge-request timeline route.
+    const mrLink = linkCalls.find(
+      (c) => c.to === "/merge-requests/$requestId/timeline",
+    );
+    expect(mrLink?.params).toEqual({ requestId: "mr-00000001" });
+  });
+
+  it("auto-driven (arc): renders the epic link, N of M phases landed + per-phase task links", () => {
+    timelineData = makeThread({
+      messages: [
+        makeMessage({
+          id: "m1",
+          seq: 1,
+          messageType: "diagnosis",
+          body: "vision created",
+          metadata: {
+            pendingDrive: true,
+            epicId: "epic-99",
+            visionPath: "roadmaps/vision-x.md",
+          },
+        }),
+        makeMessage({
+          id: "m2",
+          seq: 2,
+          messageType: "diagnosis",
+          body: "phase 1 mr",
+          metadata: { pendingArc: true, epicId: "epic-99", phaseTaskId: "task-1" },
+        }),
+      ],
+    });
+    mergeRequestsData = [
+      makeMergeRequest({ id: "mr-phase-1", status: "landed", taskId: "task-1" }),
+      makeMergeRequest({ id: "mr-phase-2", status: "queued", taskId: "task-2", landedSha: null }),
+    ];
+    render(<EscalationTimelinePage />);
+
+    expect(screen.getByText("Auto-driven (arc)")).toBeInTheDocument();
+    // Vision epic deep link.
+    const epicLink = linkCalls.find((c) => c.to === "/epics/$epicId");
+    expect(epicLink?.params).toEqual({ epicId: "epic-99" });
+    // Arc progress: 1 of 2 landed.
+    expect(screen.getByText("1 of 2 phases landed")).toBeInTheDocument();
+    // Per-phase task links.
+    const taskLink = linkCalls.find((c) => c.to === "/tasks/$taskId");
+    expect(taskLink).toBeTruthy();
+  });
+
+  it("revert chain: renders the 'revert of <sha>' tag + a timeline link", () => {
+    timelineData = makeThread({
+      messages: [
+        makeMessage({
+          id: "m1",
+          seq: 1,
+          messageType: "diagnosis",
+          body: "submitted mr",
+          metadata: { pendingLand: true, mergeRequestId: "mr-1" },
+        }),
+      ],
+    });
+    mergeRequestsData = [
+      makeMergeRequest({ id: "mr-revert", revertOf: "cafebabe1234567890", landedSha: null }),
+    ];
+    render(<EscalationTimelinePage />);
+
+    expect(screen.getAllByText(/revert of cafebabe12/).length).toBeGreaterThanOrEqual(1);
+    const mrLink = linkCalls.find(
+      (c) => c.to === "/merge-requests/$requestId/timeline" && c.params?.requestId === "mr-revert",
+    );
+    expect(mrLink).toBeTruthy();
+  });
+
+  it("non-auto-implement (no markers, no MRs): the audit-chain card is absent", () => {
+    timelineData = makeThread({
+      messages: [makeMessage({ id: "m1", seq: 1, messageType: "reply", body: "just a reply" })],
+    });
+    mergeRequestsData = [];
+    render(<EscalationTimelinePage />);
+
+    // The audit-chain card title must NOT render.
+    expect(screen.queryByText("Audit chain")).toBeNull();
+    // The thread is unchanged.
+    expect(screen.getByText("just a reply")).toBeInTheDocument();
+  });
+});
+
+// ─── extractAuditChain (pure helper) ─────────────────────────────
+
+describe("extractAuditChain", () => {
+  it("classifies a bounded land as auto_implemented", () => {
+    const chain = extractAuditChain([
+      makeMessage({ seq: 1, metadata: { pendingLand: true, mergeRequestId: "mr-1" } }),
+    ]);
+    expect(chain.disposition).toBe("auto_implemented");
+  });
+
+  it("classifies a drive as auto_driven and pulls the latest epic + vision", () => {
+    const chain = extractAuditChain([
+      makeMessage({
+        seq: 1,
+        metadata: { pendingDrive: true, epicId: "epic-1", visionPath: "v1.md" },
+      }),
+      makeMessage({
+        seq: 2,
+        metadata: { pendingArc: true, epicId: "epic-1", phaseTaskId: "t-1" },
+      }),
+    ]);
+    expect(chain.disposition).toBe("auto_driven");
+    expect(chain.epicId).toBe("epic-1");
+    expect(chain.visionPath).toBe("v1.md");
+  });
+
+  it("flags arcComplete from the arc-complete marker", () => {
+    const chain = extractAuditChain([
+      makeMessage({
+        seq: 1,
+        metadata: { pendingArc: true, arcComplete: true, epicId: "epic-1" },
+      }),
+    ]);
+    expect(chain.arcComplete).toBe(true);
+  });
+
+  it("classifies a shadow proposal (no land/drive) as shadow_proposal", () => {
+    const chain = extractAuditChain([
+      makeMessage({ seq: 1, metadata: { shadowProposal: true, branch: "b" } }),
+    ]);
+    expect(chain.disposition).toBe("shadow_proposal");
+    expect(chain.hasShadow).toBe(true);
+  });
+
+  it("returns a null disposition for a plain escalation (no markers)", () => {
+    const chain = extractAuditChain([
+      makeMessage({ seq: 1, messageType: "reply", metadata: null }),
+    ]);
+    expect(chain.disposition).toBeNull();
+    expect(chain.epicId).toBeNull();
   });
 });

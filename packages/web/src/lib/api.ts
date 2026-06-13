@@ -1239,11 +1239,18 @@ export async function forceReleaseLock(
 
 export async function getMergeRequests(
   projectId: string,
-  params?: { resource?: string; status?: string },
+  params?: {
+    resource?: string;
+    status?: string;
+    escalationId?: string;
+    revertOf?: string;
+  },
 ): Promise<MergeRequest[]> {
   const qs = new URLSearchParams();
   if (params?.resource) qs.set("resource", params.resource);
   if (params?.status) qs.set("status", params.status);
+  if (params?.escalationId) qs.set("escalationId", params.escalationId);
+  if (params?.revertOf) qs.set("revertOf", params.revertOf);
   const query = qs.toString();
   return apiFetch<MergeRequest[]>(
     `/projects/${projectId}/merge-requests${query ? `?${query}` : ""}`,

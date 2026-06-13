@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { Activity, Gauge, Layers, Siren, Timer, TrendingUp, X } from "lucide-react";
+import {
+  Activity,
+  Gauge,
+  GitMerge,
+  Layers,
+  Siren,
+  Timer,
+  TrendingUp,
+  Undo2,
+  X,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +35,7 @@ import {
   getStatusColor,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Escalation, EscalationFilters } from "@/lib/api";
+import type { Escalation, EscalationFilters, EscalationMetrics } from "@/lib/api";
 import type { EscalationsSearch } from "@/router";
 
 // Escalation enum vocabularies. Kept page-local (the notes-page precedent — the
@@ -106,6 +116,68 @@ const KIND_CHIPS = [
   ["request", "Request"],
   ["blocked", "Blocked"],
 ] as const;
+
+// ─── Auto-implement metrics row (A5 P2) ───────────────────────────
+// Rendered ONLY when the project has actually auto-implemented at least one
+// escalation (auto_implemented_escalations > 0) — a project that never used
+// auto-implement shows the C4 cards unchanged. The figures come from the A4
+// `auto_implement` metrics sub-block on GET …/escalations/metrics. Honest gaps:
+//  - mean-time-to-land has no dedicated source, so we reuse the EXISTING
+//    time_to_resolve p50 as a LABELED proxy (NOT a fabricated metric);
+//  - spend-per-arc has no token source → an explicit "N/A" note (not fabricated).
+function AutoImplementMetricsRow({
+  metrics,
+}: {
+  metrics: EscalationMetrics;
+}) {
+  const ai = metrics.auto_implement;
+  if (ai.auto_implemented_escalations <= 0) return null;
+
+  const ttrP50 = metrics.time_to_resolve.p50_ms;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <GitMerge className="size-4 text-muted-foreground" />
+        <h2 className="text-sm font-medium text-muted-foreground">
+          Auto-implement
+        </h2>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <MetricCard
+          label="Auto-implemented"
+          value={String(ai.auto_implemented_escalations)}
+          icon={GitMerge}
+        />
+        <MetricCard
+          label="Land rate"
+          value={formatPercent(ai.land_rate)}
+          icon={TrendingUp}
+          sub={`${ai.landed}/${ai.auto_implemented_escalations} landed`}
+        />
+        <MetricCard
+          label="Reject rate"
+          value={formatPercent(ai.reject_rate)}
+          icon={Gauge}
+          sub={`${ai.rejected} rejected`}
+        />
+        <MetricCard
+          label="Revert rate"
+          value={formatPercent(ai.revert_rate)}
+          icon={Undo2}
+          sub={`${ai.reverts} reverts`}
+        />
+        <MetricCard
+          label="Time to resolve (p50)"
+          value={formatDurationMs(ttrP50)}
+          icon={Timer}
+          sub="mean-time-to-land proxy"
+        />
+        <MetricCard label="Spend per arc" value="N/A" icon={Activity} sub="no token source" />
+      </div>
+    </div>
+  );
+}
 
 function EscalationMetricsSection({ projectId }: { projectId: string }) {
   const { data: metrics, isLoading } = useEscalationMetrics(projectId);
@@ -205,6 +277,9 @@ function EscalationMetricsSection({ projectId }: { projectId: string }) {
           </Badge>
         ))}
       </div>
+
+      {/* Auto-implement metrics (A5 §P2) — only when a project actually used it */}
+      <AutoImplementMetricsRow metrics={metrics} />
     </div>
   );
 }
