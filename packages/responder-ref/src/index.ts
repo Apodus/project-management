@@ -146,6 +146,7 @@ async function main(): Promise<void> {
       spawnBudget: cfg.spawnBudget,
       runner,
       autoImplementEnabled: cfg.autoImplement.enabled,
+      autoImplementMode: cfg.autoImplement.mode,
       sniffer,
       implementRunner,
       driveRunner,

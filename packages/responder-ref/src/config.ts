@@ -69,6 +69,25 @@ export interface ResponderConfig {
    */
   autoImplement: {
     enabled: boolean;
+    /**
+     * Operator rollout mode (Campaign A5 P1). DISTINCT from the answer-mode `mode`
+     * above (an escalation can be answer-shadow but auto-implement-on, or vice versa)
+     * and from `enabled` (the kill-switch). Reuses the RESPONDER_MODES enum:
+     *   - `off`    — inert: the write-path off-silence guards short-circuit (byte-
+     *                identical to the pre-A5 mode=off behavior). Meaningful only when
+     *                `enabled` is true.
+     *   - `shadow` — the responder DOES the work (assess → sniff → implement/drive →
+     *                push the verified branch) but does NOT submit the merge request /
+     *                does NOT land. It posts the branch ref + the `--stat` diff/plan
+     *                summary to the escalation thread (a `shadowProposal` marker) for
+     *                the operator to OBSERVE — the confidence-building rung.
+     *   - `on`     — fully autonomous (submit → train → land → resolve; the A1-A4
+     *                behavior).
+     * DEFAULT `on`: so `enabled=true` (with no mode override) reproduces A1-A4
+     * byte-identically. The operator ramp is enabled=false → enabled=true+mode=shadow
+     * → enabled=true+mode=on.
+     */
+    mode: ResponderMode;
     verifyCmd: string;
     allowedPaths: string[];
     /**
@@ -164,6 +183,7 @@ export interface ConfigEnv {
   PM_RESPONDER_ENABLED?: string;
   PM_RESPONDER_MODE?: string;
   PM_AUTO_IMPLEMENT_ENABLED?: string;
+  PM_AUTO_IMPLEMENT_MODE?: string;
   PM_AUTO_IMPLEMENT_VERIFY_CMD?: string;
   PM_AUTO_IMPLEMENT_ALLOWED_PATHS?: string;
   PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS?: string;
@@ -249,6 +269,17 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     env.PM_AUTO_IMPLEMENT_ENABLED !== undefined
       ? parseBool(env.PM_AUTO_IMPLEMENT_ENABLED)
       : false;
+  // auto_implement.mode (A5 P1): the operator rollout knob — off|shadow|on. DEFAULT
+  // "on" (so enabled=true reproduces A1-A4 byte-identically). Validated against the
+  // SAME RESPONDER_MODES enum as the answer-mode `mode` (else ConfigError). Distinct
+  // from `enabled` (the kill-switch) and from the answer-mode `mode` above.
+  const rawAutoImplementMode = env.PM_AUTO_IMPLEMENT_MODE ?? "on";
+  if (!(RESPONDER_MODES as readonly string[]).includes(rawAutoImplementMode)) {
+    throw new ConfigError(
+      `invalid auto_implement mode "${rawAutoImplementMode}"; expected one of ${RESPONDER_MODES.join("|")}`,
+    );
+  }
+  const autoImplementMode = rawAutoImplementMode as ResponderMode;
   // auto_implement.verifyCmd (P3): the project verify command the implement agent
   // runs in-session before declaring branch_ready. DEFAULT "" (skip in-session
   // verify — A2's train re-verify is the floor).
@@ -344,6 +375,7 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     mode,
     autoImplement: {
       enabled: autoImplementEnabled,
+      mode: autoImplementMode,
       verifyCmd: autoImplementVerifyCmd,
       allowedPaths: autoImplementAllowedPaths,
       budget: { maxConcurrentArcs, maxArcDurationSec, stallTimeoutSec },

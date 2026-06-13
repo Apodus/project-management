@@ -170,6 +170,21 @@ export interface ResponderDeps {
    */
   autoImplementEnabled: boolean;
   /**
+   * Auto-implement rollout mode (Campaign A5 P1). off|shadow|on, INDEPENDENT of the
+   * answer-mode `mode` (an escalation can be answer-shadow but auto-implement-on).
+   * Meaningful only when `autoImplementEnabled`. Gates ONLY the WRITE PATH:
+   *   - `off`    — the write-path off-silence guards short-circuit (byte-identical to
+   *                the pre-A5 mode=off write behavior).
+   *   - `shadow` — the responder DOES the work + PUSHES the branch but SKIPS
+   *                submitMergeRequest (the sole land path) — instead it posts the
+   *                branch ref + the `--stat` diff (a `shadowProposal` marker) for the
+   *                operator to OBSERVE. Structurally CANNOT land.
+   *   - `on`     — the existing A1-A4 path (submit → train → land → resolve).
+   * DEFAULT "on" (wired from cfg.autoImplement.mode) ⇒ A1-A4 byte-identical. The
+   * answer-mode `mode` + the SHARED pre-fork injection sniff gate stay on `mode`.
+   */
+  autoImplementMode: ResponderMode;
+  /**
    * Injectable injection sniff-test (Campaign A1 P1). Runs BEFORE the answering
    * session, ONLY when `autoImplementEnabled` — gating the write-capable
    * regime's entry on the RAW escalation. suspicious/error → escalate, do NOT
@@ -343,6 +358,21 @@ function leaseImplementSlot(
  */
 function hasPendingLandMarker(messages: EscalationMessage[]): boolean {
   return messages.some((m) => m.metadata != null && m.metadata.pendingLand === true);
+}
+
+/**
+ * Does this escalation's thread carry a SHADOW-PROPOSAL marker (A5 P1)? Under
+ * `autoImplementMode === "shadow"` a branch_ready implement session pushes the branch
+ * and posts a `diagnosis` message with `metadata.shadowProposal === true` (carrying
+ * the branch + commitSha + the per-phase `phaseTaskId` for an arc phase) but does NOT
+ * submit the merge request — the operator-observable artifact. The reclaim sweep keys
+ * off it to SKIP a shadow-proposed escalation (it's the operator's observe-not-approve
+ * artifact, not a stranded session — re-spawning would march the poison cap into a
+ * spurious needs_human). The per-phase advanceArc idempotence also keys off it (a
+ * phase already shadow-proposed is not re-implemented).
+ */
+function hasShadowProposalMarker(messages: EscalationMessage[]): boolean {
+  return messages.some((m) => m.metadata != null && m.metadata.shadowProposal === true);
 }
 
 /**
@@ -658,10 +688,14 @@ async function runAnsweringSession(
         );
         break;
       case "implement": {
-        if (deps.mode === "off") {
+        if (deps.autoImplementMode === "off") {
+          // A5 P1: the WRITE-PATH off-silence guard now keys off the INDEPENDENT
+          // auto-implement rollout mode (not the answer-mode `mode`). With the
+          // default mode "on" + auto_implement DISABLED, this is false and the
+          // `!autoImplementEnabled` fallback below escalates as before (byte-identical).
           deps.logger.info(
-            { escalationId, kind: result.kind, size: result.size, mode: deps.mode },
-            "implement (mode=off) — not acting; off is silent",
+            { escalationId, kind: result.kind, size: result.size, autoImplementMode: deps.autoImplementMode },
+            "implement (auto_implement mode=off) — not acting; off is silent",
           );
           return;
         }
@@ -796,7 +830,7 @@ async function runImplementForBranch(
   // only at maxConcurrent>1 with every implement session in flight).
   const slot = leaseImplementSlot(deps, state);
   if (slot === null) {
-    if (deps.mode === "off") return false; // off is silent.
+    if (deps.autoImplementMode === "off") return false; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -820,7 +854,7 @@ async function runImplementForBranch(
     await wt.resetForAttempt();
   } catch (err) {
     slot.leased = false;
-    if (deps.mode === "off") return false; // off is silent.
+    if (deps.autoImplementMode === "off") return false; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -888,7 +922,7 @@ async function runImplementForBranch(
               .map((s) => s.trim())
               .filter(Boolean);
           } catch (diffErr) {
-            if (deps.mode === "off") break; // off is silent.
+            if (deps.autoImplementMode === "off") break; // off is silent.
             await deps.client.escalateToHuman(
               escalationId,
               `could not compute the implement diff for the allowlist check: ${errMessage(diffErr)}; not landing`,
@@ -901,7 +935,7 @@ async function runImplementForBranch(
           }
           const outside = pathsOutsideAllowlist(touched, deps.worktreeGit.allowedPaths);
           if (outside.length > 0) {
-            if (deps.mode === "off") break; // off is silent.
+            if (deps.autoImplementMode === "off") break; // off is silent.
             await deps.client.escalateToHuman(
               escalationId,
               `auto-implement edited paths outside the allowed set: ${outside.join(", ")}; not landing`,
@@ -918,7 +952,7 @@ async function runImplementForBranch(
           try {
             await wt.git.push(deps.worktreeGit.remote, readyBranch, ["--set-upstream"]);
           } catch (pushErr) {
-            if (deps.mode === "off") break; // off is silent.
+            if (deps.autoImplementMode === "off") break; // off is silent.
             await deps.client.escalateToHuman(
               escalationId,
               `implemented on branch ${readyBranch} but push failed: ${errMessage(pushErr)}`,
@@ -930,10 +964,66 @@ async function runImplementForBranch(
             break;
           }
 
-          if (deps.mode === "off") {
+          if (deps.autoImplementMode === "off") {
             deps.logger.info(
-              { escalationId, projectId, branch: readyBranch, mode: deps.mode },
-              "implement branch_ready (mode=off) — pushed but not handing off; off is silent",
+              { escalationId, projectId, branch: readyBranch, mode: deps.autoImplementMode },
+              "implement branch_ready (auto_implement mode=off) — pushed but not handing off; off is silent",
+            );
+            break;
+          }
+
+          // Diff summary (best-effort — a failure just omits the stat). Computed
+          // HERE, BEFORE the submit, so the A5 shadow path can build the
+          // observable proposal body WITHOUT submitting a merge request.
+          let diffSummary = "";
+          try {
+            const stat = await wt.git.diff([
+              "--stat",
+              `${deps.worktreeGit.mainBranch}..${readyBranch}`,
+            ]);
+            diffSummary = stat.length > 2000 ? `${stat.slice(0, 2000)}\n…(truncated)` : stat;
+          } catch {
+            /* diff is advisory; omit on failure */
+          }
+
+          // ── A5 P1: shadow divergence. The branch is pushed + observable on the
+          // remote; instead of submitting the merge request (the SOLE land path) we
+          // post the branch ref + the --stat diff/plan summary as a `shadowProposal`
+          // diagnosis — an operator-observable artifact showing exactly what `on`
+          // would land. NO submit, NO pendingLand/pendingArc handoff marker, NO
+          // land. The escalation stays acknowledged + shadowProposal (the reclaim
+          // sweep skips it; the per-phase advanceArc skips a shadowed phase). The
+          // operator flips the GLOBAL knob to `on` when confident — there is NO
+          // per-escalation approval queue and NO auto-resolve. ──
+          if (deps.autoImplementMode === "shadow") {
+            const shadowBody =
+              `Auto-implement SHADOW proposal: pushed branch \`${readyBranch}\`` +
+              (commitSha ? ` (\`${commitSha}\`)` : "") +
+              ` but NOT submitting the merge request (shadow observes, does not land). ` +
+              `Flip auto_implement.mode to \`on\` to land changes like this.` +
+              (diffSummary.length > 0 ? `\n\n${diffSummary}` : "");
+            // Deliberately do NOT spread cfg.handoffMeta — a shadow proposal carries
+            // NEITHER pendingLand NOR pendingArc (nothing is pending the train). It
+            // carries `shadowProposal:true` (the reclaim-skip + observe artifact) plus
+            // the phase's `phaseTaskId`/`epicId` when this is an ARC phase (cfg.submitTaskId
+            // non-null) so advanceArc's per-phase idempotence skips an already-shadowed
+            // phase. A bounded shadow proposal (submitTaskId null) carries neither.
+            const shadowMeta: Record<string, unknown> = {
+              shadowProposal: true,
+              branch: readyBranch,
+              commitSha: commitSha ?? null,
+            };
+            if (cfg.submitTaskId !== null) {
+              shadowMeta.phaseTaskId = cfg.submitTaskId;
+              if (typeof cfg.handoffMeta.epicId === "string") {
+                shadowMeta.epicId = cfg.handoffMeta.epicId;
+              }
+            }
+            await deps.client.addMessage(escalationId, shadowBody, "diagnosis", shadowMeta);
+            handedOff = true;
+            deps.logger.info(
+              { escalationId, projectId, branch: readyBranch, commitSha, mode: deps.autoImplementMode },
+              "implement branch_ready (auto_implement mode=shadow) — pushed + posted a shadow proposal (no merge request, no land); stays acknowledged",
             );
             break;
           }
@@ -966,18 +1056,6 @@ async function runImplementForBranch(
             break;
           }
 
-          // Diff summary (best-effort — a failure just omits the stat).
-          let diffSummary = "";
-          try {
-            const stat = await wt.git.diff([
-              "--stat",
-              `${deps.worktreeGit.mainBranch}..${readyBranch}`,
-            ]);
-            diffSummary = stat.length > 2000 ? `${stat.slice(0, 2000)}\n…(truncated)` : stat;
-          } catch {
-            /* diff is advisory; omit on failure */
-          }
-
           const body =
             `Submitted merge request \`${mr.id}\` for branch \`${readyBranch}\`` +
             (commitSha ? ` (\`${commitSha}\`)` : "") +
@@ -1000,7 +1078,7 @@ async function runImplementForBranch(
           break;
         }
         case "give_up":
-          if (deps.mode === "off") break; // off is silent.
+          if (deps.autoImplementMode === "off") break; // off is silent.
           await deps.client.escalateToHuman(
             escalationId,
             `Responder could not implement: ${result.reason}`,
@@ -1011,7 +1089,7 @@ async function runImplementForBranch(
           );
           break;
         case "error":
-          if (deps.mode === "off") break; // off is silent.
+          if (deps.autoImplementMode === "off") break; // off is silent.
           await deps.client.escalateToHuman(
             escalationId,
             `implement session failed (${result.reason}): ${result.detail ?? ""}`,
@@ -1096,7 +1174,7 @@ async function runDriveSession(
   // free ⇒ escalate (rare; only at maxConcurrent>1 with every session in flight).
   const slot = leaseImplementSlot(deps, state);
   if (slot === null) {
-    if (deps.mode === "off") return; // off is silent.
+    if (deps.autoImplementMode === "off") return; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -1121,7 +1199,7 @@ async function runDriveSession(
     await wt.resetForAttempt();
   } catch (err) {
     slot.leased = false;
-    if (deps.mode === "off") return; // off is silent.
+    if (deps.autoImplementMode === "off") return; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -1159,13 +1237,17 @@ async function runDriveSession(
     try {
       switch (result.kind) {
         case "vision_ready": {
-          if (deps.mode === "off") {
+          if (deps.autoImplementMode === "off") {
             deps.logger.info(
-              { escalationId, projectId, visionPath: result.visionPath, mode: deps.mode },
-              "drive vision_ready (mode=off) — not creating epic/tasks; off is silent",
+              { escalationId, projectId, visionPath: result.visionPath, mode: deps.autoImplementMode },
+              "drive vision_ready (auto_implement mode=off) — not creating epic/tasks; off is silent",
             );
             break;
           }
+          // NOTE (A5 P1): shadow PROCEEDS here exactly as on — the vision + epic +
+          // tasks are PM artifacts, not lands, so producing them is observe-safe. The
+          // shadow divergence (skip submit) lives in runImplementForBranch (the phase
+          // implement), which advanceArc drives for phase 1 under this pendingDrive.
 
           // EARLY INTENT MARKER (A3 P3, daemon-restart survival). Write a
           // pendingDrive marker carrying NO epicId BEFORE createEpic. This closes
@@ -1264,7 +1346,7 @@ async function runDriveSession(
           break;
         }
         case "give_up":
-          if (deps.mode === "off") break; // off is silent.
+          if (deps.autoImplementMode === "off") break; // off is silent.
           await deps.client.escalateToHuman(
             escalationId,
             `Responder could not produce a vision: ${result.reason}`,
@@ -1275,7 +1357,7 @@ async function runDriveSession(
           );
           break;
         case "error":
-          if (deps.mode === "off") break; // off is silent.
+          if (deps.autoImplementMode === "off") break; // off is silent.
           await deps.client.escalateToHuman(
             escalationId,
             `drive session failed (${result.reason}): ${result.detail ?? ""}`,
@@ -1349,7 +1431,7 @@ async function advanceArc(
 ): Promise<void> {
   const epicId = arcEpicId(detail.messages);
   if (epicId === null) {
-    if (deps.mode === "off") return; // off is silent.
+    if (deps.autoImplementMode === "off") return; // off is silent.
     await deps.client.escalateToHuman(
       escalationId,
       "autonomous arc has no recoverable epic id on its handoff marker; needs a human",
@@ -1384,7 +1466,7 @@ async function advanceArc(
     const mr = mrByTask.get(task.id);
     if (mr !== undefined && inFlightStatuses.has(mr.status)) {
       if (isMrStalled(mr, now, deps.stallTimeoutSec)) {
-        if (deps.mode === "off") return; // off is silent.
+        if (deps.autoImplementMode === "off") return; // off is silent.
         // Reuse the arc_partial/duration-cap landedShas + remaining computation: a
         // stalled phase MR is the genuine blocker (an all-landed task is handled by
         // step (3) before this; a task with BOTH a landed and a stuck MR resolves via
@@ -1433,7 +1515,7 @@ async function advanceArc(
   for (const task of epic.tasks) {
     const mr = mrByTask.get(task.id);
     if (mr !== undefined && failedStatuses.has(mr.status)) {
-      if (deps.mode === "off") return; // off is silent.
+      if (deps.autoImplementMode === "off") return; // off is silent.
       const remaining = epic.tasks
         .filter((t) => {
           const m = mrByTask.get(t.id);
@@ -1461,7 +1543,7 @@ async function advanceArc(
       return mr !== undefined && mr.status === "landed";
     });
   if (allLanded) {
-    if (deps.mode === "off") return; // off is silent.
+    if (deps.autoImplementMode === "off") return; // off is silent.
     // Idempotent: if the arcComplete marker is already present, re-park (don't
     // re-append every cycle). The escalation stays acknowledged + arc-marked until
     // P4 resolves it.
@@ -1520,7 +1602,7 @@ async function advanceArc(
     now - arcStartedAt > deps.maxArcDurationSec * 1000 &&
     !hasArcCompleteMarker(detail.messages)
   ) {
-    if (deps.mode === "off") return; // off is silent.
+    if (deps.autoImplementMode === "off") return; // off is silent.
     const remaining = epic.tasks
       .filter((t) => {
         const m = mrByTask.get(t.id);
@@ -1540,11 +1622,30 @@ async function advanceArc(
   }
 
   // ── (4) prior phases landed, more remain → implement the next phase with no MR. ──
-  const next = epic.tasks.find((t) => mrByTask.get(t.id) === undefined);
+  // A5 P1 IDEMPOTENCE: under shadow no phase MR is ever submitted (the shadow
+  // divergence skips submit), so a shadow-proposed phase has NO MR and would be
+  // re-implemented every cycle forever. Exclude any task that already carries a
+  // `shadowProposal{phaseTaskId}` marker so a shadowed phase is not re-pushed; when
+  // every phase is shadowed (next undefined) we fall to the defensive re-park below
+  // (NOT escalate). On/off are unaffected — at `on` a submitted phase has an MR, at
+  // `off` we never reach the spawn anyway.
+  const shadowedPhaseTaskIds =
+    deps.autoImplementMode === "shadow"
+      ? new Set(
+          detail.messages
+            .filter((m) => m.metadata != null && m.metadata.shadowProposal === true)
+            .map((m) => m.metadata?.phaseTaskId)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        )
+      : new Set<string>();
+  const next = epic.tasks.find(
+    (t) => mrByTask.get(t.id) === undefined && !shadowedPhaseTaskIds.has(t.id),
+  );
   if (next === undefined) {
-    // Defensive: no in-flight, no failure, not all-landed, yet no task lacks an MR.
-    // (Shouldn't happen — a task with an MR is landed/in-flight/failed, all handled
-    // above.) Re-park; the next cycle re-derives.
+    // Defensive: no in-flight, no failure, not all-landed, yet no task lacks an MR
+    // (or, under shadow, every remaining phase is already shadow-proposed). Re-park
+    // (NOT escalate); the next cycle re-derives (under shadow this is the steady state
+    // — observe the per-phase shadow proposals, do not advance).
     deps.logger.info(
       { escalationId, projectId, epicId },
       "arc: no next phase to implement and not complete; re-park",
@@ -1552,7 +1653,7 @@ async function advanceArc(
     return;
   }
 
-  if (deps.mode === "off") return; // off is silent — no spawn.
+  if (deps.autoImplementMode === "off") return; // off is silent — no spawn.
 
   // Reserve the spawn budget (Directive 2: canSpawn/recordSpawn, NOT reclaimAttempts).
   if (!canSpawn(state, deps.spawnBudget, now)) {
@@ -1832,7 +1933,7 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
             }
             const stalledMr = escMrs.find((m) => isMrStalled(m, now, deps.stallTimeoutSec));
             if (stalledMr !== undefined) {
-              if (deps.mode === "off") continue; // off is silent.
+              if (deps.autoImplementMode === "off") continue; // off is silent.
               const reason =
                 `Bounded fix MR ${stalledMr.id} submitted but not landed within the stall window ` +
                 `(${deps.stallTimeoutSec}s; ${stalledMr.status}); the branch is pushed + preserved — ` +
@@ -1864,6 +1965,22 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
           deps.logger.debug(
             { escalationId, projectId },
             "reclaim skip: escalation has a pending-land handoff (awaiting A2/the train); not re-spawning",
+          );
+          continue;
+        }
+        if (hasShadowProposalMarker(thread.messages)) {
+          // A5 P1: a SHADOW proposal (a bounded shadow branch_ready that pushed but did
+          // NOT submit) carries `shadowProposal` but NEITHER pendingLand nor
+          // pendingDrive/pendingArc, so it falls through here. SKIP it: it is the
+          // operator's observe-not-approve artifact (the branch + diff sit on the
+          // thread, acknowledged), NOT a stranded session. Re-spawning a read-only
+          // answering session would march the poison cap into a spurious needs_human.
+          // (An arc-phase shadow proposal also carries pendingDrive — that routes to
+          // advanceArc above, which re-parks via the per-phase shadow idempotence — so
+          // this branch is reached by a BOUNDED shadow proposal.)
+          deps.logger.debug(
+            { escalationId, projectId },
+            "reclaim skip: escalation has a shadow proposal (observe-not-approve artifact); not re-spawning",
           );
           continue;
         }

@@ -85,6 +85,9 @@ function baseDeps(
     // REVISE FIX #2: mode "on" so a routine (non-high) answer auto-sends and
     // the chain lands on `answered`.
     mode: "on",
+    // A5 P1: the auto-implement rollout mode (the config default "on") — the A2/A3
+    // implement/arc seals rely on submit→land autonomy, so this keeps them green.
+    autoImplementMode: "on",
     maxConcurrent: 10,
     runner: new AnsweredRunner(),
     repoCwd: "/unused",

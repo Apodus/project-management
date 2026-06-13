@@ -58,6 +58,8 @@ describe("loadConfig", () => {
   it("autoImplement.enabled defaults to false; PM_AUTO_IMPLEMENT_ENABLED truthy turns it on", () => {
     expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement).toEqual({
       enabled: false,
+      // A5 P1: the rollout mode defaults to "on" (meaningful only when enabled).
+      mode: "on",
       verifyCmd: "",
       allowedPaths: [],
       // A4 P1+P3: generous budget defaults (⇒ A1-A4P2 byte-identical).
@@ -79,6 +81,25 @@ describe("loadConfig", () => {
       loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "no" })
         .autoImplement.enabled,
     ).toBe(false);
+  });
+
+  it("A5 P1: autoImplement.mode defaults to 'on'; PM_AUTO_IMPLEMENT_MODE parses off/shadow/on", () => {
+    // DEFAULT "on" (so enabled=true reproduces A1-A4 byte-identically).
+    expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement.mode).toBe("on");
+    expect(
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_MODE: "shadow" })
+        .autoImplement.mode,
+    ).toBe("shadow");
+    expect(
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_MODE: "off" })
+        .autoImplement.mode,
+    ).toBe("off");
+  });
+
+  it("A5 P1: is fatal (ConfigError) on an invalid auto_implement mode", () => {
+    expect(() =>
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_MODE: "bogus" }),
+    ).toThrow(ConfigError);
   });
 
   it("A4 P1: autoImplement.budget defaults generous; env overrides via positiveInt", () => {

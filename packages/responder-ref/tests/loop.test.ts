@@ -382,6 +382,10 @@ function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): Respon
     // A1 P1 defaults: auto_implement off + a clean sniffer, so all existing tests
     // (the sniff never runs when disabled) stay byte-identical.
     autoImplementEnabled: false,
+    // A5 P1 default: auto-implement rollout mode "on" (the config default) — so every
+    // existing A1-A4 auto-implement test (which sets autoImplementEnabled:true + relies
+    // on submit→land autonomy) stays byte-identical. A shadow/off test overrides it.
+    autoImplementMode: "on",
     sniffer: new FakeInjectionSniffer(),
     // A1 P3 defaults: a give_up implement runner + a fake worktree-acquire (no real
     // git) + empty verifyCmd + git defaults — so the implement path is inert unless a
@@ -1145,7 +1149,7 @@ describe("responderTick", () => {
     expect(client.escalateCalls[0].reason).toContain("C1"); // the failed campaign named
   });
 
-  it("mode=off + implement{systemic} (enabled) → silent: no epic/tasks/addMessage/escalate", async () => {
+  it("autoImplementMode=off + implement{systemic} (enabled) → silent: no epic/tasks/addMessage/escalate", async () => {
     const { client, runner, sniffer, drive, wt } = driveSetup({
       kind: "vision_ready",
       visionPath: "roadmaps/v.md",
@@ -1155,7 +1159,9 @@ describe("responderTick", () => {
     });
     await responderTick(
       baseDeps(client, {
-        mode: "off",
+        // A5 P1: the write-path off-silence is now keyed on autoImplementMode (the
+        // independent rollout knob), NOT the answer-mode `mode`.
+        autoImplementMode: "off",
         runner,
         sniffer,
         autoImplementEnabled: true,
@@ -1164,8 +1170,8 @@ describe("responderTick", () => {
       }),
       createResponderState(),
     );
-    // mode=off short-circuits the implement switch BEFORE the systemic branch — the
-    // drive never runs and nothing is posted.
+    // autoImplementMode=off short-circuits the implement switch BEFORE the systemic
+    // branch — the drive never runs and nothing is posted.
     expect(client.createEpic).not.toHaveBeenCalled();
     expect(client.createTask).not.toHaveBeenCalled();
     expect(client.addMessage).not.toHaveBeenCalled();
@@ -1204,13 +1210,14 @@ describe("responderTick", () => {
     expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
   });
 
-  it("mode=off + implement → silent (neither escalate nor act), regardless of auto_implement", async () => {
+  it("autoImplementMode=off + implement → silent (neither escalate nor act), regardless of auto_implement", async () => {
     const client = new FakeClient();
     client.listResults = [[mkEscalation("e1")]];
     const runner = implementRunner("bounded");
     const sniffer = snifferOf({ kind: "clean" });
     await responderTick(
-      baseDeps(client, { mode: "off", runner, sniffer, autoImplementEnabled: true }),
+      // A5 P1: the implement-case off-silence keys off autoImplementMode now.
+      baseDeps(client, { autoImplementMode: "off", runner, sniffer, autoImplementEnabled: true }),
       createResponderState(),
     );
     expect(client.escalateToHuman).not.toHaveBeenCalled();
@@ -1488,7 +1495,7 @@ describe("responderTick", () => {
     expect(wt.resetForAttempt.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("implement mode=off → silent (no spawn? — spawn runs but no addMessage/escalate)", async () => {
+  it("implement autoImplementMode=off → silent (no addMessage/escalate/submit)", async () => {
     const { client, runner, sniffer, impl, wt } = implementSetup({
       kind: "branch_ready",
       branch: "pm/escalation-e1",
@@ -1497,7 +1504,8 @@ describe("responderTick", () => {
     });
     await responderTick(
       baseDeps(client, {
-        mode: "off",
+        // A5 P1: the write-path off-silence is the auto-implement rollout knob.
+        autoImplementMode: "off",
         runner,
         sniffer,
         autoImplementEnabled: true,
@@ -1506,12 +1514,11 @@ describe("responderTick", () => {
       }),
       createResponderState(),
     );
-    // mode=off is silent on the implement OUTCOME (the existing implement-off test
-    // already asserts the answering switch returns before reaching the bounded path).
+    // autoImplementMode=off short-circuits the implement switch BEFORE the bounded
+    // path — nothing is posted.
     expect(client.addMessage).not.toHaveBeenCalled();
     expect(client.escalateToHuman).not.toHaveBeenCalled();
-    // A2 P1: mode=off never submits the merge request (the submit sits after the
-    // mode=off break; off short-circuits before it).
+    // A2 P1: off never submits the merge request.
     expect(client.submitMergeRequest).not.toHaveBeenCalled();
   });
 
@@ -1637,7 +1644,7 @@ describe("responderTick", () => {
     expect(client.escalateCalls[0].reason).toContain("could not compute the implement diff");
   });
 
-  it("allowlist: a path OUTSIDE + mode=off → silent (no escalate, no push)", async () => {
+  it("allowlist: a path OUTSIDE + autoImplementMode=off → silent (no escalate, no push)", async () => {
     const wt = new FakeWorktree();
     wt.touchedPaths = ["infra/secrets.ts"];
     const { client, runner, sniffer, impl } = implementSetup(
@@ -1646,7 +1653,8 @@ describe("responderTick", () => {
     );
     await responderTick(
       baseDeps(client, {
-        mode: "off",
+        // A5 P1: the write-path allowlist off-silence keys off autoImplementMode.
+        autoImplementMode: "off",
         runner,
         sniffer,
         autoImplementEnabled: true,
@@ -1688,6 +1696,321 @@ describe("responderTick", () => {
     expect(wt.pushCalls).toEqual([]);
     expect(client.escalateCalls).toHaveLength(1);
     expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
+  });
+
+  // ── A5 P1: the operator rollout mode (auto_implement.mode off|shadow|on) ──────
+  //
+  // The write-path off-silence guards now key off the INDEPENDENT autoImplementMode
+  // (not the answer-mode `mode`). off = inert; shadow = do the work + push but skip
+  // the merge-request submit (the SOLE land path) + post a shadowProposal diff; on =
+  // the A1-A4 submit→land autonomy (byte-identical). enabled=false is the kill-switch
+  // BEFORE any mode is consulted.
+  describe("A5 P1 — auto_implement rollout mode", () => {
+    // (1) off inert: autoImplementEnabled:false ⇒ no write session at all; the mode
+    // knob is never consulted (the disabled-fallback escalates as pre-A5).
+    it("off inert: autoImplementEnabled:false ⇒ no write session (mode never consulted)", async () => {
+      const client = new FakeClient();
+      client.listResults = [[mkEscalation("e1")]];
+      const runner = implementRunner("bounded");
+      const sniffer = snifferOf({ kind: "clean" });
+      const impl = new FakeImplementRunner();
+      const acquire = vi.fn(() => new FakeWorktree());
+      await responderTick(
+        // autoImplementMode left at the baseDeps default "on"; enabled false.
+        baseDeps(client, {
+          mode: "on",
+          runner,
+          sniffer,
+          autoImplementEnabled: false,
+          implementRunner: impl,
+          acquireWorktree: acquire,
+        }),
+        createResponderState(),
+      );
+      // No write session, no sniff, no submit; the disabled fallback escalates.
+      expect(impl.run).not.toHaveBeenCalled();
+      expect(acquire).not.toHaveBeenCalled();
+      expect(sniffer.sniff).not.toHaveBeenCalled();
+      expect(client.submitMergeRequest).not.toHaveBeenCalled();
+      expect(client.escalateCalls).toHaveLength(1);
+      expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
+    });
+
+    // (2) shadow bounded: pushes ONCE + posts a shadowProposal diff + does NOT submit.
+    it("shadow bounded: branch_ready ⇒ push once + addMessage(shadowProposal+diff), NO submitMergeRequest, stays acknowledged", async () => {
+      const { client, runner, sniffer, impl, wt } = implementSetup({
+        kind: "branch_ready",
+        branch: "pm/escalation-e1",
+        commitSha: "abc123",
+        durationMs: 1,
+      });
+      await responderTick(
+        baseDeps(client, {
+          mode: "on", // answer-mode independent; auto-implement is shadow.
+          autoImplementMode: "shadow",
+          runner,
+          sniffer,
+          autoImplementEnabled: true,
+          implementRunner: impl,
+          acquireWorktree: () => wt,
+        }),
+        createResponderState(),
+      );
+      // The branch is pushed + observable (the operator sees exactly what `on` lands).
+      expect(wt.pushCalls).toEqual([{ remote: "origin", branch: "pm/escalation-e1" }]);
+      // The SOLE land path is skipped — structurally cannot land.
+      expect(client.submitMergeRequest).not.toHaveBeenCalled();
+      // A shadowProposal diagnosis with the branch + the --stat diff.
+      expect(client.addMessageCalls).toHaveLength(1);
+      const msg = client.addMessageCalls[0];
+      expect(msg.messageType).toBe("diagnosis");
+      expect(msg.body).toContain("SHADOW proposal");
+      expect(msg.body).toContain("pm/escalation-e1");
+      expect(msg.body).toContain("file changed"); // the --stat summary
+      expect(msg.metadata).toMatchObject({
+        shadowProposal: true,
+        branch: "pm/escalation-e1",
+        commitSha: "abc123",
+      });
+      // A bounded shadow proposal carries NEITHER pendingLand NOR pendingArc.
+      expect(msg.metadata?.pendingLand).toBeUndefined();
+      expect(msg.metadata?.pendingArc).toBeUndefined();
+      // Observe-not-approve: stays acknowledged (no answer/resolve/escalate).
+      expect(client.answer).not.toHaveBeenCalled();
+      expect(client.resolve).not.toHaveBeenCalled();
+      expect(client.escalateToHuman).not.toHaveBeenCalled();
+    });
+
+    // (3) shadow systemic: vision+epic+tasks produced (as on), then phase 1 is
+    // shadow-proposed (pushed, NO submit), and a SECOND cycle re-parks (idempotence —
+    // no re-push of phase 1).
+    it("shadow systemic: drive produces vision+epic+tasks; phase 1 shadow-proposed (no submit); a second cycle re-parks (idempotence)", async () => {
+      // ── Cycle A: the systemic disposition runs the drive (claim path). ──
+      const { client, runner, sniffer, drive, wt } = driveSetup({
+        kind: "vision_ready",
+        visionPath: "roadmaps/v.md",
+        epicName: "E",
+        campaigns: [{ title: "C1", priority: "high", description: "d" }],
+        durationMs: 1,
+      });
+      const impl = new FakeImplementRunner();
+      impl.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-1", commitSha: "c1", durationMs: 1 };
+      const state = createResponderState();
+      await responderTick(
+        baseDeps(client, {
+          mode: "on",
+          autoImplementMode: "shadow",
+          runner,
+          sniffer,
+          autoImplementEnabled: true,
+          driveRunner: drive,
+          implementRunner: impl,
+          acquireWorktree: () => wt,
+        }),
+        state,
+      );
+      // Vision + epic + tasks ARE produced under shadow (PM artifacts, not lands).
+      expect(drive.run).toHaveBeenCalledTimes(1);
+      expect(client.createEpic).toHaveBeenCalledTimes(1);
+      expect(client.createTask).toHaveBeenCalledTimes(1);
+
+      // ── Cycle B: the reclaim sweep routes the pendingDrive arc to advanceArc, which
+      // implements phase 1 — under shadow it pushes + shadow-proposes, NO submit. ──
+      const epicTasks = [{ id: "task-1", title: "C1", description: "d" }];
+      // The thread now carries the pendingDrive marker (with epicId) from cycle A.
+      const arcThread: EscalationWithThread = {
+        ...mkEscalation("e1", { status: "acknowledged", holderId: SELF }),
+        messages: [
+          {
+            id: "e1-m1",
+            escalationId: "e1",
+            seq: 1,
+            authorId: SELF,
+            body: "drive handoff",
+            messageType: "diagnosis",
+            metadata: { pendingDrive: true, visionPath: "roadmaps/v.md", epicId: "epic1" },
+            createdAt: "2026-06-13T00:00:00.000Z",
+          },
+        ],
+      };
+      const STALE_B = Date.parse("2026-06-14T00:00:00.000Z");
+      const clientB = new FakeClient();
+      clientB.listResults = [[]];
+      const rowB = mkEscalation("e1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" });
+      clientB.ackResults = [[rowB], [rowB]]; // probe + reclaim
+      clientB.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => arcThread);
+      clientB.epicResult = { id: "epic1", name: "E", tasks: epicTasks };
+      clientB.mrResults = [[]]; // no phase MRs yet → implement phase 1.
+      const implB = new FakeImplementRunner();
+      implB.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-1", commitSha: "c1", durationMs: 1 };
+      const wtB = new FakeWorktree();
+      await responderTick(
+        baseDeps(clientB, {
+          mode: "on",
+          autoImplementMode: "shadow",
+          maxConcurrent: 10,
+          now: () => STALE_B,
+          autoImplementEnabled: true,
+          implementRunner: implB,
+          acquireWorktree: () => wtB,
+        }),
+        createResponderState(),
+      );
+      // Phase 1 implemented + pushed but NOT submitted; a shadowProposal carrying its
+      // phaseTaskId is posted.
+      expect(implB.run).toHaveBeenCalledTimes(1);
+      expect(wtB.pushCalls).toEqual([{ remote: "origin", branch: "pm/escalation-e1-task-1" }]);
+      expect(clientB.submitMergeRequest).not.toHaveBeenCalled();
+      expect(clientB.addMessageCalls).toHaveLength(1);
+      expect(clientB.addMessageCalls[0].metadata).toMatchObject({
+        shadowProposal: true,
+        phaseTaskId: "task-1",
+        epicId: "epic1",
+      });
+
+      // ── Cycle C: phase 1 now carries a shadowProposal marker; advanceArc must NOT
+      // re-implement it — re-park (idempotence). ──
+      const arcThreadC: EscalationWithThread = {
+        ...mkEscalation("e1", { status: "acknowledged", holderId: SELF }),
+        messages: [
+          arcThread.messages[0],
+          {
+            id: "e1-m2",
+            escalationId: "e1",
+            seq: 2,
+            authorId: SELF,
+            body: "shadow proposal phase 1",
+            messageType: "diagnosis",
+            metadata: { shadowProposal: true, phaseTaskId: "task-1", epicId: "epic1", branch: "pm/escalation-e1-task-1", commitSha: "c1" },
+            createdAt: "2026-06-13T00:00:00.000Z",
+          },
+        ],
+      };
+      const clientC = new FakeClient();
+      clientC.listResults = [[]];
+      const rowC = mkEscalation("e1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" });
+      clientC.ackResults = [[rowC], [rowC]];
+      clientC.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => arcThreadC);
+      clientC.epicResult = { id: "epic1", name: "E", tasks: epicTasks };
+      clientC.mrResults = [[]]; // still no MR (shadow never submits).
+      const implC = new FakeImplementRunner();
+      implC.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-1", commitSha: "c1", durationMs: 1 };
+      const wtC = new FakeWorktree();
+      await responderTick(
+        baseDeps(clientC, {
+          mode: "on",
+          autoImplementMode: "shadow",
+          maxConcurrent: 10,
+          now: () => STALE_B,
+          autoImplementEnabled: true,
+          implementRunner: implC,
+          acquireWorktree: () => wtC,
+        }),
+        createResponderState(),
+      );
+      // The per-phase shadow idempotence skip: phase 1 is NOT re-implemented; re-park.
+      expect(implC.run).not.toHaveBeenCalled();
+      expect(wtC.pushCalls).toEqual([]);
+      expect(clientC.submitMergeRequest).not.toHaveBeenCalled();
+      // No false arc_complete (allLanded is false — no landed MR), no escalate.
+      expect(clientC.answer).not.toHaveBeenCalled();
+      expect(clientC.resolve).not.toHaveBeenCalled();
+      expect(clientC.escalateToHuman).not.toHaveBeenCalled();
+    });
+
+    // (4) on (A1-A4 intact): an explicit autoImplementMode:"on" bounded case submits +
+    // hands off (the existing default-on tests already cover this; this pins it).
+    it("on: branch_ready ⇒ submitMergeRequest + pendingLand handoff (A1-A4 autonomy intact)", async () => {
+      const { client, runner, sniffer, impl, wt } = implementSetup({
+        kind: "branch_ready",
+        branch: "pm/escalation-e1",
+        commitSha: "abc123",
+        durationMs: 1,
+      });
+      await responderTick(
+        baseDeps(client, {
+          mode: "on",
+          autoImplementMode: "on",
+          runner,
+          sniffer,
+          autoImplementEnabled: true,
+          implementRunner: impl,
+          acquireWorktree: () => wt,
+        }),
+        createResponderState(),
+      );
+      expect(wt.pushCalls).toEqual([{ remote: "origin", branch: "pm/escalation-e1" }]);
+      expect(client.submitMergeRequest).toHaveBeenCalledTimes(1);
+      expect(client.addMessageCalls).toHaveLength(1);
+      expect(client.addMessageCalls[0].metadata).toMatchObject({
+        pendingLand: true,
+        mergeRequestId: "mr1",
+      });
+      expect(client.addMessageCalls[0].metadata?.shadowProposal).toBeUndefined();
+    });
+
+    // (5) answer-mode independence: auto-implement shadow + answer mode "on" → the
+    // ANSWER path still auto-sends (the answer-mode `mode` is untouched by the swap).
+    it("independence: autoImplementMode:'shadow' + answer mode:'on' + answered ⇒ answer still auto-sends", async () => {
+      const client = new FakeClient();
+      client.listResults = [[mkEscalation("e1")]];
+      const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+      const sniffer = snifferOf({ kind: "clean" });
+      await responderTick(
+        baseDeps(client, {
+          mode: "on", // answer auto-sends...
+          autoImplementMode: "shadow", // ...even though auto-implement is shadow.
+          runner,
+          sniffer,
+          autoImplementEnabled: true,
+        }),
+        createResponderState(),
+      );
+      expect(client.answerCalls).toEqual([{ id: "e1", body: "A" }]);
+      expect(client.escalateToHuman).not.toHaveBeenCalled();
+    });
+
+    // (6) shadowProposal reclaim-skip: a self-held acknowledged escalation carrying a
+    // (bounded) shadowProposal marker is reclaim-SKIPPED (not churned to needs_human).
+    it("reclaim SKIPS a shadowProposal-marked escalation (no re-spawn, not escalated)", async () => {
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const stale = mkEscalation("r1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" });
+      // autoImplementEnabled ⇒ the in-flight-arc probe also lists holders; but the
+      // probe only counts pendingDrive/pendingArc (shadowProposal is neither), so it
+      // does not over-count. Provide one row for the probe + one for the reclaim pass.
+      client.ackResults = [[stale], [stale]];
+      client.getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => ({
+        ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+        messages: [
+          {
+            id: `${id}-m1`,
+            escalationId: id,
+            seq: 1,
+            authorId: SELF,
+            body: "shadow proposal",
+            messageType: "diagnosis",
+            metadata: { shadowProposal: true, branch: "pm/escalation-r1", commitSha: "abc" },
+            createdAt: "2026-06-13T00:00:00.000Z",
+          },
+        ],
+      }));
+      const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+      await responderTick(
+        baseDeps(client, {
+          mode: "on",
+          autoImplementMode: "shadow",
+          maxConcurrent: 10,
+          runner,
+          autoImplementEnabled: true,
+          now: () => Date.parse("2026-06-14T00:00:00.000Z"),
+        }),
+        createResponderState(),
+      );
+      // The read-only answering session is NOT re-spawned; not churned to needs_human.
+      expect(runner.run).not.toHaveBeenCalled();
+      expect(client.escalateToHuman).not.toHaveBeenCalled();
+    });
   });
 
   describe("pathsOutsideAllowlist (pure)", () => {
@@ -3090,7 +3413,7 @@ describe("responderTick", () => {
     });
 
     // ── Case 6: off mode is silent on a stalled bounded MR ──
-    it("mode=off: a stalled pendingLand MR is silent (no escalate)", async () => {
+    it("autoImplementMode=off: a stalled pendingLand MR is silent (no escalate)", async () => {
       const client = new FakeClient();
       client.listResults = [[]];
       const stale = mkEscalation("r1", {
@@ -3104,7 +3427,8 @@ describe("responderTick", () => {
         [{ id: "mrB", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1", commitSha: "abc", enqueuedAt: STALE_ENQUEUED }],
       ];
       const deps = baseDeps(client, {
-        mode: "off",
+        // A5 P1: the reclaim stall off-silence keys off autoImplementMode.
+        autoImplementMode: "off",
         maxConcurrent: 10,
         autoImplementEnabled: true,
         now: () => STALE,
