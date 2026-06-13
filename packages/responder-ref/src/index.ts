@@ -1,8 +1,10 @@
+import { mkdir } from "node:fs/promises";
 import { Command } from "commander";
 import { ConfigError, loadConfig, type CliArgs } from "./config.js";
 import { ResponderClient } from "./api-client.js";
 import { createLogger } from "./logger.js";
 import { runResponderLoop } from "./loop.js";
+import { createClaudeResponderRunner } from "./responder-runner.js";
 import { VERSION } from "./version.js";
 
 function collect(value: string, prev: string[]): string[] {
@@ -24,7 +26,8 @@ async function main(): Promise<void> {
       [] as string[],
     )
     .option("--enabled", "Enable the responder (default off)")
-    .option("--mode <mode>", "Responder mode (off|shadow|on); default shadow (parsed only in P1)")
+    .option("--mode <mode>", "Responder mode (off|shadow|on); default shadow")
+    .option("--repo-cwd <path>", "Working directory the answering session runs in (the PM repo checkout)")
     .parse(process.argv);
 
   const args = program.opts() as CliArgs;
@@ -60,6 +63,12 @@ async function main(): Promise<void> {
     process.exit(0);
     return;
   }
+
+  // ── Answering-session wiring. ──
+  // Ensure the sentinel/log directory exists (AFTER the kill-switch gate, so a
+  // disabled process never mkdirs). It lives OUTSIDE any git tree.
+  await mkdir(cfg.logsDir, { recursive: true });
+  const runner = createClaudeResponderRunner({ command: cfg.command });
 
   // ── Resolve self identity (no-recursion seed). ──
   let selfId: string;
@@ -110,6 +119,12 @@ async function main(): Promise<void> {
       selfId,
       enabled: cfg.enabled,
       maxConcurrent: cfg.maxConcurrent,
+      runner,
+      repoCwd: cfg.repoCwd,
+      command: cfg.command,
+      mode: cfg.mode,
+      budget: { timeBudgetSec: cfg.timeBudgetSec, tokenBudget: cfg.tokenBudget },
+      logsDir: cfg.logsDir,
       shouldContinue: () => !stopRequested,
       waitForWork: (pollMs: number) =>
         new Promise<void>((resolve) => {

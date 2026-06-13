@@ -13,6 +13,8 @@
  * DELIVERY path), the responder is PROJECT-scoped and is the AUTONOMOUS answerer:
  * it picks up escalations no live worker has taken.
  */
+import path from "node:path";
+import os from "node:os";
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -25,11 +27,15 @@ export class ConfigError extends Error {
  * The responder's mode. Note: `off` is NOT the same as `enabled=false`.
  * `enabled` is the kill-switch (idle the process entirely); `mode` selects the
  * answering behavior (`off`/`shadow`/`on`) and only acquires meaning in P3/P5.
- * In P1 `mode` is PARSED and validated but has NO behavioral branch — it is
- * inert (the loop only ever claims, governed by `enabled`).
+ * As of P3, `mode` is CONSUMED: at `on` the responder posts the answering
+ * session's outcome (answer / escalate-to-human); at `off`/`shadow` it spawns
+ * and logs the outcome but never posts (the clean P5 shadow-handling seam).
  */
 export const RESPONDER_MODES = ["off", "shadow", "on"] as const;
 export type ResponderMode = (typeof RESPONDER_MODES)[number];
+
+/** Default headless answering command (overridable via PM_RESPONDER_COMMAND). */
+export const DEFAULT_RESPONDER_COMMAND = "claude -p";
 
 export interface SpawnBudget {
   maxSpawns: number;
@@ -42,16 +48,22 @@ export interface ResponderConfig {
   projectIds: string[];
   /** Kill-switch. DEFAULT FALSE — the operator must opt in. */
   enabled: boolean;
-  /** off|shadow|on. DEFAULT shadow. Parsed only in P1 (inert). */
+  /** off|shadow|on. DEFAULT shadow. Consumed in P3 (gates the POST). */
   mode: ResponderMode;
   pollIntervalSec: number;
   maxConcurrent: number;
-  /** Spawn-rate cap (parse only in P1 — P2 enforces). */
+  /** Spawn-rate cap (parse only in P1 — P5 enforces). */
   spawnBudget: SpawnBudget;
-  /** Per-session wall-clock budget (parse only in P1 — P2 enforces). */
+  /** Per-session wall-clock budget (consumed by the runner). */
   timeBudgetSec: number;
-  /** Optional per-session token budget (parse only in P1 — P2 surfaces). */
+  /** Optional per-session token budget (surfaced to the runner). */
   tokenBudget?: number;
+  /** Headless answering command (PM_RESPONDER_COMMAND || default "claude -p"). */
+  command: string;
+  /** Working directory the answering session runs in (the PM repo checkout). */
+  repoCwd: string;
+  /** Directory for per-escalation status sentinels + logs (OUTSIDE any git tree). */
+  logsDir: string;
   logLevel: string;
 }
 
@@ -62,6 +74,7 @@ export interface CliArgs {
   project?: string[];
   enabled?: boolean;
   mode?: string;
+  repoCwd?: string;
 }
 
 export interface ConfigEnv {
@@ -70,6 +83,9 @@ export interface ConfigEnv {
   PM_PROJECT_ID?: string;
   PM_RESPONDER_ENABLED?: string;
   PM_RESPONDER_MODE?: string;
+  PM_RESPONDER_COMMAND?: string;
+  PM_RESPONDER_REPO_CWD?: string;
+  PM_RESPONDER_LOGS_DIR?: string;
   PM_LOG_LEVEL?: string;
   [k: string]: string | undefined;
 }
@@ -127,6 +143,15 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
 
   const pollIntervalSec = positiveInt(args.pollIntervalSec, DEFAULT_POLL_INTERVAL_SEC);
 
+  // Answering-session wiring (P3). command: env-or-default; repoCwd: the PM repo
+  // the read-only diagnostic session runs in (defaults to the daemon's cwd);
+  // logsDir: where per-escalation status sentinels + logs land — MUST be OUTSIDE
+  // any git tree (defaults to the OS temp dir), so a sentinel never registers as
+  // a working-tree change.
+  const command = env.PM_RESPONDER_COMMAND || DEFAULT_RESPONDER_COMMAND;
+  const repoCwd = args.repoCwd ?? env.PM_RESPONDER_REPO_CWD ?? process.cwd();
+  const logsDir = env.PM_RESPONDER_LOGS_DIR ?? path.join(os.tmpdir(), "pm-responder-logs");
+
   return {
     pmUrl,
     token,
@@ -138,6 +163,9 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     spawnBudget: { maxSpawns: DEFAULT_MAX_SPAWNS, windowSec: DEFAULT_SPAWN_WINDOW_SEC },
     timeBudgetSec: DEFAULT_TIME_BUDGET_SEC,
     tokenBudget: undefined,
+    command,
+    repoCwd,
+    logsDir,
     logLevel: args.logLevel ?? env.PM_LOG_LEVEL ?? "info",
   };
 }

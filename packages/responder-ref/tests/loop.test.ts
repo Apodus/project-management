@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { responderTick, createResponderState, type ResponderDeps } from "../src/loop.js";
 import { PmApiError } from "../src/api-client.js";
-import type { Escalation } from "@pm/shared";
+import type { Escalation, EscalationWithThread } from "@pm/shared";
 import type { Logger } from "../src/logger.js";
+import type { ResponderRunner, ResponderRunResult } from "../src/responder-runner.js";
 
 // ── Fakes ──────────────────────────────────────────────────────────
 
@@ -59,6 +60,38 @@ class FakeClient {
     this.acks.push(id);
     return mkEscalation(id, { status: "acknowledged", holderId: SELF });
   });
+
+  // P3: the thread fetch + the two outcome posts. getEscalation defaults to the
+  // escalation spread with an empty thread (overridable per test).
+  getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => {
+    return { ...mkEscalation(id, { status: "acknowledged", holderId: SELF }), messages: [] };
+  });
+
+  answerCalls: { id: string; body: string }[] = [];
+  answer = vi.fn(async (id: string, body: string): Promise<Escalation> => {
+    this.answerCalls.push({ id, body });
+    return mkEscalation(id, { status: "answered", holderId: SELF });
+  });
+
+  escalateCalls: { id: string; reason: string }[] = [];
+  escalateToHuman = vi.fn(async (id: string, reason: string): Promise<Escalation> => {
+    this.escalateCalls.push({ id, reason });
+    return mkEscalation(id, { status: "needs_human", holderId: SELF });
+  });
+}
+
+/**
+ * A scripted answering session. `run` resolves the supplied result (default
+ * give_up — a benign no-post outcome). A `gate` promise lets a test hold the
+ * session in flight to probe the concurrency semaphore.
+ */
+class FakeResponderRunner implements ResponderRunner {
+  result: ResponderRunResult = { kind: "give_up", reason: "noop", durationMs: 0 };
+  gate?: Promise<void>;
+  run = vi.fn(async (): Promise<ResponderRunResult> => {
+    if (this.gate) await this.gate;
+    return this.result;
+  });
 }
 
 function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): ResponderDeps {
@@ -69,6 +102,14 @@ function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): Respon
     selfId: SELF,
     enabled: true,
     maxConcurrent: 1,
+    // Default mode: shadow. At shadow the job spawns + logs but NEVER posts, so
+    // every existing P1 assertion (acknowledge/acks/claimed — all set BEFORE the
+    // spawn) stays byte-identical and a no-op runner suffices.
+    mode: "shadow",
+    runner: new FakeResponderRunner(),
+    repoCwd: "/repo",
+    command: "claude -p",
+    budget: { timeBudgetSec: 900 },
     now: () => 1_000_000,
     ...over,
   };
@@ -200,5 +241,127 @@ describe("responderTick", () => {
     await responderTick(baseDeps(client, { maxConcurrent: 1 }), state);
     expect(client.acknowledge).toHaveBeenCalledTimes(1);
     expect(client.acks).toEqual(["early"]);
+  });
+
+  // ── P3/P4: outcome handling ──────────────────────────────────────
+
+  function onRunner(result: ResponderRunResult): FakeResponderRunner {
+    const r = new FakeResponderRunner();
+    r.result = result;
+    return r;
+  }
+
+  it("on + answered → answer(id, text) called, no escalateToHuman", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "on", runner }), createResponderState());
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(client.answerCalls).toEqual([{ id: "e1", body: "A" }]);
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("on + needs_human → escalateToHuman(id, reason)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = onRunner({ kind: "needs_human", reason: "need a human", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "on", runner }), createResponderState());
+    expect(client.escalateCalls).toEqual([{ id: "e1", reason: "need a human" }]);
+    expect(client.answer).not.toHaveBeenCalled();
+  });
+
+  it("on + give_up → escalateToHuman with 'Responder gave up: ' prefix", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = onRunner({ kind: "give_up", reason: "stuck", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "on", runner }), createResponderState());
+    expect(client.escalateCalls).toEqual([{ id: "e1", reason: "Responder gave up: stuck" }]);
+  });
+
+  it("on + error{timeout} and error{spawn_error,detail} → escalateToHuman with a non-empty failure string", async () => {
+    const c1 = new FakeClient();
+    c1.listResults = [[mkEscalation("e1")]];
+    await responderTick(
+      baseDeps(c1, { mode: "on", runner: onRunner({ kind: "error", reason: "timeout", durationMs: 1 }) }),
+      createResponderState(),
+    );
+    expect(c1.escalateCalls).toHaveLength(1);
+    expect(c1.escalateCalls[0].id).toBe("e1");
+    expect(c1.escalateCalls[0].reason.length).toBeGreaterThan(0);
+    expect(c1.escalateCalls[0].reason).toContain("timeout");
+
+    const c2 = new FakeClient();
+    c2.listResults = [[mkEscalation("e2")]];
+    await responderTick(
+      baseDeps(c2, {
+        mode: "on",
+        runner: onRunner({
+          kind: "error",
+          reason: "spawn_error",
+          detail: "ENOENT",
+          durationMs: 1,
+        }),
+      }),
+      createResponderState(),
+    );
+    expect(c2.escalateCalls).toHaveLength(1);
+    expect(c2.escalateCalls[0].reason.length).toBeGreaterThan(0);
+    expect(c2.escalateCalls[0].reason).toContain("spawn_error");
+    expect(c2.escalateCalls[0].reason).toContain("ENOENT");
+  });
+
+  it("shadow + answered → runner.run called but NEITHER answer nor escalateToHuman (P5 seam)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "shadow", runner }), createResponderState());
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(client.answer).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("on + client.answer throws → loop resolves (no throw escapes), escalation still claimed", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.answer = vi.fn(async () => {
+      throw new PmApiError(500, "INTERNAL", "boom");
+    });
+    const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+    const state = createResponderState();
+    await expect(
+      responderTick(baseDeps(client, { mode: "on", runner }), state),
+    ).resolves.toBeUndefined();
+    expect(client.answer).toHaveBeenCalledTimes(1);
+    expect(state.claimed.has("e1")).toBe(true);
+  });
+
+  it("403-on-ack → runner.run NOT called (spawn only after a successful claim)", async () => {
+    const client = new FakeClient();
+    client.ackError = () => new PmApiError(403, "FORBIDDEN", "held");
+    client.listResults = [[mkEscalation("e1")]];
+    const runner = onRunner({ kind: "answered", answer: "A", durationMs: 1 });
+    await responderTick(baseDeps(client, { mode: "on", runner }), createResponderState());
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(client.answer).not.toHaveBeenCalled();
+    expect(client.escalateToHuman).not.toHaveBeenCalled();
+  });
+
+  it("maxConcurrent=1 + blocking runner → one runner.run in flight at a time", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1"), mkEscalation("e2")]];
+    let release!: () => void;
+    const runner = new FakeResponderRunner();
+    runner.result = { kind: "give_up", reason: "noop", durationMs: 0 };
+    runner.gate = new Promise<void>((r) => (release = r));
+    const state = createResponderState();
+    const tick = responderTick(baseDeps(client, { mode: "shadow", maxConcurrent: 1, runner }), state);
+    // The first claim + spawn is in flight (blocked on the gate); the 2nd is
+    // gated by the semaphore and never spawns this tick. Flush enough microtasks
+    // to clear the awaited acknowledge + getEscalation before runner.run.
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    release();
+    await tick;
+    expect(runner.run).toHaveBeenCalledTimes(1); // the 2nd reappears next tick
   });
 });

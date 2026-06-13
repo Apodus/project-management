@@ -6,7 +6,7 @@
  * acknowledge (claim), and /auth/me (resolve selfId once at startup). Single
  * source of truth for the view types is @pm/shared.
  */
-import type { Escalation } from "@pm/shared";
+import type { Escalation, EscalationWithThread } from "@pm/shared";
 
 export class PmApiError extends Error {
   constructor(
@@ -126,6 +126,44 @@ export class ResponderClient {
     return this.request<Escalation>(
       "POST",
       `/escalations/${encodeURIComponent(id)}/acknowledge`,
+    );
+  }
+
+  /**
+   * Fetch the escalation + its full ordered thread (the getById shape). The
+   * responder reads this once after claiming, to seed the answering session's
+   * prompt with the escalation fields + every thread message.
+   */
+  getEscalation(id: string): Promise<EscalationWithThread> {
+    return this.request<EscalationWithThread>(
+      "GET",
+      `/escalations/${encodeURIComponent(id)}`,
+    );
+  }
+
+  /**
+   * Answer an acknowledged escalation (acknowledged → answered). The optional
+   * `body` is appended as a `diagnosis` message — it IS the text the origin
+   * client receives (the C2 delivery path auto-notices the answer).
+   */
+  answer(id: string, body: string): Promise<Escalation> {
+    return this.request<Escalation>(
+      "POST",
+      `/escalations/${encodeURIComponent(id)}/answer`,
+      { body },
+    );
+  }
+
+  /**
+   * Escalate to a human (any non-terminal state → needs_human). A reason is
+   * required and recorded as a `system` message. The responder routes
+   * needs_human / give_up / error outcomes here so no proven work is discarded.
+   */
+  escalateToHuman(id: string, reason: string): Promise<Escalation> {
+    return this.request<Escalation>(
+      "POST",
+      `/escalations/${encodeURIComponent(id)}/escalate-to-human`,
+      { reason },
     );
   }
 

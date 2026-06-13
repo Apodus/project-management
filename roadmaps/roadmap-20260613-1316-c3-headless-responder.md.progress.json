@@ -1,0 +1,14 @@
+{
+  "campaign": "C3 — Headless PM-side responder",
+  "vision": "roadmaps/vision-20260613-agent-to-agent-escalation-channel.md",
+  "branch": "campaign-agent-escalation-channel",
+  "completed_phases": ["P1", "P2"],
+  "current_phase": "P3",
+  "phase_outcomes": {
+    "P1": "@urtela/pm-responder skeleton (poll open escalations, claim via acknowledge; enabled default FALSE; no-recursion seed). 25 tests. 77fa02e.",
+    "P2": "createClaudeResponderRunner (resolver-runner transplant; 4-state sentinel answered{answer}|needs_human|give_up|error; killTree budget; stale-sentinel rm; answer-only prompt) + buildResponderPrompt/DEFAULT_RESPONDER_PROMPT. 37 tests. Not loop-wired. d3f2ec9."
+  },
+  "open_issues": [],
+  "dag_drift": [],
+  "notes": "P3 wires the loop: claimed escalation -> spawn runner -> on answered post via answer/addMessage (acknowledged->answered); the answer becomes an undelivered directed reply (C2 closes the loop). P4 routes needs_human/give_up/error -> escalateToHuman."
+}

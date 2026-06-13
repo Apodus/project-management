@@ -1,5 +1,5 @@
 /**
- * The responder loop (Campaign C3 P1 — skeleton + claim, NO spawn).
+ * The responder loop (Campaign C3 — claim + answer).
  *
  * Per watched project, each tick:
  *   1. GET open escalations (a per-project error → warn + continue; the loop
@@ -10,23 +10,35 @@
  *        && status === "open"
  *        && !claimed.has(id)          (we haven't already claimed it this process)
  *   3. Oldest-first by createdAt. For each, under a `maxConcurrent` semaphore,
- *      acknowledge(id) to CLAIM it (the C1 one-active-responder gate).
- *        - success → record claimed, log "claimed … (stays acknowledged until
- *          P3 adds answer)". (P2 will spawn the answering session here.)
- *        - 403 → another responder beat us; skip silently (debug), don't record.
- *        - 409 → raced out of open (resolved/answered between list and ack); skip.
- *        - other → warn, leave un-claimed so a later tick retries.
+ *      acknowledge(id) to CLAIM it (the C1 one-active-responder gate). On a
+ *      successful claim the job (holding the slot for the budget duration, like
+ *      the wake daemon) fetches the thread, builds the prompt, SPAWNS the
+ *      answering session, and handles its 4-state outcome:
+ *        - mode !== "on" → spawn + log the outcome, do NOT post (the P5
+ *          shadow-handling seam — off AND shadow both spawn-and-log).
+ *        - mode === "on" → answered → answer(); needs_human/give_up/error →
+ *          escalate-to-human (no proven work discarded).
+ *      ack failures: 403 (another responder beat us; debug, don't record),
+ *      409 (raced out of open; skip), other (warn, retry next tick).
  *
  * `enabled` is the kill-switch: a disabled tick is a no-op (defense-in-depth —
- * index.ts also exits before entering the loop). `mode` is NOT consulted here in
- * P1 (parsed-only; the loop always claims when enabled — see config.ts).
+ * index.ts also exits before entering the loop). `mode` gates ONLY the POST —
+ * the spawn always runs when enabled (so shadow exercises the real session).
  */
+import path from "node:path";
+import { tmpdir } from "node:os";
 import type { Logger } from "./logger.js";
 import type { ResponderClient } from "./api-client.js";
 import { PmApiError } from "./api-client.js";
+import type { ResponderRunner } from "./responder-runner.js";
+import { buildResponderPrompt } from "./prompt.js";
+import type { ResponderMode } from "./config.js";
 
 export interface ResponderDeps {
-  client: Pick<ResponderClient, "listOpenEscalations" | "acknowledge">;
+  client: Pick<
+    ResponderClient,
+    "listOpenEscalations" | "acknowledge" | "answer" | "escalateToHuman" | "getEscalation"
+  >;
   logger: Logger;
   projectIds: string[];
   /** This responder's own user id (from /auth/me) — the no-recursion seed. */
@@ -34,6 +46,22 @@ export interface ResponderDeps {
   /** Kill-switch. A disabled tick is a no-op. */
   enabled: boolean;
   maxConcurrent: number;
+  /** The injectable answering session (real spawn in prod; scripted in tests). */
+  runner: ResponderRunner;
+  /** Working directory the answering session runs in (the PM repo checkout). */
+  repoCwd: string;
+  /** Headless answering command passed to the runner. */
+  command: string;
+  /** off|shadow|on — gates ONLY the POST (the spawn always runs when enabled). */
+  mode: ResponderMode;
+  /** Per-session budget handed to the runner. */
+  budget: { timeBudgetSec: number; tokenBudget?: number };
+  /** Optional custom prompt template (default DEFAULT_RESPONDER_PROMPT). */
+  promptTemplate?: string;
+  /** Directory for status sentinels + logs (OUTSIDE any git tree). */
+  logsDir?: string;
+  /** External-cancel seam threaded into the runner. */
+  signal?: AbortSignal;
   /** Injectable clock (tests). Defaults to Date.now. */
   now?: () => number;
 }
@@ -121,13 +149,90 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
       const job = (async (): Promise<void> => {
         try {
           await deps.client.acknowledge(escalationId);
+          // The `claimed` set deliberately blocks ANY re-attempt on a later
+          // failure: once we hold the claim, a post-spawn failure leaves the
+          // escalation stranded-acknowledged and P6 reclaim owns recovery —
+          // there is NO spawn-retry loop here (re-spawning would burn budget on
+          // a thread another mechanism is already accountable for).
           state.claimed.add(escalationId);
           deps.logger.info(
             { escalationId, projectId },
-            `claimed escalation ${escalationId} (stays acknowledged until P3 adds answer)`,
+            `claimed escalation ${escalationId}; spawning answering session`,
           );
-          // P2 wires the answering session (ResponderRunner) right here, after a
-          // successful claim. P1 stops at the claim.
+
+          // ── Answering session (holds the concurrency slot for its budget). ──
+          const detail = await deps.client.getEscalation(escalationId);
+          const prompt = buildResponderPrompt(detail, detail.messages, deps.promptTemplate);
+          const logsDir = deps.logsDir ?? tmpdir();
+          const statusPath = path.join(logsDir, `${escalationId}.status.json`);
+          const logPath = path.join(logsDir, `${escalationId}.log`);
+          const result = await deps.runner.run({
+            escalation: detail,
+            prompt,
+            budget: deps.budget,
+            cwd: deps.repoCwd,
+            command: deps.command,
+            logPath,
+            statusPath,
+            signal: deps.signal,
+          });
+
+          // ── Outcome handling. The POST is gated on mode === "on"; off AND
+          // shadow both spawn + log + do NOT post (the clean P5 seam). ──
+          if (deps.mode !== "on") {
+            deps.logger.info(
+              { escalationId, kind: result.kind, mode: deps.mode },
+              "responder produced outcome (mode != on, not auto-sending — shadow handling is P5)",
+            );
+            return;
+          }
+
+          // mode === "on": route the 4-state outcome. The POST is wrapped in an
+          // inner try/catch so a transient client failure does NOT escape the
+          // job (the escalation stays acknowledged; P6 reclaim recovers it).
+          try {
+            switch (result.kind) {
+              case "answered":
+                await deps.client.answer(escalationId, result.answer);
+                deps.logger.info(
+                  { escalationId, projectId },
+                  "responder answered escalation",
+                );
+                break;
+              case "needs_human":
+                await deps.client.escalateToHuman(escalationId, result.reason);
+                deps.logger.info(
+                  { escalationId, projectId, reason: result.reason },
+                  "responder escalated to human (needs_human)",
+                );
+                break;
+              case "give_up":
+                await deps.client.escalateToHuman(
+                  escalationId,
+                  `Responder gave up: ${result.reason}`,
+                );
+                deps.logger.info(
+                  { escalationId, projectId, reason: result.reason },
+                  "responder escalated to human (give_up)",
+                );
+                break;
+              case "error":
+                await deps.client.escalateToHuman(
+                  escalationId,
+                  `Responder failed (${result.reason}): ${result.detail ?? ""}`,
+                );
+                deps.logger.warn(
+                  { escalationId, projectId, reason: result.reason, detail: result.detail },
+                  "responder session failed; escalated to human",
+                );
+                break;
+            }
+          } catch (postErr) {
+            deps.logger.error(
+              { escalationId, projectId, kind: result.kind, err: errMessage(postErr) },
+              "post-spawn client call failed; escalation stays acknowledged (P6 reclaim recovers)",
+            );
+          }
         } catch (err) {
           if (err instanceof PmApiError && err.status === 403) {
             // Another responder already holds it — the C1 one-active gate did its
