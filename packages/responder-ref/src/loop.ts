@@ -229,6 +229,16 @@ export interface ResponderDeps {
    * byte-identical.
    */
   maxArcDurationSec: number;
+  /**
+   * The per-MR stall window in seconds (A4 P3, FLAT). A submitted responder MR
+   * (a bounded pendingLand fix or a phase pendingArc MR) stuck `queued`/`integrating`
+   * past `enqueuedAt + stallTimeoutSec + grace` is reconciled-or-escalated — so a
+   * wedged train can't strand an arc/bounded fix forever (also rescues P1's
+   * whole-arc cap, unreachable behind the re-park return). Wired from
+   * `config.autoImplement.budget.stallTimeoutSec`. Generous 24h default ⇒
+   * A1-A4P2 byte-identical.
+   */
+  stallTimeoutSec: number;
   /** Working directory the answering session runs in (the PM repo checkout). */
   repoCwd: string;
   /** Headless answering command passed to the runner. */
@@ -1363,10 +1373,47 @@ async function advanceArc(
   const inFlightStatuses = new Set(["queued", "integrating"]);
   const failedStatuses = new Set(["rejected", "abandoned", "orphaned"]);
 
-  // ── (1) any phase still in flight → re-park (one phase per cycle). ──
+  // ── (1) any phase still in flight → re-park (one phase per cycle) — UNLESS that
+  // phase MR is STALLED past the A4 P3 window, in which case the arc escalates with
+  // the partial payload instead of re-parking forever. This is the call site that
+  // RESCUES P1's whole-arc cap: the cap lives at step (3b) AFTER this return, so a
+  // phase MR wedged `queued`/`integrating` re-parked here every cycle and the cap was
+  // never reached — the arc was unbounded. The stall predicate is server-derived (MR
+  // submit clock + status) so it survives a responder restart. ──
   for (const task of epic.tasks) {
     const mr = mrByTask.get(task.id);
     if (mr !== undefined && inFlightStatuses.has(mr.status)) {
+      if (isMrStalled(mr, now, deps.stallTimeoutSec)) {
+        if (deps.mode === "off") return; // off is silent.
+        // Reuse the arc_partial/duration-cap landedShas + remaining computation: a
+        // stalled phase MR is the genuine blocker (an all-landed task is handled by
+        // step (3) before this; a task with BOTH a landed and a stuck MR resolves via
+        // land detection — mrByTask holds one MR per task).
+        const landedShas: string[] = [];
+        for (const t of epic.tasks) {
+          const m = mrByTask.get(t.id);
+          if (m !== undefined && m.status === "landed" && m.landedSha !== null) {
+            landedShas.push(m.landedSha);
+          }
+        }
+        const remaining = epic.tasks
+          .filter((t) => {
+            const m = mrByTask.get(t.id);
+            return m === undefined || m.status !== "landed";
+          })
+          .map((t) => t.title);
+        const reason =
+          `Autonomous arc STALLED: phase "${task.title}" MR ${mr.id} stuck ${mr.status} ` +
+          `past the stall window (${deps.stallTimeoutSec}s). ` +
+          `Landed phases preserved (${landedShas.length}: ${landedShas.join(", ") || "none"}). ` +
+          `Remaining: ${remaining.join(", ") || "none"}. A human takes over.`;
+        await deps.client.escalateToHuman(escalationId, reason);
+        deps.logger.warn(
+          { escalationId, projectId, epicId, taskId: task.id, mr: mr.id, status: mr.status, stallTimeoutSec: deps.stallTimeoutSec, landedShas },
+          "arc stall: a phase MR is wedged in flight past the stall window; escalated the root to needs_human (landed phases preserved, no rollback)",
+        );
+        return;
+      }
       deps.logger.info(
         { escalationId, projectId, epicId, taskId: task.id, mr: mr.id, status: mr.status },
         "arc re-park: a phase MR is still in flight; waiting for the train (next cycle re-checks)",
@@ -1763,6 +1810,57 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
           continue;
         }
         if (hasPendingLandMarker(thread.messages)) {
+          // A4 P3: a bounded pendingLand fix used to be SKIPPED unconditionally with
+          // NO timeout, so a fix whose MR never landed sat acknowledged+pendingLand
+          // forever. Now probe the escalation's MRs and reconcile-or-escalate:
+          //   - RECONCILE FIRST: any landed MR → the A2 land post-back is responsible
+          //     (done or in-flight) → skip (escalating would lie about a landed fix).
+          //   - STALL: else the pendingLand MR stuck past the window → escalateToHuman
+          //     (the branch is pushed + preserved; capping just stops waiting). Leaves
+          //     the escalation acknowledged → stops re-qualifying.
+          //   - WITHIN WINDOW: else skip as today (still waiting on the train).
+          // The probe is server-derived (MR submit clock + status) ⇒ restart-resilient,
+          // and wrapped non-fatally — a probe failure falls through to the old skip.
+          try {
+            const escMrs = await deps.client.listMergeRequests(projectId, { escalationId });
+            if (escMrs.some((m) => m.status === "landed")) {
+              deps.logger.debug(
+                { escalationId, projectId },
+                "reclaim skip: pending-land escalation has a landed MR (A2 post-back is responsible); not escalating",
+              );
+              continue;
+            }
+            const stalledMr = escMrs.find((m) => isMrStalled(m, now, deps.stallTimeoutSec));
+            if (stalledMr !== undefined) {
+              if (deps.mode === "off") continue; // off is silent.
+              const reason =
+                `Bounded fix MR ${stalledMr.id} submitted but not landed within the stall window ` +
+                `(${deps.stallTimeoutSec}s; ${stalledMr.status}); the branch is pushed + preserved — ` +
+                `a human should land or take over.`;
+              const stallJob = (async (): Promise<void> => {
+                try {
+                  await deps.client.escalateToHuman(escalationId, reason);
+                  deps.logger.warn(
+                    { escalationId, projectId, mr: stalledMr.id, status: stalledMr.status, stallTimeoutSec: deps.stallTimeoutSec },
+                    "reclaim stall: pending-land bounded MR wedged past the stall window; escalated to human (branch preserved)",
+                  );
+                } catch (err) {
+                  deps.logger.error(
+                    { escalationId, projectId, mr: stalledMr.id, err: errMessage(err) },
+                    "reclaim stall escalateToHuman failed; will retry next sweep",
+                  );
+                }
+              })();
+              pending.push(stallJob);
+              continue;
+            }
+            // Within the window — fall through to the normal skip below.
+          } catch (err) {
+            deps.logger.warn(
+              { escalationId, projectId, err: errMessage(err) },
+              "reclaim pending-land stall probe failed; falling through to the old unconditional skip",
+            );
+          }
           deps.logger.debug(
             { escalationId, projectId },
             "reclaim skip: escalation has a pending-land handoff (awaiting A2/the train); not re-spawning",
@@ -1868,6 +1966,39 @@ export async function runResponderLoop(
 function createdAtMs(createdAt: string): number {
   const t = Date.parse(createdAt);
   return Number.isFinite(t) ? t : 0;
+}
+
+/** The inFlight MR statuses an A4 P3 stall predicate can reclaim (queued/integrating). */
+const stallInFlightStatuses = new Set(["queued", "integrating"]);
+/** Grace floor (ms) mirroring the 7.6.1 reclaim precedent (max 120s, 0.25×budget). */
+const STALL_GRACE_FLOOR_MS = 120_000;
+
+/**
+ * Parse a submitted MR's submit clock for the A4 P3 stall check. `enqueuedAt` is
+ * canonical, `createdAt` the fallback. Fail-safe-to-LIVE: an absent/garbage
+ * timestamp returns +Infinity so `now - Infinity = -Infinity` is never `> threshold`
+ * — a wedged-looking MR with a bad date is NEVER reclaimed (BINDING NOTE 1: the
+ * +Infinity direction, mirroring `updatedAtMs` — NOT `createdAtMs`'s `0`, which
+ * would make `now - 0` huge ⇒ a catastrophic always-stalls false-positive).
+ */
+function submitClockMs(mr: ArcMergeRequest): number {
+  const raw = mr.enqueuedAt || mr.createdAt;
+  const t = Date.parse(raw ?? "");
+  return Number.isFinite(t) ? t : Infinity;
+}
+
+/**
+ * The ONE shared A4 P3 stall predicate, evaluated AT each wait point (the advanceArc
+ * re-park + the bounded pendingLand reclaim skip). Pure + server-derived (MR status +
+ * submit clock, no in-memory stall clock) ⇒ restart-resilient. A submitted MR is
+ * stalled iff it is still `queued`/`integrating` AND its submit clock is older than
+ * `stallTimeoutSec + grace`. The +Infinity fail-safe in `submitClockMs` means an
+ * absent/unparseable timestamp NEVER stalls.
+ */
+function isMrStalled(mr: ArcMergeRequest, now: number, stallTimeoutSec: number): boolean {
+  if (!stallInFlightStatuses.has(mr.status)) return false;
+  const grace = Math.max(STALL_GRACE_FLOOR_MS, 0.25 * stallTimeoutSec * 1000);
+  return now - submitClockMs(mr) > stallTimeoutSec * 1000 + grace;
 }
 
 /**

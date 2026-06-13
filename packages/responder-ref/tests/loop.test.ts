@@ -222,6 +222,10 @@ class FakeClient {
     },
   );
 
+  // `enqueuedAt`/`createdAt` (A4 P3) are OPTIONAL in the scripted literal — they
+  // default-fill to a RECENT timestamp at return so every pre-P3 test (which omits
+  // them) reads as a fresh, non-stalled MR (byte-identical). A stall test sets a
+  // deliberately stale `enqueuedAt`; a fail-safe test sets a garbage one.
   mrResults: {
     id: string;
     taskId: string | null;
@@ -230,6 +234,8 @@ class FakeClient {
     landedSha: string | null;
     branch: string | null;
     commitSha: string | null;
+    enqueuedAt?: string;
+    createdAt?: string;
   }[][] = [];
   listMergeRequestsCalls: { projectId: string; params: Record<string, unknown> }[] = [];
   listMergeRequests = vi.fn(
@@ -245,10 +251,17 @@ class FakeClient {
         landedSha: string | null;
         branch: string | null;
         commitSha: string | null;
+        enqueuedAt: string;
+        createdAt: string;
       }[]
     > => {
       this.listMergeRequestsCalls.push({ projectId, params });
-      return this.mrResults.shift() ?? [];
+      const fresh = new Date().toISOString();
+      return (this.mrResults.shift() ?? []).map((m) => ({
+        ...m,
+        enqueuedAt: m.enqueuedAt ?? fresh,
+        createdAt: m.createdAt ?? fresh,
+      }));
     },
   );
 }
@@ -386,6 +399,9 @@ function baseDeps(client: FakeClient, over: Partial<ResponderDeps> = {}): Respon
     // byte-identical (the caps never bite at default).
     maxConcurrentArcs: 100,
     maxArcDurationSec: 604800,
+    // A4 P3: GENEROUS 24h stall window so every existing A1-A4P2 test stays
+    // byte-identical (a wedged-MR reclaim never bites at default).
+    stallTimeoutSec: 86400,
     repoCwd: "/repo",
     command: "claude -p",
     budget: { timeBudgetSec: 900 },
@@ -2808,6 +2824,295 @@ describe("responderTick", () => {
       // probe (which is gated off). The answer still posted (byte-identical path).
       expect(client.getEscalation).toHaveBeenCalledTimes(1);
       expect(client.answerCalls).toEqual([{ id: "e1", body: "A" }]);
+    });
+  });
+
+  // ── A4 P3 — per-MR stall reclaim ──────────────────────────────────
+  // ONE shared isMrStalled predicate at TWO wait points: the advanceArc step-(1)
+  // re-park (a phase MR wedged queued/integrating → arc escalates instead of
+  // re-parking forever — also RESCUES P1's whole-arc cap, which the re-park return
+  // never reached) + the bounded pendingLand reclaim skip (reconcile-before-escalate).
+  // Both server-derived (MR submit clock + status) ⇒ restart-resilient. The +Infinity
+  // fail-safe (an absent/garbage timestamp NEVER stalls) is the correctness floor.
+  describe("A4 P3 — per-MR stall reclaim", () => {
+    const STALE = Date.parse("2026-06-14T00:00:00.000Z");
+    const STALE_ENQUEUED = "2026-06-01T00:00:00.000Z"; // ≫ stallTimeout(60s)+grace before STALE.
+
+    /** A self-held acknowledged arc thread carrying a pendingArc marker. */
+    function arcThread(id: string): EscalationWithThread {
+      return {
+        ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+        messages: [
+          {
+            id: `${id}-m1`,
+            escalationId: id,
+            seq: 1,
+            authorId: SELF,
+            body: "arc in flight",
+            messageType: "diagnosis",
+            metadata: { pendingArc: true, epicId: "epic1" },
+            createdAt: "2026-06-13T00:00:00.000Z",
+          },
+        ],
+      };
+    }
+
+    /** A self-held acknowledged bounded thread carrying a pendingLand marker. */
+    function pendingLandThread(id: string): EscalationWithThread {
+      return {
+        ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+        messages: [
+          {
+            id: `${id}-m1`,
+            escalationId: id,
+            seq: 1,
+            authorId: SELF,
+            body: "Implemented a bounded fix on branch ...",
+            messageType: "diagnosis",
+            metadata: { pendingLand: true, branch: `pm/escalation-${id}`, commitSha: "abc" },
+            createdAt: "2026-06-13T00:00:00.000Z",
+          },
+        ],
+      };
+    }
+
+    // ── Case 1: phase MR stalled → arc escalates (not stuck forever) ──
+    it("a phase MR wedged in flight past the stall window → arc escalateToHuman naming the stalled MR + the preserved landed sha; NO implement spawn; does NOT merely re-park", async () => {
+      const thread = arcThread("e1");
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const heldArc = mkEscalation("e1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z", // stale ⇒ routed to advanceArc.
+      });
+      client.ackResults = [[heldArc], [heldArc]];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => thread);
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [
+          { id: "task-1", title: "Phase 1", description: "d1" },
+          { id: "task-2", title: "Phase 2", description: "d2" },
+        ],
+      };
+      // Phase 1 landed; phase 2 integrating with a STALE enqueuedAt (the wedge).
+      client.mrResults = [
+        [
+          { id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "sha-1", branch: "b1", commitSha: "c1" },
+          { id: "mr2", taskId: "task-2", escalationId: "e1", status: "integrating", landedSha: null, branch: "b2", commitSha: "c2", enqueuedAt: STALE_ENQUEUED },
+        ],
+      ];
+      const impl = new FakeImplementRunner();
+      const deps = baseDeps(client, {
+        mode: "on",
+        now: () => STALE,
+        autoImplementEnabled: true,
+        maxConcurrent: 10,
+        stallTimeoutSec: 60, // STALE - STALE_ENQUEUED ≫ 60s+grace ⇒ stalled.
+        implementRunner: impl,
+      });
+      await responderTick(deps, createResponderState());
+
+      // Escalated (not re-parked), naming the stalled MR + the preserved landed sha.
+      expect(client.escalateCalls).toHaveLength(1);
+      expect(client.escalateCalls[0].id).toBe("e1");
+      expect(client.escalateCalls[0].reason).toContain("STALLED");
+      expect(client.escalateCalls[0].reason).toContain("mr2");
+      expect(client.escalateCalls[0].reason).toContain("sha-1"); // landed phase preserved
+      // The next phase was NOT implemented (we did not advance past the stall).
+      expect(impl.run).not.toHaveBeenCalled();
+      expect(client.submitMergeRequest).not.toHaveBeenCalled();
+    });
+
+    // ── Case 2: phase MR in flight but WITHIN the window → re-park, NOT reclaimed ──
+    it("a phase MR in flight but WITHIN the stall window → re-park (no escalate, no spawn) — byte-identical to today's re-park", async () => {
+      const thread = arcThread("e1");
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const heldArc = mkEscalation("e1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
+      client.ackResults = [[heldArc], [heldArc]];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => thread);
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [{ id: "task-1", title: "Phase 1", description: "d1" }],
+      };
+      // Phase 1 integrating with a RECENT enqueuedAt (within the window).
+      client.mrResults = [
+        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "integrating", landedSha: null, branch: "b1", commitSha: "c1", enqueuedAt: "2026-06-13T23:59:00.000Z" }],
+      ];
+      const impl = new FakeImplementRunner();
+      const deps = baseDeps(client, {
+        mode: "on",
+        now: () => STALE,
+        autoImplementEnabled: true,
+        maxConcurrent: 10,
+        stallTimeoutSec: 86400, // 24h ≫ 1 min ⇒ within window ⇒ re-park.
+        implementRunner: impl,
+      });
+      await responderTick(deps, createResponderState());
+
+      expect(client.escalateToHuman).not.toHaveBeenCalled();
+      expect(impl.run).not.toHaveBeenCalled();
+      expect(client.submitMergeRequest).not.toHaveBeenCalled();
+    });
+
+    // ── Case 3: bounded pendingLand MR stalled → escalateToHuman + branch preserved ──
+    it("a bounded pendingLand MR wedged past the stall window → escalateToHuman (branch preserved); no read-only re-spawn", async () => {
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const stale = mkEscalation("r1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
+      client.ackResults = [[stale], [stale]]; // probe + reclaim.
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      // The bounded MR is queued with a STALE enqueuedAt.
+      client.mrResults = [
+        [{ id: "mrB", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1", commitSha: "abc", enqueuedAt: STALE_ENQUEUED }],
+      ];
+      const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+      const deps = baseDeps(client, {
+        mode: "on",
+        maxConcurrent: 10,
+        autoImplementEnabled: true,
+        runner,
+        now: () => STALE,
+        stallTimeoutSec: 60, // ⇒ stalled.
+      });
+      await responderTick(deps, createResponderState());
+
+      // Escalated naming the wedged MR; the read-only session was NOT re-spawned.
+      expect(client.escalateCalls).toHaveLength(1);
+      expect(client.escalateCalls[0].id).toBe("r1");
+      expect(client.escalateCalls[0].reason).toContain("mrB");
+      expect(client.escalateCalls[0].reason).toContain("not landed");
+      expect(runner.run).not.toHaveBeenCalled();
+    });
+
+    // ── Case 4: bounded pendingLand within window → still skipped (byte-identical) ──
+    it("a bounded pendingLand MR within the stall window → still SKIPPED (no escalate, no spawn)", async () => {
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const stale = mkEscalation("r1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
+      client.ackResults = [[stale], [stale]];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      client.mrResults = [
+        [{ id: "mrB", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1", commitSha: "abc", enqueuedAt: "2026-06-13T23:59:00.000Z" }],
+      ];
+      const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+      const deps = baseDeps(client, {
+        mode: "on",
+        maxConcurrent: 10,
+        autoImplementEnabled: true,
+        runner,
+        now: () => STALE,
+        stallTimeoutSec: 86400, // ⇒ within window.
+      });
+      await responderTick(deps, createResponderState());
+
+      expect(client.escalateToHuman).not.toHaveBeenCalled();
+      expect(runner.run).not.toHaveBeenCalled();
+    });
+
+    // ── Case 5: reconcile (landed out-of-band) → no escalate ──
+    it("reconcile-before-escalate: a landed MR exists for the pendingLand escalation → no escalate (the A2 post-back is responsible)", async () => {
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const stale = mkEscalation("r1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
+      client.ackResults = [[stale], [stale]];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      // A landed MR exists for the escalation (landed out-of-band) — even though a
+      // sibling queued MR is stale, reconcile-first wins → no escalate.
+      client.mrResults = [
+        [
+          { id: "mrLanded", taskId: null, escalationId: "r1", status: "landed", landedSha: "sha-X", branch: "pm/escalation-r1", commitSha: "abc" },
+          { id: "mrStale", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1b", commitSha: "def", enqueuedAt: STALE_ENQUEUED },
+        ],
+      ];
+      const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+      const deps = baseDeps(client, {
+        mode: "on",
+        maxConcurrent: 10,
+        autoImplementEnabled: true,
+        runner,
+        now: () => STALE,
+        stallTimeoutSec: 60,
+      });
+      await responderTick(deps, createResponderState());
+
+      expect(client.escalateToHuman).not.toHaveBeenCalled();
+      expect(runner.run).not.toHaveBeenCalled();
+    });
+
+    // ── Case 7: fail-safe (BINDING NOTE 1) — empty/garbage timestamp NEVER stalls ──
+    it("fail-safe: a pendingLand MR with empty/garbage enqueuedAt+createdAt is NEVER stall-reclaimed (the +Infinity direction, not 0)", async () => {
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const stale = mkEscalation("r1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
+      client.ackResults = [[stale], [stale]];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      // Garbage enqueuedAt AND createdAt ⇒ submitClockMs → +Infinity ⇒ never stalls.
+      client.mrResults = [
+        [{ id: "mrB", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1", commitSha: "abc", enqueuedAt: "not-a-date", createdAt: "also-garbage" }],
+      ];
+      const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
+      const deps = baseDeps(client, {
+        mode: "on",
+        maxConcurrent: 10,
+        autoImplementEnabled: true,
+        runner,
+        now: () => STALE,
+        stallTimeoutSec: 60, // tiny ⇒ a `0` fallback would ALWAYS stall — proves +Infinity.
+      });
+      await responderTick(deps, createResponderState());
+
+      expect(client.escalateToHuman).not.toHaveBeenCalled();
+      expect(runner.run).not.toHaveBeenCalled();
+    });
+
+    // ── Case 6: off mode is silent on a stalled bounded MR ──
+    it("mode=off: a stalled pendingLand MR is silent (no escalate)", async () => {
+      const client = new FakeClient();
+      client.listResults = [[]];
+      const stale = mkEscalation("r1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
+      client.ackResults = [[stale], [stale]];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      client.mrResults = [
+        [{ id: "mrB", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1", commitSha: "abc", enqueuedAt: STALE_ENQUEUED }],
+      ];
+      const deps = baseDeps(client, {
+        mode: "off",
+        maxConcurrent: 10,
+        autoImplementEnabled: true,
+        now: () => STALE,
+        stallTimeoutSec: 60,
+      });
+      await responderTick(deps, createResponderState());
+
+      expect(client.escalateToHuman).not.toHaveBeenCalled();
     });
   });
 });

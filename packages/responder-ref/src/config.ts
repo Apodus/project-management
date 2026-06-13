@@ -83,8 +83,16 @@ export interface ResponderConfig {
      *     bound). An arc whose first pendingDrive intent marker is older than this
      *     is CAPPED → escalate-to-human with the partial progress (landed phases
      *     preserved, no rollback). DEFAULT 604800 (7 days ⇒ A1-A3 byte-identical).
+     *   - `stallTimeoutSec`  — the per-MR stall window (A4 P3). A submitted
+     *     responder MR (a bounded pendingLand fix or a phase pendingArc MR) stuck
+     *     `queued`/`integrating` past `enqueuedAt + stallTimeoutSec + grace` is
+     *     reconciled-or-escalated, so a wedged train can't strand an arc/bounded
+     *     fix forever (it also rescues P1's whole-arc cap, which the re-park return
+     *     never reached behind a stuck phase MR). DEFAULT 86400 (24h — generous,
+     *     finer than the 7-day whole-arc cap, never trips a healthy train ⇒
+     *     A1-A4P2 byte-identical).
      */
-    budget: { maxConcurrentArcs: number; maxArcDurationSec: number };
+    budget: { maxConcurrentArcs: number; maxArcDurationSec: number; stallTimeoutSec: number };
   };
   /**
    * Git config for the auto-implement regime's isolated worktree clones
@@ -160,6 +168,7 @@ export interface ConfigEnv {
   PM_AUTO_IMPLEMENT_ALLOWED_PATHS?: string;
   PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS?: string;
   PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC?: string;
+  PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC?: string;
   PM_RESPONDER_GIT_REPO_URL?: string;
   PM_RESPONDER_GIT_REMOTE?: string;
   PM_RESPONDER_GIT_MAIN_BRANCH?: string;
@@ -185,6 +194,9 @@ const DEFAULT_MAX_RECLAIM_ATTEMPTS = 2;
 // bite at default — they are a COST governor the operator tightens, not a gate).
 const DEFAULT_MAX_CONCURRENT_ARCS = 100;
 const DEFAULT_MAX_ARC_DURATION_SEC = 604800; // 7 days
+// A4 P3: GENEROUS per-MR stall window (24h) so A1-A4P2 stay byte-identical — finer
+// than the 7-day whole-arc cap, never trips a healthy train.
+const DEFAULT_STALL_TIMEOUT_SEC = 86400; // 24h
 
 export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   const pmUrl = (args.pmUrl ?? env.PM_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
@@ -265,6 +277,10 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     env.PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC,
     DEFAULT_MAX_ARC_DURATION_SEC,
   );
+  const stallTimeoutSec = positiveInt(
+    env.PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC,
+    DEFAULT_STALL_TIMEOUT_SEC,
+  );
 
   // Worktree git config (P3): the isolated-clone source for the implement session.
   // repoUrl is REQUIRED iff auto_implement is enabled — a write session must have a
@@ -330,7 +346,7 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
       enabled: autoImplementEnabled,
       verifyCmd: autoImplementVerifyCmd,
       allowedPaths: autoImplementAllowedPaths,
-      budget: { maxConcurrentArcs, maxArcDurationSec },
+      budget: { maxConcurrentArcs, maxArcDurationSec, stallTimeoutSec },
     },
     worktreeGit: {
       repoUrl: gitRepoUrl,

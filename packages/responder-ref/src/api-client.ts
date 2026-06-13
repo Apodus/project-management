@@ -64,6 +64,15 @@ export interface ArcMergeRequest {
   landedSha: string | null;
   branch: string | null;
   commitSha: string | null;
+  /**
+   * The submit clock (A4 P3 stall reclaim). `enqueuedAt` is the canonical
+   * submit time, `createdAt` the fallback — both already on the wire (the server
+   * `mergeRequestSchema` carries them; `request<T>` casts the parsed JSON, no
+   * server/shared/openapi change). Used by the loop's `isMrStalled` predicate to
+   * detect a queued/integrating MR wedged past the stall window.
+   */
+  enqueuedAt: string;
+  createdAt: string;
 }
 
 /** Optional filters for the merge-request list (A3 P2). */

@@ -60,8 +60,8 @@ describe("loadConfig", () => {
       enabled: false,
       verifyCmd: "",
       allowedPaths: [],
-      // A4 P1: generous budget defaults (⇒ A1-A3 byte-identical).
-      budget: { maxConcurrentArcs: 100, maxArcDurationSec: 604800 },
+      // A4 P1+P3: generous budget defaults (⇒ A1-A4P2 byte-identical).
+      budget: { maxConcurrentArcs: 100, maxArcDurationSec: 604800, stallTimeoutSec: 86400 },
     });
     expect(
       loadConfig(
@@ -83,7 +83,7 @@ describe("loadConfig", () => {
 
   it("A4 P1: autoImplement.budget defaults generous; env overrides via positiveInt", () => {
     const def = loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement.budget;
-    expect(def).toEqual({ maxConcurrentArcs: 100, maxArcDurationSec: 604800 });
+    expect(def).toEqual({ maxConcurrentArcs: 100, maxArcDurationSec: 604800, stallTimeoutSec: 86400 });
     const over = loadConfig(
       {},
       {
@@ -93,7 +93,7 @@ describe("loadConfig", () => {
         PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC: "7200",
       },
     ).autoImplement.budget;
-    expect(over).toEqual({ maxConcurrentArcs: 3, maxArcDurationSec: 7200 });
+    expect(over).toEqual({ maxConcurrentArcs: 3, maxArcDurationSec: 7200, stallTimeoutSec: 86400 });
     // Invalid (≤0 / non-finite) falls back to the default (positiveInt contract).
     const bad = loadConfig(
       {},
@@ -104,7 +104,23 @@ describe("loadConfig", () => {
         PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC: "nope",
       },
     ).autoImplement.budget;
-    expect(bad).toEqual({ maxConcurrentArcs: 100, maxArcDurationSec: 604800 });
+    expect(bad).toEqual({ maxConcurrentArcs: 100, maxArcDurationSec: 604800, stallTimeoutSec: 86400 });
+  });
+
+  it("A4 P3: budget.stallTimeoutSec defaults to 86400; PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC parses via positiveInt", () => {
+    const def = loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement.budget;
+    expect(def.stallTimeoutSec).toBe(86400);
+    const over = loadConfig(
+      {},
+      { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC: "3600" },
+    ).autoImplement.budget;
+    expect(over.stallTimeoutSec).toBe(3600);
+    // Invalid (≤0 / non-finite) falls back to the default (positiveInt contract).
+    const bad = loadConfig(
+      {},
+      { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC: "-5" },
+    ).autoImplement.budget;
+    expect(bad.stallTimeoutSec).toBe(86400);
   });
 
   it("accepts off/shadow/on and honors CLI over env for mode", () => {

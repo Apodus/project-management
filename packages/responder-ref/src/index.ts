@@ -158,6 +158,7 @@ async function main(): Promise<void> {
       verifyCmd: cfg.autoImplement.verifyCmd,
       maxConcurrentArcs: cfg.autoImplement.budget.maxConcurrentArcs,
       maxArcDurationSec: cfg.autoImplement.budget.maxArcDurationSec,
+      stallTimeoutSec: cfg.autoImplement.budget.stallTimeoutSec,
       repoCwd: cfg.repoCwd,
       command: cfg.command,
       mode: cfg.mode,
