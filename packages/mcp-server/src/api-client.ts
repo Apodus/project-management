@@ -1319,6 +1319,11 @@ import type {
   NoteKind,
   CreateNote,
   ListNotesQuery,
+  Escalation,
+  EscalationWithThread,
+  CreateEscalation,
+  CreateEscalationMessage,
+  ListEscalationsQuery,
 } from "@pm/shared";
 
 // Re-export so MCP tool files can pull types from one place.
@@ -1665,4 +1670,101 @@ export async function promoteNoteToProposal(
 
   const json = (await res.json()) as { data: Note; proposal: PromotedProposal };
   return { note: json.data, proposal: json.proposal };
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Escalation channel (Campaign C1)
+// ---------------------------------------------------------------------------
+//
+// A bidirectional cross-team escalation channel: a worker raises a typed issue
+// (bug_report/question/request/blocked) against a target project; a human (or
+// another worker) acknowledges, answers, and resolves it through an append-only
+// thread. All authz/lifecycle is single-sourced in the P2 service — these are
+// thin wrappers over the P3 REST surface. The mutating endpoints all return the
+// BARE escalation row; GET-by-id returns the escalation + its ordered thread.
+
+/**
+ * Raise a new escalation against a project. Returns the created (open) row.
+ */
+export async function createEscalation(
+  projectId: string,
+  data: CreateEscalation,
+): Promise<Escalation> {
+  return apiRequest<Escalation>(
+    "POST",
+    `/projects/${encodeURIComponent(projectId)}/escalations`,
+    data,
+  );
+}
+
+/**
+ * List escalations for a project (newest first), with optional filters.
+ */
+export async function listEscalations(
+  projectId: string,
+  filters?: ListEscalationsQuery,
+): Promise<Escalation[]> {
+  return apiRequest<Escalation[]>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/escalations${qs({
+      status: filters?.status,
+      kind: filters?.kind,
+      severity: filters?.severity,
+      originRepo: filters?.originRepo,
+      originWorkerKey: filters?.originWorkerKey,
+      holderId: filters?.holderId,
+    })}`,
+  );
+}
+
+/**
+ * Get a single escalation by ID with its full ordered thread (messages asc by seq).
+ */
+export async function getEscalation(id: string): Promise<EscalationWithThread> {
+  return apiRequest<EscalationWithThread>("GET", `/escalations/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Append a message to an escalation thread. Returns the updated escalation row.
+ */
+export async function addEscalationMessage(
+  id: string,
+  data: CreateEscalationMessage,
+): Promise<Escalation> {
+  return apiRequest<Escalation>("POST", `/escalations/${encodeURIComponent(id)}/messages`, data);
+}
+
+/**
+ * Acknowledge an open escalation (open → acknowledged) — PM-side pickup.
+ */
+export async function acknowledgeEscalation(id: string): Promise<Escalation> {
+  return apiRequest<Escalation>("POST", `/escalations/${encodeURIComponent(id)}/acknowledge`);
+}
+
+/**
+ * Answer an acknowledged escalation (acknowledged → answered). Optional body is
+ * appended as a diagnosis message.
+ */
+export async function answerEscalation(id: string, data: { body?: string }): Promise<Escalation> {
+  return apiRequest<Escalation>("POST", `/escalations/${encodeURIComponent(id)}/answer`, data);
+}
+
+/**
+ * Resolve an escalation (→ resolved, terminal). A reason is required.
+ */
+export async function resolveEscalation(id: string, reason: string): Promise<Escalation> {
+  return apiRequest<Escalation>("POST", `/escalations/${encodeURIComponent(id)}/resolve`, {
+    reason,
+  });
+}
+
+/**
+ * Escalate to a human (any non-terminal state → needs_human). A reason is required.
+ */
+export async function escalateToHuman(id: string, reason: string): Promise<Escalation> {
+  return apiRequest<Escalation>(
+    "POST",
+    `/escalations/${encodeURIComponent(id)}/escalate-to-human`,
+    { reason },
+  );
 }

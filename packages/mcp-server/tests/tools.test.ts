@@ -78,6 +78,14 @@ vi.mock("../src/api-client.js", () => ({
   getNote: vi.fn(),
   dismissNote: vi.fn(),
   promoteNoteToProposal: vi.fn(),
+  createEscalation: vi.fn(),
+  listEscalations: vi.fn(),
+  getEscalation: vi.fn(),
+  addEscalationMessage: vi.fn(),
+  acknowledgeEscalation: vi.fn(),
+  answerEscalation: vi.fn(),
+  resolveEscalation: vi.fn(),
+  escalateToHuman: vi.fn(),
 }));
 
 // Import the mocked functions so we can configure them per test
@@ -141,6 +149,14 @@ const mockListNotes = vi.mocked(apiClient.listNotes);
 const mockGetNote = vi.mocked(apiClient.getNote);
 const mockDismissNote = vi.mocked(apiClient.dismissNote);
 const mockPromoteNoteToProposal = vi.mocked(apiClient.promoteNoteToProposal);
+const mockCreateEscalation = vi.mocked(apiClient.createEscalation);
+const mockListEscalations = vi.mocked(apiClient.listEscalations);
+const mockGetEscalation = vi.mocked(apiClient.getEscalation);
+const mockAddEscalationMessage = vi.mocked(apiClient.addEscalationMessage);
+const mockAcknowledgeEscalation = vi.mocked(apiClient.acknowledgeEscalation);
+const mockAnswerEscalation = vi.mocked(apiClient.answerEscalation);
+const mockResolveEscalation = vi.mocked(apiClient.resolveEscalation);
+const mockEscalateToHuman = vi.mocked(apiClient.escalateToHuman);
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -4415,6 +4431,330 @@ describe("MCP Tools", () => {
       });
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("prop_900");
+    });
+  });
+
+  // ---- Escalation channel (Campaign C1) ----
+
+  const sampleEscalation = {
+    id: "esc_001",
+    projectId: "proj_001",
+    kind: "bug_report" as const,
+    status: "open" as const,
+    severity: "high" as const,
+    title: "Merge train rejects valid groups",
+    body: "Group submission 400s on a valid inner-only form.",
+    codeLocator: { path: "src/loop.ts", line: 88, commitSha: "deadbee" },
+    anchorType: "task" as const,
+    anchorId: "task_777",
+    originRepo: "game_one",
+    originWorkerKey: "worker-3",
+    holderId: null,
+    authorId: "user_001",
+    createdAt: "2026-06-13T00:00:00Z",
+    updatedAt: "2026-06-13T00:00:00Z",
+    resolvedAt: null,
+    resolvedBy: null,
+  };
+
+  const sampleEscalationWithThread = {
+    ...sampleEscalation,
+    messages: [
+      {
+        id: "msg_001",
+        escalationId: "esc_001",
+        seq: 1,
+        authorId: "user_001",
+        body: "First message — original report.",
+        messageType: "reply" as const,
+        metadata: null,
+        createdAt: "2026-06-13T00:00:00Z",
+      },
+      {
+        id: "msg_002",
+        escalationId: "esc_001",
+        seq: 2,
+        authorId: "user_002",
+        body: "Second message — diagnosis from the platform side.",
+        messageType: "diagnosis" as const,
+        metadata: null,
+        createdAt: "2026-06-13T01:00:00Z",
+      },
+    ],
+  };
+
+  describe("pm_raise_escalation", () => {
+    it("renders the raised escalation and maps snake_case → camelCase payload", async () => {
+      mockCreateEscalation.mockResolvedValue(sampleEscalation);
+
+      const result = await client.callTool({
+        name: "pm_raise_escalation",
+        arguments: {
+          project_id: "proj_001",
+          kind: "bug_report",
+          title: "Merge train rejects valid groups",
+          body: "Group submission 400s on a valid inner-only form.",
+          severity: "high",
+          code_locator: { path: "src/loop.ts", line: 88, commit_sha: "deadbee" },
+          anchor_type: "task",
+          anchor_id: "task_777",
+          origin_repo: "game_one",
+          origin_worker_key: "worker-3",
+        },
+      });
+
+      expect(mockCreateEscalation).toHaveBeenCalledWith("proj_001", {
+        kind: "bug_report",
+        title: "Merge train rejects valid groups",
+        body: "Group submission 400s on a valid inner-only form.",
+        severity: "high",
+        codeLocator: { path: "src/loop.ts", line: 88, commitSha: "deadbee" },
+        anchorType: "task",
+        anchorId: "task_777",
+        originRepo: "game_one",
+        originWorkerKey: "worker-3",
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Escalation raised.");
+      expect(text).toContain("esc_001");
+      expect(text).toContain("bug_report");
+      expect(text).toContain("Merge train rejects valid groups");
+      expect(text).toContain("open");
+      expect(text).toContain("high");
+      expect(text).toContain("game_one · worker-3");
+      expect(text).toContain("task task_777");
+      expect(text).toContain("src/loop.ts:88 @ deadbee");
+      expect(text).toContain("pm_get_escalation");
+    });
+
+    it("nulls optional fields when omitted", async () => {
+      mockCreateEscalation.mockResolvedValue(sampleEscalation);
+
+      await client.callTool({
+        name: "pm_raise_escalation",
+        arguments: {
+          project_id: "proj_001",
+          kind: "question",
+          title: "How does X work?",
+          origin_repo: "game_one",
+          origin_worker_key: "worker-3",
+        },
+      });
+
+      expect(mockCreateEscalation).toHaveBeenCalledWith("proj_001", {
+        kind: "question",
+        title: "How does X work?",
+        body: null,
+        severity: null,
+        codeLocator: null,
+        anchorType: null,
+        anchorId: null,
+        originRepo: "game_one",
+        originWorkerKey: "worker-3",
+      });
+    });
+  });
+
+  describe("pm_reply_escalation", () => {
+    it("renders the reply and maps message_type/metadata", async () => {
+      mockAddEscalationMessage.mockResolvedValue({
+        ...sampleEscalation,
+        status: "acknowledged" as const,
+      });
+
+      const result = await client.callTool({
+        name: "pm_reply_escalation",
+        arguments: {
+          escalation_id: "esc_001",
+          body: "More detail here.",
+          message_type: "diagnosis",
+          metadata: { foo: "bar" },
+        },
+      });
+
+      expect(mockAddEscalationMessage).toHaveBeenCalledWith("esc_001", {
+        body: "More detail here.",
+        messageType: "diagnosis",
+        metadata: { foo: "bar" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Reply added.");
+      expect(text).toContain("esc_001");
+      expect(text).toContain("acknowledged");
+      expect(text).toContain("pm_get_escalation");
+    });
+  });
+
+  describe("pm_get_escalation", () => {
+    it("renders full detail and the entire thread in seq order", async () => {
+      mockGetEscalation.mockResolvedValue(sampleEscalationWithThread);
+
+      const result = await client.callTool({
+        name: "pm_get_escalation",
+        arguments: { escalation_id: "esc_001" },
+      });
+
+      expect(mockGetEscalation).toHaveBeenCalledWith("esc_001");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Merge train rejects valid groups");
+      expect(text).toContain("esc_001");
+      expect(text).toContain("game_one · worker-3");
+      expect(text).toContain("## Thread (2 messages)");
+      expect(text).toContain("#1");
+      expect(text).toContain("First message");
+      expect(text).toContain("#2");
+      expect(text).toContain("(diagnosis)");
+      expect(text).toContain("Second message");
+
+      // #1 must render before #2.
+      expect(text.indexOf("#1")).toBeLessThan(text.indexOf("#2"));
+    });
+  });
+
+  describe("pm_list_escalations", () => {
+    it("renders rows and maps filters to camelCase", async () => {
+      mockListEscalations.mockResolvedValue([sampleEscalation]);
+
+      const result = await client.callTool({
+        name: "pm_list_escalations",
+        arguments: {
+          project_id: "proj_001",
+          status: "open",
+          kind: "bug_report",
+          severity: "high",
+          origin_repo: "game_one",
+          origin_worker_key: "worker-3",
+          holder_id: "user_002",
+        },
+      });
+
+      expect(mockListEscalations).toHaveBeenCalledWith("proj_001", {
+        status: "open",
+        kind: "bug_report",
+        severity: "high",
+        originRepo: "game_one",
+        originWorkerKey: "worker-3",
+        holderId: "user_002",
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Merge train rejects valid groups");
+      expect(text).toContain("esc_001");
+      expect(text).toContain("game_one · worker-3");
+    });
+
+    it("handles empty results", async () => {
+      mockListEscalations.mockResolvedValue([]);
+
+      const result = await client.callTool({
+        name: "pm_list_escalations",
+        arguments: { project_id: "proj_001" },
+      });
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("No escalations found.");
+    });
+  });
+
+  describe("pm_acknowledge_escalation", () => {
+    it("renders the acknowledged escalation", async () => {
+      mockAcknowledgeEscalation.mockResolvedValue({
+        ...sampleEscalation,
+        status: "acknowledged" as const,
+        holderId: "user_002",
+      });
+
+      const result = await client.callTool({
+        name: "pm_acknowledge_escalation",
+        arguments: { escalation_id: "esc_001" },
+      });
+
+      expect(mockAcknowledgeEscalation).toHaveBeenCalledWith("esc_001");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Escalation acknowledged.");
+      expect(text).toContain("esc_001");
+      expect(text).toContain("acknowledged");
+    });
+  });
+
+  describe("pm_answer_escalation", () => {
+    it("passes a body when provided", async () => {
+      mockAnswerEscalation.mockResolvedValue({
+        ...sampleEscalation,
+        status: "answered" as const,
+      });
+
+      const result = await client.callTool({
+        name: "pm_answer_escalation",
+        arguments: { escalation_id: "esc_001", body: "Here is the diagnosis." },
+      });
+
+      expect(mockAnswerEscalation).toHaveBeenCalledWith("esc_001", {
+        body: "Here is the diagnosis.",
+      });
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Escalation answered.");
+      expect(text).toContain("answered");
+    });
+
+    it("works without a body", async () => {
+      mockAnswerEscalation.mockResolvedValue({
+        ...sampleEscalation,
+        status: "answered" as const,
+      });
+
+      await client.callTool({
+        name: "pm_answer_escalation",
+        arguments: { escalation_id: "esc_001" },
+      });
+
+      expect(mockAnswerEscalation).toHaveBeenCalledWith("esc_001", { body: undefined });
+    });
+  });
+
+  describe("pm_resolve_escalation", () => {
+    it("renders resolution detail and passes (id, reason)", async () => {
+      mockResolveEscalation.mockResolvedValue({
+        ...sampleEscalation,
+        status: "resolved" as const,
+        resolvedBy: "user_002",
+        resolvedAt: "2026-06-13T02:00:00Z",
+      });
+
+      const result = await client.callTool({
+        name: "pm_resolve_escalation",
+        arguments: { escalation_id: "esc_001", reason: "Fixed in PR #42" },
+      });
+
+      expect(mockResolveEscalation).toHaveBeenCalledWith("esc_001", "Fixed in PR #42");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Escalation resolved.");
+      expect(text).toContain("resolved");
+      expect(text).toContain("user_002");
+      expect(text).toContain("2026-06-13T02:00:00Z");
+      expect(text).toContain("Fixed in PR #42");
+    });
+  });
+
+  describe("pm_escalate_to_human", () => {
+    it("renders the needs_human transition and passes (id, reason)", async () => {
+      mockEscalateToHuman.mockResolvedValue({
+        ...sampleEscalation,
+        status: "needs_human" as const,
+      });
+
+      const result = await client.callTool({
+        name: "pm_escalate_to_human",
+        arguments: { escalation_id: "esc_001", reason: "Needs a human decision" },
+      });
+
+      expect(mockEscalateToHuman).toHaveBeenCalledWith("esc_001", "Needs a human decision");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Escalated to a human.");
+      expect(text).toContain("needs_human");
+      expect(text).toContain("Needs a human decision");
     });
   });
 });
