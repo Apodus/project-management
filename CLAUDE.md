@@ -426,6 +426,33 @@ title / kind / origin, NOT identity-masked, unlike the aggregate train/notes/cla
 tools beyond `pm_check_messages`; the wake daemon is operator machinery (its client docs ship in the
 game_one bundle â€” a separate repo, do not edit). Full spec under `roadmaps/`.
 
+**Auto-responder (Campaign C3).** The PM side now **answers escalations autonomously** via a responder
+daemon (`@urtela/pm-responder`, bin `pm-responder`) â€” one process per watched platform project, the
+mirror of the C2 wake daemon. It is **answer/diagnose-ONLY**: a **read-only PM-repo diagnosis** session
+(no code mutation â€” a code-fixing responder is parked). Per poll tick it lists **open** escalations for
+the watched project, seeds the no-recursion set (unclaimed, `status === "open"`, `authorId !== selfId`,
+`originRepo` not in `excludeOriginRepos`), and for each candidate **claims via acknowledge** (the C1
+one-active-responder gate â€” a 403 means another responder beat it), then **spawns a bounded headless
+claude** in the PM repo and routes its **4-state status sentinel**: `answered{answer}` posts via
+`answer` (the diagnosis becomes a directed reply the origin **auto-notices through C2 delivery**);
+`needs_human` / `give_up` / `error` route to `escalateToHuman` (â†’ the **C2 P5 Discord needs-human
+bridge**) so **no proven work is discarded**. **Safety:** `enabled` is a kill-switch (**default FALSE**
+â€” ships OFF); `mode` âˆˆ `off | shadow | on` (**default shadow**) gates only the POST â€” **off** is fully
+silent, **shadow** drafts every answer to a human for approval (the safe-rollout rung), **on** auto-sends
+routine answers but a **high-severity** answer **PERMANENTLY** routes to human approval even at `on`;
+a **reclaim sweep** recovers escalations stranded `acknowledged` under a dead session (stale past
+`updatedAt + timeBudgetSec + reclaimGraceSec`, poison-capped at `maxReclaimAttempts`); a sliding-window
+**spawn-rate budget** + `maxConcurrent` bound the spawn rate. **No-recursion is structural** â€” the
+responder mints no escalation (its only actions are `answer`â†’answered and `escalateToHuman`â†’needs_human,
+neither creating a thread), so a responder answer can never spawn a thread it would re-pick;
+`excludeOriginRepos` is the belt-and-suspenders for a co-located self-hosted PM repo. This **closes the
+C1â†’C3â†’C2 chain**: a client raises (C1) â†’ the responder acknowledges + answers (C3) â†’ the diagnosis
+surfaces as an undelivered directed reply the origin auto-notices and drains (C2). **No new worker MCP
+tools** (the responder is operator/integrator machinery, like the wake daemon). The operator flips
+`enabled` then graduates **shadow â†’ on** after observing drafts. Operator guide:
+`docs/integrator-deployment.md` Â§20; the game_one bundle ships it (a separate repo, do not edit). Full
+spec under `roadmaps/`.
+
 ### Production Deployment
 
 In production (`NODE_ENV=production`), the server process:

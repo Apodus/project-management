@@ -151,6 +151,8 @@ open ──acknowledge──▶ acknowledged ──answer──▶ answered ─�
 
 **Authz (one line):** raise = any authenticated caller; reply = author OR holder OR human; acknowledge/answer = human OR the holder OR an unclaimed-thread pickup; resolve = the author (withdrawal, any non-terminal) OR the holder OR human (from answered/needs_human); escalate_to_human = author OR holder OR human.
 
+**The PM side may AUTO-RESPOND (Campaign C3).** A **responder daemon** (`pm-responder`, operator machinery — one process per platform project) can claim an open escalation via acknowledge and **answer/diagnose it autonomously**, so a client agent's escalation may receive an **automated answer** — which you auto-notice through the C2 delivery layer, exactly like a human-authored reply. The responder ships OFF and graduates `shadow → on`; `needs_human` / `give_up` / high-severity outcomes route to a **human** (the Discord needs-human bridge), so a hard case always reaches a person.
+
 The **client-side worker docs** ship in the game_one distribute bundle (a separate repo — do **not** edit them from here; they're updated there) — this repo documents the **PM-server-side** channel.
 
 ## Proposal workflow

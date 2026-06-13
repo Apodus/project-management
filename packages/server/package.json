@@ -33,6 +33,7 @@
     "@types/bcryptjs": "^3.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
+    "@urtela/pm-responder": "workspace:*",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4",
     "typescript": "^5",

@@ -1243,3 +1243,80 @@ WantedBy=multi-user.target
 ### 19.4 Bundle
 
 The game_one distribute bundle ships `pm-wake-daemon` as a bundled artifact (a separate repo — **not edited from here**), alongside the per-worker `PM_POOL_*` / `PM_WORKER_KEY` it already emits. Deploy one daemon per machine watching that machine's local worker key(s).
+
+## 20. Responder daemon deployment (Campaign C3)
+
+The **responder daemon** (`@urtela/pm-responder`, bin `pm-responder`) is the **autonomous answerer** — the PM-side mirror of the C2 wake daemon. Where the wake daemon delivers a reply *to* a dormant client worker, the responder *generates* the reply: it claims open escalations on the watched platform project and **answers/diagnoses** them with a bounded headless `claude` session. It is **answer/diagnose-ONLY** (a **read-only PM-repo diagnosis** — no code mutation; a code-fixing responder is parked). This **closes the C1→C3→C2 chain**: a client raises (C1) → the responder acknowledges + answers (C3) → the diagnosis surfaces as an undelivered directed reply the origin auto-notices and drains (C2).
+
+### 20.1 What it is
+
+One process per **watched platform project** (NOT a merge-train component). Each poll tick, per watched project:
+
+1. `GET /api/v1/projects/{id}/escalations?status=open` → the open threads.
+2. Seed the no-recursion candidate set: `holderId == null`, `status === "open"`, `authorId !== selfId`, `originRepo` NOT in `PM_RESPONDER_EXCLUDE_ORIGIN_REPOS`. Oldest-first.
+3. Under a `maxConcurrent` semaphore + a sliding-window spawn-rate budget, **acknowledge** (claim) each — the **C1 one-active-responder gate** (a 403 = another responder beat it; skipped silently).
+4. Spawn a bounded `claude` session in the PM repo (`timeBudgetSec`, SIGTERM→SIGKILL) that writes a **4-state status sentinel** (`PM_RESPONDER_STATUS_PATH`, outside any git tree): `answered{answer}` / `needs_human` / `give_up` / `error`.
+5. Route the outcome by `mode`: an `answered` outcome at `on` (non-high) POSTs `/answer` (the diagnosis is the directed reply the origin auto-notices via C2); `needs_human`/`give_up`/`error` POST `/escalate-to-human` (→ the C2 P5 Discord needs-human bridge) so **no proven work is discarded**.
+6. A **reclaim sweep** recovers escalations stranded `acknowledged` under a dead session (stale past `updatedAt + timeBudgetSec + reclaimGraceSec`, poison-capped at `maxReclaimAttempts`).
+
+**No-recursion is structural** — the responder mints no escalation (its only writes are `answer`→answered and `escalate-to-human`→needs_human, neither creating a thread), so a responder answer can never spawn a thread it would re-pick. `excludeOriginRepos` is the belt-and-suspenders for a co-located self-hosted PM repo.
+
+### 20.2 Install and run
+
+A single watched project needs a PM **ai_agent** token + the project id. **It ships OFF** (`enabled` default `false`) — you must flip it on explicitly:
+
+```bash
+PM_API_TOKEN=<ai_agent token> PM_PROJECT_ID=01PROJECT… PM_RESPONDER_ENABLED=true pm-responder
+# or pass the project explicitly (repeatable):
+pm-responder --project 01PROJECT…
+```
+
+Env / flags:
+
+| Var | Default | Meaning |
+| --- | --- | --- |
+| `PM_API_URL` / `--pm-url` | `http://localhost:3000` | PM API base URL |
+| `PM_API_TOKEN` | (required) | An **ai_agent** token (resolves `selfId` once at startup) |
+| `PM_PROJECT_ID` / `--project` | (required) | Watched project (repeatable `--project`; **watch-all is rejected** — the responder claims work) |
+| `PM_RESPONDER_ENABLED` | `false` | Kill-switch (`1/true/yes/on`). **Ships OFF.** |
+| `PM_RESPONDER_MODE` | `shadow` | `off` (silent) / `shadow` (draft → human approval) / `on` (auto-send routine; high-severity still → approval) |
+| `PM_RESPONDER_COMMAND` | `claude -p` | Headless answering command |
+| `PM_RESPONDER_REPO_CWD` | `process.cwd()` | The PM-repo checkout the session runs in |
+| `PM_RESPONDER_LOGS_DIR` | `<tmp>/pm-responder-logs` | Status sentinels + logs — **MUST live OUTSIDE any git tree** |
+| `PM_RESPONDER_EXCLUDE_ORIGIN_REPOS` | (none) | Comma-separated origin repos to NEVER seed/reclaim (self-host belt-and-suspenders) |
+| `PM_RESPONDER_RECLAIM_GRACE_SEC` | (default) | Reclaim staleness grace beyond `timeBudgetSec` |
+| `PM_RESPONDER_MAX_RECLAIM_ATTEMPTS` | (default) | Per-process reclaim re-spawn cap before handing to a human |
+| `PM_LOG_LEVEL` | `info` | Logging verbosity |
+
+Exit code **2** = config error (missing token / no project — do NOT restart, fix config); exit **1** = unexpected runtime error. **The package README is authoritative** for the full flag/env matrix.
+
+### 20.3 systemd
+
+Mirror the integrator / wake-daemon `EnvironmentFile` idiom (§11, §19.3):
+
+```ini
+[Unit]
+Description=PM responder daemon (platform project)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/project-management
+EnvironmentFile=/etc/pm/responder.env   # PM_API_TOKEN=..., PM_PROJECT_ID=..., PM_RESPONDER_ENABLED=true, PM_RESPONDER_MODE=shadow
+ExecStart=/usr/bin/pm-responder --pm-url http://localhost:3000
+Restart=on-failure
+RestartPreventExitStatus=2   # exit code 2 = config error: do NOT restart, fix config
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`RestartPreventExitStatus=2` honors the config-error exit code, exactly as for the integrator and wake daemon.
+
+### 20.4 The shadow → on discipline
+
+The responder **ships OFF**. To bring it up: set `PM_RESPONDER_ENABLED=true` while leaving `PM_RESPONDER_MODE=shadow` — every drafted answer is routed to a human for approval (via the needs-human bridge) before it could reach a client. Observe the drafts; once they are trustworthy, graduate to `PM_RESPONDER_MODE=on` for auto-send. **A high-severity escalation ALWAYS routes to human approval even at `on`** — that boundary is permanent.
+
+### 20.5 Bundle
+
+The game_one distribute bundle ships `pm-responder` as a bundled artifact (a separate repo — **not edited from here**). Deploy one responder process per watched platform project.

@@ -2,13 +2,16 @@
   "campaign": "C3 — Headless PM-side responder",
   "vision": "roadmaps/vision-20260613-agent-to-agent-escalation-channel.md",
   "branch": "campaign-agent-escalation-channel",
-  "completed_phases": ["P1", "P2"],
-  "current_phase": "P3",
+  "completed_phases": ["P1", "P2", "P3", "P4", "P5", "P6a"],
+  "current_phase": "P6b",
   "phase_outcomes": {
-    "P1": "@urtela/pm-responder skeleton (poll open escalations, claim via acknowledge; enabled default FALSE; no-recursion seed). 25 tests. 77fa02e.",
-    "P2": "createClaudeResponderRunner (resolver-runner transplant; 4-state sentinel answered{answer}|needs_human|give_up|error; killTree budget; stale-sentinel rm; answer-only prompt) + buildResponderPrompt/DEFAULT_RESPONDER_PROMPT. 37 tests. Not loop-wired. d3f2ec9."
+    "P1": "skeleton + claim loop. 77fa02e.",
+    "P2": "responder-runner (4-state sentinel). d3f2ec9.",
+    "P3+P4": "outcome handling, mode-gated. 0b8d81d.",
+    "P5": "shadow draft-to-approval + permanent high-severity boundary. 54eca67.",
+    "P6a": "3 safety seals: no-recursion (excludeOriginRepos; no depth marker - responder has no raise action), reclaim sweep (stranded acknowledged self-held, poison cap, swallowed escalate), sliding-window spawn budget (synchronous admission + ack-failure refund). 61 tests. 61cc5b8."
   },
   "open_issues": [],
   "dag_drift": [],
-  "notes": "P3 wires the loop: claimed escalation -> spawn runner -> on answered post via answer/addMessage (acknowledged->answered); the answer becomes an undelivered directed reply (C2 closes the loop). P4 routes needs_human/give_up/error -> escalateToHuman."
+  "notes": "P6b: e2e/full-stack seal (client raises -> responder loop with REAL ResponderClient against in-memory @pm/server app + INJECTED fake runner returns answered -> acknowledged+answered -> answer becomes undelivered directed reply: closes C1->C2->C3) + docs (CLAUDE.md C3 paragraph, integrator-deployment responder section, worker-pm note) + C3 close. Ships enabled=false (shadow when enabled)."
 }
