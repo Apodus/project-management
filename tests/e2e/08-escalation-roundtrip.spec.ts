@@ -1,5 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { login, createProjectViaAPI, raiseEscalationViaAPI } from "./helpers";
+import {
+  login,
+  createProjectViaAPI,
+  createUserViaAPI,
+  raiseEscalationViaAPI,
+} from "./helpers";
 
 const ADMIN_USER = "admin";
 const ADMIN_PASS = "password123";
@@ -132,5 +137,111 @@ test.describe("Escalation round-trip", () => {
         ["acknowledged", "answered", "resolved"].includes(a),
       ),
     ).toBeTruthy();
+  });
+
+  /**
+   * C2 §P5 delivery round-trip seal (API-level, via page.request). The reply
+   * must be authored by a DIFFERENT user than the raiser (the undelivered
+   * filter excludes the origin author's own messages — only a directed reply
+   * counts). So: admin raises; a SECOND ai_agent user (driven by a Bearer
+   * token, which the auth middleware honors ahead of the admin cookie)
+   * acknowledges + answers; then the origin worker's undelivered list returns
+   * the unread answer; mark-delivered advances the cursor; the next undelivered
+   * read no longer carries it.
+   */
+  test("delivery: second-user answer → undelivered returns it → mark-delivered → empty", async ({
+    page,
+  }) => {
+    await login(page, ADMIN_USER, ADMIN_PASS);
+
+    const project = await createProjectViaAPI(
+      page,
+      "Escalation Delivery Seal Project",
+    );
+
+    // A SECOND ai_agent user (the PM/holder) — its create response reveals the
+    // minted apiToken (one-time). Bearer-authed below.
+    const answerer = await createUserViaAPI(page, {
+      username: `pm-holder-${Date.now()}`,
+      displayName: "PM Holder",
+    });
+    expect(answerer.apiToken).toBeTruthy();
+    const answererToken = answerer.apiToken!;
+    const bearer = { Authorization: `Bearer ${answererToken}` };
+
+    const WORKER_KEY = "worker-e2e-08-delivery";
+
+    // 1. Raise (admin = author).
+    const esc = await raiseEscalationViaAPI(page, project.id, {
+      kind: "bug_report",
+      title: "E2E delivery: my submit keeps bouncing",
+      originRepo: "game_one",
+      originWorkerKey: WORKER_KEY,
+      severity: "high",
+    });
+    expect(esc.status).toBe("open");
+    const escId = esc.id;
+
+    // 2. Acknowledge as the SECOND user (Bearer overrides the admin cookie).
+    const ackResp = await page.request.post(
+      `/api/v1/escalations/${escId}/acknowledge`,
+      { headers: bearer, data: {} },
+    );
+    expect(ackResp.status()).toBe(200);
+    expect((await ackResp.json()).data.status).toBe("acknowledged");
+
+    // 3. Answer as the SECOND user — its diagnosis message's authorId is the
+    //    second user (≠ escalation author), so it's a DIRECTED reply.
+    const answerResp = await page.request.post(
+      `/api/v1/escalations/${escId}/answer`,
+      { headers: bearer, data: { body: "the fix is X" } },
+    );
+    expect(answerResp.status()).toBe(200);
+    expect((await answerResp.json()).data.status).toBe("answered");
+
+    // 4. The origin worker's undelivered list (admin cookie) carries the unread
+    //    answer; the OTHER test's worker key does NOT see this escalation.
+    const undelivResp = await page.request.get(
+      `/api/v1/escalations/undelivered?worker_key=${WORKER_KEY}`,
+    );
+    expect(undelivResp.ok()).toBeTruthy();
+    const undeliv = (await undelivResp.json()).data as Array<{
+      escalation: { id: string };
+      unreadCount: number;
+      unreadMessages: Array<{ seq: number; body: string }>;
+    }>;
+    const entry = undeliv.find((u) => u.escalation.id === escId);
+    expect(entry).toBeTruthy();
+    expect(entry!.unreadCount).toBeGreaterThanOrEqual(1);
+    expect(
+      entry!.unreadMessages.some((m) => m.body === "the fix is X"),
+    ).toBeTruthy();
+
+    // Isolation: the FIRST test's worker key must NOT carry this escalation.
+    const otherResp = await page.request.get(
+      `/api/v1/escalations/undelivered?worker_key=worker-e2e-08`,
+    );
+    const other = (await otherResp.json()).data as Array<{
+      escalation: { id: string };
+    }>;
+    expect(other.some((u) => u.escalation.id === escId)).toBeFalsy();
+
+    // 5. Advance the delivery cursor to the max unread seq.
+    const uptoSeq = Math.max(...entry!.unreadMessages.map((m) => m.seq));
+    const markResp = await page.request.post(
+      `/api/v1/escalations/${escId}/mark-delivered`,
+      { data: { workerKey: WORKER_KEY, uptoSeq } },
+    );
+    expect(markResp.status()).toBe(200);
+
+    // 6. Undelivered for this worker no longer carries the escalation (cursor
+    //    advanced past the answer).
+    const afterResp = await page.request.get(
+      `/api/v1/escalations/undelivered?worker_key=${WORKER_KEY}`,
+    );
+    const after = (await afterResp.json()).data as Array<{
+      escalation: { id: string };
+    }>;
+    expect(after.some((u) => u.escalation.id === escId)).toBeFalsy();
   });
 });

@@ -1,0 +1,19 @@
+{
+  "campaign": "C1 — Escalation primitive",
+  "vision": "roadmaps/vision-20260613-agent-to-agent-escalation-channel.md",
+  "branch": "campaign-agent-escalation-channel",
+  "status": "COMPLETE",
+  "completed_phases": ["P1", "P2", "P3", "P4", "P5", "P6"],
+  "current_phase": null,
+  "phase_outcomes": {
+    "P1": "tables + migration 0029. 9c89603.",
+    "P2": "shared schema + service (lifecycle/authz/seq/6 EVENT_NAMES) + amendments + acknowledge-pickup fix. 2152c77, 31d916e.",
+    "P3": "8 REST routes + openapi regen. Server 1618. 44f7964.",
+    "P4": "8 MCP tools (origin required params). MCP 202. 878ce4e.",
+    "P5": "additive SSE projection (byte-identical) + activity-feed verbs + audit ruling. Server 1621. 642beb5.",
+    "P6": "docs (worker-pm-workflow.md + CLAUDE.md) + e2e spec 08 full-lifecycle round-trip. Full suite + e2e 25 green. 9790ea6."
+  },
+  "open_issues": [],
+  "dag_drift": [],
+  "notes": "C1 sealed. C2 will own env-based origin_worker_key sourcing for the wake daemon (origin is explicit params in C1)."
+}

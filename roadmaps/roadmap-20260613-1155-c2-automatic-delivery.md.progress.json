@@ -1,0 +1,15 @@
+{
+  "campaign": "C2 — Automatic delivery",
+  "vision": "roadmaps/vision-20260613-agent-to-agent-escalation-channel.md",
+  "branch": "campaign-agent-escalation-channel",
+  "completed_phases": ["P1", "P2", "P3", "P4"],
+  "current_phase": "P5",
+  "phase_outcomes": {
+    "P1": "delivery cursor (migration 0030) + undelivered query + mark-delivered. Server 1640. 933827b.",
+    "P2": "@urtela/pm-wake-daemon (structural auto-notice for ended workers; give-up counter; injectable runner). 27 tests. 70a0d20.",
+    "P3+P4": "piggyback wrapper (monkey-patch server.tool, best-effort, byte-identical, 10s throttle, surface-not-consume) + pm_check_messages drain tool. mcp 215/215. af035d6."
+  },
+  "open_issues": [],
+  "dag_drift": [],
+  "notes": "P5: Discord needs-human bridge (reuse alerts-listener + settings.webhooks.discord_url; only out-of-band path, human-needed only) + wake-daemon deploy doc + CLAUDE.md/worker-pm-workflow.md C2 updates + delivery round-trip e2e seal + full suite green."
+}

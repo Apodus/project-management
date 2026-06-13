@@ -97,6 +97,21 @@ function formatAlert(event: EventName, payload: EventPayload): string {
       const oldest = ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 86_400_000))}d)`;
       return `:warning: Note backlog on project — ${items}${oldest}. Triage or dismiss.`;
     }
+    case EVENT_NAMES.ESCALATION_NEEDS_HUMAN: {
+      // Campaign C2 §P5 — the ONE out-of-band escalation notification: a human
+      // hand-off. Reads from payload.entity (the escalation toView — there is
+      // NO `resource` field on an escalation). UNLIKE the masked aggregate
+      // alerts above, this is intentionally SPECIFIC + actionable (id / title /
+      // kind / origin) so a human can re-enter the exact thread for approval or
+      // awareness — the human re-enters for the decision, never as transport.
+      const title = String(e.title ?? "(untitled)");
+      const kind = String(e.kind ?? "escalation");
+      const severity = e.severity ? `/${String(e.severity)}` : "";
+      const id = String(e.id ?? "unknown");
+      const originRepo = String(e.originRepo ?? "unknown");
+      const originWorkerKey = String(e.originWorkerKey ?? "unknown");
+      return `:raised_hand: Escalation needs a human — "${title}" [${kind}${severity}] (id ${id}, from ${originRepo}/${originWorkerKey}).`;
+    }
     default:
       return `:warning: Train alert (${event}) on \`${resource}\`.`;
   }
@@ -167,5 +182,13 @@ export function registerWebhookAlertListener(): void {
   // handler's settings read + format are guarded, the fetch un-awaited (NOTE 2).
   bus.on(EVENT_NAMES.NOTE_BACKLOG_ALERT, (p) =>
     handler(EVENT_NAMES.NOTE_BACKLOG_ALERT, p),
+  );
+  // Campaign C2 §P5 — the needs_human escalation bridge: the ONE out-of-band
+  // escalation notification. Per-event (NOT latched / no on-read eval — it
+  // fires once in escalateToHuman, gated by assertTransition so needs_human is
+  // never re-entered). Inherits the missing-url no-op + un-awaited-fetch
+  // resilience of the shared handler.
+  bus.on(EVENT_NAMES.ESCALATION_NEEDS_HUMAN, (p) =>
+    handler(EVENT_NAMES.ESCALATION_NEEDS_HUMAN, p),
   );
 }

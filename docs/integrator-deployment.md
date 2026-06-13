@@ -815,6 +815,8 @@ Each alert is delivered **two ways**, both firing once per episode in lockstep:
 
 `discord_url` is the Discord webhook URL the three alerts POST to (a non-Discord endpoint that accepts the same `{ content }` shape works too, but Discord is the documented default). `alerts_enabled` defaults to on — set it `false` to silence the outbound POST without removing the URL. With no `discord_url` configured, only the in-app (SSE/banner) half fires.
 
+> **Escalation `needs_human` (Campaign C2).** The escalation channel's `escalation.needs_human` event rides this same outbound Discord path as the **one out-of-band escalation notification**. Unlike the masked aggregate alerts above, it is **per-event** (NOT latched / no on-read evaluation — it fires once when an escalation is escalated to a human) and **intentionally specific** — it carries the escalation id, title, kind, and origin (`repo/worker_key`) so a human can re-enter the exact thread for approval or awareness. The human re-enters for the **decision**, never as message transport (transport is the wake daemon / piggyback / drain — see §19).
+
 ### 15.5 Pause semantics
 
 > **Pause means: the integrator stops picking up NEW work, but finishes the in-flight batch/group cleanly. It is NOT a kill.**
@@ -1176,3 +1178,68 @@ At no rung is work discarded: the origin request still holds the author's commit
 - **Budget sizing.** Because the agent runs the full verify in-session (possibly more than once), `time_budget_sec` now bounds the **whole session** and its default was raised **600 → 3600**. Size it **at least a few times your verify duration** — a budget shorter than one verify run guarantees a timeout-escalate.
 - **The reclaim sweep.** A periodic sweep (`reclaim-resolutions.ts`, wired into `runBatchLoop`, gated on `resolver.enabled`) recovers rows stranded in `resolving` (session died/timed out after `pending → resolving` but before a terminal outcome). A row is eligible only **past its deadline** — `attempt_started_at + time_budget_sec + grace`, where `grace = max(120s, 0.25 × budget)` — so a still-live session is never reclaimed out from under itself. Past the deadline it **reconciles-or-escalates**: if a resubmission with `resolved_from = origin` exists, the session DID produce landable work (only the `resolved` write failed) ⇒ mark the row **resolved** (never escalate — that would lie to the author); otherwise the session died with nothing produced ⇒ **escalate `failed` → author** with reason `session_died_or_timeout` + a best-effort `merge_rejection` comment. The sweep is non-fatal (a `409` from a raced terminal write counts as handled; list failures return zeroes; it never throws).
 - **New metrics keys** (in the `resolution` sub-block, §18.5): **`mean_session_sec`** — the seconds view of `mean_wall_clock_ms` (the whole `attempt_started_at → attempt_ended_at` resolving-session span, **not** the agent's runtime); **`reclaimed_count`** — the count of rows the reclaim sweep **escalated** (`session_died_or_timeout`). Sweep-**reconciled** rows write no marker (they land work and are counted in `auto_resolve_success_rate`), so they are intentionally **not** counted in `reclaimed_count` — an honest under-count of "sweep activity," documented rather than over-claimed.
+
+---
+
+## 19. Wake daemon deployment (Campaign C2)
+
+The **wake daemon** (`@urtela/pm-wake-daemon`, bin `pm-wake-daemon`) closes the last gap in the escalation channel's reply-delivery story. When a human (or another worker) replies to an escalation a worker raised, that reply has to reach the worker. Three surfacing paths cover the cases:
+
+- **Piggyback envelope** — an active in-session worker has a `:mailbox_with_mail:` unread-replies envelope appended to any `pm_*` MCP tool response (opportunistic, best-effort).
+- **`pm_check_messages`** — an explicit drain: the worker pulls undelivered replies and marks them delivered.
+- **The wake daemon** — the **structural guarantee** for the case the other two cannot reach: a **dormant or ended worker** (a walk-away session that already exited). The daemon polls undelivered replies on the worker's behalf and **spawns a fresh client worker turn** (default `claude -p`) seeded with the reply so the worker reads the thread and acts, then advances the delivery cursor.
+
+### 19.1 What it is
+
+One process per **machine**, watching the local worker key(s). It is NOT a merge-train component — it is the escalation channel's delivery agent. Each poll tick, per watched `(workerKey[, projectId])`:
+
+1. `GET /api/v1/escalations/undelivered?worker_key=K[&project_id=P]` → `{ escalation, unreadMessages, unreadCount }[]`.
+2. Process oldest-unread-first, subject to guards (in-flight, already-woke-for-this-maxSeq, min-wake cooldown, a concurrency semaphore, a per-escalation give-up park).
+3. Spawn a worker turn with the reply on stdin, bounded by `timeBudgetSec` (SIGTERM→SIGKILL).
+4. On a clean bounded exit (exit 0): `POST /api/v1/escalations/{id}/mark-delivered { workerKey, uptoSeq }`.
+5. On timeout / spawn error / non-zero exit: do NOT mark-delivered (it re-wakes after the cooldown) and increment the give-up counter; a parked escalation un-parks when a new reply advances its unread maxSeq.
+
+### 19.2 Install and run
+
+A single worker is zero-config — its worker key plus a PM API token:
+
+```bash
+PM_WORKER_KEY=worker-1 PM_API_TOKEN=<ai_agent token> pm-wake-daemon
+```
+
+A multi-worker host watches keys explicitly (repeatable `--watch <key>[:<projectId>]`) or via a JSON config:
+
+```bash
+pm-wake-daemon --watch worker-1 --watch worker-2:01PROJECT…
+# or
+pm-wake-daemon --config wake.json   # { "watch": [ { "workerKey": "w1" }, { "workerKey": "w2", "projectId": "…" } ] }
+```
+
+Key knobs (`PM_API_URL`/`--pm-url`, `--poll-interval-sec`, `PM_WAKE_WORKER_COMMAND`, `PM_WAKE_PROMPT`, `PM_LOG_LEVEL`); fixed P2 defaults are `timeBudgetSec` 900, serial wakes, a 60s min-wake cooldown, give-up after 5 consecutive failures. Exit code 2 = config error (no token / no watch entry — do NOT restart); exit 1 = unexpected runtime error. **The package README is authoritative** for the full flag/env matrix and the give-up-park rationale.
+
+### 19.3 systemd
+
+Mirror the integrator's `EnvironmentFile` idiom (§11) — the env file holds `PM_API_TOKEN` and `PM_WORKER_KEY`:
+
+```ini
+[Unit]
+Description=PM wake daemon (game_one host)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/project-management
+EnvironmentFile=/etc/pm/wake-daemon.env   # holds PM_API_TOKEN=... and PM_WORKER_KEY=... (or use --watch)
+ExecStart=/usr/bin/pm-wake-daemon --pm-url http://localhost:3000
+Restart=on-failure
+RestartPreventExitStatus=2   # exit code 2 = config error: do NOT restart, fix config
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`RestartPreventExitStatus=2` honors the daemon's config-error exit code, exactly as for the integrator.
+
+### 19.4 Bundle
+
+The game_one distribute bundle ships `pm-wake-daemon` as a bundled artifact (a separate repo — **not edited from here**), alongside the per-worker `PM_POOL_*` / `PM_WORKER_KEY` it already emits. Deploy one daemon per machine watching that machine's local worker key(s).

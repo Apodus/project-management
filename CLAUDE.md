@@ -402,10 +402,29 @@ activity_log row per transition IS the durable audit trail** (the governance-spe
 enum table is **deliberately NOT** extended). **Authz:** raise = any authed; reply = author|holder|
 human; acknowledge/answer = human|holder|unclaimed-pickup (acknowledge is the PM-side pickup that
 auto-claims the thread); resolve = author-withdrawal|holder|human; escalate_to_human = author|holder|
-human. **Future:** C2 (auto-delivery/wake daemon â€” **today an agent polls `pm_get_escalation` for the
-reply**), C3 (auto-responder), C4 (web UI). Everything is **additive** â€”
+human. **Delivery is now SHIPPED (Campaign C2 â€” see next paragraph);** C3 (auto-responder), C4 (web UI)
+remain future. Everything is **additive** â€”
 notes/comments/proposals/tasks/merge-train stay byte-identical. Docs: `docs/worker-pm-workflow.md`
 (Â§ Cross-team escalations) + the roadmap/vision files under `roadmaps/`.
+
+**Escalation reply delivery (Campaign C2).** The reply a holder/human writes now **finds the origin
+worker** instead of waiting to be polled, via **three surfacing paths** keyed on the worker's liveness:
+(1) the **wake daemon** (`@urtela/pm-wake-daemon`, bin `pm-wake-daemon`) â€” one process per machine
+watching the local `PM_WORKER_KEY`, which polls undelivered replies and **spawns a fresh worker turn
+seeded with the reply** for an **ended/dormant** worker (the **structural guarantee** the other two
+can't give); (2) a **piggyback envelope** â€” an active in-session worker gets a ðŸ“¬ unread-replies notice
+**appended to any `pm_*` tool response** (opportunistic, best-effort, byte-identical when there's
+nothing unread); (3) **`pm_check_messages`** â€” an explicit **drain** that pulls + acks. All three are
+backed by a per-thread **delivery cursor** (`escalations.origin_last_seen_seq`, migration 0030 â€” an
+ADVISORY, forward-only watermark advanced ONLY via `mark-delivered`, **never** on a read path) +
+`GET /escalations/undelivered?worker_key=` (directed replies = messages NOT authored by the origin
+author, seq beyond the cursor) + `POST /escalations/{id}/mark-delivered`. The **Discord needs-human
+bridge** is the **one out-of-band path**: `escalation.needs_human` POSTs through the existing alert
+machinery (missing webhook = no-op) â€” **per-event** (NOT latched), **intentionally specific** (id /
+title / kind / origin, NOT identity-masked, unlike the aggregate train/notes/claims alerts) so a human
+**re-enters for the decision** (approval / awareness), never as message transport. No new worker MCP
+tools beyond `pm_check_messages`; the wake daemon is operator machinery (its client docs ship in the
+game_one bundle â€” a separate repo, do not edit). Full spec under `roadmaps/`.
 
 ### Production Deployment
 

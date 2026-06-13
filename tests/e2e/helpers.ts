@@ -213,7 +213,15 @@ export async function createUserViaAPI(
     role?: string;
     type?: string;
   },
-): Promise<{ id: string; username: string; displayName: string; type: string }> {
+): Promise<{
+  id: string;
+  username: string;
+  displayName: string;
+  type: string;
+  // The create response for an ai_agent user includes its minted apiToken
+  // (a one-time reveal). C2 §P5 needs it to drive a SECOND-user Bearer flow.
+  apiToken?: string;
+}> {
   const response = await page.request.post("/api/v1/users", {
     data: {
       role: "member",

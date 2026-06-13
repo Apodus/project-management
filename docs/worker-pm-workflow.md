@@ -110,12 +110,20 @@ An **escalation** is a bidirectional, directed, durable cross-team thread. It **
      origin_repo=<your repo>,            ← REQUIRED, explicit
      origin_worker_key=<your worker key>, ← REQUIRED, explicit
      [body, severity, code_locator, anchor])
-2. pm_get_escalation(id)   ← poll for the reply.
-     (C2 will automate the wake; TODAY you poll on a later turn.)
+2. (the reply finds YOU — see "How a reply reaches you" below; pm_get_escalation(id)
+     still gives the full thread on demand.)
 3. pm_reply_escalation(id, body)   ← continue the thread (clarify, confirm).
 4. pm_resolve_escalation(id, reason)  ← you, the author, may withdraw/close
      at ANY non-terminal state once you're unblocked.
 ```
+
+**How a reply reaches you (Campaign C2 — delivery, no polling).** You do **not** poll for replies anymore. A directed reply (a message authored by the holder/human, not by you) surfaces through three paths, by your liveness:
+
+- **Ended / walk-away session** → the **wake daemon** (one process per machine watching your `PM_WORKER_KEY`) notices the unread reply and **spawns a fresh worker turn seeded with the reply** so you read the thread and act. This is the structural guarantee — a dormant worker still gets woken.
+- **Live turn** → a 📬 unread-replies envelope is **appended to any `pm_*` tool response** you make, so an active session notices without asking.
+- **Explicit pull** → `pm_check_messages` drains your undelivered replies and acks them (advances your delivery cursor).
+
+`pm_get_escalation(id)` still returns the full ordered thread whenever you want it.
 
 `origin_repo` and `origin_worker_key` are **required explicit params** — they stamp the thread with where it came from. The worker key is your durable `PM_WORKER_KEY` identity, but you **pass it explicitly here**, you don't rely on it being read from the env.
 
