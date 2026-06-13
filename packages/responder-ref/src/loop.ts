@@ -1077,6 +1077,38 @@ async function runDriveSession(
             break;
           }
 
+          // EARLY INTENT MARKER (A3 P3, daemon-restart survival). Write a
+          // pendingDrive marker carrying NO epicId BEFORE createEpic. This closes
+          // the one real duplicate-arc window: if the daemon dies AFTER createEpic
+          // but BEFORE the terminal epicId-bearing marker, on restart the reclaim
+          // probe finds this intent marker (hasPendingDriveMarker) and ROUTES to
+          // advanceArc — where arcEpicId returns null (the intent marker carries no
+          // epicId) → escalateToHuman recovers the rare orphan epic. No second
+          // createEpic ever fires. The terminal marker below UPGRADES this one with
+          // the epicId; on normal completion advanceArc reads that and drives as P2.
+          // A failure here escalates (no epic yet — nothing to orphan).
+          try {
+            await deps.client.addMessage(
+              escalationId,
+              `Autonomous drive starting for escalation ${escalationId} — producing the ` +
+                `vision arc (epic + campaign tasks). This is a pre-epic intent marker; if a ` +
+                `restart finds it without an epic id, the arc has no recoverable epic and a ` +
+                `human takes over.`,
+              "diagnosis",
+              { pendingDrive: true, visionPath: result.visionPath },
+            );
+          } catch (markerErr) {
+            await deps.client.escalateToHuman(
+              escalationId,
+              `produced a vision (${result.visionPath}) but writing the pre-epic intent marker failed: ${errMessage(markerErr)}`,
+            );
+            deps.logger.warn(
+              { escalationId, projectId, visionPath: result.visionPath, err: errMessage(markerErr) },
+              "drive vision_ready but intent-marker addMessage failed; escalated to human (no epic created)",
+            );
+            break;
+          }
+
           // Create the vision's PM epic over HTTP. A failure escalates (no epic
           // created — nothing to orphan) and does NOT addMessage.
           let epic: { id: string; name?: string };

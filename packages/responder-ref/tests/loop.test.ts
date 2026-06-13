@@ -1017,9 +1017,13 @@ describe("responderTick", () => {
       epicId: "epic1",
       priority: "high",
     });
-    // pendingDrive handoff (stays acknowledged for P2).
-    expect(client.addMessageCalls).toHaveLength(1);
-    const msg = client.addMessageCalls[0];
+    // A3 P3: an EARLY pre-epic intent marker (pendingDrive, NO epicId) is written
+    // BEFORE createEpic, then the terminal epicId-bearing handoff after the tasks.
+    expect(client.addMessageCalls).toHaveLength(2);
+    const intent = client.addMessageCalls[0];
+    expect(intent.metadata).toMatchObject({ pendingDrive: true, visionPath: "roadmaps/v.md" });
+    expect(intent.metadata?.epicId).toBeUndefined();
+    const msg = client.addMessageCalls[1];
     expect(msg.metadata).toMatchObject({
       pendingDrive: true,
       visionPath: "roadmaps/v.md",
@@ -1104,7 +1108,12 @@ describe("responderTick", () => {
     ).resolves.toBeUndefined();
     // The epic was created (and persists — findable); the first task POST failed.
     expect(client.createEpic).toHaveBeenCalledTimes(1);
-    expect(client.addMessage).not.toHaveBeenCalled(); // no pendingDrive handoff
+    // A3 P3: the EARLY intent marker (no epicId) is written before createEpic, so it
+    // IS present — but the TERMINAL epicId-bearing handoff is NOT (the task POST failed
+    // before it). Exactly one addMessage, the pre-epic intent marker.
+    expect(client.addMessageCalls).toHaveLength(1);
+    expect(client.addMessageCalls[0].metadata).toMatchObject({ pendingDrive: true });
+    expect(client.addMessageCalls[0].metadata?.epicId).toBeUndefined();
     expect(client.escalateCalls).toHaveLength(1);
     expect(client.escalateCalls[0].reason).toContain("epic1"); // orphan epic id named
     expect(client.escalateCalls[0].reason).toContain("C1"); // the failed campaign named
@@ -2073,6 +2082,335 @@ describe("responderTick", () => {
     });
 
     it("byte-identical: autoImplementEnabled:false + no arc markers ⇒ the arc path is inert", async () => {
+      const client = new FakeClient();
+      client.listResults = [[]];
+      client.ackResults = [[]];
+      const impl = new FakeImplementRunner();
+      await responderTick(
+        baseDeps(client, { mode: "on", now: () => STALE, implementRunner: impl }),
+        createResponderState(),
+      );
+      expect(client.getEpic).not.toHaveBeenCalled();
+      expect(client.listMergeRequests).not.toHaveBeenCalled();
+      expect(impl.run).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── A3 P3: checkpoint / resume (daemon-restart survival) ─────────────
+  //
+  // The arc carries NO load-bearing in-memory state — advanceArc derives the
+  // arc's true state STRICTLY FROM THE SERVER each cycle (getEpic tasks +
+  // listMergeRequests by escalationId), and the server-side markers +
+  // merge_requests ARE the checkpoint. So a fresh `createResponderState()` is a
+  // FAITHFUL restart simulator. These tests seal:
+  //   - Gap 1 (the one real fix): an EARLY pre-epic intent marker closes the
+  //     duplicate-createEpic window (crash between createEpic and the terminal
+  //     epicId-bearing marker) — on restart the intent marker routes to advanceArc,
+  //     arcEpicId is null → escalateToHuman; NO second createEpic.
+  //   - Gaps 2-5 (already structurally closed): restart resumes from the next
+  //     un-landed phase, a completed arc is not re-driven, no double-submit across
+  //     ticks, and the checkpoint round-trips across a brand-new state.
+  describe("A3 P3 — daemon-restart survival (checkpoint/resume)", () => {
+    const STALE = Date.parse("2026-06-14T00:00:00.000Z");
+
+    /** A self-held acknowledged escalation carrying a thread of arbitrary messages. */
+    function thread(id: string, messages: EscalationMessage[]): EscalationWithThread {
+      return {
+        ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+        messages,
+      };
+    }
+
+    function msg(
+      id: string,
+      seq: number,
+      metadata: Record<string, unknown>,
+    ): EscalationMessage {
+      return {
+        id: `${id}-m${seq}`,
+        escalationId: id,
+        seq,
+        authorId: SELF,
+        body: "marker",
+        messageType: "diagnosis",
+        metadata,
+        createdAt: "2026-06-13T00:00:00.000Z",
+      };
+    }
+
+    /** Wire a FakeClient into the arc-route reclaim path with the given thread. */
+    function arcClient(id: string, detail: EscalationWithThread): FakeClient {
+      const client = new FakeClient();
+      client.listResults = [[]];
+      client.ackResults = [
+        [mkEscalation(id, { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" })],
+      ];
+      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => detail);
+      return client;
+    }
+
+    function arcDeps(client: FakeClient, impl: FakeImplementRunner): ResponderDeps {
+      return baseDeps(client, {
+        mode: "on",
+        maxConcurrent: 10,
+        now: () => STALE,
+        autoImplementEnabled: true,
+        implementRunner: impl,
+        acquireWorktree: () => new FakeWorktree(),
+      });
+    }
+
+    const READY = (branch: string): ImplementRunResult => ({
+      kind: "branch_ready",
+      branch,
+      commitSha: "c",
+      durationMs: 1,
+    });
+
+    // Gap 4 seal: a daemon restart mid-arc resumes from the NEXT un-landed phase,
+    // not phase 1. A FRESH state proves zero in-memory carryover; the server snapshot
+    // (task-1 landed) fully reconstitutes the arc.
+    it("restart mid-arc resumes from the next un-landed phase (task-2), not phase 1", async () => {
+      const client = arcClient(
+        "e1",
+        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+      );
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [
+          { id: "task-1", title: "Phase 1", description: "d1" },
+          { id: "task-2", title: "Phase 2", description: "d2" },
+        ],
+      };
+      client.mrResults = [
+        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+      ];
+      const impl = new FakeImplementRunner();
+      impl.result = READY("pm/escalation-e1-task-2");
+      // FRESH state = the restart simulator.
+      await responderTick(arcDeps(client, impl), createResponderState());
+
+      expect(impl.run).toHaveBeenCalledTimes(1);
+      expect(client.submitMergeRequestCalls).toHaveLength(1);
+      expect(client.submitMergeRequestCalls[0].body).toMatchObject({ taskId: "task-2", escalationId: "e1" });
+      // No submit for the already-landed task-1.
+      expect(
+        client.submitMergeRequestCalls.some((c) => c.body.taskId === "task-1"),
+      ).toBe(false);
+    });
+
+    // Gap 1 (the core): an acknowledged self-held escalation whose thread carries ONLY
+    // the pre-epic intent marker (pendingDrive, NO epicId) → on the reclaim cycle it
+    // routes to advanceArc, arcEpicId is null → escalateToHuman; NO re-drive, NO second
+    // createEpic.
+    it("restart during vision production (intent marker, no epicId) does NOT re-drive or create a duplicate epic", async () => {
+      const client = arcClient(
+        "e1",
+        thread("e1", [msg("e1", 1, { pendingDrive: true, visionPath: "roadmaps/v.md" })]),
+      );
+      // The epic does not exist yet from the arc's POV — but advanceArc must NOT even
+      // get that far: arcEpicId(null) escalates before any getEpic.
+      const impl = new FakeImplementRunner();
+      const drive = new FakeDriveRunner();
+      await responderTick(
+        baseDeps(client, {
+          mode: "on",
+          maxConcurrent: 10,
+          now: () => STALE,
+          autoImplementEnabled: true,
+          implementRunner: impl,
+          driveRunner: drive,
+          acquireWorktree: () => new FakeWorktree(),
+        }),
+        createResponderState(),
+      );
+
+      // Routed to advanceArc → arcEpicId null → escalateToHuman.
+      expect(client.escalateCalls).toHaveLength(1);
+      expect(client.escalateCalls[0].id).toBe("e1");
+      expect(client.escalateCalls[0].reason).toContain("no recoverable epic id");
+      // NO re-drive, NO second createEpic, NO re-implement.
+      expect(drive.run).not.toHaveBeenCalled();
+      expect(client.createEpic).not.toHaveBeenCalled();
+      expect(impl.run).not.toHaveBeenCalled();
+    });
+
+    // Gap 1 (the write-ordering seal): a successful vision_ready drive writes the
+    // pre-epic intent marker (pendingDrive, NO epicId) BEFORE createEpic, then the
+    // terminal epicId-bearing marker AFTER the tasks. Asserted via mock invocation
+    // call order.
+    it("a normal vision_ready drive writes the intent marker BEFORE createEpic, then the epicId marker after", async () => {
+      const client = new FakeClient();
+      client.listResults = [[mkEscalation("e1")]];
+      const runner = onRunner({ kind: "implement", size: "systemic", rationale: "r", durationMs: 1 });
+      const sniffer = snifferOf({ kind: "clean" });
+      const drive = new FakeDriveRunner();
+      drive.result = {
+        kind: "vision_ready",
+        visionPath: "roadmaps/v.md",
+        epicName: "E",
+        campaigns: [{ title: "C1", priority: "high", description: "d" }],
+        durationMs: 1,
+      };
+      await responderTick(
+        baseDeps(client, {
+          mode: "on",
+          runner,
+          sniffer,
+          autoImplementEnabled: true,
+          driveRunner: drive,
+          acquireWorktree: () => new FakeWorktree(),
+        }),
+        createResponderState(),
+      );
+
+      // TWO addMessage calls: the early intent marker (no epicId) then the terminal
+      // epicId-bearing marker.
+      expect(client.addMessageCalls).toHaveLength(2);
+      const intent = client.addMessageCalls[0];
+      const terminal = client.addMessageCalls[1];
+      expect(intent.metadata).toMatchObject({ pendingDrive: true, visionPath: "roadmaps/v.md" });
+      expect(intent.metadata?.epicId).toBeUndefined(); // pre-epic: NO epicId
+      expect(terminal.metadata).toMatchObject({
+        pendingDrive: true,
+        visionPath: "roadmaps/v.md",
+        epicId: "epic1",
+      });
+      // Ordering: intent addMessage < createEpic < terminal addMessage.
+      const intentOrder = client.addMessage.mock.invocationCallOrder[0];
+      const terminalOrder = client.addMessage.mock.invocationCallOrder[1];
+      const epicOrder = client.createEpic.mock.invocationCallOrder[0];
+      expect(intentOrder).toBeLessThan(epicOrder);
+      expect(epicOrder).toBeLessThan(terminalOrder);
+    });
+
+    // Gap 3 seal: a completed arc (arcComplete marker + all-landed snapshot) is NOT
+    // re-driven across a fresh-state restart — no implement, no second marker, no
+    // answer/escalate.
+    it("a completed arc is not re-driven across restart (fresh state, all landed, arcComplete marked)", async () => {
+      const client = arcClient(
+        "e1",
+        thread("e1", [
+          msg("e1", 1, {
+            pendingArc: true,
+            epicId: "epic1",
+            visionPath: "roadmaps/v.md",
+            arcComplete: true,
+            landedShas: ["s1", "s2"],
+          }),
+        ]),
+      );
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [
+          { id: "task-1", title: "Phase 1", description: "d1" },
+          { id: "task-2", title: "Phase 2", description: "d2" },
+        ],
+      };
+      client.mrResults = [
+        [
+          { id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" },
+          { id: "mr2", taskId: "task-2", escalationId: "e1", status: "landed", landedSha: "s2", branch: "b2", commitSha: "c2" },
+        ],
+      ];
+      const impl = new FakeImplementRunner();
+      await responderTick(arcDeps(client, impl), createResponderState());
+
+      expect(impl.run).not.toHaveBeenCalled();
+      expect(client.addMessage).not.toHaveBeenCalled(); // no second arcComplete marker
+      expect(client.answer).not.toHaveBeenCalled();
+      expect(client.escalateToHuman).not.toHaveBeenCalled();
+    });
+
+    // Gap 2 seal: no double-submit across two consecutive ticks on a SHARED state.
+    // Tick 1 submits phase-1; tick 2 sees phase-1 queued/integrating → re-parks. Exactly
+    // ONE submitMergeRequest across both ticks.
+    it("no double-submit across two consecutive ticks on a shared state (tick 2 re-parks the in-flight phase)", async () => {
+      const state = createResponderState();
+      const impl = new FakeImplementRunner();
+
+      // Tick 1: no MRs → implement phase 1.
+      const c1 = arcClient(
+        "e1",
+        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+      );
+      c1.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [
+          { id: "task-1", title: "Phase 1", description: "d1" },
+          { id: "task-2", title: "Phase 2", description: "d2" },
+        ],
+      };
+      c1.mrResults = [[]];
+      impl.result = READY("pm/escalation-e1-task-1");
+      await responderTick(arcDeps(c1, impl), state);
+      expect(c1.submitMergeRequestCalls).toHaveLength(1);
+      expect(c1.submitMergeRequestCalls[0].body).toMatchObject({ taskId: "task-1" });
+
+      // Tick 2 (shared state): phase-1 MR now queued → re-park, NO new submit.
+      const c2 = arcClient(
+        "e1",
+        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+      );
+      c2.epicResult = c1.epicResult;
+      c2.mrResults = [
+        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "queued", landedSha: null, branch: "b1", commitSha: "c1" }],
+      ];
+      await responderTick(arcDeps(c2, impl), state);
+      // Exactly ONE submit across both ticks (tick 2 re-parked).
+      expect(c2.submitMergeRequest).not.toHaveBeenCalled();
+      expect(impl.run).toHaveBeenCalledTimes(1); // only tick 1 spawned
+    });
+
+    // Gap 5 seal: the checkpoint ROUND-TRIPS across a simulated restart. Cycle 1
+    // (fresh state) implements phase-1 + writes pendingArc; cycle 2 with a BRAND-NEW
+    // state + a snapshot showing phase-1 landed → resumes at phase-2. Proves zero
+    // in-memory carryover: the server marker + MR status fully reconstitute the arc.
+    it("checkpoint round-trips across a simulated restart (fresh state cycle 2 resumes at phase-2)", async () => {
+      const impl = new FakeImplementRunner();
+
+      // Cycle 1: fresh state, no MRs → implement phase 1 + append pendingArc.
+      const c1 = arcClient(
+        "e1",
+        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+      );
+      c1.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [
+          { id: "task-1", title: "Phase 1", description: "d1" },
+          { id: "task-2", title: "Phase 2", description: "d2" },
+        ],
+      };
+      c1.mrResults = [[]];
+      impl.result = READY("pm/escalation-e1-task-1");
+      await responderTick(arcDeps(c1, impl), createResponderState());
+      expect(c1.submitMergeRequestCalls[0].body).toMatchObject({ taskId: "task-1" });
+      // The pendingArc handoff was written (the durable checkpoint).
+      const handoff = c1.addMessageCalls.find((m) => m.metadata?.pendingArc === true);
+      expect(handoff?.metadata).toMatchObject({ epicId: "epic1", phaseTaskId: "task-1" });
+
+      // Cycle 2: BRAND-NEW state (restart) + phase-1 landed snapshot → resume at phase-2.
+      const c2 = arcClient(
+        "e1",
+        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+      );
+      c2.epicResult = c1.epicResult;
+      c2.mrResults = [
+        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+      ];
+      impl.result = READY("pm/escalation-e1-task-2");
+      await responderTick(arcDeps(c2, impl), createResponderState());
+      expect(c2.submitMergeRequestCalls).toHaveLength(1);
+      expect(c2.submitMergeRequestCalls[0].body).toMatchObject({ taskId: "task-2", escalationId: "e1" });
+    });
+
+    // Byte-identical guard: with autoImplementEnabled:false and no arc markers, the
+    // arc/restart path is inert (no getEpic, no listMergeRequests, no implement).
+    it("byte-identical: autoImplementEnabled:false + no arc markers ⇒ the restart path is inert", async () => {
       const client = new FakeClient();
       client.listResults = [[]];
       client.ackResults = [[]];
