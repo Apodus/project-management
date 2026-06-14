@@ -1,6 +1,7 @@
 import { Link, useMatches, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
+  Bot,
   Boxes,
   ChevronDown,
   ChevronsLeft,
@@ -378,6 +379,18 @@ export function Sidebar() {
               icon: Boxes,
               href: `/projects/${currentProjectId}/settings/integrator`,
               matchPath: "/settings/integrator",
+            }}
+            collapsed={collapsed}
+          />
+        )}
+
+        {currentProjectId && isAdmin && (
+          <NavLink
+            item={{
+              label: "Auto-implement",
+              icon: Bot,
+              href: `/projects/${currentProjectId}/settings/auto-implement`,
+              matchPath: "/settings/auto-implement",
             }}
             collapsed={collapsed}
           />

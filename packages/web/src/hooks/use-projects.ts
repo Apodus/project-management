@@ -10,6 +10,7 @@ import {
   type UpdateProject,
   type ResolverConfig,
   type IntegratorConfig,
+  type AutoImplementConfig,
 } from "@/lib/api";
 import { mergeIntegratorSettings } from "@/lib/integrator";
 import { trainKeys } from "@/hooks/use-train";
@@ -159,6 +160,39 @@ export function useUpdateIntegratorConfig(projectId: string | undefined) {
       }
       queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
       queryClient.invalidateQueries({ queryKey: trainKeys.all });
+    },
+  });
+}
+
+/**
+ * Update only the top-level `settings.autoImplement` block (the per-project
+ * responder auto-implement control). Fetches the current project fresh, REPLACES
+ * the `autoImplement` sub-block while preserving every sibling settings block
+ * (integrator/webhooks/ai_autonomy/…), then PATCHes. `autoImplement` is a
+ * top-level settings sibling — a wholesale block replace is correct (no deep
+ * merge). Invalidates the project + project list queries only (nothing
+ * train-side reads autoImplement).
+ */
+export function useUpdateAutoImplementConfig(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (autoImplement: AutoImplementConfig) => {
+      if (!projectId) throw new Error("No project selected");
+      // Fetch fresh so we merge onto the latest settings, not a stale cache.
+      const project = await getProject(projectId);
+      const existing = (project.settings ?? {}) as Record<string, unknown>;
+      const settings = { ...existing, autoImplement };
+      // settings is opaque JSON on the wire; round-tripping the server's own
+      // settings untouched, so the cast onto the structured type is safe.
+      return updateProject(projectId, { settings } as UpdateProject);
+    },
+    onSuccess: () => {
+      if (projectId) {
+        queryClient.invalidateQueries({
+          queryKey: projectKeys.detail(projectId),
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
     },
   });
 }

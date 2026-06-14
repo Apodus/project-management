@@ -59,6 +59,15 @@ export interface ResolverConfig {
   prompt?: string;
 }
 
+/**
+ * The persisted `settings.autoImplement` shape (per-project responder
+ * auto-implement control). `enabled` defaults off; `mode` defaults shadow.
+ */
+export interface AutoImplementConfig {
+  enabled: boolean;
+  mode: "off" | "shadow" | "on";
+}
+
 export interface LinkedRepo {
   name: string;
   path: string;

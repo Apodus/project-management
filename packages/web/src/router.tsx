@@ -124,6 +124,10 @@ const IntegratorPage = lazyRouteComponent(
   () => import("@/pages/settings/integrator-page"),
   "IntegratorPage",
 );
+const AutoImplementPage = lazyRouteComponent(
+  () => import("@/pages/settings/auto-implement-page"),
+  "AutoImplementPage",
+);
 const CategoriesPage = lazyRouteComponent(
   () => import("@/pages/settings/categories-page"),
   "CategoriesPage",
@@ -446,6 +450,13 @@ const projectIntegratorRoute = createRoute({
   component: IntegratorPage,
 });
 
+// /projects/$projectId/settings/auto-implement — responder auto-implement config (admin)
+const projectAutoImplementRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/settings/auto-implement",
+  component: AutoImplementPage,
+});
+
 // /projects/$projectId/settings/categories — epic category palette
 const projectCategoriesRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -487,6 +498,7 @@ const routeTree = rootRoute.addChildren([
       projectNotificationsRoute,
       projectConflictResolutionRoute,
       projectIntegratorRoute,
+      projectAutoImplementRoute,
       projectCategoriesRoute,
     ]),
     proposalDetailRoute,
