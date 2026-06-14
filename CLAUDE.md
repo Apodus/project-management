@@ -480,8 +480,10 @@ bounded, and self-alerting, so the responder (which **ships `enabled=false`**) c
 high-severity/`needs_human` outcomes. Roadmap: `roadmaps/roadmap-20260613-1441-c4-legibility-sla.md`.
 
 **Auto-implement land path (Campaign A1+A2).** The responder can go past answering to **autonomously land
-a code fix** for a bounded escalation â€” gated by `settings.integrator` responder config `auto_implement.enabled`
-(**default FALSE**; the arc ships **OFF**, like the responder itself). The flow is **trust-first, additive, and
+a code fix** for a bounded escalation â€” gated by the per-project **`settings.autoImplement.enabled`**
+(web-toggleable, **default FALSE**; the arc ships **OFF**, like the responder itself), composed with the daemon
+env **master kill-switch** `PM_AUTO_IMPLEMENT_ENABLED` (explicit-false â‡’ force OFF for all watched projects;
+**true or unset â‡’ defer to the per-project DB**). The flow is **trust-first, additive, and
 verify-gated**: when enabled, an **injection sniff-test** gates session admission on the raw escalation
 (suspicious/un-runnable â†’ escalate-to-human, never spawn â€” fail-safe); a clean admission whose answering
 session declares `implement{bounded}` spawns an **isolated-worktree write session** (cwd = a git clone, never
@@ -502,9 +504,11 @@ MR still fires the land post-back (the resolution re-verifies before landing; `r
 no-recursion, `escalationId` carries the post-back; dropping either loses a seal/post-back). **No-recursion is
 structural** (NO new guard): `resolved` is terminal and never re-assessed, the seed gate seeds only
 `status==="open"` escalations not authored by self, a `pendingLand` self-held escalation is **reclaim-skipped**
-(awaiting the train, not stranded), and `resolvedFrom != null` already seals the resolver. Worker/operator
-facing config + the sniff/allowlist/budget knobs live in `settings.integrator` (responder block); no new MCP
-tool, no new env var. Roadmaps: `roadmaps/` A1 (assess + sniff + write session + allowlist) + A2 (escalationId
+(awaiting the train, not stranded), and `resolvedFrom != null` already seals the resolver. Operator
+**enablement** is the per-project **`settings.autoImplement`** (`enabled`/`mode`, web-toggleable, **default off /
+shadow**) composed with the daemon env master `PM_AUTO_IMPLEMENT_ENABLED`; the **deployment knobs** (git repo
+url, budget caps, the blast-radius allowlist, verify command) **stay env** (daemon-wide). The A1/A2 sniff/write-path
+itself added **no new MCP tool and no new env var**. Roadmaps: `roadmaps/` A1 (assess + sniff + write session + allowlist) + A2 (escalationId
 post-back + resolver propagation + full-stack land seal).
 
 **Autonomous drive (Campaign A3).** Past landing a _bounded_ fix, the responder drives a _systemic_
@@ -594,6 +598,13 @@ unbreakable (a wrong diff is caught by verify, never landed); the whole capabili
 `auto_implement.enabled=false` with a deliberate **shadow→on** graduation. The **whole
 responder-auto-implement vision is COMPLETE**; answer-mode + A1–A4 + C1–C4 + the merge train are
 **byte-identical**. Spec: `roadmaps/roadmap-20260614-0130-a5-rollout-observability-close.md`.
+**Per-project enablement (web):** since the per-project-settings campaign, enablement is no longer env-only —
+`settings.autoImplement.enabled`/`mode` (default **off / shadow**) is **web-toggleable per project** (the
+admin-gated Auto-implement settings page) and is the source of truth, composed with the env master
+`PM_AUTO_IMPLEMENT_ENABLED` (explicit-false ⇒ force-off-all; true/unset ⇒ defer to the DB). The deployment knobs
+(git url / budget / allowlist / verify) **stay env**. New projects are **off** by default; a responder shipping
+with the env unset stays byte-identical until an operator flips a project's DB toggle.
+Roadmap: `roadmaps/roadmap-20260614-0230-responder-per-project-settings.md`.
 
 ### Production Deployment
 

@@ -70,7 +70,7 @@ projects the operator has opted in (no project ⇒ config error, exit 2).
 | `PM_AUTO_IMPLEMENT_ENABLED`              | `false`                  | Kill-switch for the write-capable auto-implement regime (Campaign A1)                                                                                                                                                                                                                                                                               |
 | `PM_AUTO_IMPLEMENT_VERIFY_CMD`           | (empty)                  | Project verify command the implement agent runs in-session before declaring `branch_ready` (empty ⇒ skip; A2's train re-verify is the floor)                                                                                                                                                                                                        |
 | `PM_AUTO_IMPLEMENT_ALLOWED_PATHS`        | (empty = no restriction) | CSV of coarse path prefixes — the blast-radius allowlist (default `[]` = whole PM repo allowed; an opt-in operator narrowing)                                                                                                                                                                                                                       |
-| `PM_RESPONDER_GIT_REPO_URL`              | (empty)                  | Repo URL the implement worktree clones (REQUIRED when auto-implement is enabled)                                                                                                                                                                                                                                                                    |
+| `PM_RESPONDER_GIT_REPO_URL`              | (empty)                  | Repo URL the implement worktree clones. Set it on any responder that will have per-project auto-implement enabled; if a project resolves enabled with no url, worktree-prep fails safe (escalate-to-human, no crash) — **not** a startup error.                                                                                                     |
 | `PM_RESPONDER_GIT_REMOTE`                | `origin`                 | Remote the implement branch pushes to                                                                                                                                                                                                                                                                                                               |
 | `PM_RESPONDER_GIT_MAIN_BRANCH`           | `main`                   | Main branch the worktree resets to / diffs against                                                                                                                                                                                                                                                                                                  |
 | `PM_RESPONDER_GIT_CLEAN_KEEP`            | (empty)                  | CSV of paths to preserve across the worktree git-clean                                                                                                                                                                                                                                                                                              |
@@ -205,6 +205,13 @@ and the default; nothing below runs until the operator flips it.
 The two are **independent**: answer mode can be `on` (auto-send answers) while
 auto-implement is `shadow` (observe the diff, never land), and vice versa.
 
+**Enablement is now per-project (DB) composed with this env master.** `PM_AUTO_IMPLEMENT_ENABLED`
+is a daemon-wide **master kill-switch**: explicit `false` ⇒ force OFF for every watched project;
+**`true` or unset ⇒ defer to the per-project `settings.autoImplement.enabled`** (default `false`,
+web-toggleable). Likewise `settings.autoImplement.mode` (default `shadow`) overrides
+`PM_AUTO_IMPLEMENT_MODE` per project (env is the fallback). A responder shipping with
+`PM_AUTO_IMPLEMENT_ENABLED` unset stays OFF until an operator flips a project's web toggle.
+
 **The off / shadow / on ladder (auto-implement write path):**
 
 - **off** — inert; the write-path guards never fire (byte-identical to `enabled=false`
@@ -225,6 +232,10 @@ pushed branches + diff proposals + the land/reject/revert metrics on the C4 esca
 dashboard (the A5 `AuditChainCard` + `AutoImplementMetricsRow`); once confident, flip
 `PM_AUTO_IMPLEMENT_MODE=on`. The kill-switch stays `PM_AUTO_IMPLEMENT_ENABLED` — `mode`
 governs behavior only while enabled.
+
+The **deployment knobs** stay env (daemon-wide): `PM_RESPONDER_GIT_REPO_URL`, the budget caps,
+`PM_AUTO_IMPLEMENT_ALLOWED_PATHS`, `PM_AUTO_IMPLEMENT_VERIFY_CMD`. v1 exposes only `enabled` + `mode`
+per project.
 
 The C4 dashboard surfaces the **audit chain** (escalation ↔ MR / vision-epic ↔
 `landed_sha` ↔ `revertOf`, deep-linked to the MR timeline) + the **land/reject/revert**
