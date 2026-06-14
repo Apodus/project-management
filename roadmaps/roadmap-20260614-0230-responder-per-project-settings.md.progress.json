@@ -1,0 +1,11 @@
+{
+  "campaign": "Per-project auto-implement settings (web-toggleable, default off)",
+  "branch": "campaign-responder-per-project-settings",
+  "status": "IN_PROGRESS",
+  "completed_phases": [],
+  "current_phase": "P1",
+  "phase_outcomes": {},
+  "open_issues": [],
+  "dag_drift": [],
+  "notes": "User opted to BUILD the per-project web settings UI (over env-only). Moves auto-implement enablement from daemon-wide env to per-project settings.autoImplement (default off, mode default shadow), composed with the env master kill-switch + deployment knobs (git url/budget/allowlist/verify stay env). P1 schema+server, P2 responder per-project resolution (load-bearing), P3 web page+nav, P4 seal+docs (fix the CLAUDE.md settings.integrator inaccuracy)+close. Safe-by-default; the whole A1-A5 arc stays byte-identical (only the enablement SOURCE moves). Branch off main; do NOT push until user approves."
+}

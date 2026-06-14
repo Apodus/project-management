@@ -1361,6 +1361,80 @@ describe("Projects API", () => {
     });
   });
 
+  // ── settings.autoImplement validation (the Zod-4 mirror — lockstep proof) ──
+  describe("settings.autoImplement validation", () => {
+    const validBaseSettings = {
+      ai_autonomy: {
+        can_self_assign: true,
+        can_create_subtasks: true,
+        can_create_tasks: false,
+        can_change_priority: false,
+        can_close_epics: false,
+        max_concurrent_tasks: 3,
+      },
+      workflow: {
+        statuses: ["backlog", "ready", "in_progress", "in_review", "done", "cancelled"],
+      },
+      git: { branch_prefix: "feat/", auto_link_branches: true },
+    };
+
+    it("round-trips a full autoImplement block through PATCH → GET (mirror does not strip it)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            autoImplement: { enabled: true, mode: "on" },
+          },
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // Proves the mirror does NOT strip autoImplement (the lockstep proof).
+      expect(body.data.settings.autoImplement).toEqual({ enabled: true, mode: "on" });
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const getBody = await get.json();
+      expect(getBody.data.settings.autoImplement).toEqual({ enabled: true, mode: "on" });
+    });
+
+    it("fills the mode default (shadow) for a partial autoImplement block", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            autoImplement: { enabled: true },
+          },
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.settings.autoImplement).toEqual({ enabled: true, mode: "shadow" });
+    });
+
+    it("reads a project with no autoImplement block as undefined (tolerant off, byte-identical)", async () => {
+      const res = await authRequest(testApp.app, "POST", "/api/v1/projects", {
+        body: { name: "AI-off", settings: validBaseSettings },
+      });
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.settings?.autoImplement).toBeUndefined();
+    });
+
+    it("rejects an invalid autoImplement mode with 400 (the Zod-4 mirror validates)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            autoImplement: { mode: "bogus" },
+          },
+        },
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
   // ── settings.epic_categories validation (the Zod-4 mirror) ──
   describe("settings.epic_categories validation", () => {
     const validBaseSettings = {

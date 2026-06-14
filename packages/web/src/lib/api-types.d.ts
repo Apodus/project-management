@@ -14258,6 +14258,15 @@ export interface components {
                     discord_url?: string;
                     alerts_enabled?: boolean;
                 };
+                autoImplement?: {
+                    /** @default false */
+                    enabled: boolean;
+                    /**
+                     * @default shadow
+                     * @enum {string}
+                     */
+                    mode: "off" | "shadow" | "on";
+                };
                 epic_categories?: {
                     name: string;
                     color: string;
@@ -14354,6 +14363,15 @@ export interface components {
                     /** Format: uri */
                     discord_url?: string;
                     alerts_enabled?: boolean;
+                };
+                autoImplement?: {
+                    /** @default false */
+                    enabled: boolean;
+                    /**
+                     * @default shadow
+                     * @enum {string}
+                     */
+                    mode: "off" | "shadow" | "on";
                 };
                 epic_categories?: {
                     name: string;

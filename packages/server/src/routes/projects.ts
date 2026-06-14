@@ -3,6 +3,7 @@ import {
   PROJECT_STATUSES,
   TASK_STATUSES,
   CACHE_MODES,
+  AUTO_IMPLEMENT_MODES,
   cacheConfigWarnings,
 } from "@pm/shared";
 import type { AppVariables } from "../types.js";
@@ -196,6 +197,16 @@ const webhooksSettingsSchema = z.object({
   alerts_enabled: z.boolean().optional(),
 });
 
+// Zod-4 mirror of @pm/shared/autoImplementSettingsSchema — keep in lockstep.
+// MUST stay identical to the canonical shape (incl. mode default "shadow") or
+// PATCH silently strips autoImplement / an openapi drift surfaces. Leaf scalars
+// carry `.default(...)` so plain `.optional()` on both sides — the `.prefault({})`
+// divergence applies only to the nested resolver `.default({})` block, NOT here.
+const autoImplementSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(AUTO_IMPLEMENT_MODES).default("shadow"),
+});
+
 // Zod-4 mirror of @pm/shared/epicCategorySchema. MUST stay identical to the
 // canonical shape or PATCH silently strips epic_categories.
 const epicCategorySchema = z.object({
@@ -219,6 +230,7 @@ const projectSettingsSchema = z
     git: gitSettingsSchema.partial().optional(),
     integrator: integratorSettingsSchema.optional(),
     webhooks: webhooksSettingsSchema.optional(),
+    autoImplement: autoImplementSettingsSchema.optional(),
     epic_categories: z.array(epicCategorySchema).optional(),
   })
   .nullable()

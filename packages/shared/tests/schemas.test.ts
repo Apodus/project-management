@@ -374,6 +374,42 @@ describe("projectSettingsSchema", () => {
     ).toThrow();
   });
 
+  // ── Per-project auto-implement settings (default off, mode shadow) ──
+  it("reads an absent autoImplement block as undefined (tolerant off)", () => {
+    const parsed = projectSettingsSchema.parse(validSettings);
+    expect(parsed?.autoImplement).toBeUndefined();
+  });
+
+  it("fills defaults for an empty autoImplement block (off + shadow)", () => {
+    const parsed = projectSettingsSchema.parse({ ...validSettings, autoImplement: {} });
+    expect(parsed?.autoImplement).toEqual({ enabled: false, mode: "shadow" });
+  });
+
+  it("fills the mode default for a partial autoImplement block (enabled only)", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      autoImplement: { enabled: true },
+    });
+    expect(parsed?.autoImplement).toEqual({ enabled: true, mode: "shadow" });
+  });
+
+  it("round-trips a full autoImplement block", () => {
+    const withAutoImplement = {
+      ...validSettings,
+      autoImplement: { enabled: true, mode: "on" as const },
+    };
+    expect(projectSettingsSchema.parse(withAutoImplement)).toEqual(withAutoImplement);
+  });
+
+  it("rejects an invalid autoImplement mode", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        autoImplement: { mode: "bogus" },
+      }),
+    ).toThrow();
+  });
+
   // ── Phase 7.5 verify_steps DAG + cache config (design §2.1/§8.1) ──
   it("accepts a valid 3-step DAG + cache config and round-trips it", () => {
     const parsed = projectSettingsSchema.parse({

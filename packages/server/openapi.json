@@ -485,6 +485,24 @@
                   }
                 }
               },
+              "autoImplement": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "shadow",
+                      "on"
+                    ],
+                    "default": "shadow"
+                  }
+                }
+              },
               "epic_categories": {
                 "type": "array",
                 "items": {
@@ -808,6 +826,24 @@
                   },
                   "alerts_enabled": {
                     "type": "boolean"
+                  }
+                }
+              },
+              "autoImplement": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "shadow",
+                      "on"
+                    ],
+                    "default": "shadow"
                   }
                 }
               },

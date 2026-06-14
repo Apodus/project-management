@@ -107,6 +107,18 @@ export const LEASE_MODES = ["off", "shadow", "on"] as const;
 export type LeaseMode = (typeof LEASE_MODES)[number];
 export const LEASE_MODE_DEFAULT: LeaseMode = "shadow";
 
+// Per-project responder auto-implement mode (campaign — per-project settings).
+// Governs how the responder's auto-implement land path runs for a project, the
+// same off/shadow/on kill-switch ladder as CACHE_MODES/LEASE_MODES:
+//   off    — never auto-implement (inert)
+//   shadow — observe the branch/diff without landing (safe observe-first rung)
+//   on     — autonomous (the merge-train verify gate is still the floor)
+// Identical by VALUE to responder-ref's RESPONDER_MODES, but defined here as its
+// own const so shared/server carry no dependency on the daemon package (and no
+// semantic coupling to LEASE_MODES/CACHE_MODES — a distinct concern).
+export const AUTO_IMPLEMENT_MODES = ["off", "shadow", "on"] as const;
+export type AutoImplementMode = (typeof AUTO_IMPLEMENT_MODES)[number];
+
 // The lease TTL: a holder must heartbeat within this window or the lease
 // lapses and becomes reclaimable. 30 minutes.
 export const LEASE_TTL_MS_DEFAULT = 30 * 60 * 1000;

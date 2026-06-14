@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { PROJECT_STATUSES, TASK_STATUSES, CACHE_MODES } from "../constants/enums.js";
+import {
+  PROJECT_STATUSES,
+  TASK_STATUSES,
+  CACHE_MODES,
+  AUTO_IMPLEMENT_MODES,
+} from "../constants/enums.js";
 import { ulidSchema, timestampSchema, optionalText } from "./common.js";
 
 /**
@@ -304,6 +309,22 @@ export const webhooksSettingsSchema = z.object({
   alerts_enabled: z.boolean().optional(),
 });
 
+// Per-project responder auto-implement enablement (campaign — per-project
+// settings). DB-backed + web-toggleable, default OFF — moves the auto-implement
+// switch off the daemon-wide env so the operator can enable it per project from
+// the web UI while new projects stay off automatically. `enabled` is the
+// per-project switch (default false). `mode` is the safe observe-first rung
+// (default "shadow" — deliberately distinct from the responder env default "on",
+// which exists for A1-A4 byte-identity). An absent block ⇒ off (tolerant read).
+// The mode enum mirrors RESPONDER_MODES by VALUE only, defined via the shared
+// AUTO_IMPLEMENT_MODES const so shared carries no daemon dependency. enabled and
+// mode are orthogonal (no cross-field refine — mirrors the integrator/webhooks
+// idiom). Keep in lockstep with the Zod-4 route mirror.
+export const autoImplementSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(AUTO_IMPLEMENT_MODES).default("shadow"),
+});
+
 // Per-project epic category — a named, colored bucket epics can be tagged with
 // (P1: data + contract only; web UI / DAG coloring land in later phases). An
 // epic's `category` field holds the `name` of one of these; an unknown value
@@ -328,6 +349,7 @@ export const projectSettingsSchema = z
     git: gitSettingsSchema.partial().optional(),
     integrator: integratorSettingsSchema.optional(),
     webhooks: webhooksSettingsSchema.optional(),
+    autoImplement: autoImplementSettingsSchema.optional(),
     epic_categories: z.array(epicCategorySchema).optional(),
   })
   .nullable()
