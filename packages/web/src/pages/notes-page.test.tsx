@@ -443,7 +443,9 @@ describe("NotesPage", () => {
         id: "n1",
         projectId: "proj-1",
         title: "Caching idea",
-        description: undefined,
+        // Prefill now seeds description from the note body (makeNote default
+        // "Some body text") — a well-formed short title stays verbatim.
+        description: "Some body text",
       }),
     );
   });

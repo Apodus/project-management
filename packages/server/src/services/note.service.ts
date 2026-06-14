@@ -1,5 +1,5 @@
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { createId } from "@pm/shared";
+import { createId, deriveNotePromotion } from "@pm/shared";
 import type {
   CreateNote,
   ListNotesQuery,
@@ -373,12 +373,13 @@ export function promoteToProposal(
   // proposal (sourceNoteId → already-triaged note) if the note isn't open.
   assertOpen(note);
 
-  const finalTitle = title ?? note.title;
+  const derived = deriveNotePromotion(note);
+  const finalTitle = title ?? derived.title;
   let finalDescription: string | null;
   if (description !== undefined) {
     finalDescription = description; // caller-supplied, verbatim (no auto-provenance)
   } else {
-    const parts = [note.body ?? "", `\n\nPromoted from note ${note.id} (${note.kind}).`];
+    const parts = [derived.description ?? "", `\n\nPromoted from note ${note.id} (${note.kind}).`];
     if (note.codeLocator) {
       const cl = note.codeLocator;
       parts.push(
@@ -444,12 +445,13 @@ export function promoteToTask(
   }
   assertOpen(note);
 
-  const finalTitle = title ?? note.title;
+  const derived = deriveNotePromotion(note);
+  const finalTitle = title ?? derived.title;
   let finalDescription: string | null;
   if (description !== undefined) {
     finalDescription = description;
   } else {
-    const parts = [note.body ?? "", `\n\nPromoted from note ${note.id} (${note.kind}).`];
+    const parts = [derived.description ?? "", `\n\nPromoted from note ${note.id} (${note.kind}).`];
     if (note.codeLocator) {
       const cl = note.codeLocator;
       parts.push(

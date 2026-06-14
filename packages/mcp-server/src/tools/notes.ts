@@ -276,11 +276,15 @@ export function registerNoteTools(server: McpServer): void {
       title: z
         .string()
         .optional()
-        .describe("Optional proposal title (defaults to the note's title)"),
+        .describe(
+          "Optional proposal title (defaults to a short topic derived from the note's title)",
+        ),
       description: z
         .string()
         .optional()
-        .describe("Optional proposal description (defaults to the note body)"),
+        .describe(
+          "Optional proposal description (defaults to the note's full content — the body, plus the original title when the title was shortened)",
+        ),
     },
     async ({ note_id, title, description }) => {
       const { note, proposal } = await promoteNoteToProposal(note_id, { title, description });

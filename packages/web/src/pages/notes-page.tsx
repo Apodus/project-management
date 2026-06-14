@@ -47,6 +47,7 @@ import {
   getStatusColor,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { deriveNotePromotion } from "@/lib/note-promotion";
 import type { Note, NoteFilters } from "@/lib/api";
 import type { NotesSearch } from "@/router";
 
@@ -250,13 +251,14 @@ function PromoteToProposalDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [title, setTitle] = useState(note.title);
-  const [description, setDescription] = useState("");
+  const derived = deriveNotePromotion(note);
+  const [title, setTitle] = useState(derived.title);
+  const [description, setDescription] = useState(derived.description ?? "");
   const promoteMutation = usePromoteNoteToProposal();
 
   function reset() {
-    setTitle(note.title);
-    setDescription("");
+    setTitle(derived.title);
+    setDescription(derived.description ?? "");
     promoteMutation.reset();
   }
 
@@ -343,8 +345,9 @@ function PromoteToTaskDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [title, setTitle] = useState(note.title);
-  const [description, setDescription] = useState("");
+  const derived = deriveNotePromotion(note);
+  const [title, setTitle] = useState(derived.title);
+  const [description, setDescription] = useState(derived.description ?? "");
   const [epicId, setEpicId] = useState(NO_EPIC);
   const promoteMutation = usePromoteNoteToTask();
 
@@ -357,8 +360,8 @@ function PromoteToTaskDialog({
   );
 
   function reset() {
-    setTitle(note.title);
-    setDescription("");
+    setTitle(derived.title);
+    setDescription(derived.description ?? "");
     setEpicId(NO_EPIC);
     promoteMutation.reset();
   }

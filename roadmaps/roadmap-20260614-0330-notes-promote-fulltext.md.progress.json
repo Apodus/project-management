@@ -1,0 +1,11 @@
+{
+  "campaign": "Notes inbox: full-text view + smart promote (short topic + full content)",
+  "branch": "campaign-notes-promote-fulltext",
+  "status": "IN_PROGRESS",
+  "completed_phases": [],
+  "current_phase": "P1",
+  "phase_outcomes": {},
+  "open_issues": [],
+  "dag_drift": [],
+  "notes": "User report: promote-to-proposal/task copies the whole note.title into the new title (cropped by line-clamp-1) + leaves description empty; AND no way to read a note's full text in the web (title clamp-1, body clamp-2, no detail view). Note model already has title+body. P1 = shared deriveNotePromotion helper (only-if-long guard ⇒ well-formed notes byte-identical) + web promote-dialog prefill + server default consistency. P2 = web full-text note detail view. Pure UX fix, no model/API change. Branch off main; do NOT push until user approves."
+}

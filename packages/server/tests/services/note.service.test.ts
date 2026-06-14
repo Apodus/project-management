@@ -601,6 +601,31 @@ describe("note service", () => {
       expect(proposal.description).toContain("Location: src/foo.ts:42 @ abc123");
     });
 
+    it("shortens a pathologically-long title to a topic and carries the full content into the description", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const longTitle =
+        "The rendering pipeline silently drops the second draw call whenever the depth buffer is cleared mid-frame and this only reproduces on the integrated GPU";
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: longTitle, body: "repro steps here" },
+        author.id,
+      );
+
+      const { proposal } = noteService.promoteToProposal(created.id, {
+        id: author.id,
+        type: "human",
+      });
+
+      // Short topic, not the bloated full title.
+      expect(proposal.title.length).toBeLessThan(longTitle.length);
+      expect(proposal.title.endsWith("…")).toBe(true);
+      // Nothing lost: full original title + body + provenance all present.
+      expect(proposal.description).toContain(longTitle);
+      expect(proposal.description).toContain("repro steps here");
+      expect(proposal.description).toContain(`Promoted from note ${created.id}`);
+    });
+
     it("uses caller-supplied title/description verbatim (no provenance append)", () => {
       const project = createTestProject(testApp.db);
       const author = createTestUser(testApp.db);
@@ -773,6 +798,26 @@ describe("note service", () => {
 
       const { task } = noteService.promoteToTask(created.id, { id: human.id, type: "human" });
       expect(task.description).toContain("Location: src/foo.ts:42 @ abc123");
+    });
+
+    it("shortens a pathologically-long title to a topic and carries the full content into the description", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const longTitle =
+        "The rendering pipeline silently drops the second draw call whenever the depth buffer is cleared mid-frame and this only reproduces on the integrated GPU";
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: longTitle, body: "repro steps here" },
+        human.id,
+      );
+
+      const { task } = noteService.promoteToTask(created.id, { id: human.id, type: "human" });
+
+      expect(task.title.length).toBeLessThan(longTitle.length);
+      expect(task.title.endsWith("…")).toBe(true);
+      expect(task.description).toContain(longTitle);
+      expect(task.description).toContain("repro steps here");
+      expect(task.description).toContain(`Promoted from note ${created.id}`);
     });
 
     it("uses caller-supplied title/description verbatim (no provenance append)", () => {
