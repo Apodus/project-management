@@ -451,11 +451,191 @@ function PromoteToTaskDialog({
   );
 }
 
+// Full-text note detail dialog (P2). The card clamps title/body for the grid
+// preview; this reveals the ENTIRE note — full title + unclamped body + the
+// metadata the card never shows (codeLocator, author, full timestamps) + the
+// triage actions for open notes. Controlled. The promote/dismiss actions are
+// NOT re-implemented here: the footer closes this dialog then hands off to the
+// card's existing dialog instances (one Radix modal open at a time — no nested
+// focus-trap). There is no markdown renderer in the web; whitespace-pre-wrap is
+// the house idiom for long bodies.
+function NoteDetailDialog({
+  note,
+  open,
+  onOpenChange,
+  isHuman,
+  onDismiss,
+  onPromoteProposal,
+  onPromoteTask,
+}: {
+  note: Note;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  isHuman: boolean;
+  onDismiss: () => void;
+  onPromoteProposal: () => void;
+  onPromoteTask: () => void;
+}) {
+  const isOpen = note.status === "open";
+  const isPromoted =
+    note.status === "triaged" && note.triageOutcome === "promoted";
+
+  // Close this dialog FIRST, then open the handed-off triage dialog — so only
+  // one Radix modal is ever mounted (no nested focus-trap hazard).
+  function handAction(open: () => void) {
+    onOpenChange(false);
+    open();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge
+              variant="secondary"
+              className={cn("text-[11px]", getKindColor(note.kind))}
+            >
+              {formatStatus(note.kind)}
+            </Badge>
+            {note.severity && (
+              <Badge
+                variant="secondary"
+                className={cn("text-[11px]", getPriorityColor(note.severity))}
+              >
+                {formatStatus(note.severity)}
+              </Badge>
+            )}
+            {note.status === "open" && (
+              <Badge
+                variant="secondary"
+                className={cn("text-[11px]", getStatusColor("open"))}
+              >
+                Open
+              </Badge>
+            )}
+            {isPromoted && (
+              <Badge
+                variant="secondary"
+                className="text-[11px] bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+              >
+                Triaged · Promoted
+              </Badge>
+            )}
+            {note.status === "triaged" && note.triageOutcome === "dismissed" && (
+              <Badge
+                variant="secondary"
+                className="text-[11px] text-muted-foreground"
+              >
+                Triaged · Dismissed
+              </Badge>
+            )}
+          </div>
+          <DialogTitle>{note.title}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Full note details
+          </DialogDescription>
+        </DialogHeader>
+
+        {note.body ? (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">
+            {note.body}
+          </p>
+        ) : (
+          <p className="text-sm italic text-muted-foreground/50">No body</p>
+        )}
+
+        <div className="space-y-1.5 border-t pt-3 text-xs text-muted-foreground">
+          {note.anchorType && note.anchorId && (
+            <div>
+              <span className="text-muted-foreground/70">Anchored to </span>
+              <AnchorRef
+                type={note.anchorType}
+                id={note.anchorId}
+                anchorRef={note.anchor}
+              />
+            </div>
+          )}
+          {note.codeLocator && (
+            <div>
+              <span className="text-muted-foreground/70">Code </span>
+              <span className="font-mono text-xs">
+                {note.codeLocator.path}
+                {note.codeLocator.line != null && `:${note.codeLocator.line}`}
+              </span>
+            </div>
+          )}
+          {isPromoted && note.promotedTaskId && (
+            <div>
+              <span className="text-muted-foreground/70">Promoted to </span>
+              <AnchorRef
+                type="task"
+                id={note.promotedTaskId}
+                anchorRef={note.promotedTarget}
+              />
+            </div>
+          )}
+          {isPromoted && note.promotedProposalId && (
+            <div>
+              <span className="text-muted-foreground/70">Promoted to </span>
+              <AnchorRef
+                type="proposal"
+                id={note.promotedProposalId}
+                anchorRef={note.promotedTarget}
+              />
+            </div>
+          )}
+          <div>
+            <span className="text-muted-foreground/70">Author </span>
+            <span className="font-mono text-xs">{note.authorId}</span>
+          </div>
+          <div className="flex flex-wrap gap-x-3">
+            <span>Created {formatRelativeTime(note.createdAt)}</span>
+            {note.updatedAt !== note.createdAt && (
+              <span>Updated {formatRelativeTime(note.updatedAt)}</span>
+            )}
+            {note.triagedAt && (
+              <span>Triaged {formatRelativeTime(note.triagedAt)}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Triage actions — open notes only (mirror the card's isOpen gate).
+            Each closes the detail then hands off to the card's own dialog. */}
+        {isOpen && (
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handAction(onDismiss)}
+            >
+              Dismiss
+            </Button>
+            <Button size="sm" onClick={() => handAction(onPromoteProposal)}>
+              Promote to proposal
+            </Button>
+            {isHuman && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => handAction(onPromoteTask)}
+              >
+                Promote to task
+              </Button>
+            )}
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
   const isPromoted = note.status === "triaged" && note.triageOutcome === "promoted";
   const isDismissed = note.status === "triaged" && note.triageOutcome === "dismissed";
   const isOpen = note.status === "open";
 
+  const [detailOpen, setDetailOpen] = useState(false);
   const [dismissOpen, setDismissOpen] = useState(false);
   const [promoteProposalOpen, setPromoteProposalOpen] = useState(false);
   const [promoteTaskOpen, setPromoteTaskOpen] = useState(false);
@@ -500,7 +680,15 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
             </Badge>
           )}
         </div>
-        <CardTitle className="line-clamp-1 text-base">{note.title}</CardTitle>
+        <CardTitle className="text-base">
+          <button
+            type="button"
+            onClick={() => setDetailOpen(true)}
+            className="line-clamp-1 text-left hover:underline"
+          >
+            {note.title}
+          </button>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {note.body ? (
@@ -546,6 +734,19 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
         <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground/70">
           <span>{formatRelativeTime(note.createdAt)}</span>
         </div>
+
+        {/* Full-text detail — rendered OUTSIDE the isOpen gate so triaged notes
+            stay inspectable. Footer actions hand off to the card's own dialogs
+            (below), so only one Radix modal is open at a time. */}
+        <NoteDetailDialog
+          note={note}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+          isHuman={isHuman}
+          onDismiss={() => setDismissOpen(true)}
+          onPromoteProposal={() => setPromoteProposalOpen(true)}
+          onPromoteTask={() => setPromoteTaskOpen(true)}
+        />
 
         {/* Triage actions — open notes only (triaged notes are terminal). */}
         {isOpen && (

@@ -544,6 +544,109 @@ describe("NotesPage", () => {
     );
   });
 
+  // ── Full-text note detail dialog (P2) ───────────────────────────
+
+  const LONG_BODY =
+    "First paragraph describing the bug in detail.\n\n" +
+    "Second paragraph with reproduction steps that go on for a while so the " +
+    "card preview would clamp this to two lines and lose the rest entirely.\n\n" +
+    "Third paragraph with the proposed fix and a bunch more words to push the " +
+    "fixture comfortably past five hundred characters total length here now.";
+
+  it("opens the detail from the title showing the FULL unclamped body", () => {
+    notesData = [
+      makeNote({ id: "n1", title: "Short title", body: LONG_BODY }),
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Short title" }));
+
+    // The body has newlines (pre-wrap) — getByText normalizes whitespace, so
+    // match on raw textContent inside the dialog instead.
+    const content = document.querySelector(
+      "[data-slot='dialog-content']",
+    ) as HTMLElement;
+    const dialog = Array.from(content.querySelectorAll("p")).find(
+      (p) => p.textContent === LONG_BODY,
+    )!;
+    expect(dialog).toBeTruthy();
+    expect(dialog.textContent).toBe(LONG_BODY);
+    // Unclamped: pre-wrap, never line-clamp (the jsdom-appropriate assertion).
+    expect(dialog.className).toContain("whitespace-pre-wrap");
+    expect(dialog.className).not.toContain("line-clamp");
+  });
+
+  it("detail renders the metadata (codeLocator, severity, anchor)", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        title: "Metadata note",
+        codeLocator: { path: "src/x.ts", line: 42 },
+        severity: "high",
+        anchorType: "task",
+        anchorId: "task-known",
+        anchor: { exists: true, title: "Anchor target" },
+      }),
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Metadata note" }));
+
+    // The anchor title is a single text node inside the detail — anchor it,
+    // then assert on the whole dialog-content textContent.
+    const anchorTitle = screen
+      .getAllByText("Anchor target")
+      .find((el) => el.closest("[data-slot='dialog-content']"))!;
+    const content = anchorTitle.closest(
+      "[data-slot='dialog-content']",
+    ) as HTMLElement;
+    // codeLocator proves the detail surfaces what the card never showed.
+    expect(content.textContent).toContain("src/x.ts:42");
+    expect(content.textContent).toContain("High");
+    expect(content.textContent).toContain("Anchor target");
+  });
+
+  it("detail is openable for a triaged note (status-independent readability)", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        title: "Triaged readable",
+        body: "Body of a triaged note",
+        status: "triaged",
+        triageOutcome: "dismissed",
+      }),
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Triaged readable" }));
+
+    const body = screen
+      .getAllByText("Body of a triaged note")
+      .find((el) => el.closest("[data-slot='dialog-content']"));
+    expect(body).toBeTruthy();
+  });
+
+  it("acting from the detail opens the promote dialog with the prefilled title", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        projectId: "proj-1",
+        title: "Caching idea",
+        status: "open",
+      }),
+    ];
+    render(<NotesPage />);
+    // Open the detail from the title button.
+    fireEvent.click(screen.getByRole("button", { name: "Caching idea" }));
+    // Click the detail footer's "Promote to proposal" (scoped to the open
+    // detail dialog — the card's own button has the same name) — closes the
+    // detail, opens the card's existing promote dialog (P1 prefill flows through).
+    const detailPromote = screen
+      .getAllByRole("button", { name: "Promote to proposal" })
+      .find((b) => b.closest("[data-slot='dialog-content']"))!;
+    fireEvent.click(detailPromote);
+
+    const titleInput = screen.getByLabelText("Title") as HTMLInputElement;
+    expect(titleInput.value).toBe("Caching idea");
+  });
+
   it("renders NO triage actions on a triaged note", () => {
     notesData = [
       makeNote({
