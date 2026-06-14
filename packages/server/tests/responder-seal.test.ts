@@ -1162,3 +1162,411 @@ describe("A3 autonomous-drive arc seal", () => {
     expect(allMrs.filter((m) => m.taskId === task2.id)).toHaveLength(1);
   }, 30000); // 4 ticks × real HTTP + on-demand TS transpile of the responder loop.
 });
+
+// ─── A5 P3 shadow-mode auto-implement e2e seal ───────────────────────
+//
+// The CONFIDENCE-BUILDING rung against the real server. With
+// `autoImplementMode: "shadow"` the responder DOES the work (assess →
+// implement{bounded} → push the branch) but DIVERGES before the train: it posts
+// a `shadowProposal` diagnosis showing exactly what `on` would land, then breaks
+// — NO merge_requests row, NO land, the escalation stays acknowledged (no
+// auto-resolve, no per-escalation approval queue). The load-bearing proof only
+// the REAL server gives: assert ZERO merge_requests rows for the escalation —
+// shadow produces an observable artifact (the pushed branch + the diff summary)
+// but never touches the train.
+describe("A5 P3 shadow-mode auto-implement e2e seal", () => {
+  let testApp: TestApp;
+  afterEach(() => {
+    testApp?.cleanup();
+  });
+
+  // Re-declared LOCALLY (the per-describe duplication idiom — A3 re-declares its
+  // own). This FakeWorktree captures pushCalls so the seal can prove the branch
+  // WAS pushed even though no MR was submitted.
+  class FakeWorktree implements Worktree {
+    readonly path = "/wt/pm-implement-0";
+    readonly logsDir = "/wt/logs";
+    pushCalls: { remote: string; branch: string }[] = [];
+    push = async (remote: string, branch: string): Promise<void> => {
+      this.pushCalls.push({ remote, branch });
+    };
+    diff = async (args: string[]): Promise<string> => {
+      if (args[0] === "--name-only") return "";
+      return " src/x.ts | 2 +-\n 1 file changed";
+    };
+    checkoutLocalBranch = async (): Promise<void> => {};
+    readonly git = {
+      push: this.push,
+      diff: this.diff,
+      checkoutLocalBranch: this.checkoutLocalBranch,
+    } as unknown as Worktree["git"];
+    ensureExists = async (): Promise<void> => {};
+    resetForAttempt = async (): Promise<void> => {};
+    detectCorruption = async (): Promise<boolean> => false;
+    repair = async (): Promise<void> => {};
+  }
+
+  class ImplementDeclaringRunner implements ResponderRunner {
+    async run(_input: ResponderRunInput): Promise<ResponderRunResult> {
+      return { kind: "implement", size: "bounded", rationale: "fix the foo widget", durationMs: 1 };
+    }
+  }
+
+  class BranchReadyRunner implements ImplementRunner {
+    async run(input: ImplementRunInput): Promise<ImplementRunResult> {
+      return { kind: "branch_ready", branch: input.branch, commitSha: "implcommit", durationMs: 1 };
+    }
+  }
+
+  const cleanSniffer: InjectionSniffer = {
+    sniff: async (): Promise<InjectionSniffResult> => ({ kind: "clean" }),
+  };
+
+  async function raiseOpen(
+    app: TestApp["app"],
+    projectId: string,
+    clientToken: string,
+    originWorkerKey: string,
+  ): Promise<string> {
+    const res = await authRequest(app, "POST", `/api/v1/projects/${projectId}/escalations`, {
+      token: clientToken,
+      body: {
+        kind: "bug_report",
+        title: "foo widget shows stale data",
+        originRepo: "client-repo",
+        originWorkerKey,
+        severity: null,
+      },
+    });
+    expect(res.status).toBe(201);
+    return (await res.json()).data.id as string;
+  }
+
+  it("client raises → assess → implement{bounded} → SHADOW: push branch + shadowProposal, NO merge_requests row, stays acknowledged", async () => {
+    testApp = createTestApp();
+    const { app, db } = testApp;
+    const project = createTestProject(db);
+    const responder = createTestAiAgent(db);
+    const client = createTestAiAgent(db);
+
+    const responderClient = new ResponderClient({
+      baseUrl: "http://seal.test",
+      token: responder.token,
+      fetchImpl: (url, init) => app.request(url as string, init as RequestInit),
+    });
+
+    const escId = await raiseOpen(app, project.id, client.token, "client-shadow");
+
+    // Capture the worktree instance so pushCalls is inspectable after the tick.
+    const worktree = new FakeWorktree();
+
+    // The A2 implementDeps shape BUT override autoImplementMode: "shadow". The A2
+    // helper sets mode:"on" + autoImplementEnabled:true and leaves autoImplementMode
+    // unset (defaults non-off ⇒ submit/land); under shadow it MUST be explicit.
+    const deps: ResponderDeps = {
+      client: responderClient,
+      logger: silentLogger,
+      projectIds: [project.id],
+      selfId: responder.user.id,
+      enabled: true,
+      mode: "on",
+      autoImplementMode: "shadow",
+      maxConcurrent: 10,
+      runner: new ImplementDeclaringRunner(),
+      autoImplementEnabled: true,
+      sniffer: cleanSniffer,
+      implementRunner: new BranchReadyRunner(),
+      acquireWorktree: () => worktree,
+      worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: [] },
+      verifyCmd: "",
+      repoCwd: "/unused",
+      command: "unused",
+      budget: { timeBudgetSec: 900 },
+      excludeOriginRepos: [],
+      reclaimGraceSec: 120,
+      maxReclaimAttempts: 2,
+      spawnBudget: { maxSpawns: 1000, windowSec: 3600 },
+      now: () => Date.now(),
+    };
+
+    await responderTick(deps, createResponderState());
+
+    // ── Assertion 1: the escalation stays acknowledged (NOT resolved/needs_human/
+    // answered) — shadow never lands, never resolves. ──
+    const detail = (
+      await (await authRequest(app, "GET", `/api/v1/escalations/${escId}`)).json()
+    ).data;
+    expect(detail.status).toBe("acknowledged");
+    expect(detail.holderId).toBe(responder.user.id);
+
+    // ── Assertion 2 (the no-MR-row proof only the REAL server gives): NO
+    // merge_requests row exists for this escalation — shadow never touched the train. ──
+    const mrs = db
+      .select()
+      .from(mergeRequests)
+      .where(eq(mergeRequests.escalationId, escId))
+      .all();
+    expect(mrs).toHaveLength(0);
+
+    // ── Assertion 3: a shadowProposal diagnosis message exists; its body names the
+    // pushed branch + the diff summary (the operator-observable artifact). ──
+    const shadow = detail.messages.find(
+      (m: { metadata?: { shadowProposal?: boolean } }) => m.metadata?.shadowProposal === true,
+    );
+    expect(shadow).toBeDefined();
+    expect(shadow.body).toContain(`pm/escalation-${escId}`);
+    expect(shadow.body).toContain("file changed"); // the --stat diff summary
+    // A bounded shadow proposal carries NO pendingLand/pendingArc marker.
+    expect(shadow.metadata.pendingLand).toBeUndefined();
+    expect(shadow.metadata.pendingArc).toBeUndefined();
+
+    // ── Assertion 4: the branch WAS pushed (observable on the remote — exactly
+    // what `on` would land). push is called with a 3rd ["--set-upstream"] arg the
+    // fake ignores; pushCalls still records the (remote, branch). ──
+    expect(worktree.pushCalls).toHaveLength(1);
+    expect(worktree.pushCalls[0]).toEqual({ remote: "origin", branch: `pm/escalation-${escId}` });
+  });
+});
+
+// ─── A5 P3 revert e2e seal ───────────────────────────────────────────
+//
+// The verify-gated revert path against the real server + train: a GENUINE landed,
+// escalation-linked sha → POST revert → (scripted) train land → a SECOND,
+// ai_agent-held escalation drives a REAL acknowledged→answered→resolved post-back
+// + the revertOf audit chain is queryable.
+//
+// BINDING NOTE (the load-bearing fix): TWO escalations. Escalation #1 runs the A2
+// bounded flow inline (raise → implement tick → land) to mint a real landed sha;
+// that land already resolves escalation #1. The revert is then linked to a SECOND
+// escalation #2 (the "escalation that flagged the bad land" — the route's
+// documented semantic), acknowledged as an ai_agent holder so the revert land
+// post-back drives a REAL acknowledged→answered→resolved transition (reusing the
+// already-resolved #1 would be a vacuous 409-caught no-op).
+describe("A5 P3 revert e2e seal", () => {
+  let testApp: TestApp;
+  afterEach(() => {
+    testApp?.cleanup();
+  });
+
+  // Re-declared LOCALLY (the per-describe duplication idiom).
+  class FakeWorktree implements Worktree {
+    readonly path = "/wt/pm-implement-0";
+    readonly logsDir = "/wt/logs";
+    pushCalls: { remote: string; branch: string }[] = [];
+    push = async (remote: string, branch: string): Promise<void> => {
+      this.pushCalls.push({ remote, branch });
+    };
+    diff = async (args: string[]): Promise<string> => {
+      if (args[0] === "--name-only") return "";
+      return " src/x.ts | 2 +-\n 1 file changed";
+    };
+    checkoutLocalBranch = async (): Promise<void> => {};
+    readonly git = {
+      push: this.push,
+      diff: this.diff,
+      checkoutLocalBranch: this.checkoutLocalBranch,
+    } as unknown as Worktree["git"];
+    ensureExists = async (): Promise<void> => {};
+    resetForAttempt = async (): Promise<void> => {};
+    detectCorruption = async (): Promise<boolean> => false;
+    repair = async (): Promise<void> => {};
+  }
+
+  class ImplementDeclaringRunner implements ResponderRunner {
+    async run(_input: ResponderRunInput): Promise<ResponderRunResult> {
+      return { kind: "implement", size: "bounded", rationale: "fix the foo widget", durationMs: 1 };
+    }
+  }
+
+  class BranchReadyRunner implements ImplementRunner {
+    async run(input: ImplementRunInput): Promise<ImplementRunResult> {
+      return { kind: "branch_ready", branch: input.branch, commitSha: "implcommit", durationMs: 1 };
+    }
+  }
+
+  const cleanSniffer: InjectionSniffer = {
+    sniff: async (): Promise<InjectionSniffResult> => ({ kind: "clean" }),
+  };
+
+  function implementDeps(
+    client: ResponderClient,
+    projectId: string,
+    selfId: string,
+  ): ResponderDeps {
+    return {
+      client,
+      logger: silentLogger,
+      projectIds: [projectId],
+      selfId,
+      enabled: true,
+      mode: "on",
+      autoImplementMode: "on",
+      maxConcurrent: 10,
+      runner: new ImplementDeclaringRunner(),
+      autoImplementEnabled: true,
+      sniffer: cleanSniffer,
+      implementRunner: new BranchReadyRunner(),
+      acquireWorktree: () => new FakeWorktree(),
+      worktreeGit: { remote: "origin", mainBranch: "main", allowedPaths: [] },
+      verifyCmd: "",
+      repoCwd: "/unused",
+      command: "unused",
+      budget: { timeBudgetSec: 900 },
+      excludeOriginRepos: [],
+      reclaimGraceSec: 120,
+      maxReclaimAttempts: 2,
+      spawnBudget: { maxSpawns: 1000, windowSec: 3600 },
+      now: () => Date.now(),
+    };
+  }
+
+  async function raiseOpen(
+    app: TestApp["app"],
+    projectId: string,
+    clientToken: string,
+    originWorkerKey: string,
+  ): Promise<string> {
+    const res = await authRequest(app, "POST", `/api/v1/projects/${projectId}/escalations`, {
+      token: clientToken,
+      body: {
+        kind: "bug_report",
+        title: "foo widget shows stale data",
+        originRepo: "client-repo",
+        originWorkerKey,
+        severity: null,
+      },
+    });
+    expect(res.status).toBe(201);
+    return (await res.json()).data.id as string;
+  }
+
+  it("a landed escalation-linked sha → POST revert → (scripted) train land → a second ai_agent-held escalation resolves + the revertOf audit chain is queryable", async () => {
+    testApp = createTestApp();
+    const { app, db } = testApp;
+    const project = createTestProject(db);
+    const responder = createTestAiAgent(db); // origin holder of escalation #1
+    const integrator = createTestAiAgent(db); // the train lander + escalation #2 holder
+    const client = createTestAiAgent(db);
+
+    const responderClient = new ResponderClient({
+      baseUrl: "http://seal.test",
+      token: responder.token,
+      fetchImpl: (url, init) => app.request(url as string, init as RequestInit),
+    });
+
+    // ── Escalation #1: the A2 bounded flow inline → a GENUINE landed, escalation-
+    // linked sha. (The land resolves escalation #1 — we do NOT reuse it.) ──
+    const esc1 = await raiseOpen(app, project.id, client.token, "client-rev1");
+    await responderTick(
+      implementDeps(responderClient, project.id, responder.user.id),
+      createResponderState(),
+    );
+    const mr1 = db
+      .select()
+      .from(mergeRequests)
+      .where(eq(mergeRequests.escalationId, esc1))
+      .get();
+    expect(mr1?.branch).toBe(`pm/escalation-${esc1}`);
+
+    // Scripted land — the integrator's real git materialization is sealed in
+    // integrator-ref unit tests; the harness scripts the train land identically to A2/A3.
+    db.update(mergeRequests)
+      .set({ status: "integrating", pickedUpAt: new Date().toISOString() })
+      .where(eq(mergeRequests.id, mr1!.id))
+      .run();
+    const landRes = await authRequest(app, "POST", `/api/v1/merge-requests/${mr1!.id}/land`, {
+      token: integrator.token,
+      body: { landedSha: "BADLAND" },
+    });
+    expect(landRes.status).toBe(200);
+    const landedSha = (await landRes.json()).data.landedSha as string;
+    expect(landedSha).toBe("BADLAND");
+    // Escalation #1 is now resolved by that land (we do NOT reuse it).
+    expect(
+      db.select().from(escalations).where(eq(escalations.id, esc1)).get()?.status,
+    ).toBe("resolved");
+
+    // ── Escalation #2: the thread that flagged the bad land. Raise OPEN, then
+    // acknowledge it as the integrator ai_agent (auto-claims → holder; non-terminal
+    // acknowledged) so the revert post-back drives a REAL transition. ──
+    const esc2 = await raiseOpen(app, project.id, client.token, "client-rev2");
+    const ackRes = await authRequest(app, "POST", `/api/v1/escalations/${esc2}/acknowledge`, {
+      token: integrator.token,
+    });
+    expect(ackRes.status).toBe(200);
+    expect((await ackRes.json()).data.holderId).toBe(integrator.user.id);
+
+    // ── POST the revert of the landed sha, linked to escalation #2. ──
+    const revRes = await authRequest(
+      app,
+      "POST",
+      `/api/v1/projects/${project.id}/merge-requests/revert`,
+      {
+        token: client.token, // any-authed
+        body: { landedSha, escalationId: esc2, reason: "bad land" },
+      },
+    );
+    expect(revRes.status).toBe(201);
+    const revertView = (await revRes.json()).data;
+    const revertMrId = revertView.id as string;
+    expect(revertView.revertOf).toBe(landedSha);
+    expect(revertView.taskId).toBeNull();
+    expect(revertView.escalationId).toBe(esc2);
+
+    // ── Script the revert land (mirror A2/A3 landMr — no real git). The revert MR
+    // is branchless; `land` tolerates a null branch via attachLandedRef on
+    // taskId:null. Scripted land — the integrator's real git-revert materialization
+    // is sealed in integrator-ref unit tests (git-ops.test.ts); the harness scripts
+    // the train land identically to A2/A3. ──
+    db.update(mergeRequests)
+      .set({ status: "integrating", pickedUpAt: new Date().toISOString() })
+      .where(eq(mergeRequests.id, revertMrId))
+      .run();
+    const revLandRes = await authRequest(
+      app,
+      "POST",
+      `/api/v1/merge-requests/${revertMrId}/land`,
+      { token: integrator.token, body: { landedSha: "REVERTSHA" } },
+    );
+    expect(revLandRes.status).toBe(200);
+
+    // ── Assertion 1: the revert MR is landed with landedSha === "REVERTSHA". ──
+    const revertRow = db
+      .select()
+      .from(mergeRequests)
+      .where(eq(mergeRequests.id, revertMrId))
+      .get();
+    expect(revertRow?.status).toBe("landed");
+    expect(revertRow?.landedSha).toBe("REVERTSHA");
+    expect(revertRow?.revertOf).toBe(landedSha);
+    expect(revertRow?.taskId).toBeNull();
+
+    // ── Assertion 2: the post-back fired — escalation #2 is resolved (a REAL
+    // acknowledged→answered→resolved transition; it was ai_agent-held) with a
+    // landed summary naming the revert MR. ──
+    const esc2Row = db.select().from(escalations).where(eq(escalations.id, esc2)).get();
+    expect(esc2Row?.status).toBe("resolved");
+    expect(esc2Row?.resolvedBy).toBe(integrator.user.id);
+    const esc2Msgs = db
+      .select()
+      .from(escalationMessages)
+      .where(eq(escalationMessages.escalationId, esc2))
+      .all();
+    expect(
+      esc2Msgs.some((m) => m.body.includes("REVERTSHA") && m.body.includes(revertMrId)),
+    ).toBe(true);
+
+    // ── Assertion 3 (the independent, robust proof): the audit chain is queryable.
+    // GET …/merge-requests?revertOf=<landedSha> returns exactly the revert row. ──
+    const listRes = await authRequest(
+      app,
+      "GET",
+      `/api/v1/projects/${project.id}/merge-requests?revertOf=${landedSha}`,
+      { token: client.token },
+    );
+    expect(listRes.status).toBe(200);
+    const list = (await listRes.json()).data;
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(revertMrId);
+  });
+});
