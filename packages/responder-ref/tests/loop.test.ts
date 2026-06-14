@@ -3,6 +3,7 @@ import {
   responderTick,
   createResponderState,
   pathsOutsideAllowlist,
+  resolveAutoImplement,
   type ResponderDeps,
 } from "../src/loop.js";
 import { PmApiError } from "../src/api-client.js";
@@ -199,6 +200,35 @@ class FakeClient {
       this.createTaskCalls.push({ projectId, body });
       this.taskSeq += 1;
       return { id: `task-${this.taskSeq}` };
+    },
+  );
+
+  // P2 (per-project settings): the responder reads project.settings.autoImplement per
+  // tick to compose the EFFECTIVE enabled/mode. DEFAULT `{ enabled: true }` with `mode`
+  // OMITTED (undefined) so the resolution COLLAPSES to the old deps values:
+  //   effectiveEnabled = deps.autoImplementEnabled && (enabled===true) = deps.autoImplementEnabled
+  //   effectiveMode    = DB.mode(undefined) ?? deps.autoImplementMode = deps.autoImplementMode
+  // ⇒ every existing test body stays byte-identical. A divergence test sets
+  // `autoImplementSettings` to script DB enabled:false or a specific DB mode, or sets
+  // `getProjectError` to drive the fail-safe-to-off path.
+  autoImplementSettings: { enabled?: boolean; mode?: "off" | "shadow" | "on" } | null = {
+    enabled: true,
+  };
+  getProjectError: unknown;
+  getProjectCalls: string[] = [];
+  getProject = vi.fn(
+    async (
+      projectId: string,
+    ): Promise<{ id: string; settings: { autoImplement?: { enabled?: boolean; mode?: "off" | "shadow" | "on" } } | null }> => {
+      this.getProjectCalls.push(projectId);
+      if (this.getProjectError) throw this.getProjectError;
+      return {
+        id: projectId,
+        settings:
+          this.autoImplementSettings === null
+            ? null
+            : { autoImplement: this.autoImplementSettings },
+      };
     },
   );
 
@@ -503,7 +533,13 @@ describe("responderTick", () => {
     client.listResults = [[mkEscalation("e1"), mkEscalation("e2")]];
     const state = createResponderState();
     const tick = responderTick(baseDeps(client, { maxConcurrent: 1 }), state);
-    await Promise.resolve();
+    // Flush microtasks until the (gated) first acknowledge is reached — the per-tick
+    // getProject fetch (P2) interposes a few async steps before the claim pass, so a
+    // single Promise.resolve() no longer suffices; the SEMAPHORE assertion (only one in
+    // flight) is unchanged.
+    for (let i = 0; i < 20 && client.acknowledge.mock.calls.length === 0; i++) {
+      await Promise.resolve();
+    }
     expect(client.acknowledge).toHaveBeenCalledTimes(1); // semaphore gates the 2nd
     release();
     await tick;
@@ -3438,5 +3474,209 @@ describe("responderTick", () => {
 
       expect(client.escalateToHuman).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ── P2: per-project settings.autoImplement composition ────────────────
+
+describe("resolveAutoImplement (P2 composition)", () => {
+  it("DB enabled=true + master allows → ON", () => {
+    expect(resolveAutoImplement(true, "on", { autoImplement: { enabled: true } })).toEqual({
+      enabled: true,
+      mode: "on",
+    });
+  });
+
+  it("DB enabled=false → OFF regardless of the master", () => {
+    expect(resolveAutoImplement(true, "on", { autoImplement: { enabled: false } })).toEqual({
+      enabled: false,
+      mode: "on",
+    });
+  });
+
+  it("master explicit-false → OFF even with DB enabled=true", () => {
+    expect(resolveAutoImplement(false, "on", { autoImplement: { enabled: true } })).toEqual({
+      enabled: false,
+      mode: "on",
+    });
+  });
+
+  it("effectiveMode = DB.mode ?? env fallback: DB 'shadow' overrides env 'on'", () => {
+    expect(
+      resolveAutoImplement(true, "on", { autoImplement: { enabled: true, mode: "shadow" } }).mode,
+    ).toBe("shadow");
+  });
+
+  it("effectiveMode falls back to the env mode when the DB omits mode", () => {
+    expect(
+      resolveAutoImplement(true, "shadow", { autoImplement: { enabled: true } }).mode,
+    ).toBe("shadow");
+  });
+
+  it("a new project (no autoImplement block) → OFF, env-fallback mode", () => {
+    expect(resolveAutoImplement(true, "on", {})).toEqual({ enabled: false, mode: "on" });
+    expect(resolveAutoImplement(true, "shadow", null)).toEqual({ enabled: false, mode: "shadow" });
+  });
+});
+
+describe("responderTick per-project auto-implement resolution (P2)", () => {
+  function onRunner(result: ResponderRunResult): FakeResponderRunner {
+    const r = new FakeResponderRunner();
+    r.result = result;
+    return r;
+  }
+  function implementRunner(size: "bounded" | "systemic"): FakeResponderRunner {
+    return onRunner({ kind: "implement", size, rationale: "r", durationMs: 1 });
+  }
+  function snifferOf(result: InjectionSniffResult): FakeInjectionSniffer {
+    const s = new FakeInjectionSniffer();
+    s.result = result;
+    return s;
+  }
+
+  it("DB enabled=true + master allows → effective ON: implement{bounded} pushes + submits (getProject fetched once)", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.autoImplementSettings = { enabled: true, mode: "on" };
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    const impl = new FakeImplementRunner();
+    impl.result = { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "abc", durationMs: 1 };
+    const wt = new FakeWorktree();
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        // master allows (env unset ⇒ true); the DB toggle decides.
+        autoImplementEnabled: true,
+        autoImplementMode: "on",
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    expect(client.getProjectCalls).toEqual(["p"]);
+    expect(sniffer.sniff).toHaveBeenCalledTimes(1);
+    expect(client.submitMergeRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("DB enabled=false → effective OFF: implement{bounded} falls back to escalateToHuman; sniffer NOT called", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.autoImplementSettings = { enabled: false };
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    const impl = new FakeImplementRunner();
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        autoImplementMode: "on",
+        implementRunner: impl,
+      }),
+      createResponderState(),
+    );
+    expect(sniffer.sniff).not.toHaveBeenCalled(); // disabled → no sniff
+    expect(impl.run).not.toHaveBeenCalled();
+    expect(client.escalateCalls).toHaveLength(1);
+    expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
+  });
+
+  it("master explicit-false (autoImplementEnabled:false) → effective OFF regardless of DB enabled=true", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.autoImplementSettings = { enabled: true, mode: "on" };
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    const impl = new FakeImplementRunner();
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: false, // master forces off
+        autoImplementMode: "on",
+        implementRunner: impl,
+      }),
+      createResponderState(),
+    );
+    expect(sniffer.sniff).not.toHaveBeenCalled();
+    expect(impl.run).not.toHaveBeenCalled();
+    expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
+  });
+
+  it("getProject throws → fail-safe OFF: implement falls back to escalateToHuman", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.getProjectError = new Error("settings fetch failed");
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    const impl = new FakeImplementRunner();
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        autoImplementMode: "on",
+        implementRunner: impl,
+      }),
+      createResponderState(),
+    );
+    expect(sniffer.sniff).not.toHaveBeenCalled();
+    expect(impl.run).not.toHaveBeenCalled();
+    expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
+  });
+
+  it("a new project (no autoImplement block) → effective OFF", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.autoImplementSettings = null; // settings: null
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    const impl = new FakeImplementRunner();
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        autoImplementMode: "on",
+        implementRunner: impl,
+      }),
+      createResponderState(),
+    );
+    expect(sniffer.sniff).not.toHaveBeenCalled();
+    expect(client.escalateCalls[0].reason).toContain("auto_implement is disabled");
+  });
+
+  it("DB mode 'shadow' overrides env 'on': branch_ready pushes but posts a shadowProposal, NO submit", async () => {
+    const client = new FakeClient();
+    client.listResults = [[mkEscalation("e1")]];
+    client.autoImplementSettings = { enabled: true, mode: "shadow" };
+    const runner = implementRunner("bounded");
+    const sniffer = snifferOf({ kind: "clean" });
+    const impl = new FakeImplementRunner();
+    impl.result = { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "abc", durationMs: 1 };
+    const wt = new FakeWorktree();
+    await responderTick(
+      baseDeps(client, {
+        mode: "on",
+        runner,
+        sniffer,
+        autoImplementEnabled: true,
+        autoImplementMode: "on", // env says on; DB shadow must win
+        implementRunner: impl,
+        acquireWorktree: () => wt,
+      }),
+      createResponderState(),
+    );
+    expect(wt.pushCalls).toEqual([{ remote: "origin", branch: "pm/escalation-e1" }]);
+    expect(client.submitMergeRequest).not.toHaveBeenCalled(); // shadow never submits
+    expect(client.addMessageCalls).toHaveLength(1);
+    expect(client.addMessageCalls[0].metadata?.shadowProposal).toBe(true);
   });
 });

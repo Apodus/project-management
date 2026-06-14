@@ -59,6 +59,16 @@ const silentLogger = {
 
 const DIAGNOSIS = "Root cause: the foo widget reads a stale cache; flush it on write.";
 
+// Per-project settings campaign (P2): the responder now composes its EFFECTIVE
+// auto-implement enablement from `project.settings.autoImplement` (fetched per tick via
+// getProject) AND the env master. The WRITE-PATH seals (A2 land / A3 arc / A5 revert /
+// A5 shadow) must therefore seed the project with an enabled toggle — an unseeded
+// (settings:null) project resolves effective-OFF and the implement path falls back to
+// escalateToHuman. The answer-only seals (C1-C3) + the A2 no-recursion-lock inertness
+// seals don't run the write path, so they need no seeding.
+const aiOn = { settings: { autoImplement: { enabled: true, mode: "on" } } } as const;
+const aiShadow = { settings: { autoImplement: { enabled: true, mode: "shadow" } } } as const;
+
 /** A scripted answering session — always `answered` with the diagnosis text. */
 class AnsweredRunner implements ResponderRunner {
   result: ResponderRunResult;
@@ -376,7 +386,7 @@ describe("A2 auto-implement land seal", () => {
   it("client raises → assess → implement → submit MR → (train) LAND → escalation resolved + origin auto-notices via C2", async () => {
     testApp = createTestApp();
     const { app, db } = testApp;
-    const project = createTestProject(db);
+    const project = createTestProject(db, aiOn); // P2: per-project enabled+mode:on
     const responder = createTestAiAgent(db); // the responder (holder)
     const integrator = createTestAiAgent(db); // the train lander
     const client = createTestAiAgent(db); // the origin author (DISTINCT)
@@ -465,7 +475,7 @@ describe("A2 auto-implement land seal", () => {
   it("reject path: client raises → implement → submit MR → (train) REJECT → escalation needs_human + branch preserved", async () => {
     testApp = createTestApp();
     const { app, db } = testApp;
-    const project = createTestProject(db);
+    const project = createTestProject(db, aiOn); // P2: per-project enabled+mode:on
     const responder = createTestAiAgent(db);
     const integrator = createTestAiAgent(db);
     const client = createTestAiAgent(db);
@@ -950,7 +960,7 @@ describe("A3 autonomous-drive arc seal", () => {
   it("the full arc closes: assess→systemic→drive→per-phase implement+land→resolve→C2 (the taskId-gate holds against the real land service)", async () => {
     testApp = createTestApp();
     const { app, db } = testApp;
-    const project = createTestProject(db);
+    const project = createTestProject(db, aiOn); // P2: per-project enabled+mode:on
     const responder = createTestAiAgent(db); // the holder/driver
     const integrator = createTestAiAgent(db); // the train lander
     const client = createTestAiAgent(db); // the origin author (DISTINCT)
@@ -1077,7 +1087,7 @@ describe("A3 autonomous-drive arc seal", () => {
   it("arc_partial: a mid-arc phase reject → needs_human with the proven phase preserved (no rollback, no re-submit)", async () => {
     testApp = createTestApp();
     const { app, db } = testApp;
-    const project = createTestProject(db);
+    const project = createTestProject(db, aiOn); // P2: per-project enabled+mode:on
     const responder = createTestAiAgent(db);
     const integrator = createTestAiAgent(db);
     const client = createTestAiAgent(db);
@@ -1245,7 +1255,7 @@ describe("A5 P3 shadow-mode auto-implement e2e seal", () => {
   it("client raises → assess → implement{bounded} → SHADOW: push branch + shadowProposal, NO merge_requests row, stays acknowledged", async () => {
     testApp = createTestApp();
     const { app, db } = testApp;
-    const project = createTestProject(db);
+    const project = createTestProject(db, aiShadow); // P2: per-project enabled+mode:shadow
     const responder = createTestAiAgent(db);
     const client = createTestAiAgent(db);
 
@@ -1443,7 +1453,7 @@ describe("A5 P3 revert e2e seal", () => {
   it("a landed escalation-linked sha → POST revert → (scripted) train land → a second ai_agent-held escalation resolves + the revertOf audit chain is queryable", async () => {
     testApp = createTestApp();
     const { app, db } = testApp;
-    const project = createTestProject(db);
+    const project = createTestProject(db, aiOn); // P2: per-project enabled+mode:on (esc #1 runs the A2 bounded flow inline)
     const responder = createTestAiAgent(db); // origin holder of escalation #1
     const integrator = createTestAiAgent(db); // the train lander + escalation #2 holder
     const client = createTestAiAgent(db);

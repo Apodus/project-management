@@ -52,10 +52,15 @@ export interface ResponderConfig {
   mode: ResponderMode;
   /**
    * Auto-implement regime (Campaign A1). NESTED from the start so P4's
-   * `allowed_paths` (and any future fields) are non-breaking adds. DEFAULT
-   * `{ enabled: false, verifyCmd: "" }` — the operator must opt into the
-   * write-capable regime. When enabled, the injection sniff-test gates session
-   * admission (P1); the write session (P2) runs in an isolated worktree (P3).
+   * `allowed_paths` (and any future fields) are non-breaking adds. As of the
+   * per-project settings campaign (P2), `enabled` is the daemon-wide MASTER
+   * KILL-SWITCH composed with the per-project DB toggle
+   * (`project.settings.autoImplement.enabled`), NOT the source of truth: UNSET ⇒
+   * TRUE (master allows — defer to the DB; default-off comes from the DB default,
+   * not this); explicit false ⇒ force OFF for ALL projects. The loop resolves the
+   * effective enablement per project, per tick. When the effective enablement is
+   * true, the injection sniff-test gates session admission (P1); the write session
+   * (P2) runs in an isolated worktree (P3).
    * `verifyCmd` (P3) is the project verify command the implement agent runs
    * in-session and iterates to green before declaring branch_ready (empty ⇒ the
    * agent skips in-session verify; A2's train re-verify is the floor).
@@ -115,10 +120,14 @@ export interface ResponderConfig {
   };
   /**
    * Git config for the auto-implement regime's isolated worktree clones
-   * (Campaign A1 P3). `repoUrl` is REQUIRED iff `autoImplement.enabled` (else a
-   * ConfigError) — a single URL shared by all watched projects (the real
-   * deployment shape; per-project fetch is future). `remote`/`mainBranch`/
-   * `cleanKeep` mirror the integrator's worktree contract.
+   * (Campaign A1 P3). `repoUrl` is FAIL-SAFE-AT-IMPLEMENT-TIME (per-project
+   * settings campaign P2): NO startup ConfigError — the daemon can't know
+   * per-project enablement at boot (it is DB-composed per tick), so a missing url
+   * surfaces only when a project resolves effective-enabled and the worktree-prep
+   * clone fails, which the loop escalates-to-human (no crash, no implement). A
+   * single URL shared by all watched projects (the real deployment shape;
+   * per-project fetch is future). `remote`/`mainBranch`/`cleanKeep` mirror the
+   * integrator's worktree contract.
    */
   worktreeGit: {
     repoUrl: string;
@@ -263,16 +272,25 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   }
   const mode = rawMode as ResponderMode;
 
-  // auto_implement.enabled: DEFAULT FALSE (kill-switch for the write-capable
-  // regime). env PM_AUTO_IMPLEMENT_ENABLED parsed with the existing parseBool.
-  const autoImplementEnabled =
-    env.PM_AUTO_IMPLEMENT_ENABLED !== undefined
-      ? parseBool(env.PM_AUTO_IMPLEMENT_ENABLED)
-      : false;
-  // auto_implement.mode (A5 P1): the operator rollout knob — off|shadow|on. DEFAULT
-  // "on" (so enabled=true reproduces A1-A4 byte-identically). Validated against the
-  // SAME RESPONDER_MODES enum as the answer-mode `mode` (else ConfigError). Distinct
-  // from `enabled` (the kill-switch) and from the answer-mode `mode` above.
+  // auto_implement master kill-switch (per-project settings campaign P2). The env
+  // PM_AUTO_IMPLEMENT_ENABLED is now a daemon-wide MASTER OVERRIDE composed with the
+  // per-project DB toggle (`project.settings.autoImplement.enabled`), NOT the source
+  // of truth: UNSET ⇒ TRUE (master allows — DEFER to the per-project DB; the default-off
+  // guarantee comes from the DB default `enabled:false`, NOT from this env); explicit
+  // false/0/no/off ⇒ FALSE (force OFF for ALL watched projects, belt-and-suspenders).
+  // ⚠️ env-UNSET must NOT force off — it defers to the DB. The composed effective
+  // enablement is `masterAllows && dbSettings.enabled === true` (resolved per project,
+  // per tick, in the loop).
+  const autoImplementMasterAllows =
+    env.PM_AUTO_IMPLEMENT_ENABLED === undefined
+      ? true
+      : parseBool(env.PM_AUTO_IMPLEMENT_ENABLED);
+  // auto_implement.mode (A5 P1): the operator rollout knob — off|shadow|on. Now the
+  // env-level mode FALLBACK composed under the per-project DB mode
+  // (`effectiveMode = dbSettings.mode ?? this`). DEFAULT "on" (so an env-master-allowed
+  // project with no DB mode override reproduces A1-A4 byte-identically). Validated
+  // against the SAME RESPONDER_MODES enum as the answer-mode `mode` (else ConfigError).
+  // Distinct from `enabled` (the kill-switch) and from the answer-mode `mode` above.
   const rawAutoImplementMode = env.PM_AUTO_IMPLEMENT_MODE ?? "on";
   if (!(RESPONDER_MODES as readonly string[]).includes(rawAutoImplementMode)) {
     throw new ConfigError(
@@ -314,14 +332,14 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   );
 
   // Worktree git config (P3): the isolated-clone source for the implement session.
-  // repoUrl is REQUIRED iff auto_implement is enabled — a write session must have a
-  // repo to clone. remote/mainBranch/cleanKeep mirror the integrator's contract.
+  // repoUrl is NO LONGER a startup requirement (per-project settings campaign P2): the
+  // daemon can't know per-project enablement at boot (it is DB-composed per tick), so a
+  // missing url is FAIL-SAFE at implement time — the worktree-prep clone fails and the
+  // loop escalates-to-human (see runImplementForBranch's worktree-prep try/catch), no
+  // crash, no implement. Set PM_RESPONDER_GIT_REPO_URL on any responder that will have a
+  // per-project auto-implement toggle flipped on. remote/mainBranch/cleanKeep mirror the
+  // integrator's contract.
   const gitRepoUrl = env.PM_RESPONDER_GIT_REPO_URL ?? "";
-  if (autoImplementEnabled && gitRepoUrl.length === 0) {
-    throw new ConfigError(
-      "PM_RESPONDER_GIT_REPO_URL is required when auto_implement is enabled (the write session clones it)",
-    );
-  }
   const gitRemote = env.PM_RESPONDER_GIT_REMOTE || "origin";
   const gitMainBranch = env.PM_RESPONDER_GIT_MAIN_BRANCH || "main";
   const cleanKeep: string[] = [];
@@ -374,7 +392,7 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
     enabled,
     mode,
     autoImplement: {
-      enabled: autoImplementEnabled,
+      enabled: autoImplementMasterAllows,
       mode: autoImplementMode,
       verifyCmd: autoImplementVerifyCmd,
       allowedPaths: autoImplementAllowedPaths,

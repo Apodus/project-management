@@ -13,6 +13,7 @@ import type {
   EscalationWithThread,
   Priority,
 } from "@pm/shared";
+import type { ResponderMode } from "./config.js";
 
 export class PmApiError extends Error {
   constructor(
@@ -120,6 +121,18 @@ export interface CreateTaskBody {
   description?: string | null;
   epicId?: string | null;
   priority?: Priority;
+}
+
+/**
+ * The narrow project view the responder reads per tick to compose effective
+ * auto-implement enablement (per-project settings campaign P2). Only `settings.
+ * autoImplement` is consumed — `enabled`/`mode` are BOTH optional + tolerant
+ * (absent ⇒ the per-field defaults the loop applies: enabled off, mode the env
+ * fallback). `settings` may be null (a project with no settings block at all).
+ */
+export interface ResponderProjectView {
+  id: string;
+  settings: { autoImplement?: { enabled?: boolean; mode?: ResponderMode } } | null;
 }
 
 export interface ResponderClientOptions {
@@ -390,6 +403,19 @@ export class ResponderClient {
       `/projects/${encodeURIComponent(projectId)}/tasks?epic=${encodeURIComponent(epicId)}&perPage=100`,
     );
     return { id: epic.id, name: epic.name, tasks };
+  }
+
+  /**
+   * Fetch a project (per-project settings campaign P2). The responder reads
+   * `data.settings.autoImplement` per watched project per tick to compose the
+   * EFFECTIVE auto-implement enablement/mode (DB toggle composed with the env
+   * master). `request<T>` unwraps the `{ data }` envelope to the project view.
+   */
+  getProject(projectId: string): Promise<ResponderProjectView> {
+    return this.request<ResponderProjectView>(
+      "GET",
+      `/projects/${encodeURIComponent(projectId)}`,
+    );
   }
 
   /** Resolve this responder's own identity (used once at startup for selfId). */

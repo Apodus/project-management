@@ -89,8 +89,37 @@ import type { Worktree } from "./worktree.js";
 import { buildResponderPrompt } from "./prompt.js";
 import { buildImplementPrompt, type PhaseBrief } from "./implement-prompt.js";
 import { buildDrivePrompt } from "./drive-prompt.js";
-import type { ArcEpic, ArcMergeRequest } from "./api-client.js";
+import type { ArcEpic, ArcMergeRequest, ResponderProjectView } from "./api-client.js";
 import type { ResponderMode, SpawnBudget } from "./config.js";
+
+/** The effective, per-project auto-implement enablement resolved per tick (P2). */
+export interface ResolvedAutoImplement {
+  enabled: boolean;
+  mode: ResponderMode;
+}
+
+/**
+ * Compose the EFFECTIVE auto-implement enablement/mode for one project (per-project
+ * settings campaign P2). Pure — the single source of the composition table:
+ *   - `enabled` = the env MASTER allows (UNSET⇒true / explicit-false⇒false) AND the
+ *     per-project DB toggle is exactly `true`. The default-off guarantee lives in the
+ *     DB default (`enabled:false`), NOT the env — an env-unset responder is still off
+ *     until the operator flips a project's DB toggle. A missing/partial settings block
+ *     ⇒ off (tolerant read, fail-safe).
+ *   - `mode`    = the per-project DB mode, ELSE the env mode fallback. A DB `shadow`
+ *     overrides an env `on`; the env fallback applies only when the DB omits a mode.
+ */
+export function resolveAutoImplement(
+  masterAllows: boolean,
+  envModeFallback: ResponderMode,
+  settings: ResponderProjectView["settings"],
+): ResolvedAutoImplement {
+  const ai = settings?.autoImplement;
+  return {
+    enabled: masterAllows && ai?.enabled === true,
+    mode: ai?.mode ?? envModeFallback,
+  };
+}
 
 /**
  * Decide what to do with an `answered` outcome given the mode and the
@@ -143,6 +172,7 @@ export interface ResponderDeps {
     | "createTask"
     | "listMergeRequests"
     | "getEpic"
+    | "getProject"
   >;
   logger: Logger;
   projectIds: string[];
@@ -162,17 +192,24 @@ export interface ResponderDeps {
   /** The injectable answering session (real spawn in prod; scripted in tests). */
   runner: ResponderRunner;
   /**
-   * Auto-implement kill-switch (Campaign A1 P1, FLAT — matches enabled/mode).
-   * DEFAULT-effectively false. When TRUE the responder enters the write-capable
-   * regime: the injection sniff-test gates session admission (P1 declares
-   * `implement` intent; the write capability arrives in P2). When false the
-   * session is answer-only/read-only (the existing safe path) — no sniff runs.
+   * Auto-implement env MASTER kill-switch (per-project settings campaign P2;
+   * FLAT — matches enabled/mode). This is the daemon-wide MASTER (UNSET⇒true /
+   * explicit-false⇒false), NOT the effective enablement: the loop composes it per
+   * project per tick with the project's DB toggle
+   * (`resolveAutoImplement(masterAllows, …, settings)`) and threads the EFFECTIVE
+   * `{enabled, mode}` into the worker functions (runAnsweringSession / advanceArc /
+   * …). When the effective enablement is TRUE the responder enters the
+   * write-capable regime: the injection sniff-test gates session admission (the
+   * write session declares `implement` intent). When false the session is
+   * answer-only/read-only (the existing safe path) — no sniff runs.
    */
   autoImplementEnabled: boolean;
   /**
-   * Auto-implement rollout mode (Campaign A5 P1). off|shadow|on, INDEPENDENT of the
-   * answer-mode `mode` (an escalation can be answer-shadow but auto-implement-on).
-   * Meaningful only when `autoImplementEnabled`. Gates ONLY the WRITE PATH:
+   * Auto-implement rollout mode ENV FALLBACK (Campaign A5 P1; per-project settings
+   * campaign P2). off|shadow|on, INDEPENDENT of the answer-mode `mode` (an escalation
+   * can be answer-shadow but auto-implement-on). This is now the env-level FALLBACK the
+   * loop composes under the per-project DB mode (`effectiveMode = dbMode ?? this`); the
+   * EFFECTIVE mode is threaded into the worker functions. Gates ONLY the WRITE PATH:
    *   - `off`    — the write-path off-silence guards short-circuit (byte-identical to
    *                the pre-A5 mode=off write behavior).
    *   - `shadow` — the responder DOES the work + PUSHES the branch but SKIPS
@@ -535,10 +572,17 @@ async function runAnsweringSession(
   projectId: string,
   escalationId: string,
   /**
+   * The EFFECTIVE per-project auto-implement enablement/mode (per-project settings
+   * campaign P2), composed once per tick from the env master + the project's DB
+   * `settings.autoImplement` and threaded down to every write-path guard (replacing
+   * the daemon-wide `deps.autoImplementEnabled`/`deps.autoImplementMode` reads).
+   */
+  autoImpl: ResolvedAutoImplement,
+  /**
    * The tick-start in-flight ARC count (A4 P1). Threaded down to the systemic
    * branch's admission gate — a fresh systemic drive is HELD when this is already
    * at `deps.maxConcurrentArcs`. Snapshotted ONCE at tick start (see responderTick);
-   * 0 in answer-mode (the probe is gated on autoImplementEnabled). Defaults 0 for
+   * 0 in answer-mode (the probe is gated on the effective enablement). Defaults 0 for
    * the reclaim caller (the reclaim path never opens a NEW arc — advanceArc only
    * advances already-counted ones — so it never consults this gate).
    */
@@ -556,7 +600,7 @@ async function runAnsweringSession(
   // session is answer-only/read-only — the existing safe path — so no sniff).
   // suspicious/error → escalate-to-human and do NOT spawn (FAIL-SAFE: a tripwire
   // that can't run must not grant trust). Respect mode==="off"→silent. ──
-  if (deps.autoImplementEnabled) {
+  if (autoImpl.enabled) {
     const sniffStatusPath = path.join(logsDir, `${escalationId}.sniff.status.json`);
     const sniffLogPath = path.join(logsDir, `${escalationId}.sniff.log`);
     const sniff = await deps.sniffer.sniff({
@@ -688,18 +732,19 @@ async function runAnsweringSession(
         );
         break;
       case "implement": {
-        if (deps.autoImplementMode === "off") {
-          // A5 P1: the WRITE-PATH off-silence guard now keys off the INDEPENDENT
-          // auto-implement rollout mode (not the answer-mode `mode`). With the
-          // default mode "on" + auto_implement DISABLED, this is false and the
-          // `!autoImplementEnabled` fallback below escalates as before (byte-identical).
+        if (autoImpl.mode === "off") {
+          // A5 P1: the WRITE-PATH off-silence guard keys off the INDEPENDENT
+          // auto-implement rollout mode (not the answer-mode `mode`) — now the
+          // EFFECTIVE per-project mode (P2). With the default mode "on" +
+          // auto_implement effectively DISABLED, this is false and the
+          // `!autoImpl.enabled` fallback below escalates as before (byte-identical).
           deps.logger.info(
-            { escalationId, kind: result.kind, size: result.size, autoImplementMode: deps.autoImplementMode },
+            { escalationId, kind: result.kind, size: result.size, autoImplementMode: autoImpl.mode },
             "implement (auto_implement mode=off) — not acting; off is silent",
           );
           return;
         }
-        if (!deps.autoImplementEnabled) {
+        if (!autoImpl.enabled) {
           // REVISE FIX #1: auto_implement disabled (the default kill-switch) →
           // an `implement` declaration falls back to needs_human with the
           // rationale embedded. NEVER strand-acknowledged: the reclaim sweep only
@@ -747,7 +792,7 @@ async function runAnsweringSession(
           // leaving the escalation acknowledged (P2 runs the campaign). NOTE: this runs
           // OUTSIDE the swallowing try/catch below (it owns its own non-fatal handling).
           // We return here so the outer catch never re-wraps it.
-          await runDriveSession(deps, state, projectId, escalationId, detail);
+          await runDriveSession(deps, state, projectId, escalationId, detail, autoImpl);
           return;
         } else {
           // bounded — A1 P3: acquire an isolated worktree, spawn the write session,
@@ -755,7 +800,7 @@ async function runAnsweringSession(
           // escalation acknowledged (A2 lands + resolves). NOTE: this runs OUTSIDE
           // the swallowing try/catch below (it owns its own non-fatal handling).
           // We return here so the outer catch never re-wraps it.
-          await runImplementSession(deps, state, projectId, escalationId, detail);
+          await runImplementSession(deps, state, projectId, escalationId, detail, autoImpl);
         }
         break;
       }
@@ -822,6 +867,8 @@ async function runImplementForBranch(
   escalationId: string,
   detail: EscalationWithThread,
   cfg: ImplementPhaseConfig,
+  /** The EFFECTIVE per-project auto-implement enablement/mode (P2). */
+  autoImpl: ResolvedAutoImplement,
 ): Promise<boolean> {
   const branch = cfg.branch;
   let handedOff = false;
@@ -830,7 +877,7 @@ async function runImplementForBranch(
   // only at maxConcurrent>1 with every implement session in flight).
   const slot = leaseImplementSlot(deps, state);
   if (slot === null) {
-    if (deps.autoImplementMode === "off") return false; // off is silent.
+    if (autoImpl.mode === "off") return false; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -854,7 +901,7 @@ async function runImplementForBranch(
     await wt.resetForAttempt();
   } catch (err) {
     slot.leased = false;
-    if (deps.autoImplementMode === "off") return false; // off is silent.
+    if (autoImpl.mode === "off") return false; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -922,7 +969,7 @@ async function runImplementForBranch(
               .map((s) => s.trim())
               .filter(Boolean);
           } catch (diffErr) {
-            if (deps.autoImplementMode === "off") break; // off is silent.
+            if (autoImpl.mode === "off") break; // off is silent.
             await deps.client.escalateToHuman(
               escalationId,
               `could not compute the implement diff for the allowlist check: ${errMessage(diffErr)}; not landing`,
@@ -935,7 +982,7 @@ async function runImplementForBranch(
           }
           const outside = pathsOutsideAllowlist(touched, deps.worktreeGit.allowedPaths);
           if (outside.length > 0) {
-            if (deps.autoImplementMode === "off") break; // off is silent.
+            if (autoImpl.mode === "off") break; // off is silent.
             await deps.client.escalateToHuman(
               escalationId,
               `auto-implement edited paths outside the allowed set: ${outside.join(", ")}; not landing`,
@@ -952,7 +999,7 @@ async function runImplementForBranch(
           try {
             await wt.git.push(deps.worktreeGit.remote, readyBranch, ["--set-upstream"]);
           } catch (pushErr) {
-            if (deps.autoImplementMode === "off") break; // off is silent.
+            if (autoImpl.mode === "off") break; // off is silent.
             await deps.client.escalateToHuman(
               escalationId,
               `implemented on branch ${readyBranch} but push failed: ${errMessage(pushErr)}`,
@@ -964,9 +1011,9 @@ async function runImplementForBranch(
             break;
           }
 
-          if (deps.autoImplementMode === "off") {
+          if (autoImpl.mode === "off") {
             deps.logger.info(
-              { escalationId, projectId, branch: readyBranch, mode: deps.autoImplementMode },
+              { escalationId, projectId, branch: readyBranch, mode: autoImpl.mode },
               "implement branch_ready (auto_implement mode=off) — pushed but not handing off; off is silent",
             );
             break;
@@ -995,7 +1042,7 @@ async function runImplementForBranch(
           // sweep skips it; the per-phase advanceArc skips a shadowed phase). The
           // operator flips the GLOBAL knob to `on` when confident — there is NO
           // per-escalation approval queue and NO auto-resolve. ──
-          if (deps.autoImplementMode === "shadow") {
+          if (autoImpl.mode === "shadow") {
             const shadowBody =
               `Auto-implement SHADOW proposal: pushed branch \`${readyBranch}\`` +
               (commitSha ? ` (\`${commitSha}\`)` : "") +
@@ -1022,7 +1069,7 @@ async function runImplementForBranch(
             await deps.client.addMessage(escalationId, shadowBody, "diagnosis", shadowMeta);
             handedOff = true;
             deps.logger.info(
-              { escalationId, projectId, branch: readyBranch, commitSha, mode: deps.autoImplementMode },
+              { escalationId, projectId, branch: readyBranch, commitSha, mode: autoImpl.mode },
               "implement branch_ready (auto_implement mode=shadow) — pushed + posted a shadow proposal (no merge request, no land); stays acknowledged",
             );
             break;
@@ -1078,7 +1125,7 @@ async function runImplementForBranch(
           break;
         }
         case "give_up":
-          if (deps.autoImplementMode === "off") break; // off is silent.
+          if (autoImpl.mode === "off") break; // off is silent.
           await deps.client.escalateToHuman(
             escalationId,
             `Responder could not implement: ${result.reason}`,
@@ -1089,7 +1136,7 @@ async function runImplementForBranch(
           );
           break;
         case "error":
-          if (deps.autoImplementMode === "off") break; // off is silent.
+          if (autoImpl.mode === "off") break; // off is silent.
           await deps.client.escalateToHuman(
             escalationId,
             `implement session failed (${result.reason}): ${result.detail ?? ""}`,
@@ -1135,14 +1182,24 @@ async function runImplementSession(
   projectId: string,
   escalationId: string,
   detail: EscalationWithThread,
+  /** The EFFECTIVE per-project auto-implement enablement/mode (P2). */
+  autoImpl: ResolvedAutoImplement,
 ): Promise<void> {
-  await runImplementForBranch(deps, state, projectId, escalationId, detail, {
-    branch: `pm/escalation-${escalationId}`,
-    submitTaskId: null,
-    brief: undefined,
-    handoffMeta: { pendingLand: true },
-    handoffLabel: "pending land (A2)",
-  });
+  await runImplementForBranch(
+    deps,
+    state,
+    projectId,
+    escalationId,
+    detail,
+    {
+      branch: `pm/escalation-${escalationId}`,
+      submitTaskId: null,
+      brief: undefined,
+      handoffMeta: { pendingLand: true },
+      handoffLabel: "pending land (A2)",
+    },
+    autoImpl,
+  );
 }
 
 /**
@@ -1169,12 +1226,14 @@ async function runDriveSession(
   projectId: string,
   escalationId: string,
   detail: EscalationWithThread,
+  /** The EFFECTIVE per-project auto-implement enablement/mode (P2). */
+  autoImpl: ResolvedAutoImplement,
 ): Promise<void> {
   // Lease a worktree slot (the EXISTING implement pool, sized to maxConcurrent). None
   // free ⇒ escalate (rare; only at maxConcurrent>1 with every session in flight).
   const slot = leaseImplementSlot(deps, state);
   if (slot === null) {
-    if (deps.autoImplementMode === "off") return; // off is silent.
+    if (autoImpl.mode === "off") return; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -1199,7 +1258,7 @@ async function runDriveSession(
     await wt.resetForAttempt();
   } catch (err) {
     slot.leased = false;
-    if (deps.autoImplementMode === "off") return; // off is silent.
+    if (autoImpl.mode === "off") return; // off is silent.
     try {
       await deps.client.escalateToHuman(
         escalationId,
@@ -1237,9 +1296,9 @@ async function runDriveSession(
     try {
       switch (result.kind) {
         case "vision_ready": {
-          if (deps.autoImplementMode === "off") {
+          if (autoImpl.mode === "off") {
             deps.logger.info(
-              { escalationId, projectId, visionPath: result.visionPath, mode: deps.autoImplementMode },
+              { escalationId, projectId, visionPath: result.visionPath, mode: autoImpl.mode },
               "drive vision_ready (auto_implement mode=off) — not creating epic/tasks; off is silent",
             );
             break;
@@ -1346,7 +1405,7 @@ async function runDriveSession(
           break;
         }
         case "give_up":
-          if (deps.autoImplementMode === "off") break; // off is silent.
+          if (autoImpl.mode === "off") break; // off is silent.
           await deps.client.escalateToHuman(
             escalationId,
             `Responder could not produce a vision: ${result.reason}`,
@@ -1357,7 +1416,7 @@ async function runDriveSession(
           );
           break;
         case "error":
-          if (deps.autoImplementMode === "off") break; // off is silent.
+          if (autoImpl.mode === "off") break; // off is silent.
           await deps.client.escalateToHuman(
             escalationId,
             `drive session failed (${result.reason}): ${result.detail ?? ""}`,
@@ -1428,10 +1487,12 @@ async function advanceArc(
   escalationId: string,
   detail: EscalationWithThread,
   now: number,
+  /** The EFFECTIVE per-project auto-implement enablement/mode (P2). */
+  autoImpl: ResolvedAutoImplement,
 ): Promise<void> {
   const epicId = arcEpicId(detail.messages);
   if (epicId === null) {
-    if (deps.autoImplementMode === "off") return; // off is silent.
+    if (autoImpl.mode === "off") return; // off is silent.
     await deps.client.escalateToHuman(
       escalationId,
       "autonomous arc has no recoverable epic id on its handoff marker; needs a human",
@@ -1466,7 +1527,7 @@ async function advanceArc(
     const mr = mrByTask.get(task.id);
     if (mr !== undefined && inFlightStatuses.has(mr.status)) {
       if (isMrStalled(mr, now, deps.stallTimeoutSec)) {
-        if (deps.autoImplementMode === "off") return; // off is silent.
+        if (autoImpl.mode === "off") return; // off is silent.
         // Reuse the arc_partial/duration-cap landedShas + remaining computation: a
         // stalled phase MR is the genuine blocker (an all-landed task is handled by
         // step (3) before this; a task with BOTH a landed and a stuck MR resolves via
@@ -1515,7 +1576,7 @@ async function advanceArc(
   for (const task of epic.tasks) {
     const mr = mrByTask.get(task.id);
     if (mr !== undefined && failedStatuses.has(mr.status)) {
-      if (deps.autoImplementMode === "off") return; // off is silent.
+      if (autoImpl.mode === "off") return; // off is silent.
       const remaining = epic.tasks
         .filter((t) => {
           const m = mrByTask.get(t.id);
@@ -1543,7 +1604,7 @@ async function advanceArc(
       return mr !== undefined && mr.status === "landed";
     });
   if (allLanded) {
-    if (deps.autoImplementMode === "off") return; // off is silent.
+    if (autoImpl.mode === "off") return; // off is silent.
     // Idempotent: if the arcComplete marker is already present, re-park (don't
     // re-append every cycle). The escalation stays acknowledged + arc-marked until
     // P4 resolves it.
@@ -1602,7 +1663,7 @@ async function advanceArc(
     now - arcStartedAt > deps.maxArcDurationSec * 1000 &&
     !hasArcCompleteMarker(detail.messages)
   ) {
-    if (deps.autoImplementMode === "off") return; // off is silent.
+    if (autoImpl.mode === "off") return; // off is silent.
     const remaining = epic.tasks
       .filter((t) => {
         const m = mrByTask.get(t.id);
@@ -1630,7 +1691,7 @@ async function advanceArc(
   // (NOT escalate). On/off are unaffected — at `on` a submitted phase has an MR, at
   // `off` we never reach the spawn anyway.
   const shadowedPhaseTaskIds =
-    deps.autoImplementMode === "shadow"
+    autoImpl.mode === "shadow"
       ? new Set(
           detail.messages
             .filter((m) => m.metadata != null && m.metadata.shadowProposal === true)
@@ -1653,7 +1714,7 @@ async function advanceArc(
     return;
   }
 
-  if (deps.autoImplementMode === "off") return; // off is silent — no spawn.
+  if (autoImpl.mode === "off") return; // off is silent — no spawn.
 
   // Reserve the spawn budget (Directive 2: canSpawn/recordSpawn, NOT reclaimAttempts).
   if (!canSpawn(state, deps.spawnBudget, now)) {
@@ -1670,13 +1731,21 @@ async function advanceArc(
     { escalationId, projectId, epicId, taskId: next.id, phase: next.title },
     "arc: implementing the next campaign phase",
   );
-  await runImplementForBranch(deps, state, projectId, escalationId, detail, {
-    branch: `pm/escalation-${escalationId}-${next.id}`,
-    submitTaskId: next.id,
-    brief: { title: next.title, description: next.description ?? "", visionPath },
-    handoffMeta: { pendingArc: true, epicId, phaseTaskId: next.id },
-    handoffLabel: "pending campaign phase land",
-  });
+  await runImplementForBranch(
+    deps,
+    state,
+    projectId,
+    escalationId,
+    detail,
+    {
+      branch: `pm/escalation-${escalationId}-${next.id}`,
+      submitTaskId: next.id,
+      brief: { title: next.title, description: next.description ?? "", visionPath },
+      handoffMeta: { pendingArc: true, epicId, phaseTaskId: next.id },
+      handoffLabel: "pending campaign phase land",
+    },
+    autoImpl,
+  );
 }
 
 /**
@@ -1692,45 +1761,70 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
 
   const now = (deps.now ?? Date.now)();
 
+  // ── Per-project EFFECTIVE auto-implement resolution (per-project settings campaign
+  // P2). Fetch each watched project ONCE per tick and compose
+  // `resolveAutoImplement(envMaster, envModeFallback, settings.autoImplement)` — the
+  // effective {enabled, mode} that REPLACES the daemon-wide `deps.autoImplementEnabled`/
+  // `deps.autoImplementMode` reads throughout the tick. FAIL-SAFE to OFF on any
+  // getProject throw (a settings-read error must NEVER auto-implement). Cached for the
+  // whole tick (the probe + claim + reclaim passes all read this Map). ──
+  const resolvedByProject = new Map<string, ResolvedAutoImplement>();
+  for (const projectId of deps.projectIds) {
+    let resolved: ResolvedAutoImplement;
+    try {
+      const project = await deps.client.getProject(projectId);
+      resolved = resolveAutoImplement(
+        deps.autoImplementEnabled,
+        deps.autoImplementMode,
+        project.settings,
+      );
+    } catch (err) {
+      resolved = { enabled: false, mode: deps.autoImplementMode };
+      deps.logger.warn(
+        { projectId, err: errMessage(err) },
+        "getProject failed; auto-implement resolves OFF for this project this tick (fail-safe)",
+      );
+    }
+    resolvedByProject.set(projectId, resolved);
+  }
+
   // ── In-flight ARC count (A4 P1) — the tick-start snapshot the max-concurrent-arcs
   // admission gate consults. An arc = a self-held acknowledged escalation whose
   // thread carries pendingDrive||pendingArc && !arcComplete. This is a FRESH probe
   // over the FULL listAcknowledgedByHolder list (a young, non-stale arc still
   // consumes a slot — NOT the reclaim pass's stale-only subset, and NOT a share of
   // its getEscalation probe, which would change reclaim staleness/ordering). It is
-  // GATED on autoImplementEnabled: in pure answer-mode no pendingDrive/pendingArc
-  // marker ever exists (count is always 0), so we skip the N getEscalation fetches
-  // entirely — keeping answer-mode BYTE-IDENTICAL (no new per-tick fetches). When
-  // disabled, inFlightArcs stays 0 (unused — the gate lives in the systemic branch,
-  // reached only when autoImplementEnabled). A probe error is non-fatal: a failed
-  // list/fetch just under-counts (fail-open — the cost governor never blocks on a
-  // probe glitch).
+  // GATED PER PROJECT on the EFFECTIVE enablement (per-project settings campaign P2):
+  // for a project whose resolved enablement is false (answer-mode, or auto-implement off)
+  // no pendingDrive/pendingArc marker ever exists (count is always 0), so we skip the N
+  // getEscalation fetches entirely — keeping answer-mode/disabled projects BYTE-IDENTICAL
+  // (no new per-tick fetches). A probe error is non-fatal: a failed list/fetch just
+  // under-counts (fail-open — the cost governor never blocks on a probe glitch).
   let inFlightArcs = 0;
-  if (deps.autoImplementEnabled) {
-    for (const projectId of deps.projectIds) {
-      let held: Escalation[];
+  for (const projectId of deps.projectIds) {
+    if (!resolvedByProject.get(projectId)!.enabled) continue; // per-project gate.
+    let held: Escalation[];
+    try {
+      held = await deps.client.listAcknowledgedByHolder(projectId, deps.selfId);
+    } catch (err) {
+      deps.logger.warn(
+        { projectId, err: errMessage(err) },
+        "in-flight-arc probe: listAcknowledgedByHolder failed; under-counting (fail-open)",
+      );
+      continue;
+    }
+    for (const esc of held) {
       try {
-        held = await deps.client.listAcknowledgedByHolder(projectId, deps.selfId);
+        const thread = await deps.client.getEscalation(esc.id);
+        const isArc =
+          (hasPendingDriveMarker(thread.messages) || hasPendingArcMarker(thread.messages)) &&
+          !hasArcCompleteMarker(thread.messages);
+        if (isArc) inFlightArcs += 1;
       } catch (err) {
         deps.logger.warn(
-          { projectId, err: errMessage(err) },
-          "in-flight-arc probe: listAcknowledgedByHolder failed; under-counting (fail-open)",
+          { escalationId: esc.id, projectId, err: errMessage(err) },
+          "in-flight-arc probe: getEscalation failed; skipping this thread (fail-open)",
         );
-        continue;
-      }
-      for (const esc of held) {
-        try {
-          const thread = await deps.client.getEscalation(esc.id);
-          const isArc =
-            (hasPendingDriveMarker(thread.messages) || hasPendingArcMarker(thread.messages)) &&
-            !hasArcCompleteMarker(thread.messages);
-          if (isArc) inFlightArcs += 1;
-        } catch (err) {
-          deps.logger.warn(
-            { escalationId: esc.id, projectId, err: errMessage(err) },
-            "in-flight-arc probe: getEscalation failed; skipping this thread (fail-open)",
-          );
-        }
       }
     }
   }
@@ -1744,6 +1838,10 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
   // ── Claim pass. ──
   for (const projectId of deps.projectIds) {
     if (slot.available <= 0) break; // semaphore saturated — reappears next tick.
+
+    // The EFFECTIVE per-project auto-implement resolution (P2), threaded into the
+    // answering session's write-path guards.
+    const autoImpl = resolvedByProject.get(projectId)!;
 
     let open;
     try {
@@ -1806,7 +1904,7 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
           // Thread the tick-start in-flight arc snapshot into the systemic
           // admission gate (A4 P1). The reclaim caller below passes the default 0
           // (it never opens a NEW arc).
-          await runAnsweringSession(deps, state, projectId, escalationId, inFlightArcs);
+          await runAnsweringSession(deps, state, projectId, escalationId, autoImpl, inFlightArcs);
         } catch (err) {
           // The acknowledge failed → no real spawn happened → REFUND the budget
           // reservation (Seal 3: a 403/409/transient ack consumes no budget).
@@ -1846,6 +1944,10 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
   const staleThresholdMs = (deps.budget.timeBudgetSec + deps.reclaimGraceSec) * 1000;
   for (const projectId of deps.projectIds) {
     if (slot.available <= 0) break;
+
+    // The EFFECTIVE per-project auto-implement resolution (P2), threaded into the
+    // arc advance + the read-only reclaim session.
+    const autoImpl = resolvedByProject.get(projectId)!;
 
     let stranded: Escalation[];
     try {
@@ -1897,7 +1999,7 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
           state.inFlight.add(escalationId);
           const arcJob = (async (): Promise<void> => {
             try {
-              await advanceArc(deps, state, projectId, escalationId, thread, now);
+              await advanceArc(deps, state, projectId, escalationId, thread, now, autoImpl);
             } catch (err) {
               deps.logger.warn(
                 { escalationId, projectId, err: errMessage(err) },
@@ -1933,7 +2035,7 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
             }
             const stalledMr = escMrs.find((m) => isMrStalled(m, now, deps.stallTimeoutSec));
             if (stalledMr !== undefined) {
-              if (deps.autoImplementMode === "off") continue; // off is silent.
+              if (autoImpl.mode === "off") continue; // off is silent.
               const reason =
                 `Bounded fix MR ${stalledMr.id} submitted but not landed within the stall window ` +
                 `(${deps.stallTimeoutSec}s; ${stalledMr.status}); the branch is pushed + preserved — ` +
@@ -2042,7 +2144,7 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
       const job = (async (): Promise<void> => {
         try {
           // NO acknowledge — we already hold the claim.
-          await runAnsweringSession(deps, state, projectId, escalationId);
+          await runAnsweringSession(deps, state, projectId, escalationId, autoImpl);
         } catch (err) {
           deps.logger.warn(
             { escalationId, projectId, err: errMessage(err) },

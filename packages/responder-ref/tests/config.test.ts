@@ -55,30 +55,32 @@ describe("loadConfig", () => {
     expect(cfg.mode).toBe("shadow");
   });
 
-  it("autoImplement.enabled defaults to false; PM_AUTO_IMPLEMENT_ENABLED truthy turns it on", () => {
+  it("P2: autoImplement.enabled is the env MASTER (UNSET ⇒ true/allow; explicit-false ⇒ force-off)", () => {
+    // P2 env-master flip: UNSET ⇒ TRUE (master allows — the default-OFF guarantee now
+    // lives in the per-project DB toggle, NOT this env). The rest of the block is
+    // byte-identical (mode/verifyCmd/allowedPaths/budget).
     expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement).toEqual({
-      enabled: false,
-      // A5 P1: the rollout mode defaults to "on" (meaningful only when enabled).
+      enabled: true,
+      // A5 P1: the rollout mode (now the env mode FALLBACK) defaults to "on".
       mode: "on",
       verifyCmd: "",
       allowedPaths: [],
       // A4 P1+P3: generous budget defaults (⇒ A1-A4P2 byte-identical).
       budget: { maxConcurrentArcs: 100, maxArcDurationSec: 604800, stallTimeoutSec: 86400 },
     });
+    // Explicit truthy still allows (no git url required at boot anymore — fail-safe at
+    // implement time).
     expect(
-      loadConfig(
-        {},
-        {
-          ...baseEnv,
-          PM_PROJECT_ID: "p",
-          PM_AUTO_IMPLEMENT_ENABLED: "true",
-          // P3: a repo url is required once auto_implement is enabled.
-          PM_RESPONDER_GIT_REPO_URL: "https://example.com/repo.git",
-        },
-      ).autoImplement.enabled,
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "true" })
+        .autoImplement.enabled,
     ).toBe(true);
+    // Explicit false ⇒ master forces OFF for all projects.
     expect(
       loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "no" })
+        .autoImplement.enabled,
+    ).toBe(false);
+    expect(
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "false" })
         .autoImplement.enabled,
     ).toBe(false);
   });
@@ -239,11 +241,18 @@ describe("loadConfig", () => {
     });
   });
 
-  it("gitRepoUrl is REQUIRED iff auto_implement.enabled (ConfigError when enabled+missing)", () => {
+  it("P2: gitRepoUrl is NO LONGER a startup requirement (no ConfigError) — fail-safe at implement time", () => {
+    // The daemon can't know per-project enablement at boot, so a missing git url with
+    // the master allowing is NOT a startup crash anymore (it fail-safes at the
+    // worktree-prep clone). No throw; repoUrl stays "".
     expect(() =>
       loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "true" }),
-    ).toThrow(ConfigError);
-    // OK when enabled + a repo url is given.
+    ).not.toThrow();
+    expect(
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "true" })
+        .worktreeGit.repoUrl,
+    ).toBe("");
+    // A url, when given, still flows through.
     const cfg = loadConfig(
       {},
       {
@@ -256,10 +265,15 @@ describe("loadConfig", () => {
     expect(cfg.worktreeGit.repoUrl).toBe("https://example.com/repo.git");
   });
 
-  it("does NOT require gitRepoUrl when auto_implement is disabled", () => {
+  it("P2: env master — unset ⇒ allows (true); explicit-false ⇒ force off; no git url crash either way", () => {
+    expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement.enabled).toBe(true);
     expect(() =>
       loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "false" }),
     ).not.toThrow();
+    expect(
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_ENABLED: "false" })
+        .autoImplement.enabled,
+    ).toBe(false);
   });
 
   it("honors worktree git remote/mainBranch/cleanKeep overrides", () => {
