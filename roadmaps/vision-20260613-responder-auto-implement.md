@@ -8,15 +8,18 @@ arc driven autonomously via the proven `/vision`+`/campaign` skills** — assess
 implement (bounded) OR drive a vision-campaign (systemic) → land via the
 verify-gated merge train → resolve the escalation.
 **Author role:** Systems architect of autonomous code-landing agents.
-**Status:** PROPOSED — Phase-2 adversarial-verified, then **trust-first pivot
-applied per the director** (see "Design stance" below). Verdict + history at foot.
+**Status:** **SHIPPED / COMPLETE** (2026-06-14) — all five campaigns (A1 assess+sniff+implement ·
+A2 train-land+post-back · A3 autonomous `/vision`+`/campaign` drive · A4 budget+revert+reclaim+metrics ·
+A5 operator rollout+dashboard/audit+e2e seal) delivered behind `auto_implement.enabled=false` with a
+deliberate **shadow→on** graduation. Phase-2 adversarial-verified + the trust-first pivot history at
+foot.
 
 ---
 
 ## Design stance — trust-first (the director's call, and it's correct)
 
 We **trust the agents, the requests, and the autonomous drive+land.** The entire
-agent-to-agent system is pointless otherwise — and we have just *proven it works*:
+agent-to-agent system is pointless otherwise — and we have just _proven it works_:
 this very arc (the C1→C4 escalation channel) was driven to completion autonomously
 by an agent via `/vision`+`/campaign`, with the merge-train verify gate protecting
 `main` the whole way. So the responder should be able to do the same: for a
@@ -31,23 +34,23 @@ are:
 
 - **The structural floor (what makes trust safe to operationalize):** the
   **merge-train verify gate** — every land rebases onto live main and verifies the
-  rebased tree *before* fast-forwarding (`loop.ts:273-316`). A wrong autonomous
+  rebased tree _before_ fast-forwarding (`loop.ts:273-316`). A wrong autonomous
   change is caught by **verify**, not by a human. Main never breaks regardless of
   what the agent writes. This is why we can trust autonomous land at all.
-- **A data-provenance tripwire (NOT agent-distrust):** a *cheap* up-front
+- **A data-provenance tripwire (NOT agent-distrust):** a _cheap_ up-front
   "does this escalation look like a prompt-injection / abuse / hacking attempt?"
   **sniff-test** classifier. Yes → escalate to a human. No → **proceed with full
-  trust.** This guards against hostile *data* riding in via an escalation body
+  trust.** This guards against hostile _data_ riding in via an escalation body
   (a quoted log/error/crafted "report") steering an otherwise-trustworthy agent —
   the confused-deputy problem, orthogonal to trusting our own pool agents. It is a
   tripwire, not a wall; the agent is otherwise trusted to act.
 - **Operator rollout + kill-switch (NOT permanent human-in-the-loop):**
-  `auto_implement.enabled` default false, and `mode shadow→on` is how the *operator*
+  `auto_implement.enabled` default false, and `mode shadow→on` is how the _operator_
   builds confidence and turns it on — not a standing approval queue. Once `on`, it
   is autonomous.
 - **Resource governance + insurance (the residual that actually matters under
   trust):** a **spend + concurrency budget** (a multi-campaign arc is expensive; a
-  flood of escalations each spawning an arc must be bounded for *cost*, not safety)
+  flood of escalations each spawning an arc must be bounded for _cost_, not safety)
   and a **fast revert path** (trust-first means occasionally landing wrong; a cheap
   revert through the same verify-gated train beats gating everything up front).
 
@@ -92,15 +95,21 @@ Five campaigns. A1: assess + injection sniff-test + a write-capable implement
 session → verified branch. A2: land it via the train + post back to the escalation.
 A3: the **autonomous `/vision`+`/campaign` drive** for systemic escalations (the
 heavy capability — restored as first-class). A4: cost/concurrency budget + revert
-path (the trust-first guardrails). A5: operator rollout + observability/audit + e2e
-+ close.
+path (the trust-first guardrails). A5: operator rollout + observability/audit + e2e + close.
+
+**Delivered 2026-06-14:** the whole loop is sealed end-to-end — a client escalation →
+autonomous bounded implement OR full `/vision`+`/campaign` drive → verify-gated train
+land → resolved → the origin auto-notices via C2 (`main` structurally unbreakable). It
+ships **OFF** (`auto_implement.enabled=false`) and graduates **shadow→on** deliberately;
+answer-mode + A1–A4 + C1–C4 + the merge train stay byte-identical.
 
 ### A1 — Assess gate + injection sniff-test + write-capable implement session (→ verified branch, no land)
+
 - **Goal:** Decide a code change is warranted, run the cheap injection tripwire, and
   for a bounded fix produce a locally-verified branch in an isolated worktree.
 - **Tier:** S (foundation).
 - **Why this order:** everything downstream needs a verified branch + the tripwire.
-- **Removes:** the responder-runner read-only constraint *for the implement path*
+- **Removes:** the responder-runner read-only constraint _for the implement path_
   (answer mode stays read-only).
 - **Adds:**
   - **The injection sniff-test (cheap, up-front):** a lightweight classifier pass
@@ -114,7 +123,7 @@ path (the trust-first guardrails). A5: operator rollout + observability/audit + 
   - **A write-capable implement session** in an **isolated worktree** (graft
     `resolver-pool`/`resolver-runner` write machinery into the responder): plan +
     edit + commit to `pm/escalation-<id>` + 7.5/7.6.1 in-session verify until green.
-    Bounded by budget (PM repo; an `allowed_paths` allowlist as a *coarse* blast-
+    Bounded by budget (PM repo; an `allowed_paths` allowlist as a _coarse_ blast-
     radius bound, not a per-path approval gate). Stops at branch-pushed+verified.
   - `auto_implement.enabled` (default false) — the write session spawns only behind
     it; absent ⇒ byte-identical to today.
@@ -123,13 +132,14 @@ path (the trust-first guardrails). A5: operator rollout + observability/audit + 
   verified branch (injected runner); allowlist bound; flag-off ⇒ no write session.
 - **Scope:** large. P1 sniff-test + assess gate → P2 write-runner graft → P3
   worktree+branch+in-session verify → P4 allowlist + flag → P5 tests/seal.
-- **Risk register:** *hostile data steering the agent* → the sniff-test tripwire +
-  the verify gate downstream; *unsupervised editing* → isolated worktree, no land in
-  A1, bounded budget; *a verify-passing-but-wrong diff* → the named verify-quality
+- **Risk register:** _hostile data steering the agent_ → the sniff-test tripwire +
+  the verify gate downstream; _unsupervised editing_ → isolated worktree, no land in
+  A1, bounded budget; _a verify-passing-but-wrong diff_ → the named verify-quality
   dependency + A4 revert path (not a human gate).
 - **Cost of not doing it:** the capability is impossible.
 
 ### A2 — Land via the verify-gated merge train + a real escalation post-back
+
 - **Goal:** The verified branch lands through the train (never a direct push), and
   the land resolves the escalation back to the origin.
 - **Tier:** S/A.
@@ -157,11 +167,12 @@ path (the trust-first guardrails). A5: operator rollout + observability/audit + 
   full-stack seal (assess→implement→submit→land→resolve→origin).
 - **Scope:** medium–large. P1 escalationId migration+submit → P2 land post-back →
   P3 reject post-back+preserve → P4 resolver composition + no-recursion → P5 seal.
-- **Risk register:** *a bad diff reaching main* → structurally impossible (verify
-  gate); *task-less MR black hole* → the explicit post-back path.
+- **Risk register:** _a bad diff reaching main_ → structurally impossible (verify
+  gate); _task-less MR black hole_ → the explicit post-back path.
 - **Cost of not doing it:** A1's branches strand; the loop never closes.
 
 ### A3 — Autonomous `/vision`+`/campaign` drive for systemic escalations (the heavy capability)
+
 - **Goal:** For an escalation that warrants more than a bounded fix, the responder
   autonomously runs the FULL proven pipeline — generate a vision (adversarial-
   verified), drive it as a campaign (per-phase plan→verify→execute, fresh agents),
@@ -188,18 +199,19 @@ path (the trust-first guardrails). A5: operator rollout + observability/audit + 
   autonomous daemon capability. P1 drive-session skeleton (invoke vision) → P2 run
   campaign phases (reuse A1/A2 per phase) → P3 checkpoint/resume → P4
   escalation↔arc linkage + close-on-completion → P5 seal.
-- **Risk register:** *runaway cost / a never-ending arc* → the A4 spend+concurrency
-  budget + a max-arc-duration/phase cap (governance); *a bad phase landing* → each
-  phase is verify-gated (main safe) + the A4 revert path; *the drive getting stuck* →
+- **Risk register:** _runaway cost / a never-ending arc_ → the A4 spend+concurrency
+  budget + a max-arc-duration/phase cap (governance); _a bad phase landing_ → each
+  phase is verify-gated (main safe) + the A4 revert path; _the drive getting stuck_ →
   the A4 reclaim sweep + escalate-to-human on budget exhaustion.
 - **Cost of not doing it:** the responder can only do small fixes — the director's
   core ask (autonomous 6-month arcs shipping) is unmet.
 
 ### A4 — Cost/concurrency budget + revert path + reclaim (the trust-first guardrails)
+
 - **Goal:** The guardrails that actually matter under trust-first: bound the spend,
   make undo cheap, recover stranded drives.
 - **Tier:** A.
-- **Why this order:** A3's autonomous drive is unsafe to run *for cost reasons*
+- **Why this order:** A3's autonomous drive is unsafe to run _for cost reasons_
   without a budget + a recovery/undo path; this gates turning A3 loose.
 - **Adds:**
   - A **spend + concurrency budget** for auto-implement/drive (token + wall-clock +
@@ -217,6 +229,7 @@ path (the trust-first guardrails). A5: operator rollout + observability/audit + 
   spend/concurrency; a wrong land has no cheap undo.
 
 ### A5 — Operator rollout + observability/audit + e2e seal + arc close
+
 - **Goal:** Auto-implement + the autonomous drive are legible and audited; the
   operator rolls them out deliberately; the loop is sealed.
 - **Tier:** A.
@@ -336,18 +349,18 @@ revert path are the guardrails; do not add human-approval gates).
 
 ## History — Phase-2 verifier + the trust-first pivot
 
-The Phase-2 adversarial verifier (opus) correctly flagged that the *first* draft's
+The Phase-2 adversarial verifier (opus) correctly flagged that the _first_ draft's
 risk register argued only "main never breaks" and missed **prompt injection** (the
 escalation body is semi-untrusted input that can steer a code-landing agent; the
 verify gate is blind to a backdoor-that-passes-verify). The first revision over-
 corrected into heavy human-approval gates (mandatory approval for sensitive paths)
-and *parked* the autonomous drive.
+and _parked_ the autonomous drive.
 
 **The director then set the trust-first stance (rev 2, this file):** trust the
 agents and the autonomous drive+land — the system is pointless otherwise, and we
 just proved the autonomous vision+campaign+verify-gated-land pipeline works (this
 escalation arc itself). The injection concern is real but is a **data-provenance**
-problem, handled by a *cheap sniff-test → escalate-on-suspicion*, not by distrusting
+problem, handled by a _cheap sniff-test → escalate-on-suspicion_, not by distrusting
 the agent. The heavy approval gates were removed; the full autonomous `/vision`+
 `/campaign` drive was **restored as the headline campaign (A3)**; and the real
 residuals under trust were reframed as **cost governance + a revert path + the

@@ -57,26 +57,27 @@ projects the operator has opted in (no project ⇒ config error, exit 2).
 
 ## Configuration
 
-| Source                            | Default                 | Description                                                |
-| --------------------------------- | ----------------------- | ---------------------------------------------------------- |
-| `PM_API_URL` / `--pm-url`         | `http://localhost:3000` | PM API base URL (trailing slash stripped)                  |
-| `PM_API_TOKEN`                    | (required)              | PM API token (an `ai_agent` Bearer token)                  |
-| `PM_PROJECT_ID`                   | (none)                  | Single watched project (or use `--project`)                |
-| `--project <id>`                  | (none)                  | Repeatable watched project                                 |
-| `PM_RESPONDER_ENABLED` / `--enabled` | `false`              | Kill-switch — the responder is off until opted in          |
-| `PM_RESPONDER_MODE` / `--mode`    | `shadow`                | `off`/`shadow`/`on` — gates what an outcome POSTs          |
-| `--poll-interval-sec`             | `15`                    | Poll cadence                                               |
-| `PM_LOG_LEVEL` / `--log-level`    | `info`                  | pino log level                                             |
-| `PM_AUTO_IMPLEMENT_ENABLED`       | `false`                 | Kill-switch for the write-capable auto-implement regime (Campaign A1) |
-| `PM_AUTO_IMPLEMENT_VERIFY_CMD`    | (empty)                 | Project verify command the implement agent runs in-session before declaring `branch_ready` (empty ⇒ skip; A2's train re-verify is the floor) |
-| `PM_AUTO_IMPLEMENT_ALLOWED_PATHS` | (empty = no restriction) | CSV of coarse path prefixes — the blast-radius allowlist (default `[]` = whole PM repo allowed; an opt-in operator narrowing) |
-| `PM_RESPONDER_GIT_REPO_URL`       | (empty)                 | Repo URL the implement worktree clones (REQUIRED when auto-implement is enabled) |
-| `PM_RESPONDER_GIT_REMOTE`         | `origin`                | Remote the implement branch pushes to                      |
-| `PM_RESPONDER_GIT_MAIN_BRANCH`    | `main`                  | Main branch the worktree resets to / diffs against         |
-| `PM_RESPONDER_GIT_CLEAN_KEEP`     | (empty)                 | CSV of paths to preserve across the worktree git-clean      |
-| `PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS` | `100`             | Budget (Campaign A4): max in-flight auto-implement/drive arcs; admission over budget holds + escalates the disposition (governance, not a gate) |
-| `PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC` | `604800`         | Budget (A4): per-arc lifetime cap (server-derived from arc age, restart-resilient); a breach escalates-to-human with the partial progress |
-| `PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC` | `86400`             | Reclaim (A4): a submitted-but-unlanded phase MR idle past this is reconciled-or-escalated (branch preserved); no arc stuck forever |
+| Source                                   | Default                  | Description                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PM_API_URL` / `--pm-url`                | `http://localhost:3000`  | PM API base URL (trailing slash stripped)                                                                                                                                                                                                                                                                                                           |
+| `PM_API_TOKEN`                           | (required)               | PM API token (an `ai_agent` Bearer token)                                                                                                                                                                                                                                                                                                           |
+| `PM_PROJECT_ID`                          | (none)                   | Single watched project (or use `--project`)                                                                                                                                                                                                                                                                                                         |
+| `--project <id>`                         | (none)                   | Repeatable watched project                                                                                                                                                                                                                                                                                                                          |
+| `PM_RESPONDER_ENABLED` / `--enabled`     | `false`                  | Kill-switch — the responder is off until opted in                                                                                                                                                                                                                                                                                                   |
+| `PM_RESPONDER_MODE` / `--mode`           | `shadow`                 | `off`/`shadow`/`on` — gates what an outcome POSTs                                                                                                                                                                                                                                                                                                   |
+| `--poll-interval-sec`                    | `15`                     | Poll cadence                                                                                                                                                                                                                                                                                                                                        |
+| `PM_LOG_LEVEL` / `--log-level`           | `info`                   | pino log level                                                                                                                                                                                                                                                                                                                                      |
+| `PM_AUTO_IMPLEMENT_ENABLED`              | `false`                  | Kill-switch for the write-capable auto-implement regime (Campaign A1)                                                                                                                                                                                                                                                                               |
+| `PM_AUTO_IMPLEMENT_VERIFY_CMD`           | (empty)                  | Project verify command the implement agent runs in-session before declaring `branch_ready` (empty ⇒ skip; A2's train re-verify is the floor)                                                                                                                                                                                                        |
+| `PM_AUTO_IMPLEMENT_ALLOWED_PATHS`        | (empty = no restriction) | CSV of coarse path prefixes — the blast-radius allowlist (default `[]` = whole PM repo allowed; an opt-in operator narrowing)                                                                                                                                                                                                                       |
+| `PM_RESPONDER_GIT_REPO_URL`              | (empty)                  | Repo URL the implement worktree clones (REQUIRED when auto-implement is enabled)                                                                                                                                                                                                                                                                    |
+| `PM_RESPONDER_GIT_REMOTE`                | `origin`                 | Remote the implement branch pushes to                                                                                                                                                                                                                                                                                                               |
+| `PM_RESPONDER_GIT_MAIN_BRANCH`           | `main`                   | Main branch the worktree resets to / diffs against                                                                                                                                                                                                                                                                                                  |
+| `PM_RESPONDER_GIT_CLEAN_KEEP`            | (empty)                  | CSV of paths to preserve across the worktree git-clean                                                                                                                                                                                                                                                                                              |
+| `PM_AUTO_IMPLEMENT_MAX_CONCURRENT_ARCS`  | `100`                    | Budget (Campaign A4): max in-flight auto-implement/drive arcs; admission over budget holds + escalates the disposition (governance, not a gate)                                                                                                                                                                                                     |
+| `PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC` | `604800`                 | Budget (A4): per-arc lifetime cap (server-derived from arc age, restart-resilient); a breach escalates-to-human with the partial progress                                                                                                                                                                                                           |
+| `PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC`    | `86400`                  | Reclaim (A4): a submitted-but-unlanded phase MR idle past this is reconciled-or-escalated (branch preserved); no arc stuck forever                                                                                                                                                                                                                  |
+| `PM_AUTO_IMPLEMENT_MODE`                 | `on`                     | Operator rollout (Campaign A5): `off`/`shadow`/`on` for the auto-implement WRITE path — **distinct** from `PM_RESPONDER_MODE` (the answer-mode POST gate). `off` inert / `shadow` pushes the branch + posts a diff proposal but never submits/lands / `on` autonomous. Only consulted when `PM_AUTO_IMPLEMENT_ENABLED=true`. Invalid ⇒ config error |
 
 ## Auto-implement (Campaign A1)
 
@@ -116,7 +117,7 @@ compatibility (P2 enforces them).
 
 ## Autonomous drive (Campaign A3)
 
-Past landing a *bounded* fix, the responder can drive a *systemic* escalation
+Past landing a _bounded_ fix, the responder can drive a _systemic_ escalation
 through the full proven vision+campaign pipeline **unattended** — same opt-in
 kill-switch as auto-implement (`PM_AUTO_IMPLEMENT_ENABLED`, **default `false`**).
 The flow:
@@ -173,7 +174,7 @@ verify gate stays the structural floor; `main` never breaks). All behind the sam
    progress** (no proven work discarded). A token budget is **deferred** (no token
    source — runners declare `tokensConsumed` but never report it back).
 2. **Revert** — a landed auto-fix judged wrong is undone by `POST
-   /projects/{id}/merge-requests/revert`, a **branchless** MR carrying
+/projects/{id}/merge-requests/revert`, a **branchless** MR carrying
    `revertOf=<landed_sha>`; the integrator materializes `git revert <sha>` at pickup
    and the **verify-gated train lands it** (`main` never breaks even reverting).
    Deterministic, no model in the loop, reuses the A2 post-back; single-sha v1.
@@ -182,8 +183,53 @@ verify gate stays the structural floor; `main` never breaks). All behind the sam
    out-of-band → resolve) **or escalated** (→ needs_human + comment) with the branch
    (MR row) **preserved** — no arc stuck forever.
 4. **Metrics** — the PM side exposes an additive `auto_implement` sub-block on `GET
-   …/escalations/metrics` (land/reject/**revert** rates from `merge_requests`); A4
+…/escalations/metrics` (land/reject/**revert** rates from `merge_requests`); A4
    produces the DATA, A5's dashboard visualizes. Spend is omitted (no token source).
+
+## Auto-implement operator rollout (Campaign A5)
+
+The capability **ships OFF** — `PM_AUTO_IMPLEMENT_ENABLED=false` is the kill-switch
+and the default; nothing below runs until the operator flips it.
+
+**Two DISTINCT mode knobs — do not conflate them:**
+
+- `PM_RESPONDER_MODE` (default `shadow`) — the **answer-mode** POST gate (off/shadow/on):
+  it gates what an _answering_ outcome POSTs. This is the knob the Campaign A1 section
+  above refers to ("acquires meaning in P3/P5"); it has **nothing** to do with the
+  auto-implement write path.
+- `PM_AUTO_IMPLEMENT_MODE` (default **`on`**) — the **auto-implement WRITE-PATH** rollout
+  (off/shadow/on). It governs only the implement / drive / land path and is consulted
+  only when `PM_AUTO_IMPLEMENT_ENABLED=true`. The default `on` means `enabled=true`
+  reproduces the A1–A4 autonomous behavior byte-identically.
+
+The two are **independent**: answer mode can be `on` (auto-send answers) while
+auto-implement is `shadow` (observe the diff, never land), and vice versa.
+
+**The off / shadow / on ladder (auto-implement write path):**
+
+- **off** — inert; the write-path guards never fire (byte-identical to `enabled=false`
+  for the write path).
+- **shadow** — the responder DOES the work: it pushes `pm/escalation-<id>` and posts a
+  `shadowProposal` diagnosis naming the branch + the `--stat` diff, but it **SKIPS the
+  merge-request submit** so it **structurally cannot land** (observe-not-approve — the
+  escalation stays acknowledged; no queue, no auto-resolve; a shadowed phase is
+  reclaim-skipped). The shadow _drive_ produces vision+epic+tasks + shadows phase 1 and
+  re-parks (idempotent, never a false `arc_complete`). This is the **confidence-building
+  rung** — the operator sees exactly what `on` would land.
+- **on** — fully autonomous: submit → the verify-gated merge train → land → resolve
+  (the A1–A4 behavior).
+
+**Graduation discipline:** ship with `PM_AUTO_IMPLEMENT_ENABLED=false`; when ready, set
+`PM_AUTO_IMPLEMENT_ENABLED=true` **with `PM_AUTO_IMPLEMENT_MODE=shadow`** and observe the
+pushed branches + diff proposals + the land/reject/revert metrics on the C4 escalation
+dashboard (the A5 `AuditChainCard` + `AutoImplementMetricsRow`); once confident, flip
+`PM_AUTO_IMPLEMENT_MODE=on`. The kill-switch stays `PM_AUTO_IMPLEMENT_ENABLED` — `mode`
+governs behavior only while enabled.
+
+The C4 dashboard surfaces the **audit chain** (escalation ↔ MR / vision-epic ↔
+`landed_sha` ↔ `revertOf`, deep-linked to the MR timeline) + the **land/reject/revert**
+metrics (with mean-time-to-land shown as an honest proxy; spend is **N/A** — no token
+source).
 
 Exit code 2 = configuration error (no token / no project / bad mode); exit 1 =
 unexpected runtime error (e.g. `/auth/me` unreachable when enabled).

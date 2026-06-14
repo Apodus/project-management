@@ -507,7 +507,7 @@ facing config + the sniff/allowlist/budget knobs live in `settings.integrator` (
 tool, no new env var. Roadmaps: `roadmaps/` A1 (assess + sniff + write session + allowlist) + A2 (escalationId
 post-back + resolver propagation + full-stack land seal).
 
-**Autonomous drive (Campaign A3).** Past landing a *bounded* fix, the responder drives a *systemic*
+**Autonomous drive (Campaign A3).** Past landing a _bounded_ fix, the responder drives a _systemic_
 escalation through the full proven vision+campaign pipeline UNATTENDED — same `auto_implement.enabled`
 (**default FALSE**; the arc ships **OFF**, like A1/A2). An answering session declaring `implement{systemic}`
 (clean injection sniff) spawns a bounded headless **drive session** producing an adversarial-verified
@@ -555,6 +555,45 @@ omitted** (no token source); A4 produces the **DATA**, A5 visualizes (no dashboa
 null rates) with no linked MRs. **No migration for the metrics** (derived). Everything additive:
 auto-implement/A1–A3/answer-mode/C1–C4 **byte-identical**; ships `enabled=false`. Spec:
 `roadmaps/roadmap-20260614-0030-a4-budget-revert-reclaim.md`.
+
+**Auto-implement operator rollout + dashboard/audit + e2e seal — arc close (Campaign A5).** The
+auto-implement/drive capability becomes **legible, audited, and rolled out deliberately** — same
+`auto_implement.enabled` kill-switch (**default FALSE**; the arc ships **OFF**). (1) **Operator
+rollout** — `auto_implement.mode: off|shadow|on` (env `PM_AUTO_IMPLEMENT_MODE`, **default `on`** so
+`enabled=true` reproduces A1–A4 byte-identically; validated against the answer-mode enum), **distinct
+from the `enabled` kill-switch** and from the answer-mode `mode` (the load-bearing fix: only the
+write-path off-silence guards — implement / `runImplementForBranch` / `runDriveSession` / `advanceArc` /
+the pending-land reclaim — swapped to `autoImplementMode`; the shared pre-fork injection sniff + the
+answer-outcome dispositions stay on the answer `mode`, independent knobs). **off** = inert
+(byte-identical to A1–A4); **shadow** = does the work + pushes `pm/escalation-<id>` + posts a
+`shadowProposal` diagnosis (branch + `--stat` diff) but **SKIPS `submitMergeRequest`** so it
+**structurally cannot land** (observe-not-approve — stays acknowledged, no queue, no auto-resolve,
+reclaim-skipped on the `shadowProposal` marker); the **shadow DRIVE** produces vision+epic+tasks +
+shadows phase 1 then re-parks (`shadowProposal{phaseTaskId}` idempotence excludes already-shadowed
+phases; `allLanded` is false under shadow ⇒ **no false `arc_complete`**); **on** = autonomous
+(submit→verify-gated train→land→resolve). (2) **Dashboard surface** (web, read-only, client-side from
+existing endpoints — **NO server/`generate:api` change**): an **`AuditChainCard`** on the escalation
+detail page (disposition badge / vision epic / linked MRs / `landed_sha` / arc progress / revert chain,
+each **deep-linking** to the 7.4 MR timeline — link-don't-re-render; renders only when ≥1
+escalation-linked MR or a drive/land/shadow thread marker, else null ⇒ non-auto-implement
+byte-identical) + an **`AutoImplementMetricsRow`** on the list page (land/reject/revert rates from the
+A4 sub-block + the time-to-resolve p50 as an **honestly-labeled mean-time-to-land PROXY** + **"Spend
+N/A"** — no token source, not fabricated). (3) **e2e seal** — two new seals on `responder-seal.test.ts`
+against the real server: a **shadow seal** (one tick at `autoImplementMode:'shadow'` ⇒ the
+load-bearing proof of **zero `escalationId`-linked MRs** + escalation stays acknowledged + a
+`shadowProposal` diagnosis + the branch pushed) + a **revert seal** (a real bounded land →
+`POST …/merge-requests/revert{revertOf, escalationId}` → scripted land → a **real**
+acknowledged→answered→resolved post-back + the independent `?revertOf=<sha>` audit-chain proof); the
+bounded + systemic loops were ALREADY sealed end-to-end by A2/A3 (not rebuilt). The seals prove the
+**orchestration** (injected/scripted runner + land), not real-Claude code correctness — the honest
+dependency stands: **autonomous land quality tracks verify-suite quality** (A4/A5 surface the
+land/reject/revert rates so it is **monitored, not blind**). **Arc-close (the whole A1–A5 loop):** a
+client escalation → an autonomous **bounded implement** OR a full `/vision`+`/campaign` **drive** →
+verify-gated **train land** → `resolved` → the origin **auto-notices via C2**; `main` is structurally
+unbreakable (a wrong diff is caught by verify, never landed); the whole capability ships behind
+`auto_implement.enabled=false` with a deliberate **shadow→on** graduation. The **whole
+responder-auto-implement vision is COMPLETE**; answer-mode + A1–A4 + C1–C4 + the merge train are
+**byte-identical**. Spec: `roadmaps/roadmap-20260614-0130-a5-rollout-observability-close.md`.
 
 ### Production Deployment
 
