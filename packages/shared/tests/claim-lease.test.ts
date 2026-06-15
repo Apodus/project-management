@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  LEASE_MODES,
-  LEASE_MODE_DEFAULT,
   LEASE_TTL_MS_DEFAULT,
   LEASE_GRACE_MS_DEFAULT,
   LEASE_PICK_MARGIN_MS_DEFAULT,
@@ -16,16 +14,8 @@ const VALID_ULID = "01H5K3RCH3EABY3V5SXGM7N1WQ";
 const VALID_TIMESTAMP = "2026-05-30T12:00:00.000Z";
 
 // ─── Enum constants ───────────────────────────────────────────────
-
-describe("LEASE_MODES", () => {
-  it("contains exactly the canonical values in canonical order", () => {
-    expect([...LEASE_MODES]).toEqual(["off", "shadow", "on"]);
-  });
-
-  it("defaults to 'shadow' (ships observe-before-govern)", () => {
-    expect(LEASE_MODE_DEFAULT).toBe("shadow");
-  });
-});
+// (The lease engine has no off/shadow/on mode — it is always active; only the
+// timing defaults below remain.)
 
 describe("lease timing defaults", () => {
   it("TTL and grace are positive", () => {
@@ -33,7 +23,7 @@ describe("lease timing defaults", () => {
     expect(LEASE_GRACE_MS_DEFAULT).toBeGreaterThan(0);
   });
 
-  it("grace is at least the TTL (long grace while in shadow)", () => {
+  it("grace is at least the TTL (long grace before reclaim)", () => {
     expect(LEASE_GRACE_MS_DEFAULT).toBeGreaterThanOrEqual(LEASE_TTL_MS_DEFAULT);
   });
 

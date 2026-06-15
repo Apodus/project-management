@@ -95,27 +95,22 @@ export type CacheMode = (typeof CACHE_MODES)[number];
 export const VERIFY_RESULTS = ["pass", "fail"] as const;
 export type VerifyResultValue = (typeof VERIFY_RESULTS)[number];
 
-// Campaign C2 (claim-lease §P1) — how the claim-lease engine is applied,
-// mirroring the 7.5 CACHE_MODES kill-switch ladder:
-//   off    — inert; the legacy static `claimedBy` flag is the sole truth
-//   shadow — leases are written + read alongside the legacy flag, but the
-//            legacy flag still governs (the detector / safe rollout rung)
-//   on     — the lease is the source of truth (reclaim sweep active)
-// Default "shadow": the campaign ships in shadow so the engine is observed
-// before it governs.
-export const LEASE_MODES = ["off", "shadow", "on"] as const;
-export type LeaseMode = (typeof LEASE_MODES)[number];
-export const LEASE_MODE_DEFAULT: LeaseMode = "shadow";
+// Campaign C2/C4 (claim-lease) — the claim-lease engine is ALWAYS active: every
+// agent claim creates a lease (unconditional, see acquireLease), liveness is
+// always derived, and the reclaim sweep ALWAYS clears a lapsed claim. There is
+// no on/off/shadow kill-switch — a claim without a lease is impossible by
+// construction, so "no lease ⇒ stale by definition". Only the durations are
+// tunable (PM_LEASE_TTL_SEC / PM_LEASE_GRACE_SEC).
 
 // Per-project responder auto-implement mode (campaign — per-project settings).
 // Governs how the responder's auto-implement land path runs for a project, the
-// same off/shadow/on kill-switch ladder as CACHE_MODES/LEASE_MODES:
+// same off/shadow/on kill-switch ladder as CACHE_MODES:
 //   off    — never auto-implement (inert)
 //   shadow — observe the branch/diff without landing (safe observe-first rung)
 //   on     — autonomous (the merge-train verify gate is still the floor)
 // Identical by VALUE to responder-ref's RESPONDER_MODES, but defined here as its
 // own const so shared/server carry no dependency on the daemon package (and no
-// semantic coupling to LEASE_MODES/CACHE_MODES — a distinct concern).
+// semantic coupling to CACHE_MODES — a distinct concern).
 export const AUTO_IMPLEMENT_MODES = ["off", "shadow", "on"] as const;
 export type AutoImplementMode = (typeof AUTO_IMPLEMENT_MODES)[number];
 

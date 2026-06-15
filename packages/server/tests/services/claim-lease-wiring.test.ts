@@ -480,7 +480,6 @@ describe("claim-lease wiring (P3)", () => {
     const result = claimLeaseSvc.sweepStaleClaims({
       entityType: "epic",
       entityId: epic.id,
-      mode: "on",
       now: later,
     });
 

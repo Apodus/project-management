@@ -138,7 +138,7 @@ describe("GET /api/v1/projects/:projectId/claims", () => {
     expect(asHolder.items[0]!.claimState).toBe("yours");
   });
 
-  it("a claimed entity with NO lease row (legacy pre-C2) reads live, claimedAt null", async () => {
+  it("a claimed entity with NO lease row (legacy pre-engine) reads stale, claimedAt null", async () => {
     const project = createTestProject(testApp.db);
     const agent = createTestAiAgent(testApp.db);
     // Direct factory assignment — no claim flow, so no lease row exists.
@@ -151,8 +151,9 @@ describe("GET /api/v1/projects/:projectId/claims", () => {
     const data = await getClaims(project.id);
     expect(data.total).toBe(1);
     expect(data.items[0]!.id).toBe(task.id);
-    // Fail-safe-to-live: no lease row → live, never stale.
-    expect(data.items[0]!.claimState).toBe("live");
+    // No lease row ⇒ stale by definition (migration 0034 backfills these; the
+    // human Release action handles any that slip through).
+    expect(data.items[0]!.claimState).toBe("stale");
     expect(data.items[0]!.claimedAt).toBeNull();
   });
 

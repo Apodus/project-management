@@ -120,7 +120,6 @@ describe("claim-lease end-to-end lifecycle (P5)", () => {
     const result = claimLeaseSvc.sweepStaleClaims({
       entityType: "task",
       entityId: task.id,
-      mode: "on",
       now: later,
     });
 

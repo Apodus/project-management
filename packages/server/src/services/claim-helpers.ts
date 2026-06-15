@@ -45,22 +45,22 @@ export function deriveClaimStatus(
 }
 
 /**
- * Compute the identity-masked claim_state enum (C3.P1) — the liveness view of a
- * claim relative to a caller, folding in the C2 lease via deriveLiveness:
+ * Compute the identity-masked claim_state enum — the liveness view of a claim
+ * relative to a caller, folding in the lease via deriveLiveness:
  *
  *   - no holder                       → "unclaimed"
  *   - caller IS the holder            → "yours"  (BEFORE liveness — a self-stale
  *                                        lease still reads "yours" to the holder)
+ *   - held by another, lease ABSENT   → "stale"  (no lease ⇒ stale by definition:
+ *                                        every live claim creates a lease on the
+ *                                        claim path, so a holder without one is a
+ *                                        legacy/abandoned claim)
  *   - held by another, lease stale    → "stale"
- *   - held by another, lease live OR
- *     ABSENT (null) OR unparseable    → "live"   (fail-safe-to-live: a claimed
- *                                        entity with no lease row — the common
- *                                        case in default shadow mode — reads
- *                                        live, never stale)
+ *   - held by another, lease live     → "live"
  *
  * Returns the enum only — never the holder id (identity-masked, like
  * deriveClaimStatus). The lease is read by the caller (get path) or pre-fetched
- * (list path) and passed in; a null lease is the fail-safe-to-live case.
+ * (list path) and passed in.
  */
 export function deriveClaimState(
   holderId: string | null | undefined,
@@ -70,9 +70,11 @@ export function deriveClaimState(
 ): ClaimState {
   if (!holderId) return "unclaimed";
   if (caller && holderId === caller.id) return "yours";
-  return deriveLiveness(now, lease?.expiresAt ?? null) === "stale"
-    ? "stale"
-    : "live";
+  // A held entity with no lease row is a legacy/abandoned claim — stale by
+  // definition (post-backfill there are no leaseless holders; this is the
+  // belt-and-suspenders for any that slip through).
+  if (!lease) return "stale";
+  return deriveLiveness(now, lease.expiresAt) === "stale" ? "stale" : "live";
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ClaimStateBadge } from "@/components/claim-state-badge";
+import { ReleaseClaimDialog } from "@/components/release-claim-dialog";
 import { ReleaseToDialog } from "@/components/release-to-dialog";
 import { RequestTakeoverDialog } from "@/components/request-takeover-dialog";
 import { useProject } from "@/hooks/use-projects";
@@ -134,15 +135,24 @@ function ClaimRow({ item }: { item: ClaimItem }) {
   );
 }
 
-// Row actions — the two handoff primitives. Release-to directly transfers the
-// claim to a named worker; request-takeover is stomp-safe (stale auto-grants,
-// live only notifies — never mutated).
+// Row actions — a plain release plus the two handoff primitives. Release clears
+// the holder outright (the operator action for a dead claim); release-to
+// directly transfers the claim to a named worker; request-takeover is stomp-safe
+// (stale auto-grants, live only notifies — never mutated).
 function ClaimRowActions({ item }: { item: ClaimItem }) {
+  const [plainReleaseOpen, setPlainReleaseOpen] = useState(false);
   const [releaseOpen, setReleaseOpen] = useState(false);
   const [takeoverOpen, setTakeoverOpen] = useState(false);
 
   return (
     <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setPlainReleaseOpen(true)}
+      >
+        Release
+      </Button>
       <Button variant="outline" size="sm" onClick={() => setReleaseOpen(true)}>
         Release to…
       </Button>
@@ -151,6 +161,11 @@ function ClaimRowActions({ item }: { item: ClaimItem }) {
           Request takeover
         </Button>
       )}
+      <ReleaseClaimDialog
+        item={item}
+        open={plainReleaseOpen}
+        onOpenChange={setPlainReleaseOpen}
+      />
       <ReleaseToDialog
         item={item}
         open={releaseOpen}

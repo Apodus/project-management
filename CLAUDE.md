@@ -338,6 +338,20 @@ be wrongly reclaimed). Everything is **fail-safe-to-live**: a null/unparseable `
 misconfigured knob, or a vanished entity is never aggressively reclaimed. Ships in `shadow` with a long
 (24h) grace. Full spec: `docs/design/phase-c2-claim-lease-engine.md`.
 
+**Update (2026-06-15) — lease engine always-on.** The `off`/`shadow`/`on` mode ladder and the
+`PM_LEASE_MODE` env were **removed**: the lease engine is now **unconditionally active** — every agent
+claim creates a lease (already true on the claim path), liveness is always derived, and a lapsed claim
+(`now > expiresAt + grace`) is **always reclaimed** (the prior `shadow`/`off` non-reclaim posture is
+gone). The corollary **"no lease ⇒ stale by definition"** replaces the old fail-safe-to-LIVE for a
+holder without a lease row — `deriveClaimState` now returns `stale` for a leaseless holder (a one-time
+**migration 0034** backfills already-expired leases for pre-engine claimed entities so the leaseless
+case is eliminated in the data, not just reinterpreted). Only the durations stay tunable
+(`PM_LEASE_TTL_SEC`/`PM_LEASE_GRACE_SEC`). The claims UI also gained a plain **Release** action (clear a
+holder outright) alongside release-to / request-takeover. The C1 stable-worker-identity precondition
+still matters operationally — workers must set a distinct `PM_WORKER_KEY` so a reconnect doesn't churn
+identity and strand a live claim into reclaim. `deriveLiveness`'s null/unparseable-`expiresAt`
+fail-safe-to-live (a malformed lease ROW, distinct from a MISSING lease) is unchanged.
+
 **Stable worker identity (Campaign C1).** A pool worker re-binds to the **same `users` row** across
 reconnect / reboot / token refresh by presenting a durable **worker key** (`PM_WORKER_KEY`) paired with
 the pool secret: the server resolves `(pool, workerKey)` to the same agent and refreshes its token
@@ -667,8 +681,7 @@ The MCP server exposes tools for:
 | `PM_WEB_DIST_PATH`   | (auto-resolved)         | Override path to web dist directory                                                                                                                                                                                             |
 | `PM_POOL_SECRET`     | (none)                  | Agent-pool secret. Server: auto-creates the `default` pool on first claim. MCP server: auto-claims an agent identity from the pool (alternative to a static `PM_API_TOKEN`).                                                    |
 | `PM_POOL_NAME`       | `default`               | MCP server: name of the agent pool to claim from                                                                                                                                                                                |
-| `PM_LEASE_MODE`      | `shadow`                | Claim lease engine: `off`/`shadow`/`on` (`on` is C1-gated)                                                                                                                                                                      |
-| `PM_LEASE_TTL_SEC`   | `1800`                  | Claim lease TTL (seconds) before a lease lapses                                                                                                                                                                                 |
+| `PM_LEASE_TTL_SEC`   | `1800`                  | Claim lease TTL (seconds) before a lease lapses. The lease engine is always active (no on/off/shadow switch): every claim creates a lease and a lapsed claim is always reclaimed.                                                |
 | `PM_LEASE_GRACE_SEC` | `86400`                 | Reclaim grace (seconds) beyond TTL before sweep                                                                                                                                                                                 |
 | `PM_API_URL`         | `http://localhost:3000` | MCP server: API base URL                                                                                                                                                                                                        |
 | `PM_API_TOKEN`       | (none)                  | MCP server: API authentication token                                                                                                                                                                                            |

@@ -23,6 +23,12 @@ let claimsResult: {
   refetch: () => void;
 } = { data: undefined, isLoading: false, error: null, refetch: vi.fn() };
 
+const plainReleaseMutation = {
+  mutate: vi.fn(),
+  mutateAsync: vi.fn().mockResolvedValue({ ok: true, status: "released" }),
+  isPending: false,
+  reset: vi.fn(),
+};
 const releaseMutation = {
   mutate: vi.fn(),
   mutateAsync: vi.fn().mockResolvedValue({ ok: true, status: "force_claimed" }),
@@ -38,6 +44,7 @@ const takeoverMutation = {
 
 vi.mock("@/hooks/use-claims", () => ({
   useProjectClaims: () => claimsResult,
+  useReleaseClaim: () => plainReleaseMutation,
   useReleaseClaimTo: () => releaseMutation,
   useRequestClaimTakeover: () => takeoverMutation,
   claimKeys: { all: ["claims"] },
@@ -143,12 +150,33 @@ describe("ClaimsPage", () => {
       total: 2,
     };
     render(<ClaimsPage />);
-    // Release-to is offered on every row; request-takeover only on rows the
-    // caller does NOT already hold.
+    // A plain Release and Release-to are offered on every row; request-takeover
+    // only on rows the caller does NOT already hold.
+    expect(screen.getAllByRole("button", { name: "Release" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Release to…" })).toHaveLength(2);
     expect(
       screen.getAllByRole("button", { name: "Request takeover" }),
     ).toHaveLength(1);
+  });
+
+  it("releases a claim outright via the plain Release action", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+    claimsResult.data = {
+      items: [makeItem({ id: "t-dead", title: "Dead claim", claimState: "live" })],
+      total: 1,
+    };
+    render(<ClaimsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Release" }));
+    // Confirm in the dialog (the dialog's primary button shares the label).
+    const confirm = screen.getAllByRole("button", { name: "Release claim" });
+    await user.click(confirm[confirm.length - 1]);
+
+    expect(plainReleaseMutation.mutateAsync).toHaveBeenCalledWith({
+      entityType: "task",
+      id: "t-dead",
+    });
   });
 
   it("marks AI holders with an AI tag", () => {

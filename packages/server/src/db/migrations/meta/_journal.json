@@ -239,6 +239,13 @@
       "when": 1781387434502,
       "tag": "0033_bumpy_apocalypse",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1781501903913,
+      "tag": "0034_backfill_claim_leases",
+      "breakpoints": true
     }
   ]
 }

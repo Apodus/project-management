@@ -126,9 +126,9 @@ describe("Awareness endpoint", () => {
     expect(entry.assignee.name).toBe("Alpha");
     expect(entry.assignee.type).toBe("ai_agent");
     expect(entry.gitBranch).toBe("feat/skinning");
-    // C3.P1: awareness is caller-agnostic — a held in-flight task reads "live"
-    // (never "yours"); the lease is absent so fail-safe-to-live applies.
-    expect(entry.claimState).toBe("live");
+    // awareness is caller-agnostic — never "yours". The task was factory-seeded
+    // with no lease row, and "no lease ⇒ stale by definition".
+    expect(entry.claimState).toBe("stale");
   });
 
   it("does not leak labels from other projects with the same name", async () => {

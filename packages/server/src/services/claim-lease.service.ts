@@ -1,14 +1,11 @@
 import { and, asc, eq, inArray, lt } from "drizzle-orm";
 import {
   createId,
-  LEASE_MODES,
-  LEASE_MODE_DEFAULT,
   LEASE_TTL_MS_DEFAULT,
   LEASE_GRACE_MS_DEFAULT,
   type AuditLogView,
   type LeaseEntityType,
   type LeaseLiveness,
-  type LeaseMode,
 } from "@pm/shared";
 import {
   getDb,
@@ -25,18 +22,18 @@ import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 
 // ─── Config ───────────────────────────────────────────────────────
 //
-// Pure mechanics for the claim-lease engine (campaign C2 §P2). This module
-// owns the lease lifecycle (acquire/renew/read), on-read liveness derivation,
-// and the opportunistic stale-claim sweep. It deliberately does NOT wire into
-// claim/start/pick or touch claim-helpers/event-bus — that's P3/P4. The only
-// entity mutation it performs is clearing a holder during a mode `on` reclaim
-// (and even that mirrors the existing forceClaim txn shape EXACTLY).
+// Pure mechanics for the claim-lease engine. This module owns the lease
+// lifecycle (acquire/renew/read), on-read liveness derivation, and the
+// opportunistic stale-claim sweep.
 //
-// The consts read PM_LEASE_MODE / PM_LEASE_TTL_SEC / PM_LEASE_GRACE_SEC, with
-// the @pm/shared defaults as fallback so the production posture (shadow mode,
-// 30m TTL, 24h grace) is unchanged when the env is unset. Every public fn also
-// accepts an `opts` override so tests can exercise off/shadow/on + clock
-// deterministically.
+// The engine is ALWAYS active — there is no off/shadow/on kill-switch. Every
+// agent claim creates a lease (unconditional, see the claim paths' acquireLease),
+// liveness is always derived, and the sweep ALWAYS reclaims a lapsed claim
+// (clearing the holder + tearing down the lease, mirroring the forceClaim txn
+// shape EXACTLY). Only the durations are tunable via PM_LEASE_TTL_SEC /
+// PM_LEASE_GRACE_SEC, with the @pm/shared defaults (30m TTL, 24h grace) as
+// fallback. Public fns accept an `opts` override so tests can pin the clock /
+// grace deterministically.
 //
 // Parse a `PM_LEASE_*_SEC` env value (seconds) into ms. An unset, non-numeric,
 // or non-positive value falls back to `defaultMs` (warn-and-continue posture:
@@ -47,28 +44,6 @@ function parsePositiveSec(raw: string | undefined, defaultMs: number): number {
   return Number.isNaN(sec) || sec <= 0 ? defaultMs : sec * 1000;
 }
 
-function resolveLeaseMode(): LeaseMode {
-  const raw = process.env.PM_LEASE_MODE;
-  if (raw == null) return LEASE_MODE_DEFAULT;
-  if ((LEASE_MODES as readonly string[]).includes(raw)) return raw as LeaseMode;
-  console.warn(
-    `WARNING: PM_LEASE_MODE="${raw}" is not one of ${LEASE_MODES.join("/")}. ` +
-      `Falling back to "${LEASE_MODE_DEFAULT}".`,
-  );
-  return LEASE_MODE_DEFAULT;
-}
-
-const LEASE_MODE: LeaseMode = resolveLeaseMode();
-
-/**
- * The single, authoritative read of the active lease mode (resolved once at
- * module load from PM_LEASE_MODE). Callers OUTSIDE this module — notably
- * pickNextTask (C3.P3) — MUST read the mode through this getter and never
- * re-parse the env, so there is exactly one mode source of truth.
- */
-export function resolveActiveLeaseMode(): LeaseMode {
-  return LEASE_MODE;
-}
 const LEASE_TTL_MS = parsePositiveSec(
   process.env.PM_LEASE_TTL_SEC,
   LEASE_TTL_MS_DEFAULT,
@@ -394,17 +369,12 @@ export interface SweepObservation {
 
 export interface SweepResult {
   reclaimed: SweepObservation[];
-  observed: SweepObservation[];
 }
 
 /**
- * Opportunistic stale-claim sweep — the lease engine's reclaim primitive.
- *
- *  - mode `off`    → inert (early return). Byte-identical to pre-C2.
- *  - mode `shadow` → DETECT only: lapsed leases are pushed to `observed`, but
- *    NOTHING is cleared/deleted/audited/emitted (the safe-rollout rung).
- *  - mode `on`     → RECLAIM: each lapsed lease runs the reclaim txn (clear the
- *    holder + delete the lease + audit, atomic) and is pushed to `reclaimed`.
+ * Opportunistic stale-claim sweep — the lease engine's reclaim primitive. The
+ * engine is ALWAYS active: every lapsed lease runs the reclaim txn (clear the
+ * holder + delete the lease + audit, atomic) and is pushed to `reclaimed`.
  *
  * Candidate selection is O(1) when `entityId` is supplied (single lease);
  * otherwise a bounded batch driven by idx_claim_leases_type_expires (expired
@@ -416,15 +386,11 @@ export function sweepStaleClaims(opts: {
   entityType: LeaseEntityType;
   entityId?: string;
   limit?: number;
-  mode?: LeaseMode;
   graceMs?: number;
   now?: Date;
   actorId?: string;
 }): SweepResult {
-  const result: SweepResult = { reclaimed: [], observed: [] };
-
-  const mode = opts.mode ?? LEASE_MODE;
-  if (mode === "off") return result;
+  const result: SweepResult = { reclaimed: [] };
 
   const db = getDb();
   const now = opts.now ?? new Date();
@@ -465,14 +431,8 @@ export function sweepStaleClaims(opts: {
       expiresAt: lease.expiresAt,
     };
 
-    if (mode === "shadow") {
-      // Detect only — never mutate.
-      result.observed.push(observation);
-      continue;
-    }
-
-    // mode === "on": reclaim. A txn that aborts (entity missing, no project,
-    // or a concurrent renew re-armed the lease) is a no-op for this candidate.
+    // Reclaim. A txn that aborts (entity missing, no project, or a concurrent
+    // renew re-armed the lease) is a no-op for this candidate.
     if (reclaimOne(entityType, lease, now, opts.actorId)) {
       result.reclaimed.push(observation);
     }
@@ -482,7 +442,7 @@ export function sweepStaleClaims(opts: {
 }
 
 /**
- * Reclaim a single lapsed lease (mode `on`). Clears the entity's holder, deletes
+ * Reclaim a single lapsed lease. Clears the entity's holder, deletes
  * the lease under an atomic holder guard, and writes a `claim_reclaimed` audit
  * row — all inside one txn (mirrors forceClaim claim-helpers.ts:176-242). Emits
  * the domain event + audit.recorded AFTER commit. Returns true if the reclaim

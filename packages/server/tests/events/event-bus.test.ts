@@ -466,7 +466,6 @@ describe("Event Bus", () => {
       claimLeaseSvc.sweepStaleClaims({
         entityType: "epic",
         entityId: epic.id,
-        mode: "on",
         graceMs: 0,
         now: new Date(t0.getTime() + 1_000_000),
       });
@@ -508,7 +507,6 @@ describe("Event Bus", () => {
       const result = claimLeaseSvc.sweepStaleClaims({
         entityType: "epic",
         entityId: epic.id,
-        mode: "on",
         graceMs: 0,
         now: new Date(t0.getTime() + 1_000_000),
       });

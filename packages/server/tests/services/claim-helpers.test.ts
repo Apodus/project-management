@@ -55,11 +55,11 @@ describe("deriveClaimState", () => {
     expect(deriveClaimState(HOLDER, lapsedLease, NOW, CALLER)).toBe("stale");
   });
 
-  it("other caller + null lease → live (fail-safe-to-live)", () => {
-    expect(deriveClaimState(HOLDER, null, NOW, CALLER)).toBe("live");
+  it("other caller + null lease → stale (no lease ⇒ stale by definition)", () => {
+    expect(deriveClaimState(HOLDER, null, NOW, CALLER)).toBe("stale");
   });
 
-  it("other caller + unparseable expiresAt → live (fail-safe-to-live)", () => {
+  it("other caller + unparseable expiresAt → live (malformed lease row, not a missing lease)", () => {
     expect(
       deriveClaimState(HOLDER, { expiresAt: "not-a-date" }, NOW, CALLER),
     ).toBe("live");

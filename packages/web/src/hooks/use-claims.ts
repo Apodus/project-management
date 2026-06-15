@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   getProjectClaims,
+  releaseClaim,
   releaseClaimTo,
   requestClaimTakeover,
   type ClaimEntityType,
@@ -67,6 +68,38 @@ export function useReleaseClaimTo() {
         queryKey: ENTITY_KEYS[variables.entityType],
       });
       toast.success("Claim transferred");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+}
+
+/**
+ * Plainly release a claim (clear the holder + tear down the lease). The
+ * operator action for a dead/abandoned claim. Result-driven toast: `released`
+ * confirms the clear; `not_held` means it was already free.
+ */
+export function useReleaseClaim() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      entityType,
+      id,
+    }: {
+      entityType: ClaimEntityType;
+      id: string;
+    }) => releaseClaim(entityType, id),
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({ queryKey: claimKeys.all });
+      queryClient.invalidateQueries({
+        queryKey: ENTITY_KEYS[variables.entityType],
+      });
+      if (result.status === "released") {
+        toast.success("Claim released");
+      } else {
+        toast.info("This item was already unclaimed");
+      }
     },
     onError: (err: Error) => {
       toast.error(err.message);

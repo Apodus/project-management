@@ -1098,6 +1098,8 @@ export type ReleaseClaimToResult =
   paths["/api/v1/tasks/{id}/release-to"]["post"]["responses"][200]["content"]["application/json"]["data"];
 export type RequestClaimTakeoverResult =
   paths["/api/v1/tasks/{id}/request-takeover"]["post"]["responses"][200]["content"]["application/json"]["data"];
+export type ReleaseClaimResult =
+  paths["/api/v1/tasks/{id}/release"]["post"]["responses"][200]["content"]["application/json"]["data"];
 
 const CLAIM_ENTITY_SEGMENT: Record<ClaimEntityType, "tasks" | "epics" | "proposals"> = {
   task: "tasks",
@@ -1134,6 +1136,23 @@ export async function requestClaimTakeover(
   return apiFetch<RequestClaimTakeoverResult>(
     `/${CLAIM_ENTITY_SEGMENT[entityType]}/${id}/request-takeover`,
     { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+/**
+ * Plainly release a claim — clear the holder and tear down the lease. A human
+ * may release ANY claim (the server only gates AI-agent callers to their own
+ * claim), so this is the operator's "just let go of this dead claim" action.
+ * No reason/target required (vs release-to / request-takeover). The result
+ * status is `released` (or `not_held` if it was already free).
+ */
+export async function releaseClaim(
+  entityType: ClaimEntityType,
+  id: string,
+): Promise<ReleaseClaimResult> {
+  return apiFetch<ReleaseClaimResult>(
+    `/${CLAIM_ENTITY_SEGMENT[entityType]}/${id}/release`,
+    { method: "POST" },
   );
 }
 

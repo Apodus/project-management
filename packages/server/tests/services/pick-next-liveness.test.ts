@@ -19,18 +19,15 @@ import type { AuthUser } from "../../src/types.js";
 import * as taskSvc from "../../src/services/task.service.js";
 
 // ──────────────────────────────────────────────────────────────────
-// Campaign C3 (liveness §P3): pickNextTask acts on liveness.
+// pickNextTask acts on liveness.
 //
-//   Phase A (ALL modes) — prefer fresh, UNASSIGNED ready work (today's
-//   exact behavior). Phase B (mode `on` ONLY, when A found nothing) —
-//   reclaim-then-claim a STALE-CLAIMED ready task whose lease has lapsed
-//   past TTL + grace + pick-margin.
+//   Phase A — prefer fresh, UNASSIGNED ready work. Phase B (when A found
+//   nothing) — reclaim-then-claim a STALE-CLAIMED ready task whose lease
+//   has lapsed past TTL + grace + pick-margin. The lease engine is always
+//   active, so Phase B is unconditional. A pick NEVER stomps a live lease.
 //
-//   Default mode is `shadow` ⇒ Phase B never runs ⇒ ZERO observable
-//   behavior change. A pick NEVER stomps a live lease.
-//
-// The mode/now/graceMs knobs are an INTERNAL override (3rd arg), reached
-// here directly — they are structurally unreachable from wire input.
+// The now/graceMs knobs are an INTERNAL override (3rd arg), reached here
+// directly — they are structurally unreachable from wire input.
 // ──────────────────────────────────────────────────────────────────
 
 describe("pickNextTask liveness (C3.P3)", () => {
@@ -128,7 +125,6 @@ describe("pickNextTask liveness (C3.P3)", () => {
 
     const result = withReclaimCounter((count) => {
       const r = taskSvc.pickNextTask(aiActor(picker.user.id), undefined, {
-        mode: "on",
         now,
         graceMs: 0,
       });
@@ -157,7 +153,6 @@ describe("pickNextTask liveness (C3.P3)", () => {
 
     const result = withReclaimCounter((count) => {
       const r = taskSvc.pickNextTask(aiActor(picker.user.id), undefined, {
-        mode: "on",
         now,
         graceMs: 0,
       });
@@ -194,12 +189,10 @@ describe("pickNextTask liveness (C3.P3)", () => {
 
     const { r1, r2, total } = withReclaimCounter((count) => {
       const a = taskSvc.pickNextTask(aiActor(p1.user.id), undefined, {
-        mode: "on",
         now,
         graceMs: 0,
       });
       const b = taskSvc.pickNextTask(aiActor(p2.user.id), undefined, {
-        mode: "on",
         now,
         graceMs: 0,
       });
@@ -221,35 +214,7 @@ describe("pickNextTask liveness (C3.P3)", () => {
     expect(reclaimAuditCount(task.id)).toBe(1);
   });
 
-  // ── 4. mode=shadow (default) → stale task NOT grabbed ─────────────
-  it("mode=shadow does NOT grab a stale-claimed ready task (today's behavior)", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(T0);
-
-    const { task, holderId } = makeStaleReadyTask();
-
-    const picker = createTestAiAgent(testApp.db);
-    const now = new Date(
-      T0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_PICK_MARGIN_MS_DEFAULT + 60_000,
-    );
-
-    const result = withReclaimCounter((count) => {
-      const r = taskSvc.pickNextTask(aiActor(picker.user.id), undefined, {
-        mode: "shadow",
-        now,
-        graceMs: 0,
-      });
-      expect(count()).toBe(0);
-      return r;
-    });
-
-    expect(result).toBeNull();
-    expect(taskRow(task.id).assigneeId).toBe(holderId);
-    expect(leaseRow(task.id)!.holderId).toBe(holderId);
-    expect(reclaimAuditCount(task.id)).toBe(0);
-  });
-
-  // ── 5. Barely-stale within the pick margin → mode=on does NOT grab ─
+  // ── 5. Barely-stale within the pick margin → does NOT grab ────────
   it("a barely-stale lease (past grace, within grace+margin) is NOT grabbed in mode=on", () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0);
@@ -264,7 +229,6 @@ describe("pickNextTask liveness (C3.P3)", () => {
 
     const result = withReclaimCounter((count) => {
       const r = taskSvc.pickNextTask(aiActor(picker.user.id), undefined, {
-        mode: "on",
         now,
         graceMs: 0,
       });
@@ -278,8 +242,12 @@ describe("pickNextTask liveness (C3.P3)", () => {
     expect(reclaimAuditCount(task.id)).toBe(0);
   });
 
-  // ── 6. Fail-safe: claimed, NO lease row → not grabbed in mode=on ──
-  it("a claimed ready task with NO lease row is fail-safe-to-live (not grabbed in mode=on)", () => {
+  // ── 6. claimed, NO lease row → not a Phase B candidate ───────────
+  // Phase B is lease-driven (INNER JOIN claim_leases), so a leaseless holder is
+  // never reclaimed by pick. (Post-migration-0034 this state doesn't occur — a
+  // backfilled expired lease WOULD be grabbed; the human Release action handles
+  // any that slip through.)
+  it("a claimed ready task with NO lease row is not a Phase B candidate (not grabbed)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0);
 
@@ -302,7 +270,6 @@ describe("pickNextTask liveness (C3.P3)", () => {
 
     const result = withReclaimCounter((count) => {
       const r = taskSvc.pickNextTask(aiActor(picker.user.id), undefined, {
-        mode: "on",
         now,
         graceMs: 0,
       });
@@ -342,7 +309,6 @@ describe("pickNextTask liveness (C3.P3)", () => {
 
     const result = withReclaimCounter((count) => {
       const r = taskSvc.pickNextTask(aiActor(picker.user.id), undefined, {
-        mode: "on",
         now,
         graceMs: 0,
       });

@@ -96,20 +96,28 @@ describe("migration log heal + boot assertion", () => {
     // journal looked like the moment 0027 shipped (the live incident; the
     // simulation tracks whatever migration is CURRENTLY last).
     //
-    // MAINTENANCE NOTE: the revert below must undo the CURRENT last
-    // migration's schema effect. When you add a migration, update LAST_REVERT
-    // + LAST_COLUMN_CHECK — this test fails loudly (duplicate column on
-    // re-apply) if they fall behind.
+    // MAINTENANCE NOTE: the revert below must undo the last SCHEMA migration's
+    // effect. The CURRENT last migration (0034) is a DATA migration with no
+    // schema effect to revert, so this simulation unrecords the last TWO entries
+    // — the data migration 0034 AND the last schema migration 0033 — reverts
+    // 0033's column, and proves boot heals the watermark then re-applies BOTH
+    // (0033 restores the column; 0034's backfill re-runs idempotently). When you
+    // add a SCHEMA migration on top, update LAST_REVERT + LAST_COLUMN_CHECK and
+    // the delete count to cover back through it — this test fails loudly
+    // (duplicate column on re-apply, or a missing column) if they fall behind.
     const LAST_REVERT = "ALTER TABLE merge_requests DROP COLUMN revert_of;"; // 0033
     const LAST_COLUMN_CHECK = {
       table: "merge_requests",
       column: "revert_of",
     };
     const raw = new Database(dbPath);
-    const last = raw
-      .prepare("SELECT rowid, hash FROM __drizzle_migrations ORDER BY rowid DESC LIMIT 1")
-      .get() as { rowid: number; hash: string };
-    raw.prepare("DELETE FROM __drizzle_migrations WHERE rowid = ?").run(last.rowid);
+    // The genuinely-last two recorded migrations (0034 data + 0033 schema).
+    const lastTwo = raw
+      .prepare("SELECT rowid, hash FROM __drizzle_migrations ORDER BY rowid DESC LIMIT 2")
+      .all() as { rowid: number; hash: string }[];
+    const last = lastTwo[0]!; // 0034 — the genuinely-last entry
+    const delStmt = raw.prepare("DELETE FROM __drizzle_migrations WHERE rowid = ?");
+    for (const r of lastTwo) delStmt.run(r.rowid);
     raw.exec(LAST_REVERT);
     const future = Date.parse("2026-06-21T00:00:00Z");
     raw.prepare("UPDATE __drizzle_migrations SET created_at = ? + rowid").run(future);

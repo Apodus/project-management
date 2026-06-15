@@ -23,10 +23,10 @@ import {
 import * as svc from "../../src/services/claim-lease.service.js";
 
 // ──────────────────────────────────────────────────────────────────
-// Campaign C2 (claim-lease §P2): the claim-lease engine — lifecycle
-// (acquire/renew/read), on-read liveness, and the opportunistic
-// stale-claim sweep (off/shadow/on). Pure mechanics: the only entity
-// mutation is a mode `on` reclaim clearing the holder.
+// The claim-lease engine — lifecycle (acquire/renew/read), on-read
+// liveness, and the opportunistic stale-claim sweep. The engine is
+// always active: a lapsed lease is always reclaimed (clear the holder +
+// delete the lease + audit + event).
 // ──────────────────────────────────────────────────────────────────
 
 describe("claim-lease service", () => {
@@ -240,13 +240,11 @@ describe("claim-lease service", () => {
     const result = svc.sweepStaleClaims({
       entityType: "task",
       entityId: task.id,
-      mode: "on",
       graceMs: 5000,
       now,
     });
 
     expect(result.reclaimed).toHaveLength(1);
-    expect(result.observed).toHaveLength(0);
     expect(result.reclaimed[0]).toMatchObject({
       entityType: "task",
       entityId: task.id,
@@ -296,7 +294,6 @@ describe("claim-lease service", () => {
     const r1 = svc.sweepStaleClaims({
       entityType: "task",
       entityId: liveTask.id,
-      mode: "on",
       graceMs: 5000,
       now: new Date(t0.getTime() + 30_000),
     });
@@ -311,7 +308,6 @@ describe("claim-lease service", () => {
     const r2 = svc.sweepStaleClaims({
       entityType: "task",
       entityId: graceTask.id,
-      mode: "on",
       graceMs: 60_000,
       // Past expiry (t0+1000) but within +60s grace.
       now: new Date(t0.getTime() + 1000 + 10_000),
@@ -333,81 +329,7 @@ describe("claim-lease service", () => {
     expect(auditListener).not.toHaveBeenCalled();
   });
 
-  // ── 6. mode shadow detects but does not mutate ───────────────────
-  it("sweep mode shadow observes a stale lease without mutating/auditing/emitting", () => {
-    const project = createTestProject(testApp.db);
-    const a = createTestAiAgent(testApp.db);
-    const task = createTestTask(testApp.db, {
-      projectId: project.id,
-      assigneeId: a.user.id,
-    });
-
-    const reclaimedListener = vi.fn();
-    const auditListener = vi.fn();
-    getEventBus().on(CLAIM_LEASE_RECLAIMED_EVENT as EventName, reclaimedListener);
-    getEventBus().on(EVENT_NAMES.AUDIT_RECORDED, auditListener);
-
-    const t0 = new Date("2026-06-06T10:00:00.000Z");
-    svc.acquireLease("task", task.id, { id: a.user.id }, { now: t0, ttlMs: 1000 });
-
-    const result = svc.sweepStaleClaims({
-      entityType: "task",
-      entityId: task.id,
-      mode: "shadow",
-      graceMs: 5000,
-      now: new Date(t0.getTime() + 1000 + 5000 + 1),
-    });
-
-    expect(result.observed).toHaveLength(1);
-    expect(result.observed[0]).toMatchObject({
-      entityType: "task",
-      entityId: task.id,
-      holderId: a.user.id,
-    });
-    expect(result.reclaimed).toHaveLength(0);
-
-    // Nothing mutated.
-    expect(
-      testApp.db.select().from(tasks).where(eq(tasks.id, task.id)).get()!
-        .assigneeId,
-    ).toBe(a.user.id);
-    expect(leaseRow("task", task.id)).toBeDefined();
-    expect(auditRows(task.id)).toHaveLength(0);
-    expect(reclaimedListener).not.toHaveBeenCalled();
-    expect(auditListener).not.toHaveBeenCalled();
-  });
-
-  // ── 7. mode off is inert ─────────────────────────────────────────
-  it("sweep mode off returns empty and mutates nothing", () => {
-    const project = createTestProject(testApp.db);
-    const a = createTestAiAgent(testApp.db);
-    const task = createTestTask(testApp.db, {
-      projectId: project.id,
-      assigneeId: a.user.id,
-    });
-
-    const t0 = new Date("2026-06-06T10:00:00.000Z");
-    svc.acquireLease("task", task.id, { id: a.user.id }, { now: t0, ttlMs: 1000 });
-
-    const result = svc.sweepStaleClaims({
-      entityType: "task",
-      entityId: task.id,
-      mode: "off",
-      graceMs: 5000,
-      now: new Date(t0.getTime() + 1_000_000),
-    });
-
-    expect(result.reclaimed).toHaveLength(0);
-    expect(result.observed).toHaveLength(0);
-    expect(
-      testApp.db.select().from(tasks).where(eq(tasks.id, task.id)).get()!
-        .assigneeId,
-    ).toBe(a.user.id);
-    expect(leaseRow("task", task.id)).toBeDefined();
-    expect(auditRows(task.id)).toHaveLength(0);
-  });
-
-  // ── 8. fail-safe skips ───────────────────────────────────────────
+  // ── 6. fail-safe skips ───────────────────────────────────────────
   it("sweep on is a no-op for missing-lease / null-holder / null-expiry / null-project cases", () => {
     const project = createTestProject(testApp.db);
     const a = createTestAiAgent(testApp.db);
@@ -418,7 +340,6 @@ describe("claim-lease service", () => {
       svc.sweepStaleClaims({
         entityType: "task",
         entityId: noLeaseTask.id,
-        mode: "on",
         now: new Date(),
       }).reclaimed,
     ).toHaveLength(0);
@@ -436,7 +357,6 @@ describe("claim-lease service", () => {
     const rOrphan = svc.sweepStaleClaims({
       entityType: "task",
       entityId: orphanTask.id,
-      mode: "on",
       graceMs: 0,
       now: new Date(t0.getTime() + 1_000_000),
     });
@@ -459,7 +379,6 @@ describe("claim-lease service", () => {
     const rNullExp = svc.sweepStaleClaims({
       entityType: "task",
       entityId: nullExpiryTask.id,
-      mode: "on",
       graceMs: 0,
       now: new Date(t0.getTime() + 1_000_000),
     });
@@ -487,7 +406,6 @@ describe("claim-lease service", () => {
     const rNoProj = svc.sweepStaleClaims({
       entityType: "proposal",
       entityId: noProjProposal.id,
-      mode: "on",
       graceMs: 0,
       now: new Date(t0.getTime() + 1_000_000),
     });
@@ -521,7 +439,6 @@ describe("claim-lease service", () => {
       const r = svc.sweepStaleClaims({
         entityType: "task",
         entityId: task.id,
-        mode: "on",
         graceMs: 0,
         now: new Date(t0.getTime() + 1_000_000),
       });
@@ -555,7 +472,6 @@ describe("claim-lease service", () => {
       const r = svc.sweepStaleClaims({
         entityType: "proposal",
         entityId: prop.id,
-        mode: "on",
         graceMs: 0,
         now: new Date(t0.getTime() + 1_000_000),
       });
@@ -605,7 +521,6 @@ describe("claim-lease service", () => {
     const rEpic = svc.sweepStaleClaims({
       entityType: "epic",
       entityId: epic.id,
-      mode: "on",
       graceMs: 0,
       now: past,
     });
@@ -634,7 +549,6 @@ describe("claim-lease service", () => {
     const rProp = svc.sweepStaleClaims({
       entityType: "proposal",
       entityId: proposal.id,
-      mode: "on",
       graceMs: 0,
       now: past,
     });
@@ -678,7 +592,6 @@ describe("claim-lease service", () => {
       entityType: "task",
       // No entityId → batch path.
       limit: 2,
-      mode: "on",
       graceMs: 0,
       now: new Date(t0.getTime() + 1_000_000),
     });
@@ -728,7 +641,6 @@ describe("claim-lease service", () => {
     const result = svc.sweepStaleClaims({
       entityType: "epic",
       entityId: epic.id,
-      mode: "on",
       graceMs: 5000,
       now,
     });
@@ -787,7 +699,6 @@ describe("claim-lease service", () => {
     const result = svc.sweepStaleClaims({
       entityType: "proposal",
       entityId: proposal.id,
-      mode: "on",
       graceMs: 5000,
       now,
     });
@@ -843,7 +754,6 @@ describe("claim-lease service", () => {
       svc.sweepStaleClaims({
         entityType: "epic",
         entityId: liveEpic.id,
-        mode: "on",
         graceMs: 5000,
         now: new Date(t0.getTime() + 30_000),
       }).reclaimed,
@@ -864,7 +774,6 @@ describe("claim-lease service", () => {
       svc.sweepStaleClaims({
         entityType: "proposal",
         entityId: graceProposal.id,
-        mode: "on",
         graceMs: 60_000,
         // Past expiry (t0+1000) but within +60s grace.
         now: new Date(t0.getTime() + 1000 + 10_000),

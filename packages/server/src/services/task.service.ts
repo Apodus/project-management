@@ -20,7 +20,7 @@ import {
   LEASE_GRACE_MS_DEFAULT,
   LEASE_PICK_MARGIN_MS_DEFAULT,
 } from "@pm/shared";
-import type { ClaimResult, ClaimState, ClaimStatus, LeaseMode, TaskStatus, UserType } from "@pm/shared";
+import type { ClaimResult, ClaimState, ClaimStatus, TaskStatus, UserType } from "@pm/shared";
 import {
   getDb,
   getRawDb,
@@ -57,7 +57,6 @@ import {
   deriveLiveness,
   readLease,
   readLeasesFor,
-  resolveActiveLeaseMode,
   sweepStaleClaims,
   type ClaimLeaseRow,
 } from "./claim-lease.service.js";
@@ -876,18 +875,16 @@ export interface PickNextOptions {
 }
 
 /**
- * Test/internal-only override knobs for pickNextTask (C3.P3). These are
- * DELIBERATELY a SEPARATE parameter from the route-facing PickNextOptions so
- * they are structurally UNREACHABLE from wire input (a route/MCP handler builds
+ * Test/internal-only override knobs for pickNextTask. These are DELIBERATELY a
+ * SEPARATE parameter from the route-facing PickNextOptions so they are
+ * structurally UNREACHABLE from wire input (a route/MCP handler builds
  * PickNextOptions from an explicit field allowlist and never passes a second
- * arg). They let tests pin the lease mode, clock, and grace deterministically.
+ * arg). They let tests pin the clock and grace deterministically.
  *
- *  - mode    → force the lease mode (shadow/on/off) instead of the resolved one.
  *  - now     → pin the clock (fake timers).
  *  - graceMs → override the reclaim grace BEFORE the pick margin is added.
  */
 export interface PickNextInternalOptions {
-  mode?: LeaseMode;
   now?: Date;
   graceMs?: number;
 }
@@ -898,11 +895,11 @@ export interface PickNextInternalOptions {
  * For AI agents, checks autonomy guardrails (can_self_assign, max_concurrent_tasks).
  * Returns the claimed task, or null if nothing is available.
  *
- * Liveness (C3.P3): the pick runs in two phases. Phase A is today's behavior —
- * prefer fresh, unassigned `ready` work (atomic claim). Phase B fires ONLY when
- * the lease mode is `on` AND Phase A found nothing: it reclaims-then-claims a
- * `ready` task whose holder's lease has lapsed past TTL + grace + pick-margin.
- * In the default `shadow` mode Phase B never runs ⇒ ZERO behavior change.
+ * Liveness: the pick runs in two phases. Phase A prefers fresh, unassigned
+ * `ready` work (atomic claim). Phase B fires when Phase A found nothing: it
+ * reclaims-then-claims a `ready` task whose holder's lease has lapsed past
+ * TTL + grace + pick-margin. The lease engine is always active, so Phase B is
+ * unconditional (no mode gate).
  *
  * `internalOpts` is a SEPARATE, internal-only override surface (see
  * PickNextInternalOptions) — wire callers MUST NOT thread it through.
@@ -951,12 +948,9 @@ export function pickNextTask(
     }
   }
 
-  // C3.P3 liveness inputs. The mode is read through the SINGLE authoritative
-  // getter (never a re-parse of the env); tests pin it via internalOpts. The
-  // pick grace is STRICTER than the plain reclaim grace — a pick is a takeover
-  // of another holder's work, so a just-lapsed lease (its holder possibly
-  // mid-action) is never grabbed: grace + LEASE_PICK_MARGIN_MS_DEFAULT.
-  const mode = internalOpts?.mode ?? resolveActiveLeaseMode();
+  // Liveness inputs. The pick grace is STRICTER than the plain reclaim grace —
+  // a pick is a takeover of another holder's work, so a just-lapsed lease (its
+  // holder possibly mid-action) is never grabbed: grace + LEASE_PICK_MARGIN_MS_DEFAULT.
   const nowDate = internalOpts?.now ?? new Date();
   const pickGraceMs =
     (internalOpts?.graceMs ?? LEASE_GRACE_MS_DEFAULT) +
@@ -1019,11 +1013,11 @@ export function pickNextTask(
     END ASC,
     t.created_at ASC`;
 
-  // Opportunistic stale-claim sweep before we pick: in production this is a
-  // shadow no-op (observe-only), but it's the wiring point where the reclaim
-  // sweep would free lapsed claims so they re-enter the available pool. Return
-  // discarded — pick is unaffected by the observation. (CAUTION 1: left
-  // byte-identical — NOT threaded with pickGraceMs/mode; stays the shadow no-op.)
+  // Opportunistic stale-claim sweep before we pick: frees lapsed task claims
+  // (TTL + grace) so they re-enter the available pool. Return discarded — the
+  // pick proceeds against the freshly-swept state. Uses the plain reclaim grace
+  // (a general cleanup), distinct from the stricter pick-margin grace Phase B
+  // applies to the specific task it takes over.
   sweepStaleClaims({ entityType: "task" });
 
   const now = nowDate.toISOString();
@@ -1094,13 +1088,13 @@ export function pickNextTask(
     }
   }
 
-  // ── Phase B (mode `on` ONLY, and only if Phase A found nothing): ──────────
+  // ── Phase B (only if Phase A found nothing): ─────────────────────────────
   // reclaim-then-claim a STALE-CLAIMED ready task. Select ready tasks that ARE
   // assigned, join the lapsed lease (expires_at < now - pickGraceMs), re-check
   // liveness in JS (never stomp a live lease), reclaim the ONE entity (clears
   // the holder + tears down the lease + 1 audit + 1 SSE), then run the EXACT
   // atomic claim. A healed/raced candidate is skipped to the next.
-  if (!claimedId && mode === "on") {
+  if (!claimedId) {
     const staleThreshold = new Date(
       nowDate.getTime() - pickGraceMs,
     ).toISOString();
@@ -1142,7 +1136,6 @@ export function pickNextTask(
       const swept = sweepStaleClaims({
         entityType: "task",
         entityId: candidate.id,
-        mode: "on",
         graceMs: pickGraceMs,
         now: nowDate,
         actorId: actor.id,
