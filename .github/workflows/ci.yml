@@ -65,14 +65,14 @@ jobs:
       - name: Build
         run: pnpm build
 
-  # ── E2E job — enabled (phase-pin cleared by notes-campaign P4: E2E 20/20
-  # green on main at 2359624). ──────────────────────────────────────────────
+  # ── E2E job — REQUIRED. The suite is green (spec 01 is a Playwright setup
+  # dependency that seeds the admin, so 02-09 are order-independent) and CI
+  # runs with retries: 2 to absorb the load-sensitive flake on the slowest
+  # claims-surface spec. ─────────────────────────────────────────────────────
   e2e:
     name: e2e (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # non-blocking first week — flip to required after a week of green (vision §C1)
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
