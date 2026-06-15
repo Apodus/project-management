@@ -22,9 +22,7 @@ function qs(params: Record<string, string | undefined>): string {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== "") {
-      parts.push(
-        `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
-      );
+      parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
     }
   }
   return parts.length > 0 ? `?${parts.join("&")}` : "";
@@ -53,10 +51,7 @@ export function registerTemplateTools(server: McpServer): void {
       if (project_id) params.project_id = project_id;
       if (template_type) params.template_type = template_type;
 
-      const templates = await apiRequest<TemplateSummary[]>(
-        "GET",
-        `/templates${qs(params)}`,
-      );
+      const templates = await apiRequest<TemplateSummary[]>("GET", `/templates${qs(params)}`);
 
       if (templates.length === 0) {
         return {
@@ -97,14 +92,8 @@ export function registerTemplateTools(server: McpServer): void {
     "Instantiate a template to create tasks or a project. For task templates, provide template_id and project_id. For project templates, provide template_id, workspace_id, and name. Optionally pass overrides to customize the created entities.",
     {
       template_id: z.string().describe("The template ID to instantiate"),
-      project_id: z
-        .string()
-        .optional()
-        .describe("Project ID (required for task templates)"),
-      workspace_id: z
-        .string()
-        .optional()
-        .describe("Workspace ID (required for project templates)"),
+      project_id: z.string().optional().describe("Project ID (required for task templates)"),
+      workspace_id: z.string().optional().describe("Workspace ID (required for project templates)"),
       name: z
         .string()
         .optional()

@@ -28,11 +28,7 @@ describe("Tasks API", () => {
     it("should return empty list when no tasks exist", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/tasks`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/tasks`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -56,11 +52,7 @@ describe("Tasks API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/tasks`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/tasks`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -84,11 +76,7 @@ describe("Tasks API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project1.id}/tasks`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project1.id}/tasks`);
       const body = await res.json();
       expect(body.data).toHaveLength(1);
     });
@@ -152,9 +140,7 @@ describe("Tasks API", () => {
       const body = await res.json();
       expect(body.data).toHaveLength(2);
       expect(
-        body.data.every(
-          (t: any) => t.status === "backlog" || t.status === "in_progress",
-        ),
+        body.data.every((t: any) => t.status === "backlog" || t.status === "in_progress"),
       ).toBe(true);
     });
 
@@ -364,11 +350,7 @@ describe("Tasks API", () => {
         title: "Second",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/tasks`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/tasks`);
       const body = await res.json();
       expect(body.data[0].title).toBe("Second");
       expect(body.data[1].title).toBe("First");
@@ -543,17 +525,12 @@ describe("Tasks API", () => {
       const project = createTestProject(testApp.db);
       const user = createTestUser(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        {
-          body: {
-            title: "My New Task",
-            reporterId: user.id,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: {
+          title: "My New Task",
+          reporterId: user.id,
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -576,31 +553,26 @@ describe("Tasks API", () => {
         createdBy: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        {
-          body: {
-            title: "Full Task",
-            description: "A complete task",
-            status: "ready",
-            priority: "high",
-            type: "bug",
-            assigneeId: user.id,
-            reporterId: user.id,
-            epicId: epic.id,
-            estimatedEffort: "m",
-            dueDate: "2026-12-31",
-            sortOrder: 5,
-            context: {
-              relevant_files: ["src/app.ts"],
-              notes: "Check this",
-            },
-            gitBranch: "fix/my-bug",
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: {
+          title: "Full Task",
+          description: "A complete task",
+          status: "ready",
+          priority: "high",
+          type: "bug",
+          assigneeId: user.id,
+          reporterId: user.id,
+          epicId: epic.id,
+          estimatedEffort: "m",
+          dueDate: "2026-12-31",
+          sortOrder: 5,
+          context: {
+            relevant_files: ["src/app.ts"],
+            notes: "Check this",
           },
+          gitBranch: "fix/my-bug",
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -625,12 +597,9 @@ describe("Tasks API", () => {
       const project = createTestProject(testApp.db);
       const user = createTestUser(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        { body: { reporterId: user.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: { reporterId: user.id },
+      });
       expect(res.status).toBe(400);
     });
 
@@ -638,24 +607,18 @@ describe("Tasks API", () => {
       const project = createTestProject(testApp.db);
       const user = createTestUser(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        { body: { title: "", reporterId: user.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: { title: "", reporterId: user.id },
+      });
       expect(res.status).toBe(400);
     });
 
     it("should derive reporterId from the authenticated caller when omitted", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        { body: { title: "Reporter derived from auth" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: { title: "Reporter derived from auth" },
+      });
       expect(res.status).toBe(201);
       const body = await res.json();
       // Default test user is the authenticated caller — should be reporter
@@ -671,15 +634,10 @@ describe("Tasks API", () => {
         settings: { ai_autonomy: { can_create_tasks: true } },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        {
-          token: aiAgent.token,
-          body: { title: "Agent task", reporterId: otherUser.id },
-        },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        token: aiAgent.token,
+        body: { title: "Agent task", reporterId: otherUser.id },
+      });
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.data.reporterId).toBe(aiAgent.user.id);
@@ -689,12 +647,9 @@ describe("Tasks API", () => {
       const project = createTestProject(testApp.db);
       const otherUser = createTestUser(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        { body: { title: "On behalf", reporterId: otherUser.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: { title: "On behalf", reporterId: otherUser.id },
+      });
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.data.reporterId).toBe(otherUser.id);
@@ -712,11 +667,7 @@ describe("Tasks API", () => {
         title: "Found Me",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -726,11 +677,7 @@ describe("Tasks API", () => {
 
     it("should return 404 for non-existent task", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${fakeId}`);
       expect(res.status).toBe(404);
 
       const body = await res.json();
@@ -749,12 +696,9 @@ describe("Tasks API", () => {
         title: "Original",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        { body: { title: "Updated Title" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        body: { title: "Updated Title" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -770,12 +714,9 @@ describe("Tasks API", () => {
         status: "backlog",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        { body: { status: "in_progress" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        body: { status: "in_progress" },
+      });
       // Status field is no longer accepted in PATCH body — Zod strips unknown fields
       // so this should succeed but not change the status
       expect(res.status).toBe(200);
@@ -791,21 +732,14 @@ describe("Tasks API", () => {
         reporterId: user.id,
       });
 
-      const before = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}`,
-      );
+      const before = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}`);
       const beforeBody = await before.json();
 
       await new Promise((r) => setTimeout(r, 10));
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        { body: { description: "trigger update" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        body: { description: "trigger update" },
+      });
       const afterBody = await res.json();
 
       expect(afterBody.data.updatedAt).not.toBe(beforeBody.data.updatedAt);
@@ -813,12 +747,9 @@ describe("Tasks API", () => {
 
     it("should return 404 for non-existent task", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${fakeId}`,
-        { body: { title: "Nope" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${fakeId}`, {
+        body: { title: "Nope" },
+      });
       expect(res.status).toBe(404);
     });
 
@@ -827,21 +758,16 @@ describe("Tasks API", () => {
       const project = createTestProject(testApp.db);
       const user = createTestUser(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        {
-          body: {
-            title: "Context Task",
-            reporterId: user.id,
-            context: {
-              relevant_files: ["src/index.ts"],
-              notes: "Initial note",
-            },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: {
+          title: "Context Task",
+          reporterId: user.id,
+          context: {
+            relevant_files: ["src/index.ts"],
+            notes: "Initial note",
           },
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -864,19 +790,14 @@ describe("Tasks API", () => {
         },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        {
-          body: {
-            context: {
-              codebase_areas: ["backend"],
-              notes: "Updated note",
-            },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        body: {
+          context: {
+            codebase_areas: ["backend"],
+            notes: "Updated note",
           },
         },
-      );
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -898,12 +819,9 @@ describe("Tasks API", () => {
         context: { notes: "Has context" },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        { body: { context: null } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        body: { context: null },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -922,11 +840,7 @@ describe("Tasks API", () => {
         status: "backlog",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/tasks/${task.id}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/tasks/${task.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -936,11 +850,7 @@ describe("Tasks API", () => {
 
     it("should return 404 for non-existent task", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/tasks/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/tasks/${fakeId}`);
       expect(res.status).toBe(404);
     });
 
@@ -955,11 +865,7 @@ describe("Tasks API", () => {
 
       await authRequest(testApp.app, "DELETE", `/api/v1/tasks/${task.id}`);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}`);
       const body = await res.json();
       expect(body.data.status).toBe("cancelled");
     });
@@ -999,17 +905,12 @@ describe("Tasks API", () => {
       const fakeId = createId();
       const user = createTestUser(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${fakeId}/subtasks`,
-        {
-          body: {
-            title: "Orphan",
-            reporterId: user.id,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${fakeId}/subtasks`, {
+        body: {
+          title: "Orphan",
+          reporterId: user.id,
         },
-      );
+      });
       expect(res.status).toBe(404);
     });
 
@@ -1064,19 +965,13 @@ describe("Tasks API", () => {
         title: "Sub 2",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${parentTask.id}/subtasks`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${parentTask.id}/subtasks`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
       expect(body.data).toHaveLength(2);
       expect(body.pagination.total).toBe(2);
-      expect(body.data.every((t: any) => t.parentTaskId === parentTask.id)).toBe(
-        true,
-      );
+      expect(body.data.every((t: any) => t.parentTaskId === parentTask.id)).toBe(true);
     });
 
     it("should return empty list when task has no subtasks", async () => {
@@ -1087,11 +982,7 @@ describe("Tasks API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/subtasks`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/subtasks`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -1101,11 +992,7 @@ describe("Tasks API", () => {
 
     it("should return 404 when parent task does not exist", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${fakeId}/subtasks`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${fakeId}/subtasks`);
       expect(res.status).toBe(404);
     });
 
@@ -1133,11 +1020,7 @@ describe("Tasks API", () => {
         title: "Unrelated",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${parentTask.id}/subtasks`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${parentTask.id}/subtasks`);
       const body = await res.json();
       expect(body.data).toHaveLength(1);
       expect(body.data[0].title).toBe("Child");
@@ -1182,11 +1065,7 @@ describe("Tasks API", () => {
       expect(childBody.data.parentTaskId).toBe(parentId);
 
       // Verify by direct GET
-      const getRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${childBody.data.id}`,
-      );
+      const getRes = await authRequest(testApp.app, "GET", `/api/v1/tasks/${childBody.data.id}`);
       const getBody = await getRes.json();
       expect(getBody.data.parentTaskId).toBe(parentId);
     });
@@ -1202,22 +1081,16 @@ describe("Tasks API", () => {
         reporterId: a.user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/claim`,
-        { token: a.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
+        token: a.token,
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.status).toBe("claimed_by_you");
 
-      const get = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}`,
-        { token: a.token },
-      );
+      const get = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}`, {
+        token: a.token,
+      });
       const got = await get.json();
       expect(got.data.assigneeId).toBe(a.user.id);
       expect(got.data.claimStatus).toBe("claimed_by_you");
@@ -1226,12 +1099,9 @@ describe("Tasks API", () => {
 
       // Another caller sees claimState "live" (held, lease fresh, fail-safe ok).
       const b = createTestAiAgent(testApp.db);
-      const getOther = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}`,
-        { token: b.token },
-      );
+      const getOther = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}`, {
+        token: b.token,
+      });
       const gotOther = await getOther.json();
       expect(gotOther.data.claimStatus).toBe("claimed_by_other");
       expect(gotOther.data.claimState).toBe("live");
@@ -1245,12 +1115,9 @@ describe("Tasks API", () => {
         reporterId: a.user.id,
         // assigneeId omitted — unclaimed
       });
-      const get = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}`,
-        { token: a.token },
-      );
+      const get = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}`, {
+        token: a.token,
+      });
       const got = await get.json();
       expect(got.data.claimStatus).toBe("unclaimed");
       expect(got.data.claimState).toBe("unclaimed");
@@ -1266,12 +1133,9 @@ describe("Tasks API", () => {
       await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
         token: a.token,
       });
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/claim`,
-        { token: a.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
+        token: a.token,
+      });
       const body = await res.json();
       expect(body.data.status).toBe("already_claimed_by_you");
     });
@@ -1287,12 +1151,9 @@ describe("Tasks API", () => {
       await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
         token: a.token,
       });
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/claim`,
-        { token: b.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
+        token: b.token,
+      });
       const body = await res.json();
       expect(body.data.ok).toBe(false);
       expect(body.data.status).toBe("claimed_by_another_agent");
@@ -1306,12 +1167,10 @@ describe("Tasks API", () => {
         reporterId: a.user.id,
         // assigneeId omitted — unclaimed
       });
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        { token: a.token, body: { title: "renamed" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        token: a.token,
+        body: { title: "renamed" },
+      });
       expect(res.status).toBe(409);
       const body = await res.json();
       expect(body.error.code).toBe("CLAIM_DENIED");
@@ -1327,12 +1186,10 @@ describe("Tasks API", () => {
       await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
         token: a.token,
       });
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        { token: a.token, body: { title: "renamed" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        token: a.token,
+        body: { title: "renamed" },
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.title).toBe("renamed");
@@ -1344,12 +1201,9 @@ describe("Tasks API", () => {
         projectId: project.id,
         reporterId: testApp.testUser.id,
       });
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        { body: { title: "renamed by human" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        body: { title: "renamed by human" },
+      });
       expect(res.status).toBe(200);
     });
 
@@ -1363,12 +1217,9 @@ describe("Tasks API", () => {
       await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
         token: a.token,
       });
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/release`,
-        { token: a.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/release`, {
+        token: a.token,
+      });
       const body = await res.json();
       expect(body.data.status).toBe("released");
     });
@@ -1382,12 +1233,9 @@ describe("Tasks API", () => {
         reporterId: a.user.id,
         assigneeId: a.user.id,
       });
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/release`,
-        { token: b.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/release`, {
+        token: b.token,
+      });
       const body = await res.json();
       expect(body.data.ok).toBe(false);
       expect(body.data.status).toBe("claimed_by_another_agent");
@@ -1401,12 +1249,9 @@ describe("Tasks API", () => {
         reporterId: a.user.id,
         status: "done",
       });
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/claim`,
-        { token: a.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/claim`, {
+        token: a.token,
+      });
       const body = await res.json();
       expect(body.data.status).toBe("closed");
     });
@@ -1443,9 +1288,7 @@ describe("Tasks API", () => {
         { token: a.token },
       );
       const body = await res.json();
-      expect(body.data.map((t: { title: string }) => t.title)).toEqual([
-        "mine",
-      ]);
+      expect(body.data.map((t: { title: string }) => t.title)).toEqual(["mine"]);
     });
 
     it("'available' returns unassigned OR claimed by caller", async () => {
@@ -1477,9 +1320,7 @@ describe("Tasks API", () => {
         { token: a.token },
       );
       const body = await res.json();
-      const titles = body.data
-        .map((t: { title: string }) => t.title)
-        .sort();
+      const titles = body.data.map((t: { title: string }) => t.title).sort();
       expect(titles).toEqual(["free", "mine"]);
     });
   });
@@ -1505,10 +1346,7 @@ describe("Tasks API", () => {
         reporterId: testApp.testUser.id,
         title: "labeled",
       });
-      testApp.db
-        .insert(taskLabels)
-        .values({ taskId: task.id, labelId })
-        .run();
+      testApp.db.insert(taskLabels).values({ taskId: task.id, labelId }).run();
       createTestTask(testApp.db, {
         projectId: project.id,
         reporterId: testApp.testUser.id,

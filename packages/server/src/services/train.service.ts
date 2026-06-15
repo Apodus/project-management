@@ -12,20 +12,10 @@ import {
 } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
-import {
-  emitAuditRecorded,
-  record as recordAudit,
-  type AuditLogView,
-} from "./audit.service.js";
-import {
-  attachLandedRef,
-  type Actor,
-} from "./merge-request.service.js";
+import { emitAuditRecorded, record as recordAudit, type AuditLogView } from "./audit.service.js";
+import { attachLandedRef, type Actor } from "./merge-request.service.js";
 import { assertForceLandableViaGroup } from "./merge-group.service.js";
-import {
-  emitHumanResolved,
-  resolveHumanInTx,
-} from "./merge-incident.service.js";
+import { emitHumanResolved, resolveHumanInTx } from "./merge-incident.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 //
@@ -124,20 +114,12 @@ function ensureProjectExists(projectId: string): void {
   }
 }
 
-function readTrainState(
-  projectId: string,
-  resource: string,
-): TrainStateRow | undefined {
+function readTrainState(projectId: string, resource: string): TrainStateRow | undefined {
   const db = getDb();
   return db
     .select()
     .from(trainState)
-    .where(
-      and(
-        eq(trainState.projectId, projectId),
-        eq(trainState.resource, resource),
-      ),
-    )
+    .where(and(eq(trainState.projectId, projectId), eq(trainState.resource, resource)))
     .get() as TrainStateRow | undefined;
 }
 
@@ -147,10 +129,7 @@ function readTrainState(
  * INSERT is guarded by try/catch for the unique-index race (two concurrent
  * first reads) — on rejection we re-read.
  */
-function getOrCreateTrainState(
-  projectId: string,
-  resource: string,
-): TrainStateRow {
+function getOrCreateTrainState(projectId: string, resource: string): TrainStateRow {
   const existing = readTrainState(projectId, resource);
   if (existing) return existing;
 
@@ -181,17 +160,12 @@ function getOrCreateTrainState(
   return readTrainState(projectId, resource)!;
 }
 
-function readLock(
-  projectId: string,
-  resource: string,
-): MergeLockRow | undefined {
+function readLock(projectId: string, resource: string): MergeLockRow | undefined {
   const db = getDb();
   return db
     .select()
     .from(mergeLocks)
-    .where(
-      and(eq(mergeLocks.projectId, projectId), eq(mergeLocks.resource, resource)),
-    )
+    .where(and(eq(mergeLocks.projectId, projectId), eq(mergeLocks.resource, resource)))
     .get() as MergeLockRow | undefined;
 }
 
@@ -237,11 +211,7 @@ function getOrCreateLock(projectId: string, resource: string): MergeLockRow {
 
 function readRequest(id: string): MergeRequestRow | null {
   const db = getDb();
-  const row = db
-    .select()
-    .from(mergeRequests)
-    .where(eq(mergeRequests.id, id))
-    .get();
+  const row = db.select().from(mergeRequests).where(eq(mergeRequests.id, id)).get();
   return (row as MergeRequestRow | undefined) ?? null;
 }
 
@@ -338,10 +308,7 @@ export interface TrainAlertLatchRow {
  * Read (lazily creating) the lane's train_state latch row. Returns the row id,
  * the current state (for the §7.3 paused guard), and the two alert latches.
  */
-export function readAlertLatch(
-  projectId: string,
-  resource: string,
-): TrainAlertLatchRow {
+export function readAlertLatch(projectId: string, resource: string): TrainAlertLatchRow {
   const row = getOrCreateTrainState(projectId, resource);
   return {
     id: row.id,
@@ -383,10 +350,7 @@ export function setAlertLatch(
  * Read the lane's train state (§4.3.6). Lazy-creates the row defaulting to
  * "running". No audit, no emit — a pure read.
  */
-export function getTrainState(
-  projectId: string,
-  resource: string,
-): TrainStateView {
+export function getTrainState(projectId: string, resource: string): TrainStateView {
   ensureProjectExists(projectId);
   const row = getOrCreateTrainState(projectId, resource);
   return toTrainStateView(row);
@@ -595,12 +559,7 @@ export function forceReleaseLock(
         abandonReason: null,
         updatedAt: now,
       })
-      .where(
-        and(
-          eq(mergeLocks.projectId, projectId),
-          eq(mergeLocks.resource, resource),
-        ),
-      )
+      .where(and(eq(mergeLocks.projectId, projectId), eq(mergeLocks.resource, resource)))
       .run();
 
     const before = { holderId: priorHolder };
@@ -680,27 +639,15 @@ export interface ForceLandBody {
  * Does NOT delegate to land()/completeAttempt() (ai_agent-gated → would 403
  * the human admin). All writes inline in ONE db.transaction.
  */
-export function forceLand(
-  requestId: string,
-  body: ForceLandBody,
-  actor: Actor,
-): MergeRequestView {
+export function forceLand(requestId: string, body: ForceLandBody, actor: Actor): MergeRequestView {
   // PRE-tx validation.
   requireAdmin(actor, "Only admins may force-land a merge request.");
   // Service double-check: reason required (route enforces via z.min(1)).
   if (!body.reason || body.reason.trim() === "") {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "force-land requires a non-empty reason.",
-    );
+    throw new AppError(400, "VALIDATION_ERROR", "force-land requires a non-empty reason.");
   }
   if (!body.landedSha || body.landedSha.trim() === "") {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "force-land requires a non-empty landedSha.",
-    );
+    throw new AppError(400, "VALIDATION_ERROR", "force-land requires a non-empty landedSha.");
   }
 
   const row = readRequest(requestId);
@@ -839,10 +786,7 @@ export function forceLand(
     //    completing the group's recovery — resolve its open incidents
     //    human_resolved in the SAME transaction. If other rejected siblings
     //    remain, the group is still incomplete and the incidents stay open.
-    if (
-      groupCheck.kind === "grouped_terminal" &&
-      groupCheck.groupState === "partially_landed"
-    ) {
+    if (groupCheck.kind === "grouped_terminal" && groupCheck.groupState === "partially_landed") {
       const stuckSiblings = tx
         .select({ id: mergeRequests.id })
         .from(mergeRequests)
@@ -859,10 +803,7 @@ export function forceLand(
           .select()
           .from(mergeIncidents)
           .where(
-            and(
-              eq(mergeIncidents.groupId, groupCheck.groupId),
-              eq(mergeIncidents.state, "open"),
-            ),
+            and(eq(mergeIncidents.groupId, groupCheck.groupId), eq(mergeIncidents.state, "open")),
           )
           .all();
         for (const incident of openIncidents) {
@@ -962,11 +903,7 @@ export function forceReject(
 ): MergeRequestView {
   requireAdmin(actor, "Only admins may force-reject a merge request.");
   if (!body.reason || body.reason.trim() === "") {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "force-reject requires a non-empty reason.",
-    );
+    throw new AppError(400, "VALIDATION_ERROR", "force-reject requires a non-empty reason.");
   }
 
   const row = readRequest(requestId);
@@ -1069,9 +1006,7 @@ export function forceReject(
     if (row.taskId !== null) {
       commentId = createId();
       const commentBody =
-        `Merge rejected: policy.\n\n${body.reason}\n\n` +
-        `0 failed file(s).\n` +
-        `See log: (none)`;
+        `Merge rejected: policy.\n\n${body.reason}\n\n` + `0 failed file(s).\n` + `See log: (none)`;
       tx.insert(comments)
         .values({
           id: commentId,

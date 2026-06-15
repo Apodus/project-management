@@ -101,10 +101,9 @@ describe("Verify-cache routes", () => {
 
   it("GET /verify-cache requires authentication (401 without token)", async () => {
     const project = createTestProject(testApp.db);
-    const res = await testApp.app.request(
-      `/api/v1/projects/${project.id}/verify-cache`,
-      { method: "GET" },
-    );
+    const res = await testApp.app.request(`/api/v1/projects/${project.id}/verify-cache`, {
+      method: "GET",
+    });
     expect(res.status).toBe(401);
   });
 
@@ -347,9 +346,7 @@ describe("Verify-cache routes", () => {
     const agent = createTestAiAgent(testApp.db);
 
     const events: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.VERIFY_CACHE_MISMATCH, (p) =>
-      events.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.VERIFY_CACHE_MISMATCH, (p) => events.push(p.entity));
 
     const res = await authRequest(
       testApp.app,
@@ -382,10 +379,7 @@ describe("Verify-cache routes", () => {
     });
 
     // NON-persisted: no verify_cache row was written by the relay.
-    const rows = testApp.db
-      .select()
-      .from(verifyCache)
-      .all();
+    const rows = testApp.db.select().from(verifyCache).all();
     expect(rows).toHaveLength(0);
   });
 

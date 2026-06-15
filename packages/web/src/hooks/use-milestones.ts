@@ -11,8 +11,7 @@ import {
 export const milestoneKeys = {
   all: ["milestones"] as const,
   lists: () => [...milestoneKeys.all, "list"] as const,
-  list: (projectId: string) =>
-    [...milestoneKeys.lists(), { projectId }] as const,
+  list: (projectId: string) => [...milestoneKeys.lists(), { projectId }] as const,
 };
 
 export function useMilestones(projectId: string | undefined) {
@@ -26,13 +25,8 @@ export function useMilestones(projectId: string | undefined) {
 export function useCreateMilestone() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      projectId,
-      data,
-    }: {
-      projectId: string;
-      data: CreateMilestone;
-    }) => createMilestone(projectId, data),
+    mutationFn: ({ projectId, data }: { projectId: string; data: CreateMilestone }) =>
+      createMilestone(projectId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: milestoneKeys.lists() });
     },
@@ -42,8 +36,7 @@ export function useCreateMilestone() {
 export function useUpdateMilestone() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateMilestone }) =>
-      updateMilestone(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UpdateMilestone }) => updateMilestone(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: milestoneKeys.lists() });
     },

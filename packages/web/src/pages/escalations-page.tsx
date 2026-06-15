@@ -87,15 +87,13 @@ function MetricCard({
   return (
     <Card className="py-4">
       <CardContent className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-lg">
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
           <p className="text-2xl font-bold tabular-nums">{value}</p>
-          <p className="truncate text-xs text-muted-foreground">{label}</p>
-          {sub && (
-            <p className="truncate text-[10px] text-muted-foreground/70">{sub}</p>
-          )}
+          <p className="text-muted-foreground truncate text-xs">{label}</p>
+          {sub && <p className="text-muted-foreground/70 truncate text-[10px]">{sub}</p>}
         </div>
       </CardContent>
     </Card>
@@ -125,11 +123,7 @@ const KIND_CHIPS = [
 //  - mean-time-to-land has no dedicated source, so we reuse the EXISTING
 //    time_to_resolve p50 as a LABELED proxy (NOT a fabricated metric);
 //  - spend-per-arc has no token source → an explicit "N/A" note (not fabricated).
-function AutoImplementMetricsRow({
-  metrics,
-}: {
-  metrics: EscalationMetrics;
-}) {
+function AutoImplementMetricsRow({ metrics }: { metrics: EscalationMetrics }) {
   const ai = metrics.auto_implement;
   if (ai.auto_implemented_escalations <= 0) return null;
 
@@ -138,10 +132,8 @@ function AutoImplementMetricsRow({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <GitMerge className="size-4 text-muted-foreground" />
-        <h2 className="text-sm font-medium text-muted-foreground">
-          Auto-implement
-        </h2>
+        <GitMerge className="text-muted-foreground size-4" />
+        <h2 className="text-muted-foreground text-sm font-medium">Auto-implement</h2>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard
@@ -201,8 +193,8 @@ function EscalationMetricsSection({ projectId }: { projectId: string }) {
     return (
       <Card className="py-4">
         <CardContent className="flex flex-col items-center py-6">
-          <Gauge className="mb-2 size-8 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">No metrics available</p>
+          <Gauge className="text-muted-foreground/40 mb-2 size-8" />
+          <p className="text-muted-foreground text-sm">No metrics available</p>
         </CardContent>
       </Card>
     );
@@ -248,31 +240,19 @@ function EscalationMetricsSection({ projectId }: { projectId: string }) {
           icon={Gauge}
           sub={`${metrics.human_escalation_rate.escalated}/${metrics.human_escalation_rate.total} needs_human`}
         />
-        <MetricCard
-          label="Total escalations"
-          value={String(metrics.total)}
-          icon={Siren}
-        />
+        <MetricCard label="Total escalations" value={String(metrics.total)} icon={Siren} />
       </div>
 
       {/* by_status / by_kind chip row (reuse Badge + the color maps) */}
       <div className="flex flex-wrap items-center gap-1.5">
         {STATUS_CHIPS.map(([key, label]) => (
-          <Badge
-            key={key}
-            variant="secondary"
-            className={cn("text-[11px]", getStatusColor(key))}
-          >
+          <Badge key={key} variant="secondary" className={cn("text-[11px]", getStatusColor(key))}>
             {label}: {metrics.by_status[key]}
           </Badge>
         ))}
-        <span className="mx-1 text-muted-foreground/40">·</span>
+        <span className="text-muted-foreground/40 mx-1">·</span>
         {KIND_CHIPS.map(([key, label]) => (
-          <Badge
-            key={key}
-            variant="secondary"
-            className={cn("text-[11px]", getKindColor(key))}
-          >
+          <Badge key={key} variant="secondary" className={cn("text-[11px]", getKindColor(key))}>
             {label}: {metrics.by_kind[key]}
           </Badge>
         ))}
@@ -292,13 +272,10 @@ function EscalationCard({ escalation }: { escalation: Escalation }) {
       params={{ projectId, escalationId: id }}
       className="block focus:outline-none"
     >
-      <Card className="gap-3 py-4 transition-colors hover:border-primary/50">
+      <Card className="hover:border-primary/50 gap-3 py-4 transition-colors">
         <CardHeader className="pb-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge
-              variant="secondary"
-              className={cn("text-[11px]", getKindColor(escalation.kind))}
-            >
+            <Badge variant="secondary" className={cn("text-[11px]", getKindColor(escalation.kind))}>
               {formatStatus(escalation.kind)}
             </Badge>
             <Badge
@@ -320,14 +297,12 @@ function EscalationCard({ escalation }: { escalation: Escalation }) {
         </CardHeader>
         <CardContent>
           {escalation.body ? (
-            <p className="line-clamp-2 text-sm italic text-muted-foreground">
-              {escalation.body}
-            </p>
+            <p className="text-muted-foreground line-clamp-2 text-sm italic">{escalation.body}</p>
           ) : (
-            <p className="text-sm italic text-muted-foreground/50">No body</p>
+            <p className="text-muted-foreground/50 text-sm italic">No body</p>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground/70">
+          <div className="text-muted-foreground/70 mt-3 flex flex-wrap items-center gap-3 text-xs">
             <span className="font-mono">
               {escalation.originRepo}
               <span className="text-muted-foreground/50"> · </span>
@@ -381,8 +356,7 @@ export function EscalationsPage() {
 
   const filters: EscalationFilters = useMemo(() => {
     const f: EscalationFilters = {};
-    if (statusFilter && statusFilter !== "all")
-      f.status = statusFilter as Escalation["status"];
+    if (statusFilter && statusFilter !== "all") f.status = statusFilter as Escalation["status"];
     if (kindFilter && kindFilter !== "all") f.kind = kindFilter as Escalation["kind"];
     if (severityFilter && severityFilter !== "all")
       f.severity = severityFilter as NonNullable<Escalation["severity"]>;
@@ -415,7 +389,7 @@ export function EscalationsPage() {
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <Siren className="size-6 text-muted-foreground" />
+        <Siren className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Escalations</h1>
         {project && (
           <Badge variant="outline" className="text-xs font-normal">
@@ -497,7 +471,7 @@ export function EscalationsPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
+            <p className="text-destructive text-sm">
               Failed to load escalations. Please try again.
             </p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -519,19 +493,12 @@ export function EscalationsPage() {
       {/* Empty state */}
       {!isLoading && !error && escalations.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
-          <Siren className="mb-3 size-10 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">
-            {hasActiveFilters
-              ? "No escalations match your filters"
-              : "No escalations yet"}
+          <Siren className="text-muted-foreground/40 mb-3 size-10" />
+          <p className="text-muted-foreground text-sm">
+            {hasActiveFilters ? "No escalations match your filters" : "No escalations yet"}
           </p>
           {hasActiveFilters && (
-            <Button
-              className="mt-3"
-              size="sm"
-              variant="outline"
-              onClick={clearFilters}
-            >
+            <Button className="mt-3" size="sm" variant="outline" onClick={clearFilters}>
               Clear filters
             </Button>
           )}

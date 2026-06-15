@@ -61,10 +61,7 @@ describe("ResponderClient", () => {
 
   it("submitMergeRequest POSTs /projects/{id}/merge-requests with the body and unwraps {data}", async () => {
     const fetchImpl = vi.fn(async () =>
-      jsonResponse(
-        { data: { id: "mr-1", branch: "pm/escalation-e1", commitSha: "abc123" } },
-        201,
-      ),
+      jsonResponse({ data: { id: "mr-1", branch: "pm/escalation-e1", commitSha: "abc123" } }, 201),
     );
     const client = new ResponderClient({
       baseUrl: "http://h:3000",

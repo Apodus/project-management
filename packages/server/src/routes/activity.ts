@@ -40,15 +40,21 @@ const errorEnvelope = z.object({
 
 // ─── Request schemas ──────────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const taskIdParam = z.string().min(1).openapi({
-  param: { name: "taskId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const taskIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "taskId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 
@@ -57,8 +63,7 @@ const listProjectActivityRoute = createRoute({
   path: "/api/v1/projects/{projectId}/activity",
   tags: ["Activity"],
   summary: "Project activity feed",
-  description:
-    "Get paginated activity feed for a project, with optional filters.",
+  description: "Get paginated activity feed for a project, with optional filters.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     query: z.object({

@@ -15,11 +15,7 @@ import {
   type TestApp,
 } from "../utils.js";
 import { auditLog, claimLeases, epics, proposals, tasks } from "../../src/db/index.js";
-import {
-  EVENT_NAMES,
-  getEventBus,
-  type EventName,
-} from "../../src/events/event-bus.js";
+import { EVENT_NAMES, getEventBus, type EventName } from "../../src/events/event-bus.js";
 import * as svc from "../../src/services/claim-lease.service.js";
 
 // ──────────────────────────────────────────────────────────────────
@@ -42,23 +38,14 @@ describe("claim-lease service", () => {
 
   // Convenience: count the audit_log rows for a target.
   function auditRows(targetId: string) {
-    return testApp.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.targetId, targetId))
-      .all();
+    return testApp.db.select().from(auditLog).where(eq(auditLog.targetId, targetId)).all();
   }
 
   function leaseRow(entityType: string, entityId: string) {
     return testApp.db
       .select()
       .from(claimLeases)
-      .where(
-        and(
-          eq(claimLeases.entityType, entityType),
-          eq(claimLeases.entityId, entityId),
-        ),
-      )
+      .where(and(eq(claimLeases.entityType, entityType), eq(claimLeases.entityId, entityId)))
       .get();
   }
 
@@ -81,17 +68,11 @@ describe("claim-lease service", () => {
     expect(lease.claimedAt).toBe(t0.toISOString());
     expect(lease.heartbeatAt).toBe(t0.toISOString());
     expect(lease.lastActivityAt).toBe(t0.toISOString());
-    expect(lease.expiresAt).toBe(
-      new Date(t0.getTime() + LEASE_TTL_MS_DEFAULT).toISOString(),
-    );
+    expect(lease.expiresAt).toBe(new Date(t0.getTime() + LEASE_TTL_MS_DEFAULT).toISOString());
 
     // Exactly one row exists.
     expect(
-      testApp.db
-        .select()
-        .from(claimLeases)
-        .where(eq(claimLeases.entityId, task.id))
-        .all(),
+      testApp.db.select().from(claimLeases).where(eq(claimLeases.entityId, task.id)).all(),
     ).toHaveLength(1);
 
     const read = svc.readLease("task", task.id);
@@ -104,9 +85,7 @@ describe("claim-lease service", () => {
     expect(renewed!.id).toBe(lease.id);
     expect(renewed!.heartbeatAt).toBe(t1.toISOString());
     expect(renewed!.lastActivityAt).toBe(t1.toISOString());
-    expect(renewed!.expiresAt).toBe(
-      new Date(t1.getTime() + LEASE_TTL_MS_DEFAULT).toISOString(),
-    );
+    expect(renewed!.expiresAt).toBe(new Date(t1.getTime() + LEASE_TTL_MS_DEFAULT).toISOString());
     // claimedAt is the original acquire time — renew doesn't reset it.
     expect(renewed!.claimedAt).toBe(t0.toISOString());
   });
@@ -125,11 +104,7 @@ describe("claim-lease service", () => {
     expect(second.id).toBe(first.id);
     expect(second.holderId).toBe(b.user.id);
     expect(
-      testApp.db
-        .select()
-        .from(claimLeases)
-        .where(eq(claimLeases.entityId, task.id))
-        .all(),
+      testApp.db.select().from(claimLeases).where(eq(claimLeases.entityId, task.id)).all(),
     ).toHaveLength(1);
   });
 
@@ -155,13 +130,9 @@ describe("claim-lease service", () => {
     // Before expiry → live.
     expect(svc.deriveLiveness(new Date(expiry - 1), expiresAt, grace)).toBe("live");
     // Exactly at the expiry+grace boundary → still live (strict >).
-    expect(svc.deriveLiveness(new Date(expiry + grace), expiresAt, grace)).toBe(
-      "live",
-    );
+    expect(svc.deriveLiveness(new Date(expiry + grace), expiresAt, grace)).toBe("live");
     // One ms past the boundary → stale.
-    expect(
-      svc.deriveLiveness(new Date(expiry + grace + 1), expiresAt, grace),
-    ).toBe("stale");
+    expect(svc.deriveLiveness(new Date(expiry + grace + 1), expiresAt, grace)).toBe("stale");
 
     // Fail-safe: null / unparseable → live.
     expect(svc.deriveLiveness(new Date(), null, grace)).toBe("live");
@@ -180,18 +151,9 @@ describe("claim-lease service", () => {
     // A live lease (long TTL) and a lapsed lease (already expired) — the helper
     // returns BOTH rows; readLeasesFor itself doesn't filter on liveness.
     svc.acquireLease("task", withLive.id, { id: a.user.id }, { now: t0 });
-    svc.acquireLease(
-      "task",
-      withLapsed.id,
-      { id: a.user.id },
-      { now: t0, ttlMs: 1000 },
-    );
+    svc.acquireLease("task", withLapsed.id, { id: a.user.id }, { now: t0, ttlMs: 1000 });
 
-    const map = svc.readLeasesFor("task", [
-      withLive.id,
-      withLapsed.id,
-      noLease.id,
-    ]);
+    const map = svc.readLeasesFor("task", [withLive.id, withLapsed.id, noLease.id]);
 
     expect(map.size).toBe(2);
     expect(map.has(withLive.id)).toBe(true);
@@ -252,11 +214,7 @@ describe("claim-lease service", () => {
     });
 
     // The entity's holder is cleared.
-    const freshTask = testApp.db
-      .select()
-      .from(tasks)
-      .where(eq(tasks.id, task.id))
-      .get();
+    const freshTask = testApp.db.select().from(tasks).where(eq(tasks.id, task.id)).get();
     expect(freshTask!.assigneeId).toBeNull();
 
     // The lease row is gone.
@@ -315,13 +273,11 @@ describe("claim-lease service", () => {
     expect(r2.reclaimed).toHaveLength(0);
 
     // Holders + leases intact; no audit, no event.
+    expect(testApp.db.select().from(tasks).where(eq(tasks.id, liveTask.id)).get()!.assigneeId).toBe(
+      a.user.id,
+    );
     expect(
-      testApp.db.select().from(tasks).where(eq(tasks.id, liveTask.id)).get()!
-        .assigneeId,
-    ).toBe(a.user.id);
-    expect(
-      testApp.db.select().from(tasks).where(eq(tasks.id, graceTask.id)).get()!
-        .assigneeId,
+      testApp.db.select().from(tasks).where(eq(tasks.id, graceTask.id)).get()!.assigneeId,
     ).toBe(a.user.id);
     expect(leaseRow("task", liveTask.id)).toBeDefined();
     expect(leaseRow("task", graceTask.id)).toBeDefined();
@@ -384,11 +340,7 @@ describe("claim-lease service", () => {
     });
     expect(rNullExp.reclaimed).toHaveLength(0);
     expect(
-      testApp.db
-        .select()
-        .from(tasks)
-        .where(eq(tasks.id, nullExpiryTask.id))
-        .get()!.assigneeId,
+      testApp.db.select().from(tasks).where(eq(tasks.id, nullExpiryTask.id)).get()!.assigneeId,
     ).toBe(a.user.id);
 
     // (d) proposal with null projectId + stale lease + mode on → skipped.
@@ -399,10 +351,15 @@ describe("claim-lease service", () => {
       .set({ projectId: null, claimedBy: a.user.id })
       .where(eq(proposals.id, noProjProposal.id))
       .run();
-    svc.acquireLease("proposal", noProjProposal.id, { id: a.user.id }, {
-      now: t0,
-      ttlMs: 1000,
-    });
+    svc.acquireLease(
+      "proposal",
+      noProjProposal.id,
+      { id: a.user.id },
+      {
+        now: t0,
+        ttlMs: 1000,
+      },
+    );
     const rNoProj = svc.sweepStaleClaims({
       entityType: "proposal",
       entityId: noProjProposal.id,
@@ -412,11 +369,8 @@ describe("claim-lease service", () => {
     expect(rNoProj.reclaimed).toHaveLength(0);
     expect(leaseRow("proposal", noProjProposal.id)).toBeDefined();
     expect(
-      testApp.db
-        .select()
-        .from(proposals)
-        .where(eq(proposals.id, noProjProposal.id))
-        .get()!.claimedBy,
+      testApp.db.select().from(proposals).where(eq(proposals.id, noProjProposal.id)).get()!
+        .claimedBy,
     ).toBe(a.user.id);
   });
 
@@ -445,9 +399,7 @@ describe("claim-lease service", () => {
       expect(r.reclaimed).toHaveLength(0);
       const warned = warnSpy.mock.calls.map((c) => String(c[0]));
       expect(
-        warned.some(
-          (m) => m.includes("[claim-lease]") && m.includes("entity row is gone"),
-        ),
+        warned.some((m) => m.includes("[claim-lease]") && m.includes("entity row is gone")),
       ).toBe(true);
     } finally {
       warnSpy.mockRestore();
@@ -477,11 +429,9 @@ describe("claim-lease service", () => {
       });
       expect(r.reclaimed).toHaveLength(0);
       const warned = warnSpy.mock.calls.map((c) => String(c[0]));
-      expect(
-        warned.some(
-          (m) => m.includes("[claim-lease]") && m.includes("null projectId"),
-        ),
-      ).toBe(true);
+      expect(warned.some((m) => m.includes("[claim-lease]") && m.includes("null projectId"))).toBe(
+        true,
+      );
     } finally {
       warnSpy.mockRestore();
     }
@@ -512,11 +462,7 @@ describe("claim-lease service", () => {
       projectId: project.id,
       // createTestEpic has no assigneeId override; set it directly.
     });
-    testApp.db
-      .update(epics)
-      .set({ assigneeId: a.user.id })
-      .where(eq(epics.id, epic.id))
-      .run();
+    testApp.db.update(epics).set({ assigneeId: a.user.id }).where(eq(epics.id, epic.id)).run();
     svc.acquireLease("epic", epic.id, { id: a.user.id }, { now: t0, ttlMs: 1000 });
     const rEpic = svc.sweepStaleClaims({
       entityType: "epic",
@@ -526,8 +472,7 @@ describe("claim-lease service", () => {
     });
     expect(rEpic.reclaimed).toHaveLength(1);
     expect(
-      testApp.db.select().from(epics).where(eq(epics.id, epic.id)).get()!
-        .assigneeId,
+      testApp.db.select().from(epics).where(eq(epics.id, epic.id)).get()!.assigneeId,
     ).toBeNull();
     const epicAudit = auditRows(epic.id);
     expect(epicAudit).toHaveLength(1);
@@ -542,10 +487,15 @@ describe("claim-lease service", () => {
       .set({ claimedBy: a.user.id })
       .where(eq(proposals.id, proposal.id))
       .run();
-    svc.acquireLease("proposal", proposal.id, { id: a.user.id }, {
-      now: t0,
-      ttlMs: 1000,
-    });
+    svc.acquireLease(
+      "proposal",
+      proposal.id,
+      { id: a.user.id },
+      {
+        now: t0,
+        ttlMs: 1000,
+      },
+    );
     const rProp = svc.sweepStaleClaims({
       entityType: "proposal",
       entityId: proposal.id,
@@ -554,11 +504,7 @@ describe("claim-lease service", () => {
     });
     expect(rProp.reclaimed).toHaveLength(1);
     expect(
-      testApp.db
-        .select()
-        .from(proposals)
-        .where(eq(proposals.id, proposal.id))
-        .get()!.claimedBy,
+      testApp.db.select().from(proposals).where(eq(proposals.id, proposal.id)).get()!.claimedBy,
     ).toBeNull();
     const propAudit = auditRows(proposal.id);
     expect(propAudit).toHaveLength(1);
@@ -599,11 +545,7 @@ describe("claim-lease service", () => {
     expect(result.reclaimed).toHaveLength(2);
     // Two leases reclaimed, two remain.
     expect(
-      testApp.db
-        .select()
-        .from(claimLeases)
-        .where(eq(claimLeases.entityType, "task"))
-        .all(),
+      testApp.db.select().from(claimLeases).where(eq(claimLeases.entityType, "task")).all(),
     ).toHaveLength(2);
   });
 
@@ -624,11 +566,7 @@ describe("claim-lease service", () => {
     // transition is performed.
     const epic = createTestEpic(testApp.db, { projectId: project.id });
     expect(epic.status).toBe("draft");
-    testApp.db
-      .update(epics)
-      .set({ assigneeId: a.user.id })
-      .where(eq(epics.id, epic.id))
-      .run();
+    testApp.db.update(epics).set({ assigneeId: a.user.id }).where(eq(epics.id, epic.id)).run();
 
     const t0 = new Date("2026-06-06T10:00:00.000Z");
     svc.acquireLease("epic", epic.id, { id: a.user.id }, { now: t0, ttlMs: 1000 });
@@ -687,10 +625,15 @@ describe("claim-lease service", () => {
       .run();
 
     const t0 = new Date("2026-06-06T10:00:00.000Z");
-    svc.acquireLease("proposal", proposal.id, { id: a.user.id }, {
-      now: t0,
-      ttlMs: 1000,
-    });
+    svc.acquireLease(
+      "proposal",
+      proposal.id,
+      { id: a.user.id },
+      {
+        now: t0,
+        ttlMs: 1000,
+      },
+    );
 
     const reclaimedListener = vi.fn();
     getEventBus().on(EVENT_NAMES.CLAIM_LEASE_RECLAIMED, reclaimedListener);
@@ -711,11 +654,7 @@ describe("claim-lease service", () => {
     });
 
     // Status untouched (still open), holder cleared via claimed_by.
-    const fresh = testApp.db
-      .select()
-      .from(proposals)
-      .where(eq(proposals.id, proposal.id))
-      .get();
+    const fresh = testApp.db.select().from(proposals).where(eq(proposals.id, proposal.id)).get();
     expect(fresh!.status).toBe("open");
     expect(fresh!.claimedBy).toBeNull();
 
@@ -744,11 +683,7 @@ describe("claim-lease service", () => {
 
     // (a) Epic with future expiry — clearly live.
     const liveEpic = createTestEpic(testApp.db, { projectId: project.id });
-    testApp.db
-      .update(epics)
-      .set({ assigneeId: a.user.id })
-      .where(eq(epics.id, liveEpic.id))
-      .run();
+    testApp.db.update(epics).set({ assigneeId: a.user.id }).where(eq(epics.id, liveEpic.id)).run();
     svc.acquireLease("epic", liveEpic.id, { id: a.user.id }, { now: t0, ttlMs: 60_000 });
     expect(
       svc.sweepStaleClaims({
@@ -766,10 +701,15 @@ describe("claim-lease service", () => {
       .set({ claimedBy: a.user.id })
       .where(eq(proposals.id, graceProposal.id))
       .run();
-    svc.acquireLease("proposal", graceProposal.id, { id: a.user.id }, {
-      now: t0,
-      ttlMs: 1000,
-    });
+    svc.acquireLease(
+      "proposal",
+      graceProposal.id,
+      { id: a.user.id },
+      {
+        now: t0,
+        ttlMs: 1000,
+      },
+    );
     expect(
       svc.sweepStaleClaims({
         entityType: "proposal",
@@ -781,16 +721,12 @@ describe("claim-lease service", () => {
     ).toHaveLength(0);
 
     // Holders + leases intact; nothing audited, nothing emitted.
+    expect(testApp.db.select().from(epics).where(eq(epics.id, liveEpic.id)).get()!.assigneeId).toBe(
+      a.user.id,
+    );
     expect(
-      testApp.db.select().from(epics).where(eq(epics.id, liveEpic.id)).get()!
-        .assigneeId,
-    ).toBe(a.user.id);
-    expect(
-      testApp.db
-        .select()
-        .from(proposals)
-        .where(eq(proposals.id, graceProposal.id))
-        .get()!.claimedBy,
+      testApp.db.select().from(proposals).where(eq(proposals.id, graceProposal.id)).get()!
+        .claimedBy,
     ).toBe(a.user.id);
     expect(leaseRow("epic", liveEpic.id)).toBeDefined();
     expect(leaseRow("proposal", graceProposal.id)).toBeDefined();

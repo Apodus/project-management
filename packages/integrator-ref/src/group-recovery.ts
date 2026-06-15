@@ -87,7 +87,6 @@ export interface RecoverResult {
   outcomes: IncidentRecoveryOutcome[];
 }
 
-
 // ─── recoverOrphanedInner ─────────────────────────────────────────────
 
 /**
@@ -137,8 +136,7 @@ async function rollforwardOne(
   args: RecoverOrphanedInnerArgs,
   deps: RecoverOrphanedInnerDeps,
 ): Promise<IncidentRecoveryOutcome> {
-  const { pmClient, logger, innerLane, outerLane, gitRemote, gitMainBranch } =
-    deps;
+  const { pmClient, logger, innerLane, outerLane, gitRemote, gitMainBranch } = deps;
   const O = incident.orphanedSha;
   const gitlinkPath = innerLane.gitlinkPath;
 

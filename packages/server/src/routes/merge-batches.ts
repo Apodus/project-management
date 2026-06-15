@@ -5,10 +5,13 @@ import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
 
 // ─── Param schema ─────────────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Batch-marker event schema (Zod-4 mirror of batch.ts BatchEvent) ──
 // LOCAL discriminated union — NO @pm/shared import (the integrator's
@@ -76,9 +79,18 @@ const relayRoute = createRoute({
       description: "Accepted and re-emitted",
       content: { "application/json": { schema: acceptedEnvelope } },
     },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 

@@ -59,15 +59,21 @@ const updateMilestoneBody = z
   })
   .openapi("UpdateMilestone");
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const milestoneIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const milestoneIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 

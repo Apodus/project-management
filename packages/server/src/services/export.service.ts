@@ -56,11 +56,7 @@ export function exportProject(
   const includeActivity = options?.includeActivity ?? false;
 
   // Get project
-  const project = db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .get();
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
 
   if (!project) {
     throw new AppError(404, "NOT_FOUND", `Project not found: ${projectId}`);
@@ -73,11 +69,7 @@ export function exportProject(
     .where(eq(proposals.projectId, projectId))
     .all();
 
-  const projectEpics = db
-    .select()
-    .from(epics)
-    .where(eq(epics.projectId, projectId))
-    .all();
+  const projectEpics = db.select().from(epics).where(eq(epics.projectId, projectId)).all();
 
   const projectMilestones = db
     .select()
@@ -85,22 +77,14 @@ export function exportProject(
     .where(eq(milestones.projectId, projectId))
     .all();
 
-  const projectTasks = db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.projectId, projectId))
-    .all();
+  const projectTasks = db.select().from(tasks).where(eq(tasks.projectId, projectId)).all();
 
   const taskIds = projectTasks.map((t) => t.id);
 
   // Get comments for tasks and proposals in this project
   const projectComments: Record<string, unknown>[] = [];
   for (const task of projectTasks) {
-    const taskComments = db
-      .select()
-      .from(comments)
-      .where(eq(comments.taskId, task.id))
-      .all();
+    const taskComments = db.select().from(comments).where(eq(comments.taskId, task.id)).all();
     projectComments.push(...taskComments);
   }
   for (const proposal of projectProposals) {
@@ -113,20 +97,12 @@ export function exportProject(
   }
 
   // Get labels for this project
-  const projectLabels = db
-    .select()
-    .from(labels)
-    .where(eq(labels.projectId, projectId))
-    .all();
+  const projectLabels = db.select().from(labels).where(eq(labels.projectId, projectId)).all();
 
   // Get task_labels for tasks in this project
   const projectTaskLabels: Record<string, unknown>[] = [];
   for (const taskId of taskIds) {
-    const tl = db
-      .select()
-      .from(taskLabels)
-      .where(eq(taskLabels.taskId, taskId))
-      .all();
+    const tl = db.select().from(taskLabels).where(eq(taskLabels.taskId, taskId)).all();
     projectTaskLabels.push(...tl);
   }
 
@@ -144,11 +120,7 @@ export function exportProject(
   // Get git_refs for tasks in this project
   const projectGitRefs: Record<string, unknown>[] = [];
   for (const taskId of taskIds) {
-    const refs = db
-      .select()
-      .from(gitRefs)
-      .where(eq(gitRefs.taskId, taskId))
-      .all();
+    const refs = db.select().from(gitRefs).where(eq(gitRefs.taskId, taskId)).all();
     projectGitRefs.push(...refs);
   }
 
@@ -223,11 +195,7 @@ function validateImportData(data: unknown): ExportData {
   ];
   for (const key of requiredArrays) {
     if (!Array.isArray(d[key])) {
-      throw new AppError(
-        400,
-        "INVALID_FORMAT",
-        `Import data must include "${key}" as an array`,
-      );
+      throw new AppError(400, "INVALID_FORMAT", `Import data must include "${key}" as an array`);
     }
   }
 
@@ -486,11 +454,7 @@ export function importProject(
   const importedProjectId = runImport();
 
   // Return the new project
-  const newProject = db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, importedProjectId))
-    .get();
+  const newProject = db.select().from(projects).where(eq(projects.id, importedProjectId)).get();
 
   return newProject as unknown as Record<string, unknown>;
 }
@@ -508,11 +472,7 @@ export function backupDatabase(): BackupResult {
 
   const currentDbPath = dbPath[0]?.file;
   if (!currentDbPath || currentDbPath === "" || currentDbPath === ":memory:") {
-    throw new AppError(
-      400,
-      "BACKUP_ERROR",
-      "Cannot backup an in-memory database",
-    );
+    throw new AppError(400, "BACKUP_ERROR", "Cannot backup an in-memory database");
   }
 
   // Create backup directory

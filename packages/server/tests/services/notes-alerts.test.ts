@@ -88,11 +88,7 @@ describe("notes on-read backlog-age alert (Campaign C2 §P5)", () => {
     expect(calls).toHaveLength(1);
 
     // Resolve: triage the note → openCount 0, latch resets, no fire.
-    testApp.db
-      .update(notes)
-      .set({ status: "triaged" })
-      .where(eq(notes.id, noteId))
-      .run();
+    testApp.db.update(notes).set({ status: "triaged" }).where(eq(notes.id, noteId)).run();
     const cleared = notesHealth.computeNotesHealth(project.id, NOW);
     expect(cleared.openCount).toBe(0);
     expect(calls).toHaveLength(1); // no new fire

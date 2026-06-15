@@ -81,10 +81,7 @@ export function createWebhookRoutes(): OpenAPIHono<{
     const body = c.req.valid("json");
 
     if (body.event === "branch_created") {
-      const ref = gitAutoLinkService.autoLinkBranch(
-        body.ref,
-        body.project_id,
-      );
+      const ref = gitAutoLinkService.autoLinkBranch(body.ref, body.project_id);
 
       return c.json(
         {

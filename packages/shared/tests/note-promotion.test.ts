@@ -10,9 +10,7 @@ describe("deriveNotePromotion", () => {
   });
 
   it("short title + body → verbatim title, body as description", () => {
-    expect(
-      deriveNotePromotion({ title: "Caching idea", body: "Use an LRU cache." }),
-    ).toEqual({
+    expect(deriveNotePromotion({ title: "Caching idea", body: "Use an LRU cache." })).toEqual({
       title: "Caching idea",
       description: "Use an LRU cache.",
     });

@@ -83,13 +83,8 @@ export function useReleaseClaimTo() {
 export function useReleaseClaim() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      entityType,
-      id,
-    }: {
-      entityType: ClaimEntityType;
-      id: string;
-    }) => releaseClaim(entityType, id),
+    mutationFn: ({ entityType, id }: { entityType: ClaimEntityType; id: string }) =>
+      releaseClaim(entityType, id),
     onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: claimKeys.all });
       queryClient.invalidateQueries({
@@ -136,9 +131,7 @@ export function useRequestClaimTakeover() {
           description: "The stale claim was granted to you.",
         });
       } else if (result.status === "notified_holder") {
-        toast.info(
-          "Holder notified — live claims are never taken over; the claim was not changed",
-        );
+        toast.info("Holder notified — live claims are never taken over; the claim was not changed");
       } else if (result.status === "already_claimed_by_you") {
         toast.info("You already hold this claim");
       } else if (result.status === "not_held") {

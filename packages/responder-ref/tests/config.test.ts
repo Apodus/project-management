@@ -43,10 +43,8 @@ describe("loadConfig", () => {
     ).toBe(false);
     // CLI flag present ⇒ true even if env says off.
     expect(
-      loadConfig(
-        { enabled: true },
-        { ...baseEnv, PM_PROJECT_ID: "p", PM_RESPONDER_ENABLED: "no" },
-      ).enabled,
+      loadConfig({ enabled: true }, { ...baseEnv, PM_PROJECT_ID: "p", PM_RESPONDER_ENABLED: "no" })
+        .enabled,
     ).toBe(true);
   });
 
@@ -106,7 +104,11 @@ describe("loadConfig", () => {
 
   it("A4 P1: autoImplement.budget defaults generous; env overrides via positiveInt", () => {
     const def = loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement.budget;
-    expect(def).toEqual({ maxConcurrentArcs: 100, maxArcDurationSec: 604800, stallTimeoutSec: 86400 });
+    expect(def).toEqual({
+      maxConcurrentArcs: 100,
+      maxArcDurationSec: 604800,
+      stallTimeoutSec: 86400,
+    });
     const over = loadConfig(
       {},
       {
@@ -127,7 +129,11 @@ describe("loadConfig", () => {
         PM_AUTO_IMPLEMENT_MAX_ARC_DURATION_SEC: "nope",
       },
     ).autoImplement.budget;
-    expect(bad).toEqual({ maxConcurrentArcs: 100, maxArcDurationSec: 604800, stallTimeoutSec: 86400 });
+    expect(bad).toEqual({
+      maxConcurrentArcs: 100,
+      maxArcDurationSec: 604800,
+      stallTimeoutSec: 86400,
+    });
   });
 
   it("A4 P3: budget.stallTimeoutSec defaults to 86400; PM_AUTO_IMPLEMENT_STALL_TIMEOUT_SEC parses via positiveInt", () => {
@@ -208,10 +214,8 @@ describe("loadConfig", () => {
   it("autoImplement.verifyCmd defaults to '' and honors PM_AUTO_IMPLEMENT_VERIFY_CMD", () => {
     expect(loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" }).autoImplement.verifyCmd).toBe("");
     expect(
-      loadConfig(
-        {},
-        { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_VERIFY_CMD: "pnpm test" },
-      ).autoImplement.verifyCmd,
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_AUTO_IMPLEMENT_VERIFY_CMD: "pnpm test" })
+        .autoImplement.verifyCmd,
     ).toBe("pnpm test");
   });
 

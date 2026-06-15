@@ -13,11 +13,7 @@ const VALID_TIMESTAMP = "2026-05-27T12:00:00.000Z";
 
 describe("MERGE_INCIDENT_STATES", () => {
   it("contains exactly the canonical values in canonical order", () => {
-    expect([...MERGE_INCIDENT_STATES]).toEqual([
-      "open",
-      "auto_resolved",
-      "human_resolved",
-    ]);
+    expect([...MERGE_INCIDENT_STATES]).toEqual(["open", "auto_resolved", "human_resolved"]);
   });
 
   it("starts with 'open' (the DB column default)", () => {
@@ -49,21 +45,15 @@ describe("mergeIncidentResolutionSchema", () => {
   });
 
   it("accepts a bare mode with no optional fields", () => {
-    expect(
-      mergeIncidentResolutionSchema.parse({ mode: "human" }),
-    ).toBeTruthy();
+    expect(mergeIncidentResolutionSchema.parse({ mode: "human" })).toBeTruthy();
   });
 
   it("rejects an unknown mode", () => {
-    expect(() =>
-      mergeIncidentResolutionSchema.parse({ mode: "magic" }),
-    ).toThrow();
+    expect(() => mergeIncidentResolutionSchema.parse({ mode: "magic" })).toThrow();
   });
 
   it("rejects a missing mode", () => {
-    expect(() =>
-      mergeIncidentResolutionSchema.parse({ note: "no mode" }),
-    ).toThrow();
+    expect(() => mergeIncidentResolutionSchema.parse({ note: "no mode" })).toThrow();
   });
 });
 
@@ -133,15 +123,11 @@ describe("mergeIncidentSchema", () => {
   });
 
   it("rejects unknown state", () => {
-    expect(() =>
-      mergeIncidentSchema.parse({ ...validIncident, state: "closed" }),
-    ).toThrow();
+    expect(() => mergeIncidentSchema.parse({ ...validIncident, state: "closed" })).toThrow();
   });
 
   it("rejects unknown type", () => {
-    expect(() =>
-      mergeIncidentSchema.parse({ ...validIncident, type: "orphaned_outer" }),
-    ).toThrow();
+    expect(() => mergeIncidentSchema.parse({ ...validIncident, type: "orphaned_outer" })).toThrow();
   });
 
   it("rejects a malformed resolution (unknown mode)", () => {

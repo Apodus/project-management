@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  createTestApp,
-  createTestProject,
-  createTestTask,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestProject, createTestTask, type TestApp } from "../utils.js";
 import { createId } from "@pm/shared";
 
 describe("Webhook API", () => {

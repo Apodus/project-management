@@ -11,7 +11,6 @@ export function useDocumentTitle(): void {
   const unreadCount = useConnectionStore((s) => s.unreadCount);
 
   useEffect(() => {
-    document.title =
-      unreadCount > 0 ? `(${unreadCount}) ${BASE_TITLE}` : BASE_TITLE;
+    document.title = unreadCount > 0 ? `(${unreadCount}) ${BASE_TITLE}` : BASE_TITLE;
   }, [unreadCount]);
 }

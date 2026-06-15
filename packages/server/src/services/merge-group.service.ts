@@ -1284,9 +1284,7 @@ export type ForceLandGroupCheck =
       groupState: "rejected" | "partially_landed";
     };
 
-export function assertForceLandableViaGroup(
-  requestId: string,
-): ForceLandGroupCheck {
+export function assertForceLandableViaGroup(requestId: string): ForceLandGroupCheck {
   const row = readRequest(requestId);
   if (!row) {
     throw new AppError(404, "NOT_FOUND", `Merge request not found: ${requestId}`);

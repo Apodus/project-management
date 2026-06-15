@@ -104,7 +104,7 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
         // !dimmed so a chain-off node only dims.
         !dimmed &&
           lifecycle === "future" &&
-          "outline-dashed outline-1 outline-offset-[-2px] outline-muted-foreground/40",
+          "outline-muted-foreground/40 outline-dashed outline-1 outline-offset-[-2px]",
       )}
       // SINGLE opacity source = the target. dimmed (chain-off) -> 0.25; else the
       // recency fade. The browser interpolates current -> this, both directions.
@@ -143,7 +143,7 @@ function EpicNodeComponent({ data }: NodeProps<EpicFlowNode>) {
           glance without reflowing the tag/topic/progress layout. `live` is muted,
           `unclaimed` renders nothing (badge returns null). */}
       <div className="absolute right-1 top-1 z-20">
-        <ClaimStateBadge state={claimState} className="text-[9px] px-1 py-0" />
+        <ClaimStateBadge state={claimState} className="px-1 py-0 text-[9px]" />
       </div>
 
       {/* Content sits above the fill. */}

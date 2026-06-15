@@ -7,17 +7,8 @@ import {
   type LeaseEntityType,
   type LeaseLiveness,
 } from "@pm/shared";
-import {
-  getDb,
-  claimLeases,
-  tasks,
-  epics,
-  proposals,
-} from "../db/index.js";
-import {
-  record as recordAudit,
-  emitAuditRecorded,
-} from "./audit.service.js";
+import { getDb, claimLeases, tasks, epics, proposals } from "../db/index.js";
+import { record as recordAudit, emitAuditRecorded } from "./audit.service.js";
 import { getEventBus, EVENT_NAMES } from "../events/event-bus.js";
 
 // ─── Config ───────────────────────────────────────────────────────
@@ -44,10 +35,7 @@ function parsePositiveSec(raw: string | undefined, defaultMs: number): number {
   return Number.isNaN(sec) || sec <= 0 ? defaultMs : sec * 1000;
 }
 
-const LEASE_TTL_MS = parsePositiveSec(
-  process.env.PM_LEASE_TTL_SEC,
-  LEASE_TTL_MS_DEFAULT,
-);
+const LEASE_TTL_MS = parsePositiveSec(process.env.PM_LEASE_TTL_SEC, LEASE_TTL_MS_DEFAULT);
 
 /**
  * PURE resolver for the reclaim grace (ms) from a raw PM_LEASE_GRACE_SEC
@@ -155,20 +143,12 @@ const ENTITY_CFG: Record<LeaseEntityType, EntityConfig> = {
 /**
  * Read the lease for (entityType, entityId). Null when no lease exists.
  */
-export function readLease(
-  entityType: LeaseEntityType,
-  entityId: string,
-): ClaimLeaseRow | null {
+export function readLease(entityType: LeaseEntityType, entityId: string): ClaimLeaseRow | null {
   const db = getDb();
   const row = db
     .select()
     .from(claimLeases)
-    .where(
-      and(
-        eq(claimLeases.entityType, entityType),
-        eq(claimLeases.entityId, entityId),
-      ),
-    )
+    .where(and(eq(claimLeases.entityType, entityType), eq(claimLeases.entityId, entityId)))
     .get();
   return (row as ClaimLeaseRow | undefined) ?? null;
 }
@@ -192,12 +172,7 @@ export function readLeasesFor(
   const rows = getDb()
     .select()
     .from(claimLeases)
-    .where(
-      and(
-        eq(claimLeases.entityType, entityType),
-        inArray(claimLeases.entityId, entityIds),
-      ),
-    )
+    .where(and(eq(claimLeases.entityType, entityType), inArray(claimLeases.entityId, entityIds)))
     .all() as ClaimLeaseRow[];
 
   for (const row of rows) result.set(row.entityId, row);
@@ -343,18 +318,10 @@ export function renewLease(
  * missing lease is a no-op. The teardown primitive for release/terminal/
  * unassign paths (P3), where the holder is going away so the lease must too.
  */
-export function deleteLease(
-  entityType: LeaseEntityType,
-  entityId: string,
-): void {
+export function deleteLease(entityType: LeaseEntityType, entityId: string): void {
   getDb()
     .delete(claimLeases)
-    .where(
-      and(
-        eq(claimLeases.entityType, entityType),
-        eq(claimLeases.entityId, entityId),
-      ),
-    )
+    .where(and(eq(claimLeases.entityType, entityType), eq(claimLeases.entityId, entityId)))
     .run();
 }
 
@@ -410,10 +377,7 @@ export function sweepStaleClaims(opts: {
       .select()
       .from(claimLeases)
       .where(
-        and(
-          eq(claimLeases.entityType, entityType),
-          lt(claimLeases.expiresAt, staleThresholdIso),
-        ),
+        and(eq(claimLeases.entityType, entityType), lt(claimLeases.expiresAt, staleThresholdIso)),
       )
       .orderBy(asc(claimLeases.expiresAt))
       .limit(opts.limit ?? 50)
@@ -463,11 +427,9 @@ function reclaimOne(
   // (nothing to clear, and no projectId to audit against) — skip, but WARN
   // (C2 de-silence): a silently-skipped candidate would otherwise look like a
   // healthy live claim forever.
-  const entityRow = db
-    .select()
-    .from(cfg.table)
-    .where(eq(cfg.table.id, entityId))
-    .get() as EntityRow | undefined;
+  const entityRow = db.select().from(cfg.table).where(eq(cfg.table.id, entityId)).get() as
+    | EntityRow
+    | undefined;
   if (!entityRow) {
     console.warn(
       `[claim-lease] reclaim skipped: ${entityType} ${entityId} has a lapsed lease but the entity row is gone (unreclaimable; lease left in place)`,
@@ -512,9 +474,7 @@ function reclaimOne(
       // the delete affects 0 rows — abort this reclaim (treat as live).
       const del = tx
         .delete(claimLeases)
-        .where(
-          and(eq(claimLeases.id, fresh.id), eq(claimLeases.holderId, oldHolder)),
-        )
+        .where(and(eq(claimLeases.id, fresh.id), eq(claimLeases.holderId, oldHolder)))
         .run();
       if (del.changes === 0) {
         throw new ReclaimAborted();
@@ -555,11 +515,7 @@ function reclaimOne(
   }
 
   // After commit: emit the domain event + audit.recorded.
-  const updated = db
-    .select()
-    .from(cfg.table)
-    .where(eq(cfg.table.id, entityId))
-    .get() as EntityRow;
+  const updated = db.select().from(cfg.table).where(eq(cfg.table.id, entityId)).get() as EntityRow;
   getEventBus().emit(EVENT_NAMES.CLAIM_LEASE_RECLAIMED, {
     entity: updated,
     entityType: cfg.auditTargetType,

@@ -68,11 +68,7 @@ import {
   mergeAttempts,
   type AppDatabase,
 } from "../../server/src/db/index.js";
-import {
-  createTestProject,
-  createTestAiAgent,
-  createTestTask,
-} from "../../server/tests/utils.js";
+import { createTestProject, createTestAiAgent, createTestTask } from "../../server/tests/utils.js";
 
 // ─── Gating ───────────────────────────────────────────────────────
 
@@ -90,8 +86,7 @@ const RUN = hasGit() && distExists;
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // Belt-and-suspenders: never leak the spawned integrator even if afterAll is
 // skipped (e.g. a beforeAll throw). Module-level so the exit hook can see it.
@@ -208,10 +203,7 @@ describe.skipIf(!RUN)("integrator full-stack E2E", () => {
       },
     });
     project = { id: proj.id, slug: proj.slug };
-    db.update(projects)
-      .set({ gitRepoUrl: bareRepo })
-      .where(eq(projects.id, project.id))
-      .run();
+    db.update(projects).set({ gitRepoUrl: bareRepo }).where(eq(projects.id, project.id)).run();
 
     // ── Spawn the built integrator (separate process, HTTP only). ──
     proc = spawn(
@@ -302,21 +294,15 @@ describe.skipIf(!RUN)("integrator full-stack E2E", () => {
     pickedUpAt: string | null;
   }
 
-  async function submit(
-    token: string,
-    body: Record<string, unknown>,
-  ): Promise<MergeRequest> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/merge-requests`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+  async function submit(token: string, body: Record<string, unknown>): Promise<MergeRequest> {
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/merge-requests`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(body),
+    });
     expect(res.status).toBe(201);
     return (await res.json()).data as MergeRequest;
   }
@@ -331,10 +317,7 @@ describe.skipIf(!RUN)("integrator full-stack E2E", () => {
 
   const TERMINAL = new Set(["landed", "rejected", "abandoned"]);
 
-  async function pollTerminal(
-    id: string,
-    timeoutMs = 25_000,
-  ): Promise<MergeRequest> {
+  async function pollTerminal(id: string, timeoutMs = 25_000): Promise<MergeRequest> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const r = await getRequest(id);
@@ -360,13 +343,10 @@ describe.skipIf(!RUN)("integrator full-stack E2E", () => {
     const events: SseEvent[] = [];
     let buffer = "";
     const done = (async () => {
-      const res = await fetch(
-        `${baseUrl}/api/v1/events?project_id=${project.id}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        },
-      );
+      const res = await fetch(`${baseUrl}/api/v1/events?project_id=${project.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       try {
@@ -386,8 +366,7 @@ describe.skipIf(!RUN)("integrator full-stack E2E", () => {
               } else if (line.startsWith("data:")) {
                 try {
                   const data = JSON.parse(line.slice("data:".length).trim());
-                  if (typeof data.entity_id === "string")
-                    entityId = data.entity_id;
+                  if (typeof data.entity_id === "string") entityId = data.entity_id;
                 } catch {
                   /* non-JSON data line */
                 }
@@ -436,9 +415,7 @@ describe.skipIf(!RUN)("integrator full-stack E2E", () => {
     const refs = db
       .select()
       .from(gitRefs)
-      .where(
-        and(eq(gitRefs.taskId, task.id), eq(gitRefs.refType, "landed_sha")),
-      )
+      .where(and(eq(gitRefs.taskId, task.id), eq(gitRefs.refType, "landed_sha")))
       .all();
     expect(refs.length).toBe(1);
     expect(refs[0].refValue).toBe(final.landedSha);
@@ -475,12 +452,7 @@ describe.skipIf(!RUN)("integrator full-stack E2E", () => {
     const rejComments = db
       .select()
       .from(comments)
-      .where(
-        and(
-          eq(comments.taskId, task.id),
-          eq(comments.commentType, "merge_rejection"),
-        ),
-      )
+      .where(and(eq(comments.taskId, task.id), eq(comments.commentType, "merge_rejection")))
       .all();
     expect(rejComments.length).toBe(1);
   }, 40_000);
@@ -510,14 +482,12 @@ describe.skipIf(!RUN)("integrator full-stack E2E", () => {
 
     // FIFO: earlier enqueuedAt → earlier pickedUpAt.
     const [early, late] =
-      final1.enqueuedAt <= final2.enqueuedAt
-        ? [final1, final2]
-        : [final2, final1];
+      final1.enqueuedAt <= final2.enqueuedAt ? [final1, final2] : [final2, final1];
     expect(early.pickedUpAt).toBeTruthy();
     expect(late.pickedUpAt).toBeTruthy();
-    expect(
-      new Date(early.pickedUpAt!).getTime(),
-    ).toBeLessThanOrEqual(new Date(late.pickedUpAt!).getTime());
+    expect(new Date(early.pickedUpAt!).getTime()).toBeLessThanOrEqual(
+      new Date(late.pickedUpAt!).getTime(),
+    );
 
     // The last-landed SHA is the current tip of main.
     expect(await mainSha()).toBe(late.landedSha);
@@ -551,10 +521,10 @@ describe.skipIf(!RUN)("integrator full-stack E2E", () => {
     });
 
     // Cancel immediately (queued → abandoned) while the integrator is starved.
-    const cancel = await fetch(
-      `${baseUrl}/api/v1/merge-requests/${req.id}/cancel`,
-      { method: "POST", headers: { Authorization: `Bearer ${workerToken}` } },
-    );
+    const cancel = await fetch(`${baseUrl}/api/v1/merge-requests/${req.id}/cancel`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${workerToken}` },
+    });
     expect(cancel.status).toBe(200);
     expect((await cancel.json()).data.status).toBe("abandoned");
 

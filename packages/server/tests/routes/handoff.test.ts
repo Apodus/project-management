@@ -107,12 +107,9 @@ describe("Handoff endpoints (release-to + request-takeover)", () => {
 
     it("unknown task id → 404", async () => {
       const agentB = createTestAiAgent(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${createId()}/release-to`,
-        { body: { reason: "nope", targetId: agentB.user.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${createId()}/release-to`, {
+        body: { reason: "nope", targetId: agentB.user.id },
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -171,7 +168,9 @@ describe("Handoff endpoints (release-to + request-takeover)", () => {
 
       const get = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}`);
       expect((await get.json()).data.assigneeId).toBe(agentA.user.id);
-      expect(auditService.list({ projectId: project.id, action: "force_claim" }).data).toHaveLength(0);
+      expect(auditService.list({ projectId: project.id, action: "force_claim" }).data).toHaveLength(
+        0,
+      );
     });
 
     it("STALE claim → 200 force_claimed, holder flips to requester", async () => {

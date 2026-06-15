@@ -313,9 +313,7 @@ describe("TrainDashboardPage — seeded data", () => {
     render(<TrainDashboardPage />);
     expect(screen.getByText(/Lane lock release failed/)).toBeInTheDocument();
     expect(screen.getByText(/HTTP 500: release exploded/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/staleness sweep or a force-release/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/staleness sweep or a force-release/)).toBeInTheDocument();
   });
 
   it("renders NO release-failure warning when last_release_failure is null (C2)", () => {

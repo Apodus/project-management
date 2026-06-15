@@ -739,7 +739,12 @@ async function runAnsweringSession(
           // auto_implement effectively DISABLED, this is false and the
           // `!autoImpl.enabled` fallback below escalates as before (byte-identical).
           deps.logger.info(
-            { escalationId, kind: result.kind, size: result.size, autoImplementMode: autoImpl.mode },
+            {
+              escalationId,
+              kind: result.kind,
+              size: result.size,
+              autoImplementMode: autoImpl.mode,
+            },
             "implement (auto_implement mode=off) — not acting; off is silent",
           );
           return;
@@ -1334,7 +1339,12 @@ async function runDriveSession(
               `produced a vision (${result.visionPath}) but writing the pre-epic intent marker failed: ${errMessage(markerErr)}`,
             );
             deps.logger.warn(
-              { escalationId, projectId, visionPath: result.visionPath, err: errMessage(markerErr) },
+              {
+                escalationId,
+                projectId,
+                visionPath: result.visionPath,
+                err: errMessage(markerErr),
+              },
               "drive vision_ready but intent-marker addMessage failed; escalated to human (no epic created)",
             );
             break;
@@ -1380,7 +1390,13 @@ async function runDriveSession(
                 `produced a vision (${result.visionPath}) + created epic ${epic.id}, but creating campaign task ${i + 1}/${result.campaigns.length} ("${c.title}") failed: ${errMessage(taskErr)}. The epic + the tasks created so far persist; a human should finish the breakdown.`,
               );
               deps.logger.warn(
-                { escalationId, projectId, epicId: epic.id, campaign: c.title, err: errMessage(taskErr) },
+                {
+                  escalationId,
+                  projectId,
+                  epicId: epic.id,
+                  campaign: c.title,
+                  err: errMessage(taskErr),
+                },
                 "drive createTask failed mid-loop; escalated to human (epic preserved, partial tasks)",
               );
               return; // do NOT fall through to the pendingDrive handoff.
@@ -1399,7 +1415,13 @@ async function runDriveSession(
             epicId: epic.id,
           });
           deps.logger.info(
-            { escalationId, projectId, visionPath: result.visionPath, epicId: epic.id, campaigns: result.campaigns.length },
+            {
+              escalationId,
+              projectId,
+              visionPath: result.visionPath,
+              epicId: epic.id,
+              campaigns: result.campaigns.length,
+            },
             "drive produced a vision + created the epic + tasks; appended pending-drive handoff (stays acknowledged for P2)",
           );
           break;
@@ -1552,7 +1574,16 @@ async function advanceArc(
           `Remaining: ${remaining.join(", ") || "none"}. A human takes over.`;
         await deps.client.escalateToHuman(escalationId, reason);
         deps.logger.warn(
-          { escalationId, projectId, epicId, taskId: task.id, mr: mr.id, status: mr.status, stallTimeoutSec: deps.stallTimeoutSec, landedShas },
+          {
+            escalationId,
+            projectId,
+            epicId,
+            taskId: task.id,
+            mr: mr.id,
+            status: mr.status,
+            stallTimeoutSec: deps.stallTimeoutSec,
+            landedShas,
+          },
           "arc stall: a phase MR is wedged in flight past the stall window; escalated the root to needs_human (landed phases preserved, no rollback)",
         );
         return;
@@ -1676,7 +1707,14 @@ async function advanceArc(
       `Unlanded: ${remaining.join(", ") || "none"}. A human takes over.`;
     await deps.client.escalateToHuman(escalationId, reason);
     deps.logger.warn(
-      { escalationId, projectId, epicId, arcStartedAt, maxArcDurationSec: deps.maxArcDurationSec, landedShas },
+      {
+        escalationId,
+        projectId,
+        epicId,
+        arcStartedAt,
+        maxArcDurationSec: deps.maxArcDurationSec,
+        landedShas,
+      },
       "arc duration cap reached; escalated the root to needs_human (landed phases preserved, no rollback, no further spawn)",
     );
     return; // arc_partial — landed work preserved on main, no rollback, no further spawn.
@@ -1878,7 +1916,11 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
       // remaining candidates this tick.
       if (!canSpawn(state, deps.spawnBudget, now)) {
         deps.logger.info(
-          { projectId, spawned: state.spawnTimestamps.length, maxSpawns: deps.spawnBudget.maxSpawns },
+          {
+            projectId,
+            spawned: state.spawnTimestamps.length,
+            maxSpawns: deps.spawnBudget.maxSpawns,
+          },
           `spawn budget exhausted (${state.spawnTimestamps.length}/${deps.spawnBudget.maxSpawns} in ${deps.spawnBudget.windowSec}s); deferring`,
         );
         break;
@@ -1989,8 +2031,7 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
       // poison cap. A fetch failure is non-fatal: fall through to the normal path.
       try {
         const thread = await deps.client.getEscalation(escalationId);
-        const arc =
-          hasPendingDriveMarker(thread.messages) || hasPendingArcMarker(thread.messages);
+        const arc = hasPendingDriveMarker(thread.messages) || hasPendingArcMarker(thread.messages);
         if (arc) {
           // Route to advanceArc. Hold a concurrency slot + the in-flight marker while
           // it runs (it may spawn an implement session), but DO NOT touch
@@ -2044,7 +2085,13 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
                 try {
                   await deps.client.escalateToHuman(escalationId, reason);
                   deps.logger.warn(
-                    { escalationId, projectId, mr: stalledMr.id, status: stalledMr.status, stallTimeoutSec: deps.stallTimeoutSec },
+                    {
+                      escalationId,
+                      projectId,
+                      mr: stalledMr.id,
+                      status: stalledMr.status,
+                      stallTimeoutSec: deps.stallTimeoutSec,
+                    },
                     "reclaim stall: pending-land bounded MR wedged past the stall window; escalated to human (branch preserved)",
                   );
                 } catch (err) {
@@ -2123,7 +2170,11 @@ export async function responderTick(deps: ResponderDeps, state: ResponderState):
 
       if (!canSpawn(state, deps.spawnBudget, now)) {
         deps.logger.info(
-          { projectId, spawned: state.spawnTimestamps.length, maxSpawns: deps.spawnBudget.maxSpawns },
+          {
+            projectId,
+            spawned: state.spawnTimestamps.length,
+            maxSpawns: deps.spawnBudget.maxSpawns,
+          },
           `spawn budget exhausted (${state.spawnTimestamps.length}/${deps.spawnBudget.maxSpawns} in ${deps.spawnBudget.windowSec}s); deferring reclaim`,
         );
         break;

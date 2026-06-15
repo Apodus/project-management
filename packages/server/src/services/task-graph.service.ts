@@ -28,11 +28,7 @@ interface GraphEdge {
  * are surfaced via the optional `cycles` flag. Edges are never dropped —
  * detection only reads the edge set.
  */
-export function getTaskGraph(
-  projectId: string,
-  epicId: string,
-  caller?: { id: string } | null,
-) {
+export function getTaskGraph(projectId: string, epicId: string, caller?: { id: string } | null) {
   // ── Guard — epic must exist and belong to the project ──
   const epic = epicService.getById(epicId, caller);
   if (epic.projectId !== projectId) {

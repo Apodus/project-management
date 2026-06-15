@@ -71,11 +71,7 @@ export function registerProposalAutoTransitionListener(): () => void {
     const epic = db.select().from(epics).where(eq(epics.id, payload.entityId)).get();
     if (!epic || epic.status !== "completed" || !epic.proposalId) return;
 
-    const proposal = db
-      .select()
-      .from(proposals)
-      .where(eq(proposals.id, epic.proposalId))
-      .get();
+    const proposal = db.select().from(proposals).where(eq(proposals.id, epic.proposalId)).get();
     if (!proposal) return;
 
     const currentStatus = proposal.status as ProposalStatus;
@@ -114,11 +110,7 @@ export function registerProposalAutoTransitionListener(): () => void {
 
     // in_progress → completed: when all non-cancelled tasks are done
     if (currentStatus === "in_progress" && newTaskStatus === "done") {
-      const proposalTasks = db
-        .select()
-        .from(tasks)
-        .where(eq(tasks.proposalId, proposalId))
-        .all();
+      const proposalTasks = db.select().from(tasks).where(eq(tasks.proposalId, proposalId)).all();
 
       if (proposalTasks.length === 0) return;
 
@@ -197,10 +189,7 @@ export function registerAutomationListener(): () => void {
         }
       } catch (error) {
         // Log but don't throw -- automation failures should not break the main flow
-        console.error(
-          `[Automation] Error executing rule "${rule.name}" (${rule.id}):`,
-          error,
-        );
+        console.error(`[Automation] Error executing rule "${rule.name}" (${rule.id}):`, error);
       }
     }
   });
@@ -226,11 +215,7 @@ function handleAutoCompleteEpic(
   const db = getDb();
 
   // Check if ALL tasks in this epic are done
-  const epicTasks = db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.epicId, epicId))
-    .all();
+  const epicTasks = db.select().from(tasks).where(eq(tasks.epicId, epicId)).all();
 
   if (epicTasks.length === 0) return;
   const allDone = epicTasks.every((t) => t.status === "done");
@@ -258,11 +243,7 @@ function handleAutoAdvanceParent(
   const db = getDb();
 
   // Check if ALL subtasks of this parent are done
-  const siblings = db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.parentTaskId, parentTaskId))
-    .all();
+  const siblings = db.select().from(tasks).where(eq(tasks.parentTaskId, parentTaskId)).all();
 
   if (siblings.length === 0) return;
   const allDone = siblings.every((t) => t.status === "done");
@@ -283,7 +264,9 @@ function handleAutoAdvanceParent(
  * Includes entity fields, changes, and top-level payload fields.
  */
 function buildEvalPayload(payload: EventPayload): Record<string, unknown> {
-  const entity = (payload.entity && typeof payload.entity === "object" ? payload.entity : {}) as Record<string, unknown>;
+  const entity = (
+    payload.entity && typeof payload.entity === "object" ? payload.entity : {}
+  ) as Record<string, unknown>;
 
   return {
     ...entity,

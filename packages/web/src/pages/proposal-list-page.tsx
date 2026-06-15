@@ -3,12 +3,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { FileText, MessageSquare, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -32,12 +27,7 @@ import type { Proposal } from "@/lib/api";
 
 // Non-terminal statuses, in the order a human reads them top-to-bottom on the
 // Active tab. Each renders as its own titled section.
-const ACTIVE_STATUSES = [
-  "open",
-  "discussing",
-  "accepted",
-  "in_progress",
-] as const;
+const ACTIVE_STATUSES = ["open", "discussing", "accepted", "in_progress"] as const;
 
 // Terminal statuses get their own tab each, kept out of the Active view.
 const TERMINAL_STATUSES = ["completed", "rejected"] as const;
@@ -48,29 +38,15 @@ function byCreatedDesc(a: Proposal, b: Proposal) {
   return b.createdAt.localeCompare(a.createdAt);
 }
 
-function ProposalCard({
-  proposal,
-  onClick,
-}: {
-  proposal: Proposal;
-  onClick: () => void;
-}) {
+function ProposalCard({ proposal, onClick }: { proposal: Proposal; onClick: () => void }) {
   return (
-    <Card
-      className="cursor-pointer gap-3 py-4 transition-shadow hover:shadow-md"
-      onClick={onClick}
-    >
+    <Card className="cursor-pointer gap-3 py-4 transition-shadow hover:shadow-md" onClick={onClick}>
       <CardHeader className="pb-0">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="line-clamp-1 text-base">
-            {proposal.title}
-          </CardTitle>
+          <CardTitle className="line-clamp-1 text-base">{proposal.title}</CardTitle>
           <Badge
             variant="secondary"
-            className={cn(
-              "shrink-0 text-[11px]",
-              getStatusColor(proposal.status),
-            )}
+            className={cn("shrink-0 text-[11px]", getStatusColor(proposal.status))}
           >
             {formatStatus(proposal.status)}
           </Badge>
@@ -78,15 +54,11 @@ function ProposalCard({
       </CardHeader>
       <CardContent>
         {proposal.description ? (
-          <p className="line-clamp-2 text-sm text-muted-foreground">
-            {proposal.description}
-          </p>
+          <p className="text-muted-foreground line-clamp-2 text-sm">{proposal.description}</p>
         ) : (
-          <p className="text-sm italic text-muted-foreground/50">
-            No description
-          </p>
+          <p className="text-muted-foreground/50 text-sm italic">No description</p>
         )}
-        <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground/70">
+        <div className="text-muted-foreground/70 mt-3 flex items-center gap-3 text-xs">
           <span>{formatRelativeTime(proposal.createdAt)}</span>
         </div>
       </CardContent>
@@ -141,17 +113,12 @@ function ProposalSection({
   onProposalClick: (id: string) => void;
 }) {
   return (
-    <section className="rounded-lg border bg-muted/30 p-4">
+    <section className="bg-muted/30 rounded-lg border p-4">
       <div className="mb-4 flex items-center gap-2">
-        <Badge
-          variant="secondary"
-          className={cn("text-[11px]", getStatusColor(status))}
-        >
+        <Badge variant="secondary" className={cn("text-[11px]", getStatusColor(status))}>
           {formatStatus(status)}
         </Badge>
-        <span className="text-xs text-muted-foreground/70">
-          {proposals.length}
-        </span>
+        <span className="text-muted-foreground/70 text-xs">{proposals.length}</span>
       </div>
       <ProposalGrid proposals={proposals} onProposalClick={onProposalClick} />
     </section>
@@ -189,9 +156,7 @@ export function ProposalListPage() {
   // the terminal lists for their dedicated tabs. All sorted newest-first.
   const activeByStatus = ACTIVE_STATUSES.reduce(
     (acc, status) => {
-      acc[status] = (allProposals?.filter((p) => p.status === status) ?? []).sort(
-        byCreatedDesc,
-      );
+      acc[status] = (allProposals?.filter((p) => p.status === status) ?? []).sort(byCreatedDesc);
       return acc;
     },
     {} as Record<string, Proposal[]>,
@@ -199,9 +164,7 @@ export function ProposalListPage() {
 
   const terminalByStatus = TERMINAL_STATUSES.reduce(
     (acc, status) => {
-      acc[status] = (allProposals?.filter((p) => p.status === status) ?? []).sort(
-        byCreatedDesc,
-      );
+      acc[status] = (allProposals?.filter((p) => p.status === status) ?? []).sort(byCreatedDesc);
       return acc;
     },
     {} as Record<string, Proposal[]>,
@@ -244,7 +207,7 @@ export function ProposalListPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <FileText className="size-6 text-muted-foreground" />
+          <FileText className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Proposals</h1>
           {project && (
             <Badge variant="outline" className="text-xs font-normal">
@@ -265,16 +228,13 @@ export function ProposalListPage() {
               <DialogHeader>
                 <DialogTitle>Create Proposal</DialogTitle>
                 <DialogDescription>
-                  Submit a new proposal for discussion. The AI agent will review
-                  and discuss it with you.
+                  Submit a new proposal for discussion. The AI agent will review and discuss it with
+                  you.
                 </DialogDescription>
               </DialogHeader>
               <div className="mt-4 space-y-4">
                 <div className="space-y-2">
-                  <label
-                    htmlFor="proposal-title"
-                    className="text-sm font-medium leading-none"
-                  >
+                  <label htmlFor="proposal-title" className="text-sm font-medium leading-none">
                     Title
                   </label>
                   <Input
@@ -307,20 +267,11 @@ export function ProposalListPage() {
                 </div>
               </div>
               <DialogFooter className="mt-6">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setDialogOpen(false)}
-                >
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={!title.trim() || createProposal.isPending}
-                >
-                  {createProposal.isPending
-                    ? "Creating..."
-                    : "Create Proposal"}
+                <Button type="submit" disabled={!title.trim() || createProposal.isPending}>
+                  {createProposal.isPending ? "Creating..." : "Create Proposal"}
                 </Button>
               </DialogFooter>
             </form>
@@ -332,9 +283,7 @@ export function ProposalListPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
-              Failed to load proposals. Please try again.
-            </p>
+            <p className="text-destructive text-sm">Failed to load proposals. Please try again.</p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               Retry
             </Button>
@@ -350,10 +299,7 @@ export function ProposalListPage() {
           <TabsTrigger value="active">
             Active
             {!isLoading && (
-              <Badge
-                variant="secondary"
-                className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]"
-              >
+              <Badge variant="secondary" className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]">
                 {activeCount}
               </Badge>
             )}
@@ -362,10 +308,7 @@ export function ProposalListPage() {
             <TabsTrigger key={status} value={status}>
               {formatStatus(status)}
               {!isLoading && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]"
-                >
+                <Badge variant="secondary" className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]">
                   {terminalByStatus[status].length}
                 </Badge>
               )}
@@ -385,10 +328,8 @@ export function ProposalListPage() {
 
           {!isLoading && activeCount === 0 && (
             <div className="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
-              <MessageSquare className="mb-3 size-10 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">
-                No active proposals
-              </p>
+              <MessageSquare className="text-muted-foreground/40 mb-3 size-10" />
+              <p className="text-muted-foreground text-sm">No active proposals</p>
               <Button
                 className="mt-3"
                 size="sm"
@@ -403,16 +344,16 @@ export function ProposalListPage() {
 
           {!isLoading && activeCount > 0 && (
             <div className="mt-4 space-y-4">
-              {ACTIVE_STATUSES.filter(
-                (status) => activeByStatus[status].length > 0,
-              ).map((status) => (
-                <ProposalSection
-                  key={status}
-                  status={status}
-                  proposals={activeByStatus[status]}
-                  onProposalClick={handleProposalClick}
-                />
-              ))}
+              {ACTIVE_STATUSES.filter((status) => activeByStatus[status].length > 0).map(
+                (status) => (
+                  <ProposalSection
+                    key={status}
+                    status={status}
+                    proposals={activeByStatus[status]}
+                    onProposalClick={handleProposalClick}
+                  />
+                ),
+              )}
             </div>
           )}
         </TabsContent>
@@ -430,8 +371,8 @@ export function ProposalListPage() {
 
             {!isLoading && terminalByStatus[status].length === 0 && (
               <div className="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
-                <MessageSquare className="mb-3 size-10 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">
+                <MessageSquare className="text-muted-foreground/40 mb-3 size-10" />
+                <p className="text-muted-foreground text-sm">
                   No {formatStatus(status).toLowerCase()} proposals
                 </p>
               </div>

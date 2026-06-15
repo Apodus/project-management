@@ -56,9 +56,7 @@ describe("integratorHeartbeatSchema", () => {
   });
 
   it("rejects a missing pool_utilization", () => {
-    expect(() =>
-      integratorHeartbeatSchema.parse({ status: "idle", version: "0.0.0" }),
-    ).toThrow();
+    expect(() => integratorHeartbeatSchema.parse({ status: "idle", version: "0.0.0" })).toThrow();
   });
 
   // ── last_release_failure (C2): TRI-STATE on the wire ─────────────
@@ -281,9 +279,7 @@ describe("metricsBundleSchema", () => {
   });
 
   it("rejects a string queue_depth", () => {
-    expect(() =>
-      metricsBundleSchema.parse({ ...validBundle, queue_depth: "2" }),
-    ).toThrow();
+    expect(() => metricsBundleSchema.parse({ ...validBundle, queue_depth: "2" })).toThrow();
   });
 });
 

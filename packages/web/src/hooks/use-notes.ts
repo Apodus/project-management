@@ -60,13 +60,8 @@ export function useNotesHealth(projectId: string | undefined) {
 export function useCreateNote() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      projectId,
-      data,
-    }: {
-      projectId: string;
-      data: CreateNote;
-    }) => createNote(projectId, data),
+    mutationFn: ({ projectId, data }: { projectId: string; data: CreateNote }) =>
+      createNote(projectId, data),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: noteKeys.lists() });
       queryClient.invalidateQueries({
@@ -82,14 +77,8 @@ export function useCreateNote() {
 export function useUpdateNote() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      data,
-    }: {
-      id: string;
-      projectId: string;
-      data: PatchNote;
-    }) => updateNote(id, data),
+    mutationFn: ({ id, data }: { id: string; projectId: string; data: PatchNote }) =>
+      updateNote(id, data),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: noteKeys.lists() });
       queryClient.invalidateQueries({ queryKey: noteKeys.detail(variables.id) });
@@ -106,14 +95,8 @@ export function useUpdateNote() {
 export function useDismissNote() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      reason,
-    }: {
-      id: string;
-      projectId: string;
-      reason: string;
-    }) => dismissNote(id, reason),
+    mutationFn: ({ id, reason }: { id: string; projectId: string; reason: string }) =>
+      dismissNote(id, reason),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: noteKeys.lists() });
       queryClient.invalidateQueries({ queryKey: noteKeys.detail(variables.id) });

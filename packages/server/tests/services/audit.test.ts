@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  createTestApp,
-  createTestProject,
-  createTestUser,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestProject, createTestUser, type TestApp } from "../utils.js";
 import { getDb } from "../../src/db/index.js";
 import * as svc from "../../src/services/audit.service.js";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
@@ -119,9 +114,7 @@ describe("audit service", () => {
     it("filters by action", () => {
       const project = createTestProject(testApp.db);
       const actor = createTestUser(testApp.db);
-      const landId = recordInTx(
-        baseArgs(project.id, actor.id, { action: "land" }),
-      );
+      const landId = recordInTx(baseArgs(project.id, actor.id, { action: "land" }));
       recordInTx(baseArgs(project.id, actor.id, { action: "reject" }));
 
       const out = svc.list({ projectId: project.id, action: "land" });
@@ -247,9 +240,9 @@ describe("audit service", () => {
     });
 
     it("404 for a missing project", () => {
-      expect(() =>
-        svc.list({ projectId: "01PROJECTMISSING000000000000" }),
-      ).toThrowError(expect.objectContaining({ statusCode: 404 }));
+      expect(() => svc.list({ projectId: "01PROJECTMISSING000000000000" })).toThrowError(
+        expect.objectContaining({ statusCode: 404 }),
+      );
     });
   });
 
@@ -261,9 +254,7 @@ describe("audit service", () => {
       expect(keys).toContain("list");
       expect(keys).toContain("emitAuditRecorded");
       // No mutator surface — append-only by omission.
-      const mutators = keys.filter((k) =>
-        /update|delete|remove|mutate|edit/i.test(k),
-      );
+      const mutators = keys.filter((k) => /update|delete|remove|mutate|edit/i.test(k));
       expect(mutators).toEqual([]);
     });
   });

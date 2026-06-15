@@ -1,9 +1,5 @@
 import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
-import {
-  createId,
-  type VerifyResultValue,
-  type VerifyCacheRowView,
-} from "@pm/shared";
+import { createId, type VerifyResultValue, type VerifyCacheRowView } from "@pm/shared";
 import { getDb, verifyCache, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 
@@ -172,10 +168,7 @@ function toView(row: VerifyCacheRow): VerifyCacheRowView {
  * There is no fuzzy/prefix match — a hit is an exact-tuple equality probe, so
  * no stale row can ever serve a verdict for a different tree/step/config.
  */
-export function lookup(
-  args: LookupArgs,
-  now: string,
-): VerifyCacheRowView | null {
+export function lookup(args: LookupArgs, now: string): VerifyCacheRowView | null {
   ensureProjectExists(args.projectId);
   const db = getDb();
 
@@ -405,12 +398,7 @@ export function list(projectId: string, args: ListArgs): ListResult {
  * run that would have cost duration_ms. The last_hit_at window agrees with
  * cacheHitRate's hits basis (§7.2). coalesce → 0 on an empty lane.
  */
-export function timeSaved(
-  projectId: string,
-  resource: string,
-  from: string,
-  to: string,
-): number {
+export function timeSaved(projectId: string, resource: string, from: string, to: string): number {
   const db = getDb();
   return Number(
     db

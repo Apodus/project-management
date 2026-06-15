@@ -39,12 +39,7 @@ describe("handoff primitives (C3 §P5b)", () => {
     return testApp.db
       .select()
       .from(claimLeases)
-      .where(
-        and(
-          eq(claimLeases.entityType, entityType),
-          eq(claimLeases.entityId, entityId),
-        ),
-      )
+      .where(and(eq(claimLeases.entityType, entityType), eq(claimLeases.entityId, entityId)))
       .get();
   }
 
@@ -52,12 +47,7 @@ describe("handoff primitives (C3 §P5b)", () => {
     return testApp.db
       .select()
       .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.targetId, targetId),
-          eq(auditLog.action, "force_claim"),
-        ),
-      )
+      .where(and(eq(auditLog.targetId, targetId), eq(auditLog.action, "force_claim")))
       .all();
   }
 

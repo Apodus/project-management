@@ -1,5 +1,11 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { CLAIM_RESULT_STATUSES, CLAIM_STATUSES, CLAIM_STATES, PROPOSAL_STATUSES, COMMENT_TYPES } from "@pm/shared";
+import {
+  CLAIM_RESULT_STATUSES,
+  CLAIM_STATUSES,
+  CLAIM_STATES,
+  PROPOSAL_STATUSES,
+  COMMENT_TYPES,
+} from "@pm/shared";
 import type { UserType } from "@pm/shared";
 import type { AppVariables } from "../types.js";
 import * as proposalService from "../services/proposal.service.js";
@@ -237,15 +243,21 @@ const implementProposalBody = z
   })
   .openapi("ImplementProposal");
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const proposalIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const proposalIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 const claimFilterQuery = z.enum(["available", "mine", "all"]).optional();
 
@@ -682,11 +694,15 @@ export function createProposalRoutes(): OpenAPIHono<{
     const user = c.get("currentUser");
     // Derive createdBy: AI agents always self-attribute; humans may pass an
     // explicit createdBy to create on behalf of someone else.
-    const createdBy =
-      user?.type === "ai_agent" ? user.id : (body.createdBy ?? user?.id);
+    const createdBy = user?.type === "ai_agent" ? user.id : (body.createdBy ?? user?.id);
     if (!createdBy) {
       return c.json(
-        { error: { code: "MISSING_CREATED_BY", message: "createdBy could not be determined from auth context" } },
+        {
+          error: {
+            code: "MISSING_CREATED_BY",
+            message: "createdBy could not be determined from auth context",
+          },
+        },
         400,
       );
     }
@@ -697,10 +713,7 @@ export function createProposalRoutes(): OpenAPIHono<{
 
     return c.json(
       {
-        data: proposalService.withClaimStatus(
-          proposal,
-          user ? { id: user.id } : null,
-        ),
+        data: proposalService.withClaimStatus(proposal, user ? { id: user.id } : null),
       },
       201,
     );
@@ -710,10 +723,7 @@ export function createProposalRoutes(): OpenAPIHono<{
   router.openapi(getProposalRoute, (c) => {
     const { id } = c.req.valid("param");
     const user = c.get("currentUser");
-    const proposal = proposalService.getById(
-      id,
-      user ? { id: user.id } : null,
-    );
+    const proposal = proposalService.getById(id, user ? { id: user.id } : null);
 
     return c.json({ data: proposal }, 200);
   });
@@ -727,10 +737,7 @@ export function createProposalRoutes(): OpenAPIHono<{
 
     return c.json(
       {
-        data: proposalService.withClaimStatus(
-          proposal,
-          user ? { id: user.id } : null,
-        ),
+        data: proposalService.withClaimStatus(proposal, user ? { id: user.id } : null),
       },
       200,
     );

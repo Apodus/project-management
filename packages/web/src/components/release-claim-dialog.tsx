@@ -44,9 +44,9 @@ export function ReleaseClaimDialog({
         <DialogHeader>
           <DialogTitle>Release claim</DialogTitle>
           <DialogDescription>
-            Release the claim on &ldquo;{item.title}&rdquo;. The holder is
-            cleared and the lease is torn down, returning the item to the
-            unclaimed pool. Use this for a claim whose agent has shut down.
+            Release the claim on &ldquo;{item.title}&rdquo;. The holder is cleared and the lease is
+            torn down, returning the item to the unclaimed pool. Use this for a claim whose agent
+            has shut down.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

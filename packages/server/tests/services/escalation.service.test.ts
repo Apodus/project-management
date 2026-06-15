@@ -1,12 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import {
-  createTestApp,
-  createTestProject,
-  createTestUser,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestProject, createTestUser, type TestApp } from "../utils.js";
 import { escalations, escalationMessages, getRawDb } from "../../src/db/index.js";
 import { AppError } from "../../src/types.js";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
@@ -25,7 +20,10 @@ function raise(
   db: TestApp["db"],
   projectId: string,
   actor: { id: string; type: "human" | "ai_agent" },
-  overrides: Partial<{ kind: "bug_report" | "question" | "request" | "blocked"; title: string }> = {},
+  overrides: Partial<{
+    kind: "bug_report" | "question" | "request" | "blocked";
+    title: string;
+  }> = {},
 ) {
   return escalationService.create(
     projectId,
@@ -105,7 +103,11 @@ describe("escalation service", () => {
       expect(answered.status).toBe("answered");
       expect(answered.holderId).toBe(holder.id); // self-claim-on-answer (unheld → answerer)
 
-      const resolved = escalationService.resolve(esc.id, { reason: "shipped fix" }, actorOf(holder));
+      const resolved = escalationService.resolve(
+        esc.id,
+        { reason: "shipped fix" },
+        actorOf(holder),
+      );
       expect(resolved.status).toBe("resolved");
       expect(resolved.resolvedAt).toBeTruthy();
       expect(resolved.resolvedBy).toBe(holder.id);
@@ -355,7 +357,11 @@ describe("escalation service", () => {
       const esc = raise(testApp.db, project.id, actorOf(author));
       expect403(() => escalationService.escalateToHuman(esc.id, { reason: "x" }, actorOf(agent())));
       // author → ok.
-      const escalated = escalationService.escalateToHuman(esc.id, { reason: "need human" }, actorOf(author));
+      const escalated = escalationService.escalateToHuman(
+        esc.id,
+        { reason: "need human" },
+        actorOf(author),
+      );
       expect(escalated.status).toBe("needs_human");
     });
   });
@@ -412,9 +418,10 @@ describe("escalation service", () => {
       ).toThrow();
 
       // Sanity: the unique index exists on (escalation_id, seq).
-      const idx = getRawDb()
-        .prepare("PRAGMA index_list('escalation_messages')")
-        .all() as Array<{ name: string; unique: number }>;
+      const idx = getRawDb().prepare("PRAGMA index_list('escalation_messages')").all() as Array<{
+        name: string;
+        unique: number;
+      }>;
       expect(idx.some((i) => i.unique === 1)).toBe(true);
     });
   });
@@ -568,7 +575,10 @@ describe("escalation service", () => {
 
       const all = escalationService.listUndeliveredForWorker(ORIGIN.originWorkerKey);
       expect(all).toHaveLength(2);
-      const scoped = escalationService.listUndeliveredForWorker(ORIGIN.originWorkerKey, projectA.id);
+      const scoped = escalationService.listUndeliveredForWorker(
+        ORIGIN.originWorkerKey,
+        projectA.id,
+      );
       expect(scoped).toHaveLength(1);
       expect(scoped[0].escalation.projectId).toBe(projectA.id);
     });
@@ -605,18 +615,12 @@ describe("escalation service", () => {
       const origin = agent();
       const holder = human();
       const esc = raiseWithHolderReply(project.id, actorOf(origin), actorOf(holder));
-      const before = testApp.db
-        .select()
-        .from(escalations)
-        .where(eq(escalations.id, esc.id))
-        .get()!.updatedAt;
+      const before = testApp.db.select().from(escalations).where(eq(escalations.id, esc.id)).get()!
+        .updatedAt;
 
       escalationService.markDelivered(esc.id, 1, ORIGIN.originWorkerKey);
-      const after = testApp.db
-        .select()
-        .from(escalations)
-        .where(eq(escalations.id, esc.id))
-        .get()!.updatedAt;
+      const after = testApp.db.select().from(escalations).where(eq(escalations.id, esc.id)).get()!
+        .updatedAt;
       expect(after).toBe(before);
     });
 
@@ -650,11 +654,8 @@ describe("escalation service", () => {
       const esc = raiseWithHolderReply(project.id, actorOf(origin), actorOf(holder));
 
       escalationService.getById(esc.id);
-      const seq = testApp.db
-        .select()
-        .from(escalations)
-        .where(eq(escalations.id, esc.id))
-        .get()!.originLastSeenSeq;
+      const seq = testApp.db.select().from(escalations).where(eq(escalations.id, esc.id)).get()!
+        .originLastSeenSeq;
       expect(seq).toBe(0);
     });
   });

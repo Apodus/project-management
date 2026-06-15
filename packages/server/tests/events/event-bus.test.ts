@@ -310,9 +310,7 @@ describe("Event Bus", () => {
       );
       const body = await activityRes.json();
 
-      const statusActivity = body.data.find(
-        (a: any) => a.action === "status_changed",
-      );
+      const statusActivity = body.data.find((a: any) => a.action === "status_changed");
       expect(statusActivity).toBeDefined();
 
       const changes =
@@ -445,17 +443,18 @@ describe("Event Bus", () => {
       const project = createTestProject(testApp.db);
       const a = createTestAiAgent(testApp.db);
       const epic = createTestEpic(testApp.db, { projectId: project.id });
-      testApp.db
-        .update(epics)
-        .set({ assigneeId: a.user.id })
-        .where(eq(epics.id, epic.id))
-        .run();
+      testApp.db.update(epics).set({ assigneeId: a.user.id }).where(eq(epics.id, epic.id)).run();
 
       const t0 = new Date("2026-06-06T10:00:00.000Z");
-      claimLeaseSvc.acquireLease("epic", epic.id, { id: a.user.id }, {
-        now: t0,
-        ttlMs: 1000,
-      });
+      claimLeaseSvc.acquireLease(
+        "epic",
+        epic.id,
+        { id: a.user.id },
+        {
+          now: t0,
+          ttlMs: 1000,
+        },
+      );
 
       // Capture every event the onAll fan-out delivers.
       const captured: Array<{ event: EventName; payload: EventPayload }> = [];
@@ -471,9 +470,7 @@ describe("Event Bus", () => {
       });
       unsubscribe();
 
-      const reclaimEvents = captured.filter(
-        (c) => c.event === EVENT_NAMES.CLAIM_LEASE_RECLAIMED,
-      );
+      const reclaimEvents = captured.filter((c) => c.event === EVENT_NAMES.CLAIM_LEASE_RECLAIMED);
       expect(reclaimEvents).toHaveLength(1);
       const { payload } = reclaimEvents[0];
       expect(payload.entityType).toBe("epic");
@@ -492,17 +489,18 @@ describe("Event Bus", () => {
       const project = createTestProject(testApp.db);
       const a = createTestAiAgent(testApp.db);
       const epic = createTestEpic(testApp.db, { projectId: project.id });
-      testApp.db
-        .update(epics)
-        .set({ assigneeId: a.user.id })
-        .where(eq(epics.id, epic.id))
-        .run();
+      testApp.db.update(epics).set({ assigneeId: a.user.id }).where(eq(epics.id, epic.id)).run();
 
       const t0 = new Date("2026-06-06T10:00:00.000Z");
-      claimLeaseSvc.acquireLease("epic", epic.id, { id: a.user.id }, {
-        now: t0,
-        ttlMs: 1000,
-      });
+      claimLeaseSvc.acquireLease(
+        "epic",
+        epic.id,
+        { id: a.user.id },
+        {
+          now: t0,
+          ttlMs: 1000,
+        },
+      );
 
       const result = claimLeaseSvc.sweepStaleClaims({
         entityType: "epic",
@@ -516,12 +514,7 @@ describe("Event Bus", () => {
       const activityRows = testApp.db
         .select()
         .from(activityLog)
-        .where(
-          and(
-            eq(activityLog.entityType, "epic"),
-            eq(activityLog.entityId, epic.id),
-          ),
-        )
+        .where(and(eq(activityLog.entityType, "epic"), eq(activityLog.entityId, epic.id)))
         .all();
       expect(activityRows).toHaveLength(1);
       expect(activityRows[0].action).toBe("assigned");

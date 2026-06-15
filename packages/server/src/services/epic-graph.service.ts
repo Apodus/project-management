@@ -1,17 +1,7 @@
 import { eq, and, ne, isNotNull, max } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import {
-  createId,
-  DEPENDENCY_TYPES,
-  type DependencyType,
-  type EpicHealth,
-} from "@pm/shared";
-import {
-  getDb,
-  tasks,
-  taskDependencies,
-  epicDependencies,
-} from "../db/index.js";
+import { createId, DEPENDENCY_TYPES, type DependencyType, type EpicHealth } from "@pm/shared";
+import { getDb, tasks, taskDependencies, epicDependencies } from "../db/index.js";
 import { AppError } from "../types.js";
 import * as epicService from "./epic.service.js";
 
@@ -329,10 +319,7 @@ export function createDependency(input: CreateEpicDependencyInput) {
   // Existence (getById throws 404 on miss) + cross-project assertion.
   const epic = epicService.getById(input.epicId);
   const dependsOnEpic = epicService.getById(input.dependsOnEpicId);
-  if (
-    epic.projectId !== input.projectId ||
-    dependsOnEpic.projectId !== input.projectId
-  ) {
+  if (epic.projectId !== input.projectId || dependsOnEpic.projectId !== input.projectId) {
     throw new AppError(
       400,
       "CROSS_PROJECT",
@@ -364,20 +351,12 @@ export function createDependency(input: CreateEpicDependencyInput) {
       throw new AppError(409, "CONFLICT", "This epic dependency already exists");
     }
     if (code === "SQLITE_CONSTRAINT_CHECK") {
-      throw new AppError(
-        400,
-        "SELF_DEPENDENCY",
-        "An epic cannot depend on itself",
-      );
+      throw new AppError(400, "SELF_DEPENDENCY", "An epic cannot depend on itself");
     }
     throw err;
   }
 
-  return db
-    .select()
-    .from(epicDependencies)
-    .where(eq(epicDependencies.id, id))
-    .get()!;
+  return db.select().from(epicDependencies).where(eq(epicDependencies.id, id)).get()!;
 }
 
 /**
@@ -387,11 +366,7 @@ export function createDependency(input: CreateEpicDependencyInput) {
 export function deleteDependency(depId: string) {
   const db = getDb();
 
-  const existing = db
-    .select()
-    .from(epicDependencies)
-    .where(eq(epicDependencies.id, depId))
-    .get();
+  const existing = db.select().from(epicDependencies).where(eq(epicDependencies.id, depId)).get();
 
   if (!existing) {
     throw new AppError(404, "NOT_FOUND", `Epic dependency not found: ${depId}`);

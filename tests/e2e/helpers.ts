@@ -6,11 +6,7 @@ import { type Page, expect } from "@playwright/test";
  */
 export async function setupAdmin(
   page: Page,
-  {
-    username = "admin",
-    displayName = "Admin User",
-    password = "password123",
-  } = {},
+  { username = "admin", displayName = "Admin User", password = "password123" } = {},
 ): Promise<void> {
   await page.goto("/");
 
@@ -21,9 +17,7 @@ export async function setupAdmin(
   // data-slot locator, matching the spec-01 idiom.
   await Promise.race([
     page.getByText("Welcome to Project Management").waitFor({ timeout: 15_000 }),
-    page
-      .locator('[data-slot="card-title"]', { hasText: "Sign In" })
-      .waitFor({ timeout: 15_000 }),
+    page.locator('[data-slot="card-title"]', { hasText: "Sign In" }).waitFor({ timeout: 15_000 }),
   ]);
 
   if (page.url().includes("/login")) {
@@ -43,8 +37,8 @@ export async function setupAdmin(
 
   // Wait for the setup API call to complete and set the session cookie.
   const [response] = await Promise.all([
-    page.waitForResponse((resp) =>
-      resp.url().includes("/api/v1/auth/setup") && resp.status() === 201,
+    page.waitForResponse(
+      (resp) => resp.url().includes("/api/v1/auth/setup") && resp.status() === 201,
     ),
     page.getByRole("button", { name: "Create Admin Account" }).click(),
   ]);
@@ -66,20 +60,14 @@ export async function setupAdmin(
   // an <h3>No projects yet</h3> which contains "projects" — without exact
   // matching, both headings match and the assertion strict-mode-races on
   // whichever renders first.
-  await expect(
-    page.getByRole("heading", { name: "Projects", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
 }
 
 /**
  * Login with the given credentials.
  * Navigates to /login and fills the form.
  */
-export async function login(
-  page: Page,
-  username: string,
-  password: string,
-): Promise<void> {
+export async function login(page: Page, username: string, password: string): Promise<void> {
   await page.goto("/login");
   await page.waitForURL("**/login");
 
@@ -160,15 +148,12 @@ export async function createTaskViaAPI(
 ): Promise<{ id: string; title: string; status: string }> {
   const userId = await getCurrentUserId(page);
 
-  const response = await page.request.post(
-    `/api/v1/projects/${projectId}/tasks`,
-    {
-      data: {
-        reporterId: userId,
-        ...data,
-      },
+  const response = await page.request.post(`/api/v1/projects/${projectId}/tasks`, {
+    data: {
+      reporterId: userId,
+      ...data,
     },
-  );
+  });
 
   expect(response.ok()).toBeTruthy();
   const json = await response.json();
@@ -190,10 +175,7 @@ export async function createNoteViaAPI(
     anchorId?: string;
   },
 ): Promise<{ id: string; title: string; status: string; kind: string }> {
-  const response = await page.request.post(
-    `/api/v1/projects/${projectId}/notes`,
-    { data },
-  );
+  const response = await page.request.post(`/api/v1/projects/${projectId}/notes`, { data });
 
   expect(response.ok()).toBeTruthy();
   const json = await response.json();
@@ -269,10 +251,7 @@ export async function raiseEscalationViaAPI(
     severity?: string;
   },
 ): Promise<{ id: string; status: string; originRepo: string; originWorkerKey: string }> {
-  const response = await page.request.post(
-    `/api/v1/projects/${projectId}/escalations`,
-    { data },
-  );
+  const response = await page.request.post(`/api/v1/projects/${projectId}/escalations`, { data });
 
   expect(response.status()).toBe(201);
   const json = await response.json();

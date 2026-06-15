@@ -37,7 +37,9 @@ describe("WakeClient", () => {
   });
 
   it("markDelivered POSTs {workerKey, uptoSeq} and unwraps {data}", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ data: { id: "esc-1", status: "answered" } }));
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ data: { id: "esc-1", status: "answered" } }),
+    );
     const client = new WakeClient({
       baseUrl: "http://h:3000",
       token: "t",

@@ -56,7 +56,7 @@ export function MilestoneGuides({ scale, milestones, yTop, ySpan }: MilestoneGui
           className="border-muted-foreground/40 pointer-events-none absolute border-l border-dashed"
           style={{ left: g.x, top: yTop, height: ySpan }}
         >
-          <div className="text-muted-foreground bg-background/80 absolute top-0 left-1 max-w-[160px] truncate rounded px-1 py-0.5 text-[10px] whitespace-nowrap">
+          <div className="text-muted-foreground bg-background/80 absolute left-1 top-0 max-w-[160px] truncate whitespace-nowrap rounded px-1 py-0.5 text-[10px]">
             {g.name} · {g.label}
           </div>
         </div>
@@ -67,7 +67,7 @@ export function MilestoneGuides({ scale, milestones, yTop, ySpan }: MilestoneGui
           className="border-primary pointer-events-none absolute border-l"
           style={{ left: todayX, top: yTop, height: ySpan }}
         >
-          <div className="bg-primary text-primary-foreground absolute top-0 left-1 rounded px-1 py-0.5 text-[10px] whitespace-nowrap">
+          <div className="bg-primary text-primary-foreground absolute left-1 top-0 whitespace-nowrap rounded px-1 py-0.5 text-[10px]">
             Today
           </div>
         </div>

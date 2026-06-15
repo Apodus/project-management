@@ -1,10 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import type {
-  MergeIncidentResolution,
-  MergeIncidentType,
-  MergeIncidentView,
-} from "@pm/shared";
+import type { MergeIncidentResolution, MergeIncidentType, MergeIncidentView } from "@pm/shared";
 import { comments, getDb, mergeIncidents, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
@@ -74,11 +70,7 @@ function ensureProjectExists(projectId: string): void {
 
 function readIncident(id: string): MergeIncidentRow | null {
   const db = getDb();
-  const row = db
-    .select()
-    .from(mergeIncidents)
-    .where(eq(mergeIncidents.id, id))
-    .get();
+  const row = db.select().from(mergeIncidents).where(eq(mergeIncidents.id, id)).get();
   return (row as MergeIncidentRow | undefined) ?? null;
 }
 
@@ -196,10 +188,7 @@ function toView(row: MergeIncidentRow): MergeIncidentView {
  *
  * Event MERGE_INCIDENT_OPENED emits AFTER the txn commits (§10).
  */
-export function openIncident(
-  params: OpenIncidentParams,
-  actor: Actor,
-): MergeIncidentView {
+export function openIncident(params: OpenIncidentParams, actor: Actor): MergeIncidentView {
   if (actor.type !== "ai_agent") {
     throw new AppError(
       403,
@@ -298,10 +287,7 @@ export function getById(id: string): MergeIncidentView {
  * + openedAt asc hits idx_merge_incidents_open (§4.1, §7.2) — the oldest-first
  * sweep order is load-bearing.
  */
-export function list(
-  projectId: string,
-  params: ListIncidentsParams = {},
-): MergeIncidentView[] {
+export function list(projectId: string, params: ListIncidentsParams = {}): MergeIncidentView[] {
   ensureProjectExists(projectId);
   const db = getDb();
 
@@ -355,11 +341,7 @@ export function resolve(
     }
   } else {
     if (actor.role !== "admin") {
-      throw new AppError(
-        403,
-        "FORBIDDEN",
-        "Only admins may human-resolve a merge incident.",
-      );
+      throw new AppError(403, "FORBIDDEN", "Only admins may human-resolve a merge incident.");
     }
   }
 
@@ -370,14 +352,11 @@ export function resolve(
     return toView(row);
   }
 
-  const terminal =
-    params.mode === "auto_rollforward" ? "auto_resolved" : "human_resolved";
+  const terminal = params.mode === "auto_rollforward" ? "auto_resolved" : "human_resolved";
   const resolution: MergeIncidentResolution = {
     mode: params.mode,
     ...(params.outerLandedSha ? { outerLandedSha: params.outerLandedSha } : {}),
-    ...(params.resolvedByGroupId
-      ? { resolvedByGroupId: params.resolvedByGroupId }
-      : {}),
+    ...(params.resolvedByGroupId ? { resolvedByGroupId: params.resolvedByGroupId } : {}),
     ...(params.note ? { note: params.note } : {}),
   };
 
@@ -400,9 +379,7 @@ export function resolve(
     emit(EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED, updated, actor.id, {
       incidentId: id,
       groupId: updated.groupId,
-      ...(params.outerLandedSha
-        ? { outerLandedSha: params.outerLandedSha }
-        : {}),
+      ...(params.outerLandedSha ? { outerLandedSha: params.outerLandedSha } : {}),
       note: params.note ?? null,
     });
   }
@@ -415,9 +392,7 @@ export function resolve(
  * The tx handle a db.transaction callback receives (same inline pattern as
  * merge-request.service.ts:attachLandedRef / audit.service.ts:record).
  */
-type TxHandle = Parameters<
-  Parameters<ReturnType<typeof getDb>["transaction"]>[0]
->[0];
+type TxHandle = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
 
 /**
  * The minimal incident-row shape the tx-internal resolve needs. A full
@@ -472,12 +447,8 @@ function applyResolveInTx(
           incidentId: row.id,
           groupId: row.groupId,
           mode: params.mode,
-          ...(params.outerLandedSha
-            ? { outerLandedSha: params.outerLandedSha }
-            : {}),
-          ...(params.resolvedByGroupId
-            ? { resolvedByGroupId: params.resolvedByGroupId }
-            : {}),
+          ...(params.outerLandedSha ? { outerLandedSha: params.outerLandedSha } : {}),
+          ...(params.resolvedByGroupId ? { resolvedByGroupId: params.resolvedByGroupId } : {}),
           ...(params.note ? { note: params.note } : {}),
         },
         createdAt: now,
@@ -506,9 +477,7 @@ export function resolveHumanInTx(
   const resolution: MergeIncidentResolution = {
     mode: "human",
     ...(params.outerLandedSha ? { outerLandedSha: params.outerLandedSha } : {}),
-    ...(params.resolvedByGroupId
-      ? { resolvedByGroupId: params.resolvedByGroupId }
-      : {}),
+    ...(params.resolvedByGroupId ? { resolvedByGroupId: params.resolvedByGroupId } : {}),
     ...(params.note ? { note: params.note } : {}),
   };
   applyResolveInTx(tx, row, "human_resolved", resolution, fullParams, actorId, now);

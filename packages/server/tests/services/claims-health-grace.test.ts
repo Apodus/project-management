@@ -26,9 +26,7 @@ describe("claims-health alert grace follows PM_LEASE_GRACE_SEC (C2)", () => {
 
   beforeAll(async () => {
     utils = await import("../utils.js");
-    claimsHealth = await import(
-      "../../src/services/claims-health.service.js"
-    );
+    claimsHealth = await import("../../src/services/claims-health.service.js");
     leaseSvc = await import("../../src/services/claim-lease.service.js");
     db = await import("../../src/db/index.js");
     testApp = utils.createTestApp();
@@ -54,12 +52,7 @@ describe("claims-health alert grace follows PM_LEASE_GRACE_SEC (C2)", () => {
     });
     // Acquire a short lease, then look 20 minutes past its expiry: past the
     // tuned 60s grace, far inside the default 86400s grace.
-    leaseSvc.acquireLease(
-      "task",
-      task.id,
-      { id: agent.user.id },
-      { now: t0, ttlMs: 1000 },
-    );
+    leaseSvc.acquireLease("task", task.id, { id: agent.user.id }, { now: t0, ttlMs: 1000 });
     const later = new Date(t0.getTime() + 1_000 + 20 * 60_000);
 
     const health = claimsHealth.computeClaimsHealth(project.id, later);
@@ -67,11 +60,7 @@ describe("claims-health alert grace follows PM_LEASE_GRACE_SEC (C2)", () => {
     expect(health.oldestStaleAgeMs).toBeGreaterThan(0);
 
     // Sanity: the task row really is the one counted.
-    const row = testApp.db
-      .select()
-      .from(db.tasks)
-      .where(eq(db.tasks.id, task.id))
-      .get();
+    const row = testApp.db.select().from(db.tasks).where(eq(db.tasks.id, task.id)).get();
     expect(row?.assigneeId).toBe(agent.user.id);
   });
 });

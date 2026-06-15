@@ -78,14 +78,7 @@ const OPEN_WORK_STATUSES = "backlog,ready,in_progress,in_review";
 
 const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 
-const TASK_TYPES = [
-  "feature",
-  "bug",
-  "chore",
-  "spike",
-  "design",
-  "research",
-] as const;
+const TASK_TYPES = ["feature", "bug", "chore", "spike", "design", "research"] as const;
 
 const EFFORT_LABELS: Record<string, string> = {
   xs: "XS",
@@ -131,10 +124,7 @@ function SortableHeader({
 }) {
   const isActive = currentSort === field;
   return (
-    <button
-      className="flex items-center gap-1 hover:text-foreground"
-      onClick={() => onSort(field)}
-    >
+    <button className="hover:text-foreground flex items-center gap-1" onClick={() => onSort(field)}>
       {label}
       {isActive ? (
         currentOrder === "asc" ? (
@@ -156,15 +146,33 @@ function TaskTableSkeleton() {
     <>
       {Array.from({ length: 8 }).map((_, i) => (
         <TableRow key={i}>
-          <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-14" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-14" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-8" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-4" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-48" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-16" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-14" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-14" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-20" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-24" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-8" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-16" />
+          </TableCell>
         </TableRow>
       ))}
     </>
@@ -188,16 +196,12 @@ function GroupHeader({
     <TableRow className="bg-muted/50 hover:bg-muted/50">
       <TableCell colSpan={9}>
         <button
-          className="flex items-center gap-2 w-full text-left font-medium text-sm"
+          className="flex w-full items-center gap-2 text-left text-sm font-medium"
           onClick={onToggle}
         >
-          {isCollapsed ? (
-            <ChevronRight className="size-4" />
-          ) : (
-            <ChevronDown className="size-4" />
-          )}
+          {isCollapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
           <span>{label}</span>
-          <Badge variant="secondary" className="text-[11px] ml-1">
+          <Badge variant="secondary" className="ml-1 text-[11px]">
             {count} task{count === 1 ? "" : "s"}
           </Badge>
         </button>
@@ -234,53 +238,43 @@ function TaskRow({
           onCheckedChange={(checked) => onSelect(task.id, !!checked)}
         />
       </TableCell>
-      <TableCell className="font-medium max-w-[350px]">
+      <TableCell className="max-w-[350px] font-medium">
         {/* Claim badge inline beside the title (epic-list idiom — no new
             column, colSpan untouched). Renders nothing when unclaimed. */}
         <div className="flex items-center gap-1.5">
           <span className="line-clamp-1">{task.title}</span>
-          <ClaimStateBadge
-            state={task.claimState}
-            className="shrink-0 text-[10px] px-1.5 py-0"
-          />
+          <ClaimStateBadge state={task.claimState} className="shrink-0 px-1.5 py-0 text-[10px]" />
         </div>
       </TableCell>
       <TableCell>
-        <Badge
-          variant="secondary"
-          className={cn("text-[11px]", getStatusColor(task.status))}
-        >
+        <Badge variant="secondary" className={cn("text-[11px]", getStatusColor(task.status))}>
           {formatStatus(task.status)}
         </Badge>
       </TableCell>
       <TableCell>
-        <Badge
-          variant="secondary"
-          className={cn("text-[11px]", getPriorityColor(task.priority))}
-        >
+        <Badge variant="secondary" className={cn("text-[11px]", getPriorityColor(task.priority))}>
           {formatStatus(task.priority)}
         </Badge>
       </TableCell>
       <TableCell>
-        <Badge
-          variant="secondary"
-          className={cn("text-[11px]", getTypeColor(task.type))}
-        >
+        <Badge variant="secondary" className={cn("text-[11px]", getTypeColor(task.type))}>
           {formatStatus(task.type)}
         </Badge>
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">
+      <TableCell className="text-muted-foreground text-sm">
         {task.assigneeId ? (
-          userMap.get(task.assigneeId) ?? task.assigneeId
+          (userMap.get(task.assigneeId) ?? task.assigneeId)
         ) : (
-          <span className="italic text-muted-foreground/50">Unassigned</span>
+          <span className="text-muted-foreground/50 italic">Unassigned</span>
         )}
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">
+      <TableCell className="text-muted-foreground text-sm">
         {task.epicId ? (
-          <span className="text-xs">{epicMap.get(task.epicId) ?? task.epicId.slice(0, 8) + "..."}</span>
+          <span className="text-xs">
+            {epicMap.get(task.epicId) ?? task.epicId.slice(0, 8) + "..."}
+          </span>
         ) : (
-          <span className="italic text-muted-foreground/50">None</span>
+          <span className="text-muted-foreground/50 italic">None</span>
         )}
       </TableCell>
       <TableCell>
@@ -292,7 +286,7 @@ function TaskRow({
           <span className="text-muted-foreground/50">-</span>
         )}
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
+      <TableCell className="text-muted-foreground text-xs">
         {formatRelativeTime(task.updatedAt)}
       </TableCell>
     </TableRow>
@@ -321,7 +315,7 @@ function BulkActionBar({
   users: Array<{ id: string; displayName: string }>;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5">
+    <div className="border-primary/20 bg-primary/5 flex items-center gap-3 rounded-lg border px-4 py-2.5">
       <span className="text-sm font-medium">
         {isProcessing ? (
           <span className="flex items-center gap-2">
@@ -332,7 +326,7 @@ function BulkActionBar({
           `${selectedCount} task${selectedCount === 1 ? "" : "s"} selected`
         )}
       </span>
-      <div className="flex items-center gap-2 ml-auto">
+      <div className="ml-auto flex items-center gap-2">
         {/* Change Status */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -344,7 +338,7 @@ function BulkActionBar({
           <DropdownMenuContent>
             {TASK_STATUSES.map((s) => (
               <DropdownMenuItem key={s} onClick={() => onChangeStatus(s)}>
-                <Badge variant="secondary" className={cn("text-[11px] mr-2", getStatusColor(s))}>
+                <Badge variant="secondary" className={cn("mr-2 text-[11px]", getStatusColor(s))}>
                   {formatStatus(s)}
                 </Badge>
               </DropdownMenuItem>
@@ -363,7 +357,7 @@ function BulkActionBar({
           <DropdownMenuContent>
             {PRIORITIES.map((p) => (
               <DropdownMenuItem key={p} onClick={() => onChangePriority(p)}>
-                <Badge variant="secondary" className={cn("text-[11px] mr-2", getPriorityColor(p))}>
+                <Badge variant="secondary" className={cn("mr-2 text-[11px]", getPriorityColor(p))}>
                   {formatStatus(p)}
                 </Badge>
               </DropdownMenuItem>
@@ -381,12 +375,12 @@ function BulkActionBar({
           </DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem onClick={() => onAssignTo(null)}>
-              <Users className="size-4 mr-2 text-muted-foreground" />
+              <Users className="text-muted-foreground mr-2 size-4" />
               Unassigned
             </DropdownMenuItem>
             {users.map((u) => (
               <DropdownMenuItem key={u.id} onClick={() => onAssignTo(u.id)}>
-                <UserCircle className="size-4 mr-2 text-muted-foreground" />
+                <UserCircle className="text-muted-foreground mr-2 size-4" />
                 {u.displayName}
               </DropdownMenuItem>
             ))}
@@ -445,7 +439,9 @@ export function TaskListPage() {
   }, [users]);
 
   const userList = useMemo(() => {
-    return (users ?? []).filter((u) => u.isActive).map((u) => ({ id: u.id, displayName: u.displayName }));
+    return (users ?? [])
+      .filter((u) => u.isActive)
+      .map((u) => ({ id: u.id, displayName: u.displayName }));
   }, [users]);
 
   // Initialize state from URL search params
@@ -466,7 +462,9 @@ export function TaskListPage() {
   const perPage = 25;
 
   // Group by state
-  const [groupBy, setGroupBy] = useState<GroupByField>((searchParams.group_by as GroupByField) || "none");
+  const [groupBy, setGroupBy] = useState<GroupByField>(
+    (searchParams.group_by as GroupByField) || "none",
+  );
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -480,9 +478,11 @@ export function TaskListPage() {
   useEffect(() => {
     const params: TaskListSearch = {};
     const effectiveStatus = statusFilter && statusFilter !== "all" ? statusFilter : undefined;
-    const effectivePriority = priorityFilter && priorityFilter !== "all" ? priorityFilter : undefined;
+    const effectivePriority =
+      priorityFilter && priorityFilter !== "all" ? priorityFilter : undefined;
     const effectiveType = typeFilter && typeFilter !== "all" ? typeFilter : undefined;
-    const effectiveAssignee = assigneeFilter && assigneeFilter !== "all" ? assigneeFilter : undefined;
+    const effectiveAssignee =
+      assigneeFilter && assigneeFilter !== "all" ? assigneeFilter : undefined;
     const effectiveEpic = epicFilter && epicFilter !== "all" ? epicFilter : undefined;
 
     if (effectiveStatus) params.status = effectiveStatus;
@@ -501,12 +501,33 @@ export function TaskListPage() {
       search: params as any,
       replace: true,
     });
-  }, [statusFilter, priorityFilter, typeFilter, assigneeFilter, epicFilter, debouncedSearch, sortBy, order, page, groupBy, navigate]);
+  }, [
+    statusFilter,
+    priorityFilter,
+    typeFilter,
+    assigneeFilter,
+    epicFilter,
+    debouncedSearch,
+    sortBy,
+    order,
+    page,
+    groupBy,
+    navigate,
+  ]);
 
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, priorityFilter, typeFilter, assigneeFilter, epicFilter, debouncedSearch, sortBy, order]);
+  }, [
+    statusFilter,
+    priorityFilter,
+    typeFilter,
+    assigneeFilter,
+    epicFilter,
+    debouncedSearch,
+    sortBy,
+    order,
+  ]);
 
   // Build filter object.
   // Status sentinel: the default ("" — untouched, no URL param) opens to OPEN
@@ -516,11 +537,7 @@ export function TaskListPage() {
   // in derivation only (NOT echoed into the URL by the sync effect above, which
   // skips "" → no init/sync loop).
   const effectiveStatus =
-    statusFilter === ""
-      ? OPEN_WORK_STATUSES
-      : statusFilter === "all"
-        ? ""
-        : statusFilter;
+    statusFilter === "" ? OPEN_WORK_STATUSES : statusFilter === "all" ? "" : statusFilter;
   const effectivePriority = priorityFilter && priorityFilter !== "all" ? priorityFilter : "";
   const effectiveType = typeFilter && typeFilter !== "all" ? typeFilter : "";
   const effectiveAssignee = assigneeFilter && assigneeFilter !== "all" ? assigneeFilter : "";
@@ -539,7 +556,18 @@ export function TaskListPage() {
       page,
       perPage,
     }),
-    [effectiveStatus, effectivePriority, effectiveType, effectiveAssignee, effectiveEpic, debouncedSearch, sortBy, order, page, perPage],
+    [
+      effectiveStatus,
+      effectivePriority,
+      effectiveType,
+      effectiveAssignee,
+      effectiveEpic,
+      debouncedSearch,
+      sortBy,
+      order,
+      page,
+      perPage,
+    ],
   );
 
   const { data, isLoading, error, refetch } = useTasks(projectId, filters);
@@ -550,7 +578,14 @@ export function TaskListPage() {
 
   // A status choice is "active" only when the user explicitly picked one (incl
   // "all"); the untouched open-work default ("") is not a clearable filter.
-  const hasActiveFilters = !!(statusFilter || effectivePriority || effectiveType || effectiveAssignee || effectiveEpic || searchInput);
+  const hasActiveFilters = !!(
+    statusFilter ||
+    effectivePriority ||
+    effectiveType ||
+    effectiveAssignee ||
+    effectiveEpic ||
+    searchInput
+  );
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -639,9 +674,13 @@ export function TaskListPage() {
       setProgressText("");
 
       if (failCount > 0) {
-        toast.error(`${failCount} task${failCount === 1 ? "" : "s"} failed to update status. ${successCount} succeeded.`);
+        toast.error(
+          `${failCount} task${failCount === 1 ? "" : "s"} failed to update status. ${successCount} succeeded.`,
+        );
       } else {
-        toast.success(`Updated status of ${successCount} task${successCount === 1 ? "" : "s"} to ${formatStatus(toStatus)}.`);
+        toast.success(
+          `Updated status of ${successCount} task${successCount === 1 ? "" : "s"} to ${formatStatus(toStatus)}.`,
+        );
       }
 
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
@@ -672,9 +711,13 @@ export function TaskListPage() {
       setProgressText("");
 
       if (failCount > 0) {
-        toast.error(`${failCount} task${failCount === 1 ? "" : "s"} failed to update priority. ${successCount} succeeded.`);
+        toast.error(
+          `${failCount} task${failCount === 1 ? "" : "s"} failed to update priority. ${successCount} succeeded.`,
+        );
       } else {
-        toast.success(`Updated priority of ${successCount} task${successCount === 1 ? "" : "s"} to ${formatStatus(priority)}.`);
+        toast.success(
+          `Updated priority of ${successCount} task${successCount === 1 ? "" : "s"} to ${formatStatus(priority)}.`,
+        );
       }
 
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
@@ -706,9 +749,13 @@ export function TaskListPage() {
 
       const assigneeName = userId ? (userMap.get(userId) ?? userId) : "Unassigned";
       if (failCount > 0) {
-        toast.error(`${failCount} task${failCount === 1 ? "" : "s"} failed to assign. ${successCount} succeeded.`);
+        toast.error(
+          `${failCount} task${failCount === 1 ? "" : "s"} failed to assign. ${successCount} succeeded.`,
+        );
       } else {
-        toast.success(`Assigned ${successCount} task${successCount === 1 ? "" : "s"} to ${assigneeName}.`);
+        toast.success(
+          `Assigned ${successCount} task${successCount === 1 ? "" : "s"} to ${assigneeName}.`,
+        );
       }
 
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
@@ -731,11 +778,15 @@ export function TaskListPage() {
       switch (groupBy) {
         case "epic":
           key = task.epicId ?? "__none__";
-          label = task.epicId ? `Epic: ${epicMap.get(task.epicId) ?? task.epicId.slice(0, 8) + "..."}` : "No Epic";
+          label = task.epicId
+            ? `Epic: ${epicMap.get(task.epicId) ?? task.epicId.slice(0, 8) + "..."}`
+            : "No Epic";
           break;
         case "assignee":
           key = task.assigneeId ?? "__unassigned__";
-          label = task.assigneeId ? `Assignee: ${userMap.get(task.assigneeId) ?? task.assigneeId}` : "Unassigned";
+          label = task.assigneeId
+            ? `Assignee: ${userMap.get(task.assigneeId) ?? task.assigneeId}`
+            : "Unassigned";
           break;
         case "priority":
           key = task.priority;
@@ -799,7 +850,7 @@ export function TaskListPage() {
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <ListTodo className="size-6 text-muted-foreground" />
+        <ListTodo className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Tasks</h1>
         {project && (
           <Badge variant="outline" className="text-xs font-normal">
@@ -810,10 +861,8 @@ export function TaskListPage() {
 
       {/* Error state */}
       {error && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
-          <p className="text-sm text-destructive">
-            Failed to load tasks. Please try again.
-          </p>
+        <div className="border-destructive/50 bg-destructive/10 flex flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">Failed to load tasks. Please try again.</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             Retry
           </Button>
@@ -837,12 +886,12 @@ export function TaskListPage() {
         <div className="flex flex-wrap items-center gap-3">
           {/* Search */}
           <div className="relative w-64">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
             <Input
               placeholder="Search tasks..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="pl-9 h-9"
+              className="h-9 pl-9"
             />
           </div>
 
@@ -922,7 +971,9 @@ export function TaskListPage() {
             <TableRow>
               <TableHead className="w-[40px]">
                 <Checkbox
-                  checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
+                  checked={
+                    allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false
+                  }
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
@@ -959,18 +1010,14 @@ export function TaskListPage() {
               <TableRow>
                 <TableCell colSpan={9} className="h-32 text-center">
                   <div className="flex flex-col items-center gap-2">
-                    <ListTodo className="size-8 text-muted-foreground/40" />
-                    <p className="text-sm text-muted-foreground">
+                    <ListTodo className="text-muted-foreground/40 size-8" />
+                    <p className="text-muted-foreground text-sm">
                       {hasActiveFilters
                         ? "No tasks match your filters."
                         : "No tasks found. Tasks will appear here when proposals are implemented."}
                     </p>
                     {hasActiveFilters && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={clearFilters}
-                      >
+                      <Button variant="outline" size="sm" onClick={clearFilters}>
                         Clear filters
                       </Button>
                     )}
@@ -981,7 +1028,10 @@ export function TaskListPage() {
 
             {!isLoading && tasks.length > 0 && groupBy === "none" && renderTaskRows(tasks)}
 
-            {!isLoading && tasks.length > 0 && groupBy !== "none" && groupedTasks &&
+            {!isLoading &&
+              tasks.length > 0 &&
+              groupBy !== "none" &&
+              groupedTasks &&
               groupedTasks.map(([key, group]) => (
                 <Fragment key={key}>
                   <GroupHeader
@@ -1000,7 +1050,7 @@ export function TaskListPage() {
       {/* Pagination */}
       {pagination && totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Page {pagination.page} of {totalPages}
             {pagination.total > 0 && (
               <span className="ml-2">

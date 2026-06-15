@@ -557,10 +557,9 @@ export const mergeRequests = sqliteTable(
     // (worker- or MCP-submitted) request. ON DELETE SET NULL so deleting the
     // escalation never cascades into the request it spawned. The lazy () =>
     // arrow forward-refs escalations (defined further below in this file).
-    escalationId: text("escalation_id").references(
-      (): AnySQLiteColumn => escalations.id,
-      { onDelete: "set null" },
-    ),
+    escalationId: text("escalation_id").references((): AnySQLiteColumn => escalations.id, {
+      onDelete: "set null",
+    }),
     // Campaign A4 P2 (fast revert): on a revert request this holds the LANDED
     // GIT SHA being reverted (the train materializes `git revert <sha>` at
     // pickup). DELIBERATELY a PLAIN nullable text column, NOT an FK — the value
@@ -1258,7 +1257,5 @@ export const escalationMessages = sqliteTable(
     metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>(),
     createdAt: text("created_at").notNull(),
   },
-  (table) => [
-    uniqueIndex("idx_escalation_messages_thread_seq").on(table.escalationId, table.seq),
-  ],
+  (table) => [uniqueIndex("idx_escalation_messages_thread_seq").on(table.escalationId, table.seq)],
 );

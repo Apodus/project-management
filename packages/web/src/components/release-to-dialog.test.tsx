@@ -19,9 +19,7 @@ vi.mock("@/components/ui/select", () => ({
     children?: ReactNode;
   }) => <SelectCtx.Provider value={onValueChange}>{children}</SelectCtx.Provider>,
   SelectTrigger: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  SelectValue: ({ placeholder }: { placeholder?: string }) => (
-    <span>{placeholder}</span>
-  ),
+  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
   SelectContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   SelectItem: ({ value, children }: { value: string; children?: ReactNode }) => {
     const onSelect = useContext(SelectCtx);
@@ -95,9 +93,7 @@ describe("ReleaseToDialog", () => {
     expect(screen.getByText("Mika")).toBeInTheDocument();
     // Holder + inactive users are not offered. ("Agent One" still appears in
     // the dialog description, so scope the assertion to buttons.)
-    expect(
-      screen.queryByRole("button", { name: /Agent One/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Agent One/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Retired")).not.toBeInTheDocument();
   });
 
@@ -148,9 +144,7 @@ describe("ReleaseToDialog", () => {
     };
     render(<ReleaseToDialog item={item} open={true} onOpenChange={vi.fn()} />);
 
-    expect(
-      screen.getByText(/Listing workers requires admin access/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Listing workers requires admin access/)).toBeInTheDocument();
     // No picker — and submit can never enable without a target.
     fireEvent.change(screen.getByLabelText("Reason"), {
       target: { value: "reason" },

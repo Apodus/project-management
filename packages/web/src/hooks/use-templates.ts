@@ -67,13 +67,8 @@ export function useInstantiateTemplate() {
 export function useCreateTemplateFromTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      taskId,
-      data,
-    }: {
-      taskId: string;
-      data: CreateTemplateFromTaskData;
-    }) => createTemplateFromTask(taskId, data),
+    mutationFn: ({ taskId, data }: { taskId: string; data: CreateTemplateFromTaskData }) =>
+      createTemplateFromTask(taskId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateKeys.lists() });
     },

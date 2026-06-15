@@ -1,22 +1,9 @@
 import { useState } from "react";
 import { useParams } from "@tanstack/react-router";
-import {
-  Loader2,
-  Plus,
-  Trash2,
-  Pencil,
-  Zap,
-  X,
-} from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Zap, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -97,9 +84,7 @@ const CONDITION_FIELDS_BY_TRIGGER: Record<string, { value: string; label: string
     { value: "priority", label: "Priority" },
     { value: "type", label: "Type" },
   ],
-  "comment.created": [
-    { value: "commentType", label: "Comment Type" },
-  ],
+  "comment.created": [{ value: "commentType", label: "Comment Type" }],
   "epic.updated": [
     { value: "status", label: "Status" },
     { value: "changes.status.to", label: "New Status" },
@@ -195,7 +180,7 @@ function ConditionRow({
 
   return (
     <div className="flex items-start gap-2">
-      <div className="flex-1 grid grid-cols-3 gap-2">
+      <div className="grid flex-1 grid-cols-3 gap-2">
         <Select
           value={condition.field}
           onValueChange={(v) => onChange(index, { ...condition, field: v })}
@@ -236,9 +221,7 @@ function ConditionRow({
         <Input
           placeholder="Value"
           value={String(condition.value ?? "")}
-          onChange={(e) =>
-            onChange(index, { ...condition, value: e.target.value })
-          }
+          onChange={(e) => onChange(index, { ...condition, value: e.target.value })}
         />
       </div>
       <Button
@@ -332,9 +315,7 @@ function ActionConfigForm({
         <Input
           placeholder="Notification message"
           value={String(actionConfig.message ?? "")}
-          onChange={(e) =>
-            onChange({ ...actionConfig, message: e.target.value })
-          }
+          onChange={(e) => onChange({ ...actionConfig, message: e.target.value })}
         />
       </div>
     );
@@ -361,9 +342,7 @@ function RuleDialog({
   const updateMutation = useUpdateAutomationRule();
 
   const [name, setName] = useState(rule?.name ?? "");
-  const [triggerEvent, setTriggerEvent] = useState(
-    rule?.triggerEvent ?? "",
-  );
+  const [triggerEvent, setTriggerEvent] = useState(rule?.triggerEvent ?? "");
   const [conditions, setConditions] = useState<AutomationCondition[]>(
     (rule?.conditions as AutomationCondition[] | null) ?? [],
   );
@@ -378,13 +357,9 @@ function RuleDialog({
   function resetForm() {
     setName(rule?.name ?? "");
     setTriggerEvent(rule?.triggerEvent ?? "");
-    setConditions(
-      (rule?.conditions as AutomationCondition[] | null) ?? [],
-    );
+    setConditions((rule?.conditions as AutomationCondition[] | null) ?? []);
     setActionType(rule?.actionType ?? "");
-    setActionConfig(
-      (rule?.actionConfig as Record<string, unknown> | null) ?? {},
-    );
+    setActionConfig((rule?.actionConfig as Record<string, unknown> | null) ?? {});
     setErrors({});
     mutation.reset();
   }
@@ -411,18 +386,12 @@ function RuleDialog({
     return Object.keys(newErrors).length === 0;
   }
 
-  function handleConditionChange(
-    index: number,
-    condition: AutomationCondition,
-  ) {
+  function handleConditionChange(index: number, condition: AutomationCondition) {
     setConditions((prev) => prev.map((c, i) => (i === index ? condition : c)));
   }
 
   function handleAddCondition() {
-    setConditions((prev) => [
-      ...prev,
-      { field: "", operator: "eq", value: "" },
-    ]);
+    setConditions((prev) => [...prev, { field: "", operator: "eq", value: "" }]);
   }
 
   function handleRemoveCondition(index: number) {
@@ -463,12 +432,10 @@ function RuleDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>
-              {isEdit ? "Edit Rule" : "New Automation Rule"}
-            </DialogTitle>
+            <DialogTitle>{isEdit ? "Edit Rule" : "New Automation Rule"}</DialogTitle>
             <DialogDescription>
               {isEdit
                 ? "Update the automation rule configuration."
@@ -490,9 +457,7 @@ function RuleDialog({
                 }}
                 autoFocus
               />
-              {errors.name && (
-                <p className="text-xs text-destructive">{errors.name}</p>
-              )}
+              {errors.name && <p className="text-destructive text-xs">{errors.name}</p>}
             </div>
 
             {/* Trigger Event */}
@@ -504,8 +469,7 @@ function RuleDialog({
                   setTriggerEvent(v);
                   // Reset conditions when trigger changes since fields depend on it
                   setConditions([]);
-                  if (errors.triggerEvent)
-                    setErrors((p) => ({ ...p, triggerEvent: "" }));
+                  if (errors.triggerEvent) setErrors((p) => ({ ...p, triggerEvent: "" }));
                 }}
               >
                 <SelectTrigger className="w-full">
@@ -520,9 +484,7 @@ function RuleDialog({
                 </SelectContent>
               </Select>
               {errors.triggerEvent && (
-                <p className="text-xs text-destructive">
-                  {errors.triggerEvent}
-                </p>
+                <p className="text-destructive text-xs">{errors.triggerEvent}</p>
               )}
             </div>
 
@@ -530,7 +492,7 @@ function RuleDialog({
             {triggerEvent && (
               <div className="space-y-2">
                 <Label>Conditions</Label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   All conditions must be met (AND logic).
                 </p>
                 <div className="space-y-2">
@@ -545,13 +507,8 @@ function RuleDialog({
                     />
                   ))}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAddCondition}
-                >
-                  <Plus className="size-3 mr-1" />
+                <Button type="button" variant="outline" size="sm" onClick={handleAddCondition}>
+                  <Plus className="mr-1 size-3" />
                   Add Condition
                 </Button>
               </div>
@@ -565,10 +522,8 @@ function RuleDialog({
                 onValueChange={(v) => {
                   setActionType(v);
                   setActionConfig({});
-                  if (errors.actionType)
-                    setErrors((p) => ({ ...p, actionType: "" }));
-                  if (errors.actionConfig)
-                    setErrors((p) => ({ ...p, actionConfig: "" }));
+                  if (errors.actionType) setErrors((p) => ({ ...p, actionType: "" }));
+                  if (errors.actionConfig) setErrors((p) => ({ ...p, actionConfig: "" }));
                 }}
               >
                 <SelectTrigger className="w-full">
@@ -582,11 +537,7 @@ function RuleDialog({
                   ))}
                 </SelectContent>
               </Select>
-              {errors.actionType && (
-                <p className="text-xs text-destructive">
-                  {errors.actionType}
-                </p>
-              )}
+              {errors.actionType && <p className="text-destructive text-xs">{errors.actionType}</p>}
             </div>
 
             {/* Action Config */}
@@ -597,21 +548,18 @@ function RuleDialog({
                   actionConfig={actionConfig}
                   onChange={(config) => {
                     setActionConfig(config);
-                    if (errors.actionConfig)
-                      setErrors((p) => ({ ...p, actionConfig: "" }));
+                    if (errors.actionConfig) setErrors((p) => ({ ...p, actionConfig: "" }));
                   }}
                 />
                 {errors.actionConfig && (
-                  <p className="text-xs text-destructive">
-                    {errors.actionConfig}
-                  </p>
+                  <p className="text-destructive text-xs">{errors.actionConfig}</p>
                 )}
               </div>
             )}
 
             {/* Error */}
             {mutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {mutation.error instanceof ApiError
                   ? mutation.error.message
                   : `Failed to ${isEdit ? "update" : "create"} rule. Please try again.`}
@@ -620,11 +568,7 @@ function RuleDialog({
           </div>
 
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
@@ -674,12 +618,12 @@ function DeleteRuleDialog({
         <DialogHeader>
           <DialogTitle>Delete Automation Rule</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete the rule{" "}
-            <strong>{rule.name}</strong>? This action cannot be undone.
+            Are you sure you want to delete the rule <strong>{rule.name}</strong>? This action
+            cannot be undone.
           </DialogDescription>
         </DialogHeader>
         {deleteMutation.isError && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
             {deleteMutation.error instanceof ApiError
               ? deleteMutation.error.message
               : "Failed to delete rule. Please try again."}
@@ -689,11 +633,7 @@ function DeleteRuleDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-          >
+          <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
             {deleteMutation.isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
@@ -711,13 +651,7 @@ function DeleteRuleDialog({
 
 // ---- Rule Row ----
 
-function RuleRow({
-  rule,
-  projectId,
-}: {
-  rule: AutomationRule;
-  projectId: string;
-}) {
+function RuleRow({ rule, projectId }: { rule: AutomationRule; projectId: string }) {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const toggleMutation = useToggleAutomationRule();
@@ -735,7 +669,7 @@ function RuleRow({
   return (
     <>
       <TableRow
-        className="cursor-pointer hover:bg-muted/50"
+        className="hover:bg-muted/50 cursor-pointer"
         onClick={() => {
           if (!builtIn) setEditOpen(true);
         }}
@@ -746,7 +680,7 @@ function RuleRow({
             {builtIn && (
               <Badge
                 variant="secondary"
-                className="text-xs border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-400"
+                className="border-purple-500/30 bg-purple-500/10 text-xs text-purple-700 dark:text-purple-400"
               >
                 Built-in
               </Badge>
@@ -758,14 +692,11 @@ function RuleRow({
             {TRIGGER_EVENT_LABELS[rule.triggerEvent] ?? rule.triggerEvent}
           </Badge>
         </TableCell>
-        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+        <TableCell className="text-muted-foreground max-w-[200px] truncate text-sm">
           {summarizeConditions(rule.conditions as AutomationCondition[] | null)}
         </TableCell>
-        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-          {summarizeAction(
-            rule.actionType,
-            rule.actionConfig as Record<string, unknown> | null,
-          )}
+        <TableCell className="text-muted-foreground max-w-[200px] truncate text-sm">
+          {summarizeAction(rule.actionType, rule.actionConfig as Record<string, unknown> | null)}
         </TableCell>
         <TableCell onClick={(e) => e.stopPropagation()}>
           <Switch
@@ -793,7 +724,7 @@ function RuleRow({
                   onClick={() => setDeleteOpen(true)}
                   aria-label={`Delete rule ${rule.name}`}
                 >
-                  <Trash2 className="size-4 text-destructive" />
+                  <Trash2 className="text-destructive size-4" />
                 </Button>
               </>
             )}
@@ -803,21 +734,12 @@ function RuleRow({
 
       {/* Edit Dialog */}
       {editOpen && (
-        <RuleDialog
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          projectId={projectId}
-          rule={rule}
-        />
+        <RuleDialog open={editOpen} onOpenChange={setEditOpen} projectId={projectId} rule={rule} />
       )}
 
       {/* Delete Confirmation Dialog */}
       {deleteOpen && (
-        <DeleteRuleDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          rule={rule}
-        />
+        <DeleteRuleDialog open={deleteOpen} onOpenChange={setDeleteOpen} rule={rule} />
       )}
     </>
   );
@@ -830,26 +752,21 @@ export function AutomationPage() {
   const { currentProjectId } = useProjectStore();
   const projectId = (params as Record<string, string | undefined>).projectId ?? currentProjectId;
 
-  const {
-    data: rules,
-    isLoading,
-    error,
-    refetch,
-  } = useAutomationRules(projectId ?? undefined);
+  const { data: rules, isLoading, error, refetch } = useAutomationRules(projectId ?? undefined);
   const [createOpen, setCreateOpen] = useState(false);
 
   if (!projectId) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
-          <Zap className="size-6 text-muted-foreground" />
+          <Zap className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Automation</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <Zap className="mb-4 size-12 text-muted-foreground/50" />
+            <Zap className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">No Project Selected</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Select a project to manage automation rules.
             </p>
           </CardContent>
@@ -863,7 +780,7 @@ export function AutomationPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Zap className="size-6 text-muted-foreground" />
+          <Zap className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Automation</h1>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -876,7 +793,7 @@ export function AutomationPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
+            <p className="text-destructive text-sm">
               Failed to load automation rules. Please try again.
             </p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -916,23 +833,19 @@ export function AutomationPage() {
               {rules.length} {rules.length === 1 ? "rule" : "rules"}
             </CardTitle>
             <CardDescription>
-              Automation rules trigger actions when specific events occur.
-              Built-in rules can be toggled but not edited or deleted.
+              Automation rules trigger actions when specific events occur. Built-in rules can be
+              toggled but not edited or deleted.
             </CardDescription>
           </CardHeader>
           <CardContent>
             {rules.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
-                <Zap className="mb-4 size-12 text-muted-foreground/50" />
+                <Zap className="text-muted-foreground/50 mb-4 size-12" />
                 <h3 className="text-lg font-medium">No automation rules</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="text-muted-foreground mt-1 text-sm">
                   Create your first automation rule to get started.
                 </p>
-                <Button
-                  className="mt-4"
-                  size="sm"
-                  onClick={() => setCreateOpen(true)}
-                >
+                <Button className="mt-4" size="sm" onClick={() => setCreateOpen(true)}>
                   <Plus className="size-4" />
                   New Rule
                 </Button>
@@ -954,11 +867,7 @@ export function AutomationPage() {
                   </TableHeader>
                   <TableBody>
                     {rules.map((rule) => (
-                      <RuleRow
-                        key={rule.id}
-                        rule={rule}
-                        projectId={projectId}
-                      />
+                      <RuleRow key={rule.id} rule={rule} projectId={projectId} />
                     ))}
                   </TableBody>
                 </Table>
@@ -969,11 +878,7 @@ export function AutomationPage() {
       )}
 
       {/* Create Rule Dialog */}
-      <RuleDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        projectId={projectId}
-      />
+      <RuleDialog open={createOpen} onOpenChange={setCreateOpen} projectId={projectId} />
     </div>
   );
 }

@@ -205,9 +205,7 @@ export function cacheConfigWarnings(
   const missing =
     steps.length === 0
       ? [`"verify" (the synthetic verify_command step)`]
-      : steps
-          .filter((s) => (s.cache_key_inputs ?? []).length === 0)
-          .map((s) => `"${s.id}"`);
+      : steps.filter((s) => (s.cache_key_inputs ?? []).length === 0).map((s) => `"${s.id}"`);
   if (missing.length === 0) return [];
   const plural = missing.length > 1;
   return [

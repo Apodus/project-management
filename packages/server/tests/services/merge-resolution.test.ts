@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import {
-  createTestApp,
-  createTestProject,
-  createTestUser,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestProject, createTestUser, type TestApp } from "../utils.js";
 import { mergeResolutions } from "../../src/db/index.js";
 import * as svc from "../../src/services/merge-resolution.service.js";
 import * as mrSvc from "../../src/services/merge-request.service.js";
@@ -31,11 +26,7 @@ describe("merge-resolution service", () => {
   }
 
   /** Open a pending resolution and return its id. */
-  function openPending(
-    project: { id: string },
-    integratorId: string,
-    submitterId: string,
-  ): string {
+  function openPending(project: { id: string }, integratorId: string, submitterId: string): string {
     const originRequestId = makeRequest(project.id, submitterId);
     return svc.open(
       { projectId: project.id, originRequestId, conflictingFiles: ["a.ts"] },
@@ -84,9 +75,7 @@ describe("merge-resolution service", () => {
       const originRequestId = makeRequest(project.id, submitter.id);
       expect(() =>
         svc.open({ projectId: project.id, originRequestId }, HUMAN(submitter.id)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 
@@ -165,9 +154,7 @@ describe("merge-resolution service", () => {
       const integrator = createTestUser(testApp.db, { type: "ai_agent" });
       const id = openPending(project, integrator.id, submitter.id);
       const resolvedRequestId = makeRequest(project.id, submitter.id);
-      expect(() =>
-        svc.resolved(id, { resolvedRequestId }, AGENT(integrator.id)),
-      ).toThrowError(
+      expect(() => svc.resolved(id, { resolvedRequestId }, AGENT(integrator.id))).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
     });
@@ -231,9 +218,7 @@ describe("merge-resolution service", () => {
       const id = openPending(project, integrator.id, submitter.id);
       expect(() =>
         svc.escalate(id, { target: "author", reason: "x" }, AGENT(integrator.id)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("throws 403 for a human actor", () => {
@@ -244,9 +229,7 @@ describe("merge-resolution service", () => {
       svc.start(id, AGENT(integrator.id));
       expect(() =>
         svc.escalate(id, { target: "author", reason: "x" }, HUMAN(submitter.id)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 

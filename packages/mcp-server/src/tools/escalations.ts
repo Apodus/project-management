@@ -297,8 +297,7 @@ export function registerEscalationTools(server: McpServer): void {
 
       const lines: string[] = [`Found ${escalations.length} escalation(s):`, ""];
       for (const e of escalations) {
-        const head =
-          `**[${e.kind}]**` + (e.severity ? ` (${e.severity})` : "") + ` ${e.title}`;
+        const head = `**[${e.kind}]**` + (e.severity ? ` (${e.severity})` : "") + ` ${e.title}`;
         lines.push(head);
         lines.push(
           `  ID: ${e.id} | Status: ${e.status} | Origin: ${e.originRepo} · ${e.originWorkerKey}`,
@@ -403,9 +402,7 @@ export function registerEscalationTools(server: McpServer): void {
     "Escalate to a human (any non-terminal state → needs_human). A reason is required. Use when the issue needs a person — it's beyond what an AI responder should decide, or it's stuck.",
     {
       escalation_id: z.string().describe("The escalation ID to escalate to a human"),
-      reason: z
-        .string()
-        .describe("Why a human is needed (required, recorded as a system message)"),
+      reason: z.string().describe("Why a human is needed (required, recorded as a system message)"),
     },
     async ({ escalation_id, reason }) => {
       const escalation = await escalateToHuman(escalation_id, reason);

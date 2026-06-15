@@ -25,11 +25,7 @@ export interface UpdateLabelInput {
 export function listByProject(projectId: string) {
   const db = getDb();
 
-  return db
-    .select()
-    .from(labels)
-    .where(eq(labels.projectId, projectId))
-    .all();
+  return db.select().from(labels).where(eq(labels.projectId, projectId)).all();
 }
 
 /**
@@ -40,11 +36,7 @@ export function create(projectId: string, data: CreateLabelInput) {
   const id = createId();
 
   // Verify project exists
-  const project = db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .get();
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
 
   if (!project) {
     throw new AppError(404, "NOT_FOUND", `Project not found: ${projectId}`);
@@ -58,11 +50,7 @@ export function create(projectId: string, data: CreateLabelInput) {
     .get();
 
   if (existing) {
-    throw new AppError(
-      409,
-      "CONFLICT",
-      `Label "${data.name}" already exists in this project`,
-    );
+    throw new AppError(409, "CONFLICT", `Label "${data.name}" already exists in this project`);
   }
 
   db.insert(labels)
@@ -85,11 +73,7 @@ export function create(projectId: string, data: CreateLabelInput) {
 export function update(id: string, data: UpdateLabelInput) {
   const db = getDb();
 
-  const existing = db
-    .select()
-    .from(labels)
-    .where(eq(labels.id, id))
-    .get();
+  const existing = db.select().from(labels).where(eq(labels.id, id)).get();
 
   if (!existing) {
     throw new AppError(404, "NOT_FOUND", `Label not found: ${id}`);
@@ -100,17 +84,11 @@ export function update(id: string, data: UpdateLabelInput) {
     const conflict = db
       .select()
       .from(labels)
-      .where(
-        and(eq(labels.projectId, existing.projectId), eq(labels.name, data.name)),
-      )
+      .where(and(eq(labels.projectId, existing.projectId), eq(labels.name, data.name)))
       .get();
 
     if (conflict) {
-      throw new AppError(
-        409,
-        "CONFLICT",
-        `Label "${data.name}" already exists in this project`,
-      );
+      throw new AppError(409, "CONFLICT", `Label "${data.name}" already exists in this project`);
     }
   }
 
@@ -134,11 +112,7 @@ export function update(id: string, data: UpdateLabelInput) {
 export function deleteLabel(id: string) {
   const db = getDb();
 
-  const existing = db
-    .select()
-    .from(labels)
-    .where(eq(labels.id, id))
-    .get();
+  const existing = db.select().from(labels).where(eq(labels.id, id)).get();
 
   if (!existing) {
     throw new AppError(404, "NOT_FOUND", `Label not found: ${id}`);
@@ -162,11 +136,7 @@ export function attachToTask(taskId: string, labelId: string) {
   const db = getDb();
 
   // Verify label exists
-  const label = db
-    .select()
-    .from(labels)
-    .where(eq(labels.id, labelId))
-    .get();
+  const label = db.select().from(labels).where(eq(labels.id, labelId)).get();
 
   if (!label) {
     throw new AppError(404, "NOT_FOUND", `Label not found: ${labelId}`);
@@ -176,17 +146,11 @@ export function attachToTask(taskId: string, labelId: string) {
   const existing = db
     .select()
     .from(taskLabels)
-    .where(
-      and(eq(taskLabels.taskId, taskId), eq(taskLabels.labelId, labelId)),
-    )
+    .where(and(eq(taskLabels.taskId, taskId), eq(taskLabels.labelId, labelId)))
     .get();
 
   if (existing) {
-    throw new AppError(
-      409,
-      "CONFLICT",
-      `Label is already attached to this task`,
-    );
+    throw new AppError(409, "CONFLICT", `Label is already attached to this task`);
   }
 
   db.insert(taskLabels)
@@ -209,23 +173,15 @@ export function detachFromTask(taskId: string, labelId: string) {
   const existing = db
     .select()
     .from(taskLabels)
-    .where(
-      and(eq(taskLabels.taskId, taskId), eq(taskLabels.labelId, labelId)),
-    )
+    .where(and(eq(taskLabels.taskId, taskId), eq(taskLabels.labelId, labelId)))
     .get();
 
   if (!existing) {
-    throw new AppError(
-      404,
-      "NOT_FOUND",
-      `Label is not attached to this task`,
-    );
+    throw new AppError(404, "NOT_FOUND", `Label is not attached to this task`);
   }
 
   db.delete(taskLabels)
-    .where(
-      and(eq(taskLabels.taskId, taskId), eq(taskLabels.labelId, labelId)),
-    )
+    .where(and(eq(taskLabels.taskId, taskId), eq(taskLabels.labelId, labelId)))
     .run();
 
   return existing;

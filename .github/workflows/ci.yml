@@ -44,17 +44,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # ── Format check — DISABLED STUB (pre-existing drift) ───────────────
-      # `pnpm format:check` fails on main today: 359 files are committed
-      # wrapped at printWidth 80 while .prettierrc says 100 (the drift
-      # predates this workflow — nothing enforces prettier at commit time;
-      # lint-staged only runs secretlint). Enable this step in the SAME
-      # change as a dedicated tree-wide `pnpm format` normalization commit,
-      # after the in-flight campaigns land (a 359-file rewrite now would
-      # conflict with every open branch).
-      #
-      # - name: Format check
-      #   run: pnpm format:check
+      # Format check — enforced. The tree was normalized tree-wide
+      # (2026-06-15) and lint-staged now runs `prettier --write` on staged
+      # files, so this stays green. `docs/` and `roadmaps/` are .prettierignored
+      # (hand-authored prose, not code style).
+      - name: Format check
+        run: pnpm format:check
 
       # --concurrency=1 serializes the per-package turbo test tasks so the
       # integrator merge-train suite (real git worktrees, spawned verify

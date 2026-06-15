@@ -58,18 +58,18 @@ pm-wake-daemon --config wake.json
 
 ## Configuration
 
-| Source                         | Default                 | Description                                              |
-| ------------------------------ | ----------------------- | -------------------------------------------------------- |
-| `PM_API_URL` / `--pm-url`      | `http://localhost:3000` | PM API base URL (trailing slash stripped)                |
-| `PM_API_TOKEN`                 | (required)              | PM API token (any `ai_agent` Bearer token)               |
-| `PM_WORKER_KEY`                | (none)                  | Auto watch entry (zero-config single worker)             |
-| `PM_PROJECT_ID`                | (none)                  | Scopes the auto watch entry to one project               |
-| `--watch <key[:projectId]>`    | (none)                  | Repeatable explicit watch entry                          |
-| `--config <file>`              | (none)                  | JSON `{ watch: [...] }`                                  |
-| `--poll-interval-sec`          | `15`                    | Poll cadence                                             |
-| `PM_WAKE_WORKER_COMMAND`       | `claude -p`             | The worker spawn command                                 |
-| `PM_WAKE_PROMPT`               | (built-in)              | Wake prompt template (`{escalation}` / `{messages}`)     |
-| `PM_LOG_LEVEL` / `--log-level` | `info`                  | pino log level                                           |
+| Source                         | Default                 | Description                                          |
+| ------------------------------ | ----------------------- | ---------------------------------------------------- |
+| `PM_API_URL` / `--pm-url`      | `http://localhost:3000` | PM API base URL (trailing slash stripped)            |
+| `PM_API_TOKEN`                 | (required)              | PM API token (any `ai_agent` Bearer token)           |
+| `PM_WORKER_KEY`                | (none)                  | Auto watch entry (zero-config single worker)         |
+| `PM_PROJECT_ID`                | (none)                  | Scopes the auto watch entry to one project           |
+| `--watch <key[:projectId]>`    | (none)                  | Repeatable explicit watch entry                      |
+| `--config <file>`              | (none)                  | JSON `{ watch: [...] }`                              |
+| `--poll-interval-sec`          | `15`                    | Poll cadence                                         |
+| `PM_WAKE_WORKER_COMMAND`       | `claude -p`             | The worker spawn command                             |
+| `PM_WAKE_PROMPT`               | (built-in)              | Wake prompt template (`{escalation}` / `{messages}`) |
+| `PM_LOG_LEVEL` / `--log-level` | `info`                  | pino log level                                       |
 
 Fixed defaults (P2): `timeBudgetSec` 900, `maxConcurrentWakes` 1 (serial),
 `minWakeIntervalSec` 60, `maxConsecutiveFailures` 5.

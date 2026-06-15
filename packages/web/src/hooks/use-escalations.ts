@@ -22,14 +22,10 @@ export const escalationKeys = {
   detail: (id: string) => [...escalationKeys.details(), id] as const,
   // Under escalationKeys.all so the escalation.* SSE invalidation refreshes
   // the metrics panel along with the list + any open timeline.
-  metrics: (projectId: string) =>
-    [...escalationKeys.all, "metrics", projectId] as const,
+  metrics: (projectId: string) => [...escalationKeys.all, "metrics", projectId] as const,
 };
 
-export function useEscalations(
-  projectId: string | undefined,
-  filters?: EscalationFilters,
-) {
+export function useEscalations(projectId: string | undefined, filters?: EscalationFilters) {
   return useQuery({
     queryKey: escalationKeys.list(projectId!, filters),
     queryFn: () => getEscalations(projectId!, filters),

@@ -539,9 +539,7 @@ export function findSimilarOpenNotes(
     // break a note post), but a throwing FTS query (dropped/corrupt notes_fts,
     // SQL error) was previously invisible — dedup would just silently stop
     // working. Warn so the operator can see the cause.
-    console.warn(
-      `[notes-dedup] findSimilarOpenNotes failed (advisory, returning []): ${err}`,
-    );
+    console.warn(`[notes-dedup] findSimilarOpenNotes failed (advisory, returning []): ${err}`);
     return [];
   }
 }

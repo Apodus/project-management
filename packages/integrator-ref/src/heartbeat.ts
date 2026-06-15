@@ -52,10 +52,7 @@ export function buildHeartbeat(args: {
 }): IntegratorHeartbeat {
   return {
     resource: args.resource,
-    status:
-      args.inFlight.batches > 0 || args.inFlight.groups > 0
-        ? "integrating"
-        : "idle",
+    status: args.inFlight.batches > 0 || args.inFlight.groups > 0 ? "integrating" : "idle",
     pool_utilization: {
       size: args.pool.size,
       leased: args.pool.leasedCount,

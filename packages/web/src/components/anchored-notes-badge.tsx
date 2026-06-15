@@ -31,7 +31,7 @@ export function AnchoredNotesBadge({
       search={{ anchorType, anchorId, status: "open" }}
     >
       <Badge variant="secondary">
-        <Inbox className="size-3 mr-1" />
+        <Inbox className="mr-1 size-3" />
         {count} open finding{count === 1 ? "" : "s"} reference this
       </Badge>
     </Link>

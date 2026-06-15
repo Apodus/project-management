@@ -52,13 +52,9 @@ describe("makeLaneLockReleaser (C2)", () => {
 
     await expect(release({ reason: "drained" })).resolves.toBeUndefined();
     expect(laneHealth.lastReleaseFailure).not.toBeNull();
-    expect(laneHealth.lastReleaseFailure!.message).toContain(
-      "lock release exploded",
-    );
+    expect(laneHealth.lastReleaseFailure!.message).toContain("lock release exploded");
     // `at` is a parseable ISO timestamp.
-    expect(Number.isNaN(Date.parse(laneHealth.lastReleaseFailure!.at))).toBe(
-      false,
-    );
+    expect(Number.isNaN(Date.parse(laneHealth.lastReleaseFailure!.at))).toBe(false);
   });
 
   it("successful release → laneHealth CLEARED (a prior failure heals)", async () => {

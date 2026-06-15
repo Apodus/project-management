@@ -59,42 +59,30 @@ function CommentItem({
           <div
             className={cn(
               "flex size-6 items-center justify-center rounded-full text-xs font-medium",
-              isAI
-                ? "bg-blue-600 text-white"
-                : "bg-primary text-primary-foreground",
+              isAI ? "bg-blue-600 text-white" : "bg-primary text-primary-foreground",
             )}
           >
             {isAI ? "AI" : "H"}
           </div>
-          <span className="text-sm font-medium">
-            {author?.displayName ?? "Unknown User"}
-          </span>
+          <span className="text-sm font-medium">{author?.displayName ?? "Unknown User"}</span>
           {comment.commentType && comment.commentType !== "comment" && (
             <Badge variant="outline" className="text-[10px]">
               {formatStatus(comment.commentType)}
             </Badge>
           )}
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-muted-foreground text-xs">
           {formatRelativeTime(comment.createdAt)}
         </span>
       </div>
-      <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-        {comment.body}
-      </div>
+      <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{comment.body}</div>
     </div>
   );
 }
 
 // ---- Comment composer ----
 
-function CommentComposer({
-  proposalId,
-  disabled,
-}: {
-  proposalId: string;
-  disabled?: boolean;
-}) {
+function CommentComposer({ proposalId, disabled }: { proposalId: string; disabled?: boolean }) {
   const [body, setBody] = useState("");
   const addComment = useAddProposalComment();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -129,14 +117,8 @@ function CommentComposer({
         }}
       />
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          Press Ctrl+Enter to send
-        </span>
-        <Button
-          type="submit"
-          size="sm"
-          disabled={!body.trim() || addComment.isPending || disabled}
-        >
+        <span className="text-muted-foreground text-xs">Press Ctrl+Enter to send</span>
+        <Button type="submit" size="sm" disabled={!body.trim() || addComment.isPending || disabled}>
           <Send className="size-4" />
           {addComment.isPending ? "Sending..." : "Add Comment"}
         </Button>
@@ -147,13 +129,7 @@ function CommentComposer({
 
 // ---- Inline editable title ----
 
-function EditableTitle({
-  value,
-  onSave,
-}: {
-  value: string;
-  onSave: (newTitle: string) => void;
-}) {
+function EditableTitle({ value, onSave }: { value: string; onSave: (newTitle: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -203,18 +179,14 @@ function EditableTitle({
       className="group flex items-center gap-2 text-left"
     >
       <h1 className="text-2xl font-bold tracking-tight">{value}</h1>
-      <Pencil className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      <Pencil className="text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100" />
     </button>
   );
 }
 
 // ---- Work items section ----
 
-function WorkItemsSection({
-  proposalId,
-}: {
-  proposalId: string;
-}) {
+function WorkItemsSection({ proposalId }: { proposalId: string }) {
   const { data, isLoading } = useProposalWorkItems(proposalId);
 
   if (isLoading) {
@@ -244,22 +216,19 @@ function WorkItemsSection({
 
       {epics.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Epics
           </p>
           {epics.map((epic: ProposalEpic) => (
             <Card key={epic.id} className="gap-0 py-2">
               <CardContent className="flex items-center justify-between py-0">
                 <div className="flex items-center gap-2">
-                  <Milestone className="size-4 text-muted-foreground" />
+                  <Milestone className="text-muted-foreground size-4" />
                   <span className="text-sm font-medium">{epic.name}</span>
                 </div>
                 <Badge
                   variant="secondary"
-                  className={cn(
-                    "text-[10px]",
-                    getStatusColor(epic.status),
-                  )}
+                  className={cn("text-[10px]", getStatusColor(epic.status))}
                 >
                   {formatStatus(epic.status)}
                 </Badge>
@@ -271,28 +240,20 @@ function WorkItemsSection({
 
       {tasks.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Tasks
           </p>
           {tasks.map((task: ProposalTask) => (
-            <Link
-              key={task.id}
-              to="/tasks/$taskId"
-              params={{ taskId: task.id }}
-              className="block"
-            >
+            <Link key={task.id} to="/tasks/$taskId" params={{ taskId: task.id }} className="block">
               <Card className="gap-0 py-2 transition-shadow hover:shadow-md">
                 <CardContent className="flex items-center justify-between py-0">
                   <div className="flex items-center gap-2">
-                    <FileText className="size-4 text-muted-foreground" />
+                    <FileText className="text-muted-foreground size-4" />
                     <span className="text-sm font-medium">{task.title}</span>
                   </div>
                   <Badge
                     variant="secondary"
-                    className={cn(
-                      "text-[10px]",
-                      getStatusColor(task.status),
-                    )}
+                    className={cn("text-[10px]", getStatusColor(task.status))}
                   >
                     {formatStatus(task.status)}
                   </Badge>
@@ -327,12 +288,7 @@ export function ProposalDetailPage() {
     if (proposal?.projectId && proposal.projectId !== currentProjectId) {
       setCurrentProject(proposal.projectId, proposalProject?.name ?? null);
     }
-  }, [
-    proposal?.projectId,
-    currentProjectId,
-    proposalProject?.name,
-    setCurrentProject,
-  ]);
+  }, [proposal?.projectId, currentProjectId, proposalProject?.name, setCurrentProject]);
 
   const userMap = useMemo(() => {
     const map = new Map<string, { displayName: string; type: string }>();
@@ -370,7 +326,7 @@ export function ProposalDetailPage() {
           <Link
             to="/projects/$projectId/proposals"
             params={{ projectId: currentProjectId! }}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="size-4" />
             Back to proposals
@@ -378,14 +334,14 @@ export function ProposalDetailPage() {
         ) : (
           <Link
             to="/projects"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="size-4" />
             Back to projects
           </Link>
         )}
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
-          <p className="text-sm text-destructive">
+        <div className="border-destructive/50 bg-destructive/10 flex flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">
             {error ? "Failed to load proposal." : "Proposal not found."}
           </p>
           {error && (
@@ -398,8 +354,7 @@ export function ProposalDetailPage() {
     );
   }
 
-  const canTransition =
-    proposal.status === "open" || proposal.status === "discussing";
+  const canTransition = proposal.status === "open" || proposal.status === "discussing";
 
   function handleTitleSave(newTitle: string) {
     if (!proposalId) return;
@@ -427,7 +382,7 @@ export function ProposalDetailPage() {
         <Link
           to="/projects/$projectId/proposals"
           params={{ projectId: currentProjectId! }}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
         >
           <ArrowLeft className="size-4" />
           Back to proposals
@@ -435,7 +390,7 @@ export function ProposalDetailPage() {
       ) : (
         <Link
           to="/projects"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
         >
           <ArrowLeft className="size-4" />
           Back to projects
@@ -446,21 +401,16 @@ export function ProposalDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex-1 space-y-2">
           <EditableTitle value={proposal.title} onSave={handleTitleSave} />
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge
-              variant="secondary"
-              className={cn(getStatusColor(proposal.status))}
-            >
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary" className={cn(getStatusColor(proposal.status))}>
               {formatStatus(proposal.status)}
             </Badge>
             {proposal.claimedBy && (
               <Badge variant="outline" className="font-normal">
-                Claimed by{" "}
-                {userMap.get(proposal.claimedBy)?.displayName ??
-                  proposal.claimedBy}
+                Claimed by {userMap.get(proposal.claimedBy)?.displayName ?? proposal.claimedBy}
               </Badge>
             )}
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Created {formatRelativeTime(proposal.createdAt)}
             </span>
             <AnchoredNotesBadge
@@ -503,9 +453,7 @@ export function ProposalDetailPage() {
       {/* Description section */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Description
-          </h2>
+          <h2 className="text-muted-foreground text-sm font-medium">Description</h2>
           {!editingDescription && (
             <Button
               variant="ghost"
@@ -530,30 +478,20 @@ export function ProposalDetailPage() {
               autoFocus
             />
             <div className="flex justify-end gap-2">
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={() => setEditingDescription(false)}
-              >
+              <Button size="xs" variant="outline" onClick={() => setEditingDescription(false)}>
                 Cancel
               </Button>
-              <Button
-                size="xs"
-                onClick={handleDescriptionSave}
-                disabled={updateProposal.isPending}
-              >
+              <Button size="xs" onClick={handleDescriptionSave} disabled={updateProposal.isPending}>
                 Save
               </Button>
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border bg-muted/30 p-4">
+          <div className="bg-muted/30 rounded-lg border p-4">
             {proposal.description ? (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                {proposal.description}
-              </p>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{proposal.description}</p>
             ) : (
-              <p className="text-sm italic text-muted-foreground/50">
+              <p className="text-muted-foreground/50 text-sm italic">
                 No description provided. Click Edit to add one.
               </p>
             )}
@@ -565,7 +503,7 @@ export function ProposalDetailPage() {
 
       {/* Discussion thread */}
       <section className="space-y-4">
-        <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+        <h2 className="text-muted-foreground flex items-center gap-2 text-sm font-medium">
           <MessageSquare className="size-4" />
           Discussion
           {proposal.comments && (
@@ -584,8 +522,8 @@ export function ProposalDetailPage() {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8">
-            <MessageSquare className="mb-2 size-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
+            <MessageSquare className="text-muted-foreground/40 mb-2 size-8" />
+            <p className="text-muted-foreground text-sm">
               No comments yet. Start the discussion below.
             </p>
           </div>
@@ -605,8 +543,7 @@ export function ProposalDetailPage() {
       </section>
 
       {/* Work items (visible when in progress or completed) */}
-      {(proposal.status === "in_progress" ||
-        proposal.status === "completed") && (
+      {(proposal.status === "in_progress" || proposal.status === "completed") && (
         <>
           <Separator />
           <WorkItemsSection proposalId={proposalId!} />

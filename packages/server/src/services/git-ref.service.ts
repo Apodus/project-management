@@ -43,11 +43,7 @@ export function listByTask(taskId: string) {
     throw new AppError(404, "NOT_FOUND", `Task not found: ${taskId}`);
   }
 
-  return db
-    .select()
-    .from(gitRefs)
-    .where(eq(gitRefs.taskId, taskId))
-    .all();
+  return db.select().from(gitRefs).where(eq(gitRefs.taskId, taskId)).all();
 }
 
 /**

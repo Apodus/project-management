@@ -12,12 +12,7 @@ import {
   type TestApp,
   type TestProject,
 } from "../utils.js";
-import {
-  mergeIncidents,
-  mergeRequests,
-  mergeRequestGroups,
-  users,
-} from "../../src/db/index.js";
+import { mergeIncidents, mergeRequests, mergeRequestGroups, users } from "../../src/db/index.js";
 import * as requestSvc from "../../src/services/merge-request.service.js";
 import * as mergeLockService from "../../src/services/merge-lock.service.js";
 
@@ -108,12 +103,9 @@ describe("Train + break-glass routes", () => {
   describe("POST /train/resume", () => {
     it("admin → 200, lane running", async () => {
       const project = createTestProject(testApp.db);
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/train/pause`,
-        { body: {} },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/train/pause`, {
+        body: {},
+      });
       const res = await authRequest(
         testApp.app,
         "POST",
@@ -198,11 +190,7 @@ describe("Train + break-glass routes", () => {
       );
       expect(res.status).toBe(403);
       // The request must not have landed.
-      const row = testApp.db
-        .select()
-        .from(mergeRequests)
-        .where(eq(mergeRequests.id, reqId))
-        .get();
+      const row = testApp.db.select().from(mergeRequests).where(eq(mergeRequests.id, reqId)).get();
       expect(row!.status).toBe("integrating");
     });
 
@@ -361,12 +349,9 @@ describe("Train + break-glass routes", () => {
 
     it("rejected member of a PARTIALLY_LANDED group → 200 lands + open incident auto-resolves human_resolved", async () => {
       const project = createTestProject(testApp.db);
-      const { reqId, incidentId } = groupedMember(
-        project,
-        "partially_landed",
-        "rejected",
-        { incidentState: "open" },
-      );
+      const { reqId, incidentId } = groupedMember(project, "partially_landed", "rejected", {
+        incidentState: "open",
+      });
       const res = await authRequest(
         testApp.app,
         "POST",

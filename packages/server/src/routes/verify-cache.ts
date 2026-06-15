@@ -20,30 +20,52 @@ import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
 
 // ─── Param + query schemas ────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 const listQuery = z.object({
-  resource: z.string().min(1).optional().openapi({
-    param: { name: "resource", in: "query" },
-    example: "main",
-  }),
-  step_id: z.string().min(1).optional().openapi({
-    param: { name: "step_id", in: "query" },
-    example: "lint",
-  }),
+  resource: z
+    .string()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "resource", in: "query" },
+      example: "main",
+    }),
+  step_id: z
+    .string()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "step_id", in: "query" },
+      example: "lint",
+    }),
   result: z
     .enum(VERIFY_RESULTS)
     .optional()
     .openapi({ param: { name: "result", in: "query" } }),
-  page: z.coerce.number().int().min(1).optional().openapi({
-    param: { name: "page", in: "query" },
-  }),
-  perPage: z.coerce.number().int().min(1).max(200).optional().openapi({
-    param: { name: "perPage", in: "query" },
-  }),
+  page: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "page", in: "query" },
+    }),
+  perPage: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .openapi({
+      param: { name: "perPage", in: "query" },
+    }),
 });
 
 // ─── Body schemas (Zod-4 mirror, camelCase) ───────────────────────
@@ -144,9 +166,18 @@ const listRoute = createRoute({
     query: listQuery,
   },
   responses: {
-    200: { description: "The verify-cache page", content: { "application/json": { schema: listEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "The verify-cache page",
+      content: { "application/json": { schema: listEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -162,11 +193,26 @@ const lookupRoute = createRoute({
     body: { content: { "application/json": { schema: lookupBody } }, required: true },
   },
   responses: {
-    200: { description: "The cached row (hit) or null (miss)", content: { "application/json": { schema: lookupEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "The cached row (hit) or null (miss)",
+      content: { "application/json": { schema: lookupEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -182,11 +228,26 @@ const recordRoute = createRoute({
     body: { content: { "application/json": { schema: recordBody } }, required: true },
   },
   responses: {
-    200: { description: "The recorded row", content: { "application/json": { schema: recordEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "The recorded row",
+      content: { "application/json": { schema: recordEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -202,11 +263,26 @@ const mismatchRoute = createRoute({
     body: { content: { "application/json": { schema: mismatchBody } }, required: true },
   },
   responses: {
-    202: { description: "Accepted and re-emitted", content: { "application/json": { schema: acceptedEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    202: {
+      description: "Accepted and re-emitted",
+      content: { "application/json": { schema: acceptedEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -227,11 +303,7 @@ function requireUser(user: AuthUser | null): AuthUser {
  */
 function requireIntegrator(user: AuthUser, what: string): void {
   if (user.type !== "ai_agent") {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      `Only integrator (ai_agent) users may ${what}.`,
-    );
+    throw new AppError(403, "FORBIDDEN", `Only integrator (ai_agent) users may ${what}.`);
   }
 }
 

@@ -22,12 +22,12 @@ Pin a version for reproducibility, e.g. `npx @urtela/pm-mcp-server@0.1.0`.
 
 ### Environment variables
 
-| Variable         | Default                 | Description                                                                         |
-| ---------------- | ----------------------- | ----------------------------------------------------------------------------------- |
-| `PM_API_URL`     | `http://localhost:3000` | Base URL of the PM server. Any reachable host works (e.g. a LAN IP).                |
-| `PM_API_TOKEN`   | (none)                  | Static per-agent API token. Takes precedence over the pool vars.                    |
-| `PM_POOL_SECRET` | (none)                  | Agent-pool secret — each MCP process auto-claims a distinct identity from the pool. |
-| `PM_POOL_NAME`   | `default`               | Name of the agent pool to claim from.                                               |
+| Variable         | Default                 | Description                                                                                                                                                                   |
+| ---------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PM_API_URL`     | `http://localhost:3000` | Base URL of the PM server. Any reachable host works (e.g. a LAN IP).                                                                                                          |
+| `PM_API_TOKEN`   | (none)                  | Static per-agent API token. Takes precedence over the pool vars.                                                                                                              |
+| `PM_POOL_SECRET` | (none)                  | Agent-pool secret — each MCP process auto-claims a distinct identity from the pool.                                                                                           |
+| `PM_POOL_NAME`   | `default`               | Name of the agent pool to claim from.                                                                                                                                         |
 | `PM_WORKER_KEY`  | (none)                  | Stable per-worker identity key. With the pool secret, re-binds the SAME identity across reconnect/restart. Must be DISTINCT per worker. Unset ⇒ legacy (grab any free agent). |
 
 Authenticate with **either** a static `PM_API_TOKEN` **or** an agent pool

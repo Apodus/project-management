@@ -17,12 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -68,15 +63,13 @@ function MetricCard({
   return (
     <Card className="py-4">
       <CardContent className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-lg">
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
           <p className="text-2xl font-bold tabular-nums">{value}</p>
-          <p className="truncate text-xs text-muted-foreground">{label}</p>
-          {sub && (
-            <p className="truncate text-[10px] text-muted-foreground/70">{sub}</p>
-          )}
+          <p className="text-muted-foreground truncate text-xs">{label}</p>
+          {sub && <p className="text-muted-foreground/70 truncate text-[10px]">{sub}</p>}
         </div>
       </CardContent>
     </Card>
@@ -112,9 +105,7 @@ function PausedBanner({ projectId }: { projectId: string }) {
             Merge train is paused
           </p>
           {state.reason && (
-            <p className="text-xs text-amber-600/70 dark:text-amber-400/60">
-              {state.reason}
-            </p>
+            <p className="text-xs text-amber-600/70 dark:text-amber-400/60">{state.reason}</p>
           )}
         </div>
       </CardContent>
@@ -146,8 +137,8 @@ function MetricsSection({ projectId }: { projectId: string }) {
     return (
       <Card className="py-4">
         <CardContent className="flex flex-col items-center py-6">
-          <Gauge className="mb-2 size-8 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">No metrics available</p>
+          <Gauge className="text-muted-foreground/40 mb-2 size-8" />
+          <p className="text-muted-foreground text-sm">No metrics available</p>
         </CardContent>
       </Card>
     );
@@ -157,16 +148,8 @@ function MetricsSection({ projectId }: { projectId: string }) {
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <MetricCard
-        label="Queue depth"
-        value={String(metrics.queue_depth)}
-        icon={Layers}
-      />
-      <MetricCard
-        label="In flight"
-        value={String(metrics.in_flight)}
-        icon={TrainFront}
-      />
+      <MetricCard label="Queue depth" value={String(metrics.queue_depth)} icon={Layers} />
+      <MetricCard label="In flight" value={String(metrics.in_flight)} icon={TrainFront} />
       <MetricCard
         label="Time to land (p95)"
         value={formatDurationMs(ttl.p95_ms)}
@@ -215,7 +198,7 @@ function HealthFreshnessSection({ projectId }: { projectId: string }) {
     return (
       <Card className="py-4">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
+          <CardTitle className="text-muted-foreground text-sm font-medium">
             Integrator Health
           </CardTitle>
         </CardHeader>
@@ -238,14 +221,9 @@ function HealthFreshnessSection({ projectId }: { projectId: string }) {
   const healthy = health?.healthy ?? false;
 
   return (
-    <Card
-      className={cn(
-        "py-4",
-        health && !healthy && "border-red-300 dark:border-red-900/50",
-      )}
-    >
+    <Card className={cn("py-4", health && !healthy && "border-red-300 dark:border-red-900/50")}>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+        <CardTitle className="text-muted-foreground text-sm font-medium">
           Integrator Health
         </CardTitle>
       </CardHeader>
@@ -254,11 +232,7 @@ function HealthFreshnessSection({ projectId }: { projectId: string }) {
           <span
             className={cn(
               "inline-block size-3 shrink-0 rounded-full",
-              !health
-                ? "bg-gray-300 dark:bg-gray-600"
-                : healthy
-                  ? "bg-green-500"
-                  : "bg-red-500",
+              !health ? "bg-gray-300 dark:bg-gray-600" : healthy ? "bg-green-500" : "bg-red-500",
             )}
           />
           <div>
@@ -271,13 +245,11 @@ function HealthFreshnessSection({ projectId }: { projectId: string }) {
             >
               {formatFreshness(displayStaleness)}
             </p>
-            <p className="text-xs text-muted-foreground">
-              last heard from integrator
-            </p>
+            <p className="text-muted-foreground text-xs">last heard from integrator</p>
           </div>
         </div>
         {health && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
             <span>Status: {formatStatus(health.status)}</span>
             {health.version && <span>v{health.version}</span>}
             {health.pool_size != null && (
@@ -291,10 +263,9 @@ function HealthFreshnessSection({ projectId }: { projectId: string }) {
           <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              Lane lock release failed{" "}
-              {new Date(health.last_release_failure.at).toLocaleString()}:{" "}
-              {health.last_release_failure.message} — queued work may stall
-              until the staleness sweep or a force-release
+              Lane lock release failed {new Date(health.last_release_failure.at).toLocaleString()}:{" "}
+              {health.last_release_failure.message} — queued work may stall until the staleness
+              sweep or a force-release
             </span>
           </div>
         )}
@@ -318,9 +289,7 @@ function InFlightSection({ projectId }: { projectId: string }) {
   return (
     <Card className="py-4">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          In Flight
-        </CardTitle>
+        <CardTitle className="text-muted-foreground text-sm font-medium">In Flight</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading && (
@@ -333,10 +302,8 @@ function InFlightSection({ projectId }: { projectId: string }) {
 
         {!isLoading && members.length === 0 && (
           <div className="flex flex-col items-center py-6">
-            <TrainFront className="mb-2 size-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              Nothing currently integrating
-            </p>
+            <TrainFront className="text-muted-foreground/40 mb-2 size-8" />
+            <p className="text-muted-foreground text-sm">Nothing currently integrating</p>
           </div>
         )}
 
@@ -362,7 +329,7 @@ function InFlightSection({ projectId }: { projectId: string }) {
                       {member.id.slice(0, 8)}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
+                  <TableCell className="text-muted-foreground text-xs">
                     {memberLane(member)}
                   </TableCell>
                   <TableCell>
@@ -379,7 +346,7 @@ function InFlightSection({ projectId }: { projectId: string }) {
                         {formatStatus(member.attempt.status)}
                       </Badge>
                     ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
+                      <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </TableCell>
                 </TableRow>
@@ -394,13 +361,7 @@ function InFlightSection({ projectId }: { projectId: string }) {
 
 // ─── SLO compliance ──────────────────────────────────────────────
 
-function SloChip({
-  label,
-  dim,
-}: {
-  label: string;
-  dim: { compliant: boolean } | undefined;
-}) {
+function SloChip({ label, dim }: { label: string; dim: { compliant: boolean } | undefined }) {
   if (!dim) {
     return (
       <Badge variant="secondary" className="text-[10px]">
@@ -430,7 +391,7 @@ function SloSection({ projectId }: { projectId: string }) {
     return (
       <Card className="py-4">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
+          <CardTitle className="text-muted-foreground text-sm font-medium">
             SLO Compliance
           </CardTitle>
         </CardHeader>
@@ -447,7 +408,7 @@ function SloSection({ projectId }: { projectId: string }) {
     <Card className="py-4">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
+          <CardTitle className="text-muted-foreground text-sm font-medium">
             SLO Compliance
           </CardTitle>
           {slo &&
@@ -471,9 +432,7 @@ function SloSection({ projectId }: { projectId: string }) {
         </div>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
-        {!slo && (
-          <p className="text-sm text-muted-foreground">No SLO set</p>
-        )}
+        {!slo && <p className="text-muted-foreground text-sm">No SLO set</p>}
         {slo && (
           <>
             <SloChip label="p95 time-to-land" dim={slo.p95_time_to_land} />
@@ -495,9 +454,7 @@ function VerifyCacheSection({ projectId }: { projectId: string }) {
     return (
       <Card className="py-4">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Verify Cache
-          </CardTitle>
+          <CardTitle className="text-muted-foreground text-sm font-medium">Verify Cache</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-8 w-48" />
@@ -514,13 +471,11 @@ function VerifyCacheSection({ projectId }: { projectId: string }) {
     return (
       <Card className="py-4">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Verify Cache
-          </CardTitle>
+          <CardTitle className="text-muted-foreground text-sm font-medium">Verify Cache</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center py-6">
-          <Database className="mb-2 size-8 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">Verify cache disabled</p>
+          <Database className="text-muted-foreground/40 mb-2 size-8" />
+          <p className="text-muted-foreground text-sm">Verify cache disabled</p>
         </CardContent>
       </Card>
     );
@@ -532,15 +487,9 @@ function VerifyCacheSection({ projectId }: { projectId: string }) {
     <Card className="py-4">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Verify Cache
-          </CardTitle>
+          <CardTitle className="text-muted-foreground text-sm font-medium">Verify Cache</CardTitle>
           <Badge variant="secondary" className="text-[10px]">
-            {verify.cache_mode === "shadow"
-              ? "Shadow"
-              : verify.cache_mode === "on"
-                ? "On"
-                : "Off"}
+            {verify.cache_mode === "shadow" ? "Shadow" : verify.cache_mode === "on" ? "On" : "Off"}
           </Badge>
         </div>
       </CardHeader>
@@ -573,15 +522,12 @@ function VerifyCacheSection({ projectId }: { projectId: string }) {
                 <p
                   className={cn(
                     "text-2xl font-bold tabular-nums",
-                    verify.cache_mismatches > 0 &&
-                      "text-red-600 dark:text-red-400",
+                    verify.cache_mismatches > 0 && "text-red-600 dark:text-red-400",
                   )}
                 >
                   {verify.cache_mismatches}
                 </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  Cache mismatches
-                </p>
+                <p className="text-muted-foreground truncate text-xs">Cache mismatches</p>
               </div>
             </CardContent>
           </Card>
@@ -602,14 +548,10 @@ function VerifyCacheSection({ projectId }: { projectId: string }) {
             <TableBody>
               {verify.per_step.map((step) => (
                 <TableRow key={step.step_id}>
-                  <TableCell className="font-mono text-xs">
-                    {step.step_id}
-                  </TableCell>
+                  <TableCell className="font-mono text-xs">{step.step_id}</TableCell>
                   <TableCell className="tabular-nums">{step.runs}</TableCell>
                   <TableCell className="tabular-nums">{step.cached}</TableCell>
-                  <TableCell className="tabular-nums">
-                    {formatPercent(step.pass_rate)}
-                  </TableCell>
+                  <TableCell className="tabular-nums">{formatPercent(step.pass_rate)}</TableCell>
                   <TableCell className="tabular-nums">
                     {formatDurationMs(step.avg_duration_ms)}
                   </TableCell>
@@ -636,13 +578,7 @@ function VerifyCacheSection({ projectId }: { projectId: string }) {
 // Admin-gated quick enable/disable toggle for the resolver, reading the
 // project's persisted `settings.integrator.resolver.enabled`. A full-config
 // surface lives at the conflict-resolution settings page.
-function ResolverToggle({
-  projectId,
-  isAdmin,
-}: {
-  projectId: string;
-  isAdmin: boolean;
-}) {
+function ResolverToggle({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
   const { data: project } = useProject(projectId);
   const update = useUpdateResolverConfig(projectId);
 
@@ -651,38 +587,30 @@ function ResolverToggle({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground">Auto-resolve</span>
+      <span className="text-muted-foreground text-xs">Auto-resolve</span>
       <Switch
         aria-label="Auto-resolve conflicts"
         checked={enabled}
         disabled={!isAdmin || !project || update.isPending}
-        onCheckedChange={(checked) =>
-          update.mutate({ ...config, enabled: checked })
-        }
+        onCheckedChange={(checked) => update.mutate({ ...config, enabled: checked })}
       />
     </div>
   );
 }
 
-function ResolutionSection({
-  projectId,
-  isAdmin,
-}: {
-  projectId: string;
-  isAdmin: boolean;
-}) {
+function ResolutionSection({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
   const { data: metrics, isLoading } = useTrainMetrics(projectId);
 
   const header = (
     <CardHeader className="pb-2">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <CardTitle className="text-sm font-medium text-muted-foreground">
+          <CardTitle className="text-muted-foreground text-sm font-medium">
             Conflict Resolution
           </CardTitle>
-          <p className="mt-1 text-xs text-muted-foreground/70">
-            Spawn a bounded headless resolver on a textual conflict instead of
-            rejecting the request.
+          <p className="text-muted-foreground/70 mt-1 text-xs">
+            Spawn a bounded headless resolver on a textual conflict instead of rejecting the
+            request.
           </p>
         </div>
         <ResolverToggle projectId={projectId} isAdmin={isAdmin} />
@@ -710,8 +638,8 @@ function ResolutionSection({
       <Card className="py-4">
         {header}
         <CardContent className="flex flex-col items-center py-6">
-          <Wrench className="mb-2 size-8 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">No resolutions yet</p>
+          <Wrench className="text-muted-foreground/40 mb-2 size-8" />
+          <p className="text-muted-foreground text-sm">No resolutions yet</p>
         </CardContent>
       </Card>
     );
@@ -728,11 +656,7 @@ function ResolutionSection({
       {header}
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            label="Attempts"
-            value={String(resolution.attempts)}
-            icon={Hash}
-          />
+          <MetricCard label="Attempts" value={String(resolution.attempts)} icon={Hash} />
           <MetricCard
             label="Auto-resolve success"
             value={formatPercent(resolution.auto_resolve_success_rate.ratio)}
@@ -776,14 +700,14 @@ export function TrainDashboardPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
-        <TrainFront className="size-6 text-muted-foreground" />
+        <TrainFront className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Merge Train</h1>
         <TrainStateBadge projectId={projectId} />
         {isAdmin && (
           <Link
             to="/projects/$projectId/train/audit"
             params={{ projectId }}
-            className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1.5 text-sm font-medium"
           >
             <ShieldAlert className="size-4" />
             Break-glass / Audit

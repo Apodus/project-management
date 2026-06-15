@@ -1,11 +1,4 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // ── Mock router (Link / useNavigate / useParams) ─────────────────
@@ -110,12 +103,8 @@ describe("EpicDetailPage — category assign", () => {
     act(() => {
       fireEvent.click(screen.getByRole("combobox", { name: "Category" }));
     });
-    expect(
-      screen.getByRole("option", { name: "Frontend" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "Backend" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Frontend" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Backend" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "None" })).toBeInTheDocument();
   });
 
@@ -144,9 +133,7 @@ describe("EpicDetailPage — category assign", () => {
     render(<EpicDetailPage />);
     // Trigger reflects the assigned category.
     expect(
-      within(
-        screen.getByRole("combobox", { name: "Category" }),
-      ).getByText("Frontend"),
+      within(screen.getByRole("combobox", { name: "Category" })).getByText("Frontend"),
     ).toBeInTheDocument();
     act(() => {
       fireEvent.click(screen.getByRole("combobox", { name: "Category" }));

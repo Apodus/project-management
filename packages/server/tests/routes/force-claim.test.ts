@@ -37,12 +37,10 @@ describe("Force-claim (reason-required claim takeover)", () => {
         assigneeId: agentA.user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/force-claim`,
-        { token: agentB.token, body: { reason: "my session identity flipped" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/force-claim`, {
+        token: agentB.token,
+        body: { reason: "my session identity flipped" },
+      });
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.data).toEqual({
@@ -59,12 +57,10 @@ describe("Force-claim (reason-required claim takeover)", () => {
 
       // END-TO-END: B can now transition the task — proving the stranded
       // agent is unblocked (no 409 CLAIM_DENIED).
-      const done = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { token: agentB.token, body: { to_status: "done" } },
-      );
+      const done = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        token: agentB.token,
+        body: { to_status: "done" },
+      });
       expect(done.status).toBe(200);
     });
 
@@ -266,9 +262,14 @@ describe("Force-claim (reason-required claim takeover)", () => {
         body: { reason: "" },
       });
       expect(empty.status).toBe(400);
-      const missing = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/force-claim`, {
-        body: {},
-      });
+      const missing = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/epics/${epic.id}/force-claim`,
+        {
+          body: {},
+        },
+      );
       expect(missing.status).toBe(400);
     });
 
@@ -317,9 +318,14 @@ describe("Force-claim (reason-required claim takeover)", () => {
         { body: { reason: "nope" } },
       );
       expect(noEpic.status).toBe(404);
-      const noUser = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/force-claim`, {
-        body: { reason: "missing target", newAssigneeId: createId() },
-      });
+      const noUser = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/epics/${epic.id}/force-claim`,
+        {
+          body: { reason: "missing target", newAssigneeId: createId() },
+        },
+      );
       expect(noUser.status).toBe(404);
     });
   });
@@ -496,9 +502,7 @@ describe("Force-claim (reason-required claim takeover)", () => {
           { id: testApp.testUser.id, type: "human" },
           { reason: "trying to take over an orphan" },
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "NO_PROJECT" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "NO_PROJECT" }));
     });
   });
 

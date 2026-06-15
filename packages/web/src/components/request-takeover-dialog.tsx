@@ -63,9 +63,8 @@ export function RequestTakeoverDialog({
           <DialogTitle>Request takeover</DialogTitle>
           <DialogDescription>
             Ask to take over &ldquo;{item.title}&rdquo;. If the claim is{" "}
-            <span className="font-medium">stale</span> (lease lapsed) it is
-            transferred to you immediately. If it is{" "}
-            <span className="font-medium">live</span>, the holder is notified
+            <span className="font-medium">stale</span> (lease lapsed) it is transferred to you
+            immediately. If it is <span className="font-medium">live</span>, the holder is notified
             and the claim is NOT changed — live claims are never taken over.
           </DialogDescription>
         </DialogHeader>
@@ -82,10 +81,7 @@ export function RequestTakeoverDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!canSubmit || takeoverMutation.isPending}
-          >
+          <Button onClick={handleSubmit} disabled={!canSubmit || takeoverMutation.isPending}>
             {takeoverMutation.isPending ? "Requesting…" : "Request takeover"}
           </Button>
         </DialogFooter>

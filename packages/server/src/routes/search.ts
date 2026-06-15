@@ -36,8 +36,7 @@ const searchRoute = createRoute({
   path: "/api/v1/search",
   tags: ["Search"],
   summary: "Full-text search",
-  description:
-    "Search across proposals, tasks, comments, and notes using FTS5 full-text search.",
+  description: "Search across proposals, tasks, comments, and notes using FTS5 full-text search.",
   request: {
     query: z.object({
       q: z.string().min(1, "Search query is required"),

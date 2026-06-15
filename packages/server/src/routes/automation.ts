@@ -74,15 +74,21 @@ const toggleBody = z
   })
   .openapi("ToggleAutomationRule");
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const ruleIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const ruleIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ──────────────────────────────────────────
 
@@ -228,7 +234,7 @@ export function createAutomationRoutes(): OpenAPIHono<{
       name: body.name,
       description: body.description ?? null,
       triggerEvent: body.triggerEvent,
-      conditions: body.conditions as automationService.Condition[] | null ?? null,
+      conditions: (body.conditions as automationService.Condition[] | null) ?? null,
       actionType: body.actionType,
       actionConfig: body.actionConfig ?? null,
       isActive: body.isActive ?? true,

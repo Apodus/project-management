@@ -61,8 +61,7 @@ export function useTaskSubtasks(taskId: string | undefined) {
 export function useUpdateTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateTask }) =>
-      updateTask(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UpdateTask }) => updateTask(id, data),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
       queryClient.invalidateQueries({

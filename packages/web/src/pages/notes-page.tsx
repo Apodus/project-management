@@ -4,12 +4,7 @@ import { Inbox, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -40,25 +35,13 @@ import {
 import { useEpics } from "@/hooks/use-epics";
 import { useFtsSearch } from "@/hooks/use-fts-search";
 import { useProjectStore } from "@/stores/project-store";
-import {
-  formatRelativeTime,
-  formatStatus,
-  getPriorityColor,
-  getStatusColor,
-} from "@/lib/format";
+import { formatRelativeTime, formatStatus, getPriorityColor, getStatusColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { deriveNotePromotion } from "@/lib/note-promotion";
 import type { Note, NoteFilters } from "@/lib/api";
 import type { NotesSearch } from "@/router";
 
-const NOTE_KINDS = [
-  "bug",
-  "question",
-  "idea",
-  "tech_debt",
-  "wtf",
-  "observation",
-] as const;
+const NOTE_KINDS = ["bug", "question", "idea", "tech_debt", "wtf", "observation"] as const;
 
 const NOTE_STATUSES = ["open", "triaged"] as const;
 
@@ -118,9 +101,7 @@ function AnchorRef({
   const short = `${type} ${id.slice(0, 8)}…`;
   if (anchorRef && !anchorRef.exists) {
     return (
-      <span className="font-mono text-[11px] text-muted-foreground/60">
-        {short} (removed)
-      </span>
+      <span className="text-muted-foreground/60 font-mono text-[11px]">{short} (removed)</span>
     );
   }
   const title = anchorRef?.title;
@@ -230,10 +211,7 @@ function DismissNoteDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!canSubmit || dismissMutation.isPending}
-          >
+          <Button onClick={handleSubmit} disabled={!canSubmit || dismissMutation.isPending}>
             {dismissMutation.isPending ? "Dismissing…" : "Dismiss"}
           </Button>
         </DialogFooter>
@@ -304,9 +282,7 @@ function PromoteToProposalDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="promote-proposal-description">
-              Description (optional)
-            </Label>
+            <Label htmlFor="promote-proposal-description">Description (optional)</Label>
             <Textarea
               id="promote-proposal-description"
               value={description}
@@ -318,10 +294,7 @@ function PromoteToProposalDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!canSubmit || promoteMutation.isPending}
-          >
+          <Button onClick={handleSubmit} disabled={!canSubmit || promoteMutation.isPending}>
             {promoteMutation.isPending ? "Promoting…" : "Promote"}
           </Button>
         </DialogFooter>
@@ -355,9 +328,7 @@ function PromoteToTaskDialog({
   // epics query. Deviation from the spec's "combobox": the house pattern is a
   // Radix Select (no combobox primitive exists in this codebase) — deliberate.
   const { data: epics } = useEpics(note.projectId);
-  const epicChoices = (epics ?? []).filter(
-    (e) => !TERMINAL_EPIC_STATUSES.has(e.status),
-  );
+  const epicChoices = (epics ?? []).filter((e) => !TERMINAL_EPIC_STATUSES.has(e.status));
 
   function reset() {
     setTitle(derived.title);
@@ -409,9 +380,7 @@ function PromoteToTaskDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="promote-task-description">
-              Description (optional)
-            </Label>
+            <Label htmlFor="promote-task-description">Description (optional)</Label>
             <Textarea
               id="promote-task-description"
               value={description}
@@ -439,10 +408,7 @@ function PromoteToTaskDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!canSubmit || promoteMutation.isPending}
-          >
+          <Button onClick={handleSubmit} disabled={!canSubmit || promoteMutation.isPending}>
             {promoteMutation.isPending ? "Promoting…" : "Promote"}
           </Button>
         </DialogFooter>
@@ -477,8 +443,7 @@ function NoteDetailDialog({
   onPromoteTask: () => void;
 }) {
   const isOpen = note.status === "open";
-  const isPromoted =
-    note.status === "triaged" && note.triageOutcome === "promoted";
+  const isPromoted = note.status === "triaged" && note.triageOutcome === "promoted";
 
   // Close this dialog FIRST, then open the handed-off triage dialog — so only
   // one Radix modal is ever mounted (no nested focus-trap hazard).
@@ -492,10 +457,7 @@ function NoteDetailDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge
-              variant="secondary"
-              className={cn("text-[11px]", getKindColor(note.kind))}
-            >
+            <Badge variant="secondary" className={cn("text-[11px]", getKindColor(note.kind))}>
               {formatStatus(note.kind)}
             </Badge>
             {note.severity && (
@@ -507,53 +469,39 @@ function NoteDetailDialog({
               </Badge>
             )}
             {note.status === "open" && (
-              <Badge
-                variant="secondary"
-                className={cn("text-[11px]", getStatusColor("open"))}
-              >
+              <Badge variant="secondary" className={cn("text-[11px]", getStatusColor("open"))}>
                 Open
               </Badge>
             )}
             {isPromoted && (
               <Badge
                 variant="secondary"
-                className="text-[11px] bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+                className="bg-green-100 text-[11px] text-green-800 dark:bg-green-900/40 dark:text-green-300"
               >
                 Triaged · Promoted
               </Badge>
             )}
             {note.status === "triaged" && note.triageOutcome === "dismissed" && (
-              <Badge
-                variant="secondary"
-                className="text-[11px] text-muted-foreground"
-              >
+              <Badge variant="secondary" className="text-muted-foreground text-[11px]">
                 Triaged · Dismissed
               </Badge>
             )}
           </div>
           <DialogTitle>{note.title}</DialogTitle>
-          <DialogDescription className="sr-only">
-            Full note details
-          </DialogDescription>
+          <DialogDescription className="sr-only">Full note details</DialogDescription>
         </DialogHeader>
 
         {note.body ? (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">
-            {note.body}
-          </p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">{note.body}</p>
         ) : (
-          <p className="text-sm italic text-muted-foreground/50">No body</p>
+          <p className="text-muted-foreground/50 text-sm italic">No body</p>
         )}
 
-        <div className="space-y-1.5 border-t pt-3 text-xs text-muted-foreground">
+        <div className="text-muted-foreground space-y-1.5 border-t pt-3 text-xs">
           {note.anchorType && note.anchorId && (
             <div>
               <span className="text-muted-foreground/70">Anchored to </span>
-              <AnchorRef
-                type={note.anchorType}
-                id={note.anchorId}
-                anchorRef={note.anchor}
-              />
+              <AnchorRef type={note.anchorType} id={note.anchorId} anchorRef={note.anchor} />
             </div>
           )}
           {note.codeLocator && (
@@ -568,11 +516,7 @@ function NoteDetailDialog({
           {isPromoted && note.promotedTaskId && (
             <div>
               <span className="text-muted-foreground/70">Promoted to </span>
-              <AnchorRef
-                type="task"
-                id={note.promotedTaskId}
-                anchorRef={note.promotedTarget}
-              />
+              <AnchorRef type="task" id={note.promotedTaskId} anchorRef={note.promotedTarget} />
             </div>
           )}
           {isPromoted && note.promotedProposalId && (
@@ -594,9 +538,7 @@ function NoteDetailDialog({
             {note.updatedAt !== note.createdAt && (
               <span>Updated {formatRelativeTime(note.updatedAt)}</span>
             )}
-            {note.triagedAt && (
-              <span>Triaged {formatRelativeTime(note.triagedAt)}</span>
-            )}
+            {note.triagedAt && <span>Triaged {formatRelativeTime(note.triagedAt)}</span>}
           </div>
         </div>
 
@@ -604,22 +546,14 @@ function NoteDetailDialog({
             Each closes the detail then hands off to the card's own dialog. */}
         {isOpen && (
           <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handAction(onDismiss)}
-            >
+            <Button variant="outline" size="sm" onClick={() => handAction(onDismiss)}>
               Dismiss
             </Button>
             <Button size="sm" onClick={() => handAction(onPromoteProposal)}>
               Promote to proposal
             </Button>
             {isHuman && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => handAction(onPromoteTask)}
-              >
+              <Button size="sm" variant="secondary" onClick={() => handAction(onPromoteTask)}>
                 Promote to task
               </Button>
             )}
@@ -644,10 +578,7 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
     <Card className="gap-3 py-4">
       <CardHeader className="pb-0">
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge
-            variant="secondary"
-            className={cn("text-[11px]", getKindColor(note.kind))}
-          >
+          <Badge variant="secondary" className={cn("text-[11px]", getKindColor(note.kind))}>
             {formatStatus(note.kind)}
           </Badge>
           {note.severity && (
@@ -659,23 +590,20 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
             </Badge>
           )}
           {note.status === "open" && (
-            <Badge
-              variant="secondary"
-              className={cn("text-[11px]", getStatusColor("open"))}
-            >
+            <Badge variant="secondary" className={cn("text-[11px]", getStatusColor("open"))}>
               Open
             </Badge>
           )}
           {isPromoted && (
             <Badge
               variant="secondary"
-              className="text-[11px] bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+              className="bg-green-100 text-[11px] text-green-800 dark:bg-green-900/40 dark:text-green-300"
             >
               Triaged · Promoted
             </Badge>
           )}
           {isDismissed && (
-            <Badge variant="secondary" className="text-[11px] text-muted-foreground">
+            <Badge variant="secondary" className="text-muted-foreground text-[11px]">
               Triaged · Dismissed
             </Badge>
           )}
@@ -692,36 +620,26 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
       </CardHeader>
       <CardContent>
         {note.body ? (
-          <p className="line-clamp-2 text-sm italic text-muted-foreground">
-            {note.body}
-          </p>
+          <p className="text-muted-foreground line-clamp-2 text-sm italic">{note.body}</p>
         ) : (
-          <p className="text-sm italic text-muted-foreground/50">No body</p>
+          <p className="text-muted-foreground/50 text-sm italic">No body</p>
         )}
 
         {note.anchorType && note.anchorId && (
-          <div className="mt-3 text-xs text-muted-foreground">
+          <div className="text-muted-foreground mt-3 text-xs">
             <span className="text-muted-foreground/70">Anchored to </span>
-            <AnchorRef
-              type={note.anchorType}
-              id={note.anchorId}
-              anchorRef={note.anchor}
-            />
+            <AnchorRef type={note.anchorType} id={note.anchorId} anchorRef={note.anchor} />
           </div>
         )}
 
         {isPromoted && note.promotedTaskId && (
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="text-muted-foreground mt-1 text-xs">
             <span className="text-muted-foreground/70">Promoted to </span>
-            <AnchorRef
-              type="task"
-              id={note.promotedTaskId}
-              anchorRef={note.promotedTarget}
-            />
+            <AnchorRef type="task" id={note.promotedTaskId} anchorRef={note.promotedTarget} />
           </div>
         )}
         {isPromoted && note.promotedProposalId && (
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="text-muted-foreground mt-1 text-xs">
             <span className="text-muted-foreground/70">Promoted to </span>
             <AnchorRef
               type="proposal"
@@ -731,7 +649,7 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
           </div>
         )}
 
-        <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground/70">
+        <div className="text-muted-foreground/70 mt-3 flex items-center gap-3 text-xs">
           <span>{formatRelativeTime(note.createdAt)}</span>
         </div>
 
@@ -751,31 +669,19 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
         {/* Triage actions — open notes only (triaged notes are terminal). */}
         {isOpen && (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDismissOpen(true)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setDismissOpen(true)}>
               Dismiss
             </Button>
             <Button size="sm" onClick={() => setPromoteProposalOpen(true)}>
               Promote to proposal
             </Button>
             {isHuman && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setPromoteTaskOpen(true)}
-              >
+              <Button size="sm" variant="secondary" onClick={() => setPromoteTaskOpen(true)}>
                 Promote to task
               </Button>
             )}
 
-            <DismissNoteDialog
-              note={note}
-              open={dismissOpen}
-              onOpenChange={setDismissOpen}
-            />
+            <DismissNoteDialog note={note} open={dismissOpen} onOpenChange={setDismissOpen} />
             <PromoteToProposalDialog
               note={note}
               open={promoteProposalOpen}
@@ -837,9 +743,7 @@ export function NotesPage() {
   // navigation that mounts this page fresh, so useState initializers are correct).
   const [kindFilter, setKindFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>(search.status ?? "");
-  const [anchorTypeFilter, setAnchorTypeFilter] = useState<string>(
-    search.anchorType ?? "",
-  );
+  const [anchorTypeFilter, setAnchorTypeFilter] = useState<string>(search.anchorType ?? "");
   const [anchorId, setAnchorId] = useState<string>(search.anchorId ?? "");
   const [severityFilter, setSeverityFilter] = useState<string>("");
   const [searchInput, setSearchInput] = useState(search.q ?? "");
@@ -848,13 +752,11 @@ export function NotesPage() {
   const filters: NoteFilters = useMemo(() => {
     const f: NoteFilters = {};
     if (kindFilter && kindFilter !== "all") f.kind = kindFilter as Note["kind"];
-    if (statusFilter && statusFilter !== "all")
-      f.status = statusFilter as Note["status"];
+    if (statusFilter && statusFilter !== "all") f.status = statusFilter as Note["status"];
     if (anchorTypeFilter && anchorTypeFilter !== "all")
       f.anchorType = anchorTypeFilter as Note["anchorType"];
     if (anchorId) f.anchorId = anchorId;
-    if (severityFilter && severityFilter !== "all")
-      f.severity = severityFilter as Note["severity"];
+    if (severityFilter && severityFilter !== "all") f.severity = severityFilter as Note["severity"];
     return f;
   }, [kindFilter, statusFilter, anchorTypeFilter, anchorId, severityFilter]);
 
@@ -883,9 +785,7 @@ export function NotesPage() {
     if (!hasFreeText) return notes;
     const hits = ftsQuery.data ?? [];
     const byId = new Map(notes.map((n) => [n.id, n]));
-    return hits
-      .map((h) => byId.get(h.entityId))
-      .filter((n): n is Note => n !== undefined);
+    return hits.map((h) => byId.get(h.entityId)).filter((n): n is Note => n !== undefined);
   }, [notes, hasFreeText, ftsQuery.data]);
 
   // Avoid a false "no notes match" flash while the FIRST fts fetch for a
@@ -915,7 +815,7 @@ export function NotesPage() {
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <Inbox className="size-6 text-muted-foreground" />
+        <Inbox className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Inbox</h1>
         {project && (
           <Badge variant="outline" className="text-xs font-normal">
@@ -927,12 +827,12 @@ export function NotesPage() {
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-64">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
           <Input
             placeholder="Search notes..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-9 h-9"
+            className="h-9 pl-9"
           />
         </div>
 
@@ -1004,9 +904,7 @@ export function NotesPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
-              Failed to load notes. Please try again.
-            </p>
+            <p className="text-destructive text-sm">Failed to load notes. Please try again.</p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               Retry
             </Button>
@@ -1026,17 +924,12 @@ export function NotesPage() {
       {/* Empty state */}
       {!isLoading && !searchPending && !error && visibleNotes.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
-          <Inbox className="mb-3 size-10 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">
+          <Inbox className="text-muted-foreground/40 mb-3 size-10" />
+          <p className="text-muted-foreground text-sm">
             {hasActiveFilters ? "No notes match your filters" : "No notes yet"}
           </p>
           {hasActiveFilters && (
-            <Button
-              className="mt-3"
-              size="sm"
-              variant="outline"
-              onClick={clearFilters}
-            >
+            <Button className="mt-3" size="sm" variant="outline" onClick={clearFilters}>
               Clear filters
             </Button>
           )}

@@ -26,12 +26,7 @@ import type { AuthUser } from "../../src/types.js";
 // ──────────────────────────────────────────────────────────────────
 
 const MIGRATION_SQL = readFileSync(
-  fileURLToPath(
-    new URL(
-      "../../src/db/migrations/0034_backfill_claim_leases.sql",
-      import.meta.url,
-    ),
-  ),
+  fileURLToPath(new URL("../../src/db/migrations/0034_backfill_claim_leases.sql", import.meta.url)),
   "utf8",
 );
 
@@ -56,12 +51,7 @@ describe("migration 0034 — backfill claim_leases", () => {
     return testApp.db
       .select()
       .from(claimLeases)
-      .where(
-        and(
-          eq(claimLeases.entityType, entityType),
-          eq(claimLeases.entityId, entityId),
-        ),
-      )
+      .where(and(eq(claimLeases.entityType, entityType), eq(claimLeases.entityId, entityId)))
       .get();
   }
 
@@ -92,11 +82,7 @@ describe("migration 0034 — backfill claim_leases", () => {
       projectId: project.id,
       status: "active",
     });
-    testApp.db
-      .update(epics)
-      .set({ assigneeId: holder.user.id })
-      .where(eq(epics.id, epic.id))
-      .run();
+    testApp.db.update(epics).set({ assigneeId: holder.user.id }).where(eq(epics.id, epic.id)).run();
     const proposal = createTestProposal(testApp.db, {
       projectId: project.id,
       status: "draft",
@@ -209,12 +195,7 @@ describe("migration 0034 — backfill claim_leases", () => {
     const rows = testApp.db
       .select()
       .from(claimLeases)
-      .where(
-        and(
-          eq(claimLeases.entityType, "task"),
-          eq(claimLeases.entityId, task.id),
-        ),
-      )
+      .where(and(eq(claimLeases.entityType, "task"), eq(claimLeases.entityId, task.id)))
       .all();
     expect(rows).toHaveLength(1);
     expect(rows[0]!.expiresAt).toBe(EPOCH);

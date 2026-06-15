@@ -115,7 +115,9 @@ describe("getEdgeStyling — relates_to", () => {
   });
 
   it("highlight composes — brighter, heavier, raised, still dotted, no arrowhead", () => {
-    const v = getEdgeStyling(input({ dependencyType: "relates_to", highlightState: "highlighted" }));
+    const v = getEdgeStyling(
+      input({ dependencyType: "relates_to", highlightState: "highlighted" }),
+    );
     expect(v.style.opacity).toBe(1);
     expect(v.style.strokeWidth).toBe(2);
     expect(v.zIndex).toBe(10);

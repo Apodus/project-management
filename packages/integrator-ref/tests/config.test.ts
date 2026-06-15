@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "../src/config.js";
 import type { ProjectDetail } from "../src/pm-client.js";
 
-function stubClient(project: ProjectDetail): { getProject: (id: string) => Promise<ProjectDetail> } {
+function stubClient(project: ProjectDetail): {
+  getProject: (id: string) => Promise<ProjectDetail>;
+} {
   return { getProject: async () => project };
 }
 
@@ -144,18 +146,14 @@ describe("loadConfig", () => {
   it("throws when project has no gitRepoUrl", async () => {
     const noRepo: ProjectDetail = { ...enabledProject, gitRepoUrl: null };
     await expect(
-      loadConfig(
-        { project: "p1" },
-        { PM_API_TOKEN: "t" } as never,
-        stubClient(noRepo),
-      ),
+      loadConfig({ project: "p1" }, { PM_API_TOKEN: "t" } as never, stubClient(noRepo)),
     ).rejects.toThrow(/gitRepoUrl/);
   });
 
   it("throws when project id missing", async () => {
-    await expect(
-      loadConfig({}, {} as never, stubClient(enabledProject)),
-    ).rejects.toThrow(ConfigError);
+    await expect(loadConfig({}, {} as never, stubClient(enabledProject))).rejects.toThrow(
+      ConfigError,
+    );
   });
 
   it("throws when integrator.enabled is false", async () => {
@@ -164,11 +162,7 @@ describe("loadConfig", () => {
       settings: { integrator: { enabled: false } },
     };
     await expect(
-      loadConfig(
-        { project: "p1" },
-        { PM_API_TOKEN: "t" } as never,
-        stubClient(disabled),
-      ),
+      loadConfig({ project: "p1" }, { PM_API_TOKEN: "t" } as never, stubClient(disabled)),
     ).rejects.toThrow(/not enabled/);
   });
 
@@ -180,21 +174,13 @@ describe("loadConfig", () => {
       },
     };
     await expect(
-      loadConfig(
-        { project: "p1" },
-        { PM_API_TOKEN: "t" } as never,
-        stubClient(missing),
-      ),
+      loadConfig({ project: "p1" }, { PM_API_TOKEN: "t" } as never, stubClient(missing)),
     ).rejects.toThrow(/verify_command/);
   });
 
   it("throws when token env var is empty", async () => {
     await expect(
-      loadConfig(
-        { project: "p1" },
-        {} as never,
-        stubClient(enabledProject),
-      ),
+      loadConfig({ project: "p1" }, {} as never, stubClient(enabledProject)),
     ).rejects.toThrow(/Token env var/);
   });
 });

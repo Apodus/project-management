@@ -28,9 +28,7 @@ interface SSEPayload {
 
 // ─── Query key invalidation map ──────────────────────────────────
 
-export function getInvalidationKeys(
-  eventType: string,
-): readonly (readonly unknown[])[] {
+export function getInvalidationKeys(eventType: string): readonly (readonly unknown[])[] {
   const prefix = eventType.split(".")[0];
   switch (prefix) {
     case "project":
@@ -79,10 +77,7 @@ export function getInvalidationKeys(
  * TanStack's NavigateFn the toast needs (kept loose so the unit test can pass
  * a plain spy).
  */
-export type ToastNavigate = (opts: {
-  to: string;
-  params: Record<string, string>;
-}) => void;
+export type ToastNavigate = (opts: { to: string; params: Record<string, string> }) => void;
 
 // Exported for unit testing (sanctioned by the roadmap amendment).
 export function maybeShowToast(
@@ -121,8 +116,7 @@ export function maybeShowToast(
   // claims panel.
   if (eventType === "claim.stale_alert") {
     toast.warning("Stale claims", {
-      description:
-        "Some work items are claimed but inactive past grace. Review or hand off.",
+      description: "Some work items are claimed but inactive past grace. Review or hand off.",
       ...(navigate && payload.entity_id
         ? {
             action: {
@@ -143,8 +137,7 @@ export function maybeShowToast(
   // owns the inbox refresh; this frame just surfaces the warning.
   if (eventType === "note.backlog_alert") {
     toast.warning("Untriaged notes piling up", {
-      description:
-        "Some notes have been waiting past the triage window. Review the inbox.",
+      description: "Some notes have been waiting past the triage window. Review the inbox.",
     });
     return;
   }
@@ -154,8 +147,7 @@ export function maybeShowToast(
   // surfaces the warning.
   if (eventType === "escalation.sla_breached") {
     toast.warning("Escalations going unanswered", {
-      description:
-        "Some escalations have been open past the SLA window. Acknowledge or answer.",
+      description: "Some escalations have been open past the SLA window. Acknowledge or answer.",
     });
     return;
   }
@@ -164,16 +156,11 @@ export function maybeShowToast(
     ? `'${payload.entity_title}'`
     : `${payload.entity_id?.slice(-6) ?? ""}`;
 
-  if (
-    eventType === "task.status_changed" &&
-    payload.changes?.status
-  ) {
+  if (eventType === "task.status_changed" && payload.changes?.status) {
     const toStatus = (payload.changes.status as { to: string }).to;
     if (toStatus === "done") {
       const actorSuffix =
-        payload.actor.name && payload.actor.name !== "system"
-          ? ` by ${payload.actor.name}`
-          : "";
+        payload.actor.name && payload.actor.name !== "system" ? ` by ${payload.actor.name}` : "";
       toast.success(`Task completed`, {
         description: `Task ${titleLabel} completed${actorSuffix}`,
       });
@@ -231,8 +218,7 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
   navigateRef.current = navigate;
 
   useEffect(() => {
-    const { setStatus, recordEvent, clearUnread } =
-      useConnectionStore.getState();
+    const { setStatus, recordEvent, clearUnread } = useConnectionStore.getState();
 
     // Build URL with optional project filter
     const params = new URLSearchParams();

@@ -25,9 +25,7 @@ describe("deriveClaimState", () => {
   };
   // lapsed: expired AND past the 24h grace window.
   const lapsedLease = {
-    expiresAt: new Date(
-      NOW.getTime() - LEASE_GRACE_MS_DEFAULT - 60_000,
-    ).toISOString(),
+    expiresAt: new Date(NOW.getTime() - LEASE_GRACE_MS_DEFAULT - 60_000).toISOString(),
   };
 
   it("null/undefined holder → unclaimed", () => {
@@ -60,9 +58,7 @@ describe("deriveClaimState", () => {
   });
 
   it("other caller + unparseable expiresAt → live (malformed lease row, not a missing lease)", () => {
-    expect(
-      deriveClaimState(HOLDER, { expiresAt: "not-a-date" }, NOW, CALLER),
-    ).toBe("live");
+    expect(deriveClaimState(HOLDER, { expiresAt: "not-a-date" }, NOW, CALLER)).toBe("live");
   });
 
   it("no caller + holder → live/stale, never yours", () => {

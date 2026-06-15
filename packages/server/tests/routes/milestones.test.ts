@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  createTestApp,
-  createTestProject,
-  authRequest,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestProject, authRequest, type TestApp } from "../utils.js";
 import { createId } from "@pm/shared";
 
 describe("Milestones API", () => {
@@ -49,18 +44,12 @@ describe("Milestones API", () => {
       const project = createTestProject(testApp.db);
 
       // Create two milestones
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/milestones`,
-        { body: { name: "v1.0" } },
-      );
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/milestones`,
-        { body: { name: "v2.0" } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/milestones`, {
+        body: { name: "v1.0" },
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/milestones`, {
+        body: { name: "v2.0" },
+      });
 
       const res = await authRequest(
         testApp.app,
@@ -160,18 +149,13 @@ describe("Milestones API", () => {
       );
       const milestone = (await createRes.json()).data;
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/milestones/${milestone.id}`,
-        {
-          body: {
-            name: "Updated Name",
-            description: "Now with description",
-            status: "closed",
-          },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/milestones/${milestone.id}`, {
+        body: {
+          name: "Updated Name",
+          description: "Now with description",
+          status: "closed",
         },
-      );
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -181,12 +165,9 @@ describe("Milestones API", () => {
     });
 
     it("should return 404 for non-existent milestone", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/milestones/${createId()}`,
-        { body: { name: "Ghost" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/milestones/${createId()}`, {
+        body: { name: "Ghost" },
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -205,11 +186,7 @@ describe("Milestones API", () => {
       );
       const milestone = (await createRes.json()).data;
 
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/milestones/${milestone.id}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/milestones/${milestone.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -226,11 +203,7 @@ describe("Milestones API", () => {
     });
 
     it("should return 404 for non-existent milestone", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/milestones/${createId()}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/milestones/${createId()}`);
       expect(res.status).toBe(404);
     });
   });

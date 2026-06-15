@@ -42,15 +42,21 @@ const errorEnvelope = z.object({
 
 // ─── Param + query schemas ────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const incidentIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01JE7KQXZJ9P3M4INCIDENT0X1",
-});
+const incidentIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01JE7KQXZJ9P3M4INCIDENT0X1",
+  });
 
 const listQuery = z.object({
   state: z.enum(MERGE_INCIDENT_STATES).optional(),
@@ -99,11 +105,26 @@ const openIncidentRoute = createRoute({
     body: { content: { "application/json": { schema: openIncidentBody } }, required: true },
   },
   responses: {
-    201: { description: "Opened incident", content: { "application/json": { schema: mergeIncidentDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    201: {
+      description: "Opened incident",
+      content: { "application/json": { schema: mergeIncidentDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -115,9 +136,18 @@ const getIncidentRoute = createRoute({
   description: "Returns the incident row including its resolution (null while open).",
   request: { params: z.object({ id: incidentIdParam }) },
   responses: {
-    200: { description: "Incident", content: { "application/json": { schema: mergeIncidentDataEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Incident not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Incident",
+      content: { "application/json": { schema: mergeIncidentDataEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Incident not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -126,12 +156,22 @@ const listIncidentsRoute = createRoute({
   path: "/api/v1/projects/{projectId}/merge-incidents",
   tags: ["Merge Incidents"],
   summary: "List merge incidents in a project",
-  description: "Returns incidents for the project ordered by openedAt asc. Optional filters: state, type, groupId.",
+  description:
+    "Returns incidents for the project ordered by openedAt asc. Optional filters: state, type, groupId.",
   request: { params: z.object({ projectId: projectIdParam }), query: listQuery },
   responses: {
-    200: { description: "Filtered list", content: { "application/json": { schema: mergeIncidentListEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Filtered list",
+      content: { "application/json": { schema: mergeIncidentListEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -147,12 +187,30 @@ const resolveIncidentRoute = createRoute({
     body: { content: { "application/json": { schema: resolveIncidentBody } }, required: true },
   },
   responses: {
-    200: { description: "Resolved", content: { "application/json": { schema: mergeIncidentDataEnvelope } } },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "auto requires ai_agent; human requires admin", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Incident not found", content: { "application/json": { schema: errorEnvelope } } },
-    409: { description: "Invalid transition from current state", content: { "application/json": { schema: errorEnvelope } } },
+    200: {
+      description: "Resolved",
+      content: { "application/json": { schema: mergeIncidentDataEnvelope } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "auto requires ai_agent; human requires admin",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Incident not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Invalid transition from current state",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 

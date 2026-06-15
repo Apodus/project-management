@@ -58,12 +58,9 @@ async function forceLandOne(
     role: agent.user.role,
     type: agent.user.type,
   });
-  const res = await authRequest(
-    testApp.app,
-    "POST",
-    `/api/v1/merge-requests/${r.id}/force-land`,
-    { body: { landedSha: "ff00ba5", reason } },
-  );
+  const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${r.id}/force-land`, {
+    body: { landedSha: "ff00ba5", reason },
+  });
   expect(res.status).toBe(200);
   return r.id;
 }
@@ -84,11 +81,7 @@ describe("Audit-log route", () => {
   describe("GET /api/v1/projects/{projectId}/audit-log", () => {
     it("admin → 200 with { data, pagination }", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/audit-log`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/audit-log`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(Array.isArray(body.data)).toBe(true);
@@ -112,9 +105,7 @@ describe("Audit-log route", () => {
 
     it("unauthenticated → 401", async () => {
       const project = createTestProject(testApp.db);
-      const res = await testApp.app.request(
-        `/api/v1/projects/${project.id}/audit-log`,
-      );
+      const res = await testApp.app.request(`/api/v1/projects/${project.id}/audit-log`);
       expect(res.status).toBe(401);
     });
 
@@ -122,18 +113,12 @@ describe("Audit-log route", () => {
       const project = createTestProject(testApp.db);
       await forceLandOne(testApp, project, "hotfix for prod outage");
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/audit-log`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/audit-log`);
       expect(res.status).toBe(200);
       const body = await res.json();
       const actions = body.data.map((r: { action: string }) => r.action);
       expect(actions).toContain("force_land");
-      const row = body.data.find(
-        (r: { action: string }) => r.action === "force_land",
-      );
+      const row = body.data.find((r: { action: string }) => r.action === "force_land");
       expect(row.targetType).toBe("merge_request");
       expect(row.reason).toBe("hotfix for prod outage");
       expect(row.metadataAfter).toMatchObject({
@@ -155,11 +140,9 @@ describe("Audit-log route", () => {
       );
       const landedBody = await landed.json();
       expect(landedBody.data.length).toBe(2);
-      expect(
-        landedBody.data.every(
-          (r: { action: string }) => r.action === "force_land",
-        ),
-      ).toBe(true);
+      expect(landedBody.data.every((r: { action: string }) => r.action === "force_land")).toBe(
+        true,
+      );
 
       // ...and a filter for an action with no rows returns empty.
       const paused = await authRequest(
@@ -176,12 +159,9 @@ describe("Audit-log route", () => {
       const project = createTestProject(testApp.db);
       await forceLandOne(testApp, project, "r1");
       // Pause writes a `train`-target audit row.
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/train/pause`,
-        { body: { reason: "drain" } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/train/pause`, {
+        body: { reason: "drain" },
+      });
 
       const mrOnly = await authRequest(
         testApp.app,
@@ -207,11 +187,7 @@ describe("Audit-log route", () => {
       await forceLandOne(testApp, project, "r1");
 
       // The default admin user (test-admin) is the force-land actor.
-      const all = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/audit-log`,
-      );
+      const all = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/audit-log`);
       const allBody = await all.json();
       const actorId = allBody.data[0].actorId as string;
 
@@ -241,11 +217,7 @@ describe("Audit-log route", () => {
     });
 
     it("404 for an unknown project", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${createId()}/audit-log`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${createId()}/audit-log`);
       expect(res.status).toBe(404);
     });
   });

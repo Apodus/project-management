@@ -4323,7 +4323,9 @@ describe("MCP Tools", () => {
       expect(text).toContain("Anchor: task task_001 — (removed)");
       // The pre-C4 row's anchor line carries NO suffix.
       const lines = text.split("\n");
-      const noteCLine = lines.find((l, i) => lines[i - 1]?.includes("note_c") || l.includes("note_c"));
+      const noteCLine = lines.find(
+        (l, i) => lines[i - 1]?.includes("note_c") || l.includes("note_c"),
+      );
       expect(noteCLine).toBeDefined();
       expect(noteCLine).toContain("Anchor: task task_001");
       expect(noteCLine).not.toContain("—");

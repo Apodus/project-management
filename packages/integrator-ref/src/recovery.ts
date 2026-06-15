@@ -33,10 +33,7 @@ export async function reclaimStrandedRequests(
       ungrouped: true,
     });
   } catch (err) {
-    logger.warn(
-      { err: errMessage(err) },
-      "Failed to list stranded requests during recovery",
-    );
+    logger.warn({ err: errMessage(err) }, "Failed to list stranded requests during recovery");
     return { scanned: 0, reclaimed: 0, skipped: 0 };
   }
 
@@ -44,19 +41,13 @@ export async function reclaimStrandedRequests(
   let skipped = 0;
   for (const req of stranded) {
     try {
-      await pmClient.resetToQueued(
-        req.id,
-        "integrator restart; reclaiming stranded request",
-      );
+      await pmClient.resetToQueued(req.id, "integrator restart; reclaiming stranded request");
       reclaimed += 1;
       logger.info({ requestId: req.id }, "Reclaimed stranded request");
     } catch (err) {
       if (isApiError(err, 409)) {
         skipped += 1;
-        logger.info(
-          { requestId: req.id },
-          "Stranded request already terminal; skipping",
-        );
+        logger.info({ requestId: req.id }, "Stranded request already terminal; skipping");
       } else {
         skipped += 1;
         logger.warn(
@@ -107,10 +98,7 @@ export async function reclaimStrandedGroups(
       state: "integrating",
     });
   } catch (err) {
-    logger.warn(
-      { err: errMessage(err) },
-      "Failed to list stranded groups during recovery",
-    );
+    logger.warn({ err: errMessage(err) }, "Failed to list stranded groups during recovery");
     return { scanned: 0, reclaimed: 0, skipped: 0 };
   }
 
@@ -150,10 +138,7 @@ export async function reclaimStrandedGroups(
         reason: "integrator restart; reclaiming stranded group (§6.4 window)",
       });
       reclaimed += 1;
-      logger.info(
-        { groupId: group.id },
-        "Reset stranded group to forming for re-integration",
-      );
+      logger.info({ groupId: group.id }, "Reset stranded group to forming for re-integration");
     } catch (err) {
       skipped += 1;
       if (isApiError(err, 409)) {
@@ -162,10 +147,7 @@ export async function reclaimStrandedGroups(
           "Stranded group could not be reset (raced to terminal/incident); skipping",
         );
       } else {
-        logger.warn(
-          { groupId: group.id, err: errMessage(err) },
-          "Failed to reset stranded group",
-        );
+        logger.warn({ groupId: group.id, err: errMessage(err) }, "Failed to reset stranded group");
       }
     }
   }

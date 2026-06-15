@@ -56,12 +56,7 @@ describe("pickNextTask liveness (C3.P3)", () => {
     return testApp.db
       .select()
       .from(claimLeases)
-      .where(
-        and(
-          eq(claimLeases.entityType, "task"),
-          eq(claimLeases.entityId, entityId),
-        ),
-      )
+      .where(and(eq(claimLeases.entityType, "task"), eq(claimLeases.entityId, entityId)))
       .get();
   }
 
@@ -73,12 +68,7 @@ describe("pickNextTask liveness (C3.P3)", () => {
     return testApp.db
       .select()
       .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.action, "claim_reclaimed"),
-          eq(auditLog.targetId, targetId),
-        ),
-      )
+      .where(and(eq(auditLog.action, "claim_reclaimed"), eq(auditLog.targetId, targetId)))
       .all().length;
   }
 
@@ -101,8 +91,7 @@ describe("pickNextTask liveness (C3.P3)", () => {
   function makeStaleReadyTask(opts?: { projectId?: string; holderId?: string }) {
     const projectId = opts?.projectId ?? createTestProject(testApp.db).id;
     const reporter = createTestUser(testApp.db);
-    const holderId =
-      opts?.holderId ?? createTestAiAgent(testApp.db).user.id;
+    const holderId = opts?.holderId ?? createTestAiAgent(testApp.db).user.id;
     const task = createTestTask(testApp.db, {
       projectId,
       reporterId: reporter.id,

@@ -31,21 +31,13 @@ export function list(projectId: string) {
   const db = getDb();
 
   // Verify project exists
-  const project = db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .get();
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
 
   if (!project) {
     throw new AppError(404, "NOT_FOUND", `Project not found: ${projectId}`);
   }
 
-  return db
-    .select()
-    .from(milestones)
-    .where(eq(milestones.projectId, projectId))
-    .all();
+  return db.select().from(milestones).where(eq(milestones.projectId, projectId)).all();
 }
 
 /**
@@ -53,11 +45,7 @@ export function list(projectId: string) {
  */
 export function getById(id: string) {
   const db = getDb();
-  const milestone = db
-    .select()
-    .from(milestones)
-    .where(eq(milestones.id, id))
-    .get();
+  const milestone = db.select().from(milestones).where(eq(milestones.id, id)).get();
 
   if (!milestone) {
     throw new AppError(404, "NOT_FOUND", `Milestone not found: ${id}`);
@@ -75,11 +63,7 @@ export function create(data: CreateMilestoneInput) {
   const id = createId();
 
   // Verify project exists
-  const project = db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, data.projectId))
-    .get();
+  const project = db.select().from(projects).where(eq(projects.id, data.projectId)).get();
 
   if (!project) {
     throw new AppError(404, "NOT_FOUND", `Project not found: ${data.projectId}`);

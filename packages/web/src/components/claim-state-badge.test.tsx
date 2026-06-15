@@ -28,9 +28,7 @@ describe("ClaimStateBadge", () => {
   });
 
   it("forwards className onto the rendered badge", () => {
-    const { container } = render(
-      <ClaimStateBadge state="stale" className="custom-x" />,
-    );
+    const { container } = render(<ClaimStateBadge state="stale" className="custom-x" />);
     const badge = container.querySelector('[data-slot="badge"]');
     expect(badge?.className).toContain("custom-x");
   });

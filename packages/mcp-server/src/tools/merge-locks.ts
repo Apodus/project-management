@@ -19,11 +19,7 @@ export function registerMergeLockTools(server: McpServer): void {
     "Low-level / advanced. Most callers should use pm_request_merge instead (Stage 2 — submit and exit, integrator drives rebase + verify + land). This tool acquires the merge lock for a project so the caller can drive integration itself. If free, you become the holder and may proceed with rebase + verify + land. If held, you join a FIFO queue and should wait for 'merge.lock.granted' (over SSE) before acting. The lock has a 5-minute TTL — keep it warm with pm_heartbeat_merge_lock during long verifies. Idempotent for the current holder: re-calling with new intent fields updates them. Optionally attach landing intent (task_id / branch / commit_sha / verify_cmd / worktree_path) so observers and Stage 2 integrators know what you're trying to land.",
     {
       project_id: z.string().describe("The project ID."),
-      resource: z
-        .string()
-        .optional()
-        .default("main")
-        .describe(resourceDesc),
+      resource: z.string().optional().default("main").describe(resourceDesc),
       task_id: z
         .string()
         .optional()
@@ -55,15 +51,7 @@ export function registerMergeLockTools(server: McpServer): void {
           "Optional path to your isolated worktree (single-machine deployments where agents share a host). Used by integrators / for diagnostics; ignored on multi-machine setups.",
         ),
     },
-    async ({
-      project_id,
-      resource,
-      task_id,
-      branch,
-      commit_sha,
-      verify_cmd,
-      worktree_path,
-    }) => {
+    async ({ project_id, resource, task_id, branch, commit_sha, verify_cmd, worktree_path }) => {
       const result = await acquireMergeLock(project_id, resource ?? "main", {
         taskId: task_id,
         branch,
@@ -100,11 +88,7 @@ export function registerMergeLockTools(server: McpServer): void {
     "Refresh your merge-lock lease. Call periodically during long-running verify steps so the lock isn't swept while you're still working. Returns 'not_holder' if the lease already lapsed and someone else was promoted — at that point, abort and call pm_acquire_merge_lock to rejoin the queue.",
     {
       project_id: z.string().describe("The project ID."),
-      resource: z
-        .string()
-        .optional()
-        .default("main")
-        .describe(resourceDesc),
+      resource: z.string().optional().default("main").describe(resourceDesc),
     },
     async ({ project_id, resource }) => {
       const result = await heartbeatMergeLock(project_id, resource ?? "main");
@@ -123,11 +107,7 @@ export function registerMergeLockTools(server: McpServer): void {
     "Low-level / advanced — pairs with pm_acquire_merge_lock. Stage 2 callers using pm_request_merge do NOT call this. Release the merge lock. Two distinct uses: (1) landed — pass landed_sha to advance main and notify peers via the merge.lock.released event; (2) abandoned — omit landed_sha and pass reason explaining why (conflict, build red, etc.). The reason is stored on the lock so the next queued holder sees why main hasn't moved, and is carried on the release event. The queue head is promoted in both cases.",
     {
       project_id: z.string().describe("The project ID."),
-      resource: z
-        .string()
-        .optional()
-        .default("main")
-        .describe(resourceDesc),
+      resource: z.string().optional().default("main").describe(resourceDesc),
       landed_sha: z
         .string()
         .optional()
@@ -174,11 +154,7 @@ export function registerMergeLockTools(server: McpServer): void {
     "Inspect a merge lock. Reports who holds it relative to you ('you' / 'someone_else' / 'none'), queue length, your position if queued, lease expiry, and the last landed SHA. Other holders' identities are not leaked.",
     {
       project_id: z.string().describe("The project ID."),
-      resource: z
-        .string()
-        .optional()
-        .default("main")
-        .describe(resourceDesc),
+      resource: z.string().optional().default("main").describe(resourceDesc),
     },
     async ({ project_id, resource }) => {
       const view = await getMergeLock(project_id, resource ?? "main");

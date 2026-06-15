@@ -54,8 +54,7 @@ describe("createClaudeWorkerRunner", () => {
   it("pipes prompt to stdin, output to logPath, clean exit → ok", async () => {
     const runner = createClaudeWorkerRunner();
     // Read stdin, echo it, exit 0.
-    const cmd =
-      `node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{process.stdout.write('GOT:'+d);process.exit(0)})"`;
+    const cmd = `node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{process.stdout.write('GOT:'+d);process.exit(0)})"`;
     const result = await runner.run(baseInput(cmd, 30));
     expect(result.kind).toBe("ok");
     const log = readFileSync(path.join(dir, "out.log"), "utf8");
@@ -73,9 +72,7 @@ describe("createClaudeWorkerRunner", () => {
 
   it("a bogus command → spawn_error or nonzero_exit", async () => {
     const runner = createClaudeWorkerRunner();
-    const result = await runner.run(
-      baseInput("this-command-definitely-does-not-exist-xyz", 30),
-    );
+    const result = await runner.run(baseInput("this-command-definitely-does-not-exist-xyz", 30));
     expect(result.kind).toBe("error");
     // shell:true → a missing binary usually surfaces as a non-zero shell exit,
     // not a Node spawn 'error'. Accept either failure classification.

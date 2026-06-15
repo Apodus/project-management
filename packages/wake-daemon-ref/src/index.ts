@@ -37,7 +37,10 @@ async function main(): Promise<void> {
     if (err instanceof ConfigError) {
       logger.fatal({ err: err.message }, "Configuration invalid");
     } else {
-      logger.fatal({ err: err instanceof Error ? err.message : String(err) }, "Failed to load config");
+      logger.fatal(
+        { err: err instanceof Error ? err.message : String(err) },
+        "Failed to load config",
+      );
     }
     // Code 2 = config/validation failure (systemd: don't restart). Code 1 is
     // reserved for unexpected runtime errors.
@@ -56,9 +59,7 @@ async function main(): Promise<void> {
     },
     "Wake daemon ready",
   );
-  process.stdout.write(
-    `Wake daemon ready, watching ${cfg.watch.length} worker key(s)\n`,
-  );
+  process.stdout.write(`Wake daemon ready, watching ${cfg.watch.length} worker key(s)\n`);
 
   const client = new WakeClient({ baseUrl: cfg.pmUrl, token: cfg.token });
   const runner = createClaudeWorkerRunner();

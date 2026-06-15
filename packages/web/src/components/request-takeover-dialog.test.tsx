@@ -35,21 +35,15 @@ beforeEach(() => {
 
 describe("RequestTakeoverDialog", () => {
   it("states BOTH outcomes in the copy (stale auto-grant; live never mutated)", () => {
-    render(
-      <RequestTakeoverDialog item={item} open={true} onOpenChange={vi.fn()} />,
-    );
+    render(<RequestTakeoverDialog item={item} open={true} onOpenChange={vi.fn()} />);
     const description = screen.getByText(/Ask to take over/);
     expect(description.textContent).toMatch(/stale.*transferred to you/i);
-    expect(description.textContent).toMatch(
-      /live.*holder is notified.*NOT changed/i,
-    );
+    expect(description.textContent).toMatch(/live.*holder is notified.*NOT changed/i);
     expect(description.textContent).toMatch(/never taken over/i);
   });
 
   it("requires a reason before submit enables", () => {
-    render(
-      <RequestTakeoverDialog item={item} open={true} onOpenChange={vi.fn()} />,
-    );
+    render(<RequestTakeoverDialog item={item} open={true} onOpenChange={vi.fn()} />);
     const submit = screen.getByRole("button", { name: "Request takeover" });
     expect(submit).toBeDisabled();
 
@@ -61,9 +55,7 @@ describe("RequestTakeoverDialog", () => {
 
   it("submits {entityType, id, reason} and closes", async () => {
     const onOpenChange = vi.fn();
-    render(
-      <RequestTakeoverDialog item={item} open={true} onOpenChange={onOpenChange} />,
-    );
+    render(<RequestTakeoverDialog item={item} open={true} onOpenChange={onOpenChange} />);
     fireEvent.change(screen.getByLabelText("Reason"), {
       target: { value: "  picking up abandoned work  " },
     });

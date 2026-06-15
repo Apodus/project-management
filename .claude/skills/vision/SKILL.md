@@ -17,20 +17,20 @@ Vision quality depends on synthesis across the entire subsystem; do not split re
 
 - **Infinite implementation budget.** The bar is end-result quality, perf, and structural soundness. "Smallest diff" / "minimum viable" / "easy first" framings are explicitly rejected. If the right answer is a multi-month rewrite, propose the rewrite.
 - **Pick the right answer, even when expensive.** When multiple options exist (e.g. AVG filter vs analytic intersection), recommend the highest-quality long-term option. State alternatives briefly; flag the chosen one.
-- **Campaign scope, not PR scope.** Each tier is a *campaign* — a multi-phase, multi-PR effort that closes a bug class, installs a structural seal, or ships a capability. Single-PR work belongs *inside* an existing campaign as a slot-in, not as its own tier.
+- **Campaign scope, not PR scope.** Each tier is a _campaign_ — a multi-phase, multi-PR effort that closes a bug class, installs a structural seal, or ships a capability. Single-PR work belongs _inside_ an existing campaign as a slot-in, not as its own tier.
 - **Automatic > manual.** Prefer architectural changes that make bug classes structurally impossible over callsite-discipline fixes. A correctness obligation at every callsite is itself a foot-gun.
-- **Less code, in the right sense.** Concise expression of the *best* solution. Never a license for skimpy plans.
+- **Less code, in the right sense.** Concise expression of the _best_ solution. Never a license for skimpy plans.
 
 ## Working method
 
 1. **Read current state thoroughly.** Memory entries tagged or named for this scope, `git log` of the area, the relevant source files end-to-end. Identify:
    - What recently shipped (closed campaigns whose residuals motivate the next arc).
-   - What is *currently* broken or fragile (latent bug classes, deferred diagnostic tests, parked decisions in `*.progress.json`).
+   - What is _currently_ broken or fragile (latent bug classes, deferred diagnostic tests, parked decisions in `*.progress.json`).
    - What's missing entirely (capabilities the subsystem doesn't have but should).
 2. **Check for prior visions on this scope.** If `roadmaps/vision-*<scope>*.md` exists, read it first. A new vision either ratifies, extends, or supersedes the prior one — be explicit which, and update the prior one's status if it's now obsolete.
 3. **Synthesize the arc — as many campaigns as the scope genuinely demands.** Each campaign closes a bug class, ships a capability, or installs a structural seal. Order foundation-first (seals, abstractions) before capability-first (features), unless a user-visible regression demands earlier triage. **No numeric cap.** The verifier (Phase 2) is the speculation filter — if a campaign survives it, it ships in the arc. Typical visions land at 3–6 campaigns, but if the scope honestly contains 8 well-argued campaigns, list 8. Do not clump coherent-but-distinct campaigns to hit a target count; do not omit verified-valid work to stay under a cap. The flip-side discipline: do not pad. If you find yourself reaching for a campaign because the arc "feels too short", it's speculation and the verifier will kill it.
    - **If the scope is too broad to be coherent as one vision** (e.g. "rendering" might span 12+ campaigns across deferred lighting + RT + post-fx + foliage), split into sub-visions rather than truncating: produce `vision-<date>-<scope>-<sub-area>.md` files and a thin top-level vision linking them.
-4. **One mental model.** Read yourself, or delegate to *one* `general-purpose` subagent at `model: opus`. Do not fan-out across parallel readers — vision is synthesis, not retrieval.
+4. **One mental model.** Read yourself, or delegate to _one_ `general-purpose` subagent at `model: opus`. Do not fan-out across parallel readers — vision is synthesis, not retrieval.
 
 ## Two phases — only Phase 2 survivors are shipped
 
@@ -39,9 +39,11 @@ Vision quality depends on synthesis across the entire subsystem; do not split re
 Draft the vision. Required structure (mirror `roadmaps/vision-20260516-renderer-long-term-arc.md` and the heightfield 6-month vision):
 
 #### Where we are
+
 Status snapshot: what's shipped, what's residual, the named bug classes still alive. Cite specific closed campaigns by name.
 
 #### The arc
+
 N campaigns in priority order. Each campaign:
 
 - **Goal:** one sentence.
@@ -101,22 +103,26 @@ phase_pins:
 **4. Rationale prose** — why these edges exist, not others. One paragraph. Examples: "C4 depends on C1 because PBR adds descriptor bindings and the seal must exist first to prevent drift on the new samplers" / "C4 depends on C3 because PBR wants per-instance roughness as an optional component". Hard dependencies must be justified; speculative "feels safer if sequential" is not a dependency — make them concurrency-eligible.
 
 #### Cross-campaign invariants
+
 What must hold green at every commit across all campaigns (existing tests, gating buffers, baseline benchmarks).
 
 #### Out-of-scope for this arc (parked)
+
 Capabilities deliberately not in this arc and why. These are next-arc material. Naming them prevents scope creep mid-campaign and seeds the next vision document.
 
 #### Recommended single starting point
+
 One campaign. The one that moves the most quality needle first. If the user wants to act immediately, this is the answer.
 
 #### Open questions (commander authority)
+
 Decisions deferred to in-campaign judgement. State the rule for resolving them ("when the user is unavailable, the commander uses the campaign's stated quality criteria to resolve — don't pause"). See `feedback_long_term_vision_proactive.md`.
 
 ### Phase 2 — adversarial verify
 
-Spawn a fresh `general-purpose` agent at the same model tier whose **explicit job is to kill campaigns**, not confirm them. The verifier is *the* speculation filter — since there is no numeric cap on campaign count, every campaign in the draft must individually survive this gate. Pass the verifier the draft vision file path + the source-of-truth files cited within. Required checks:
+Spawn a fresh `general-purpose` agent at the same model tier whose **explicit job is to kill campaigns**, not confirm them. The verifier is _the_ speculation filter — since there is no numeric cap on campaign count, every campaign in the draft must individually survive this gate. Pass the verifier the draft vision file path + the source-of-truth files cited within. Required checks:
 
-- **Is any campaign speculative?** Does it eliminate a *named, observed* bug class / quality gap / perf cost, or is it future-flexibility theater? Speculative campaigns are dropped. This is the primary kill criterion.
+- **Is any campaign speculative?** Does it eliminate a _named, observed_ bug class / quality gap / perf cost, or is it future-flexibility theater? Speculative campaigns are dropped. This is the primary kill criterion.
 - **Is any campaign too small?** Sub-campaign scope (one-PR work) belongs inside an existing campaign or as a slot-in, not as a tier.
 - **Is anything load-bearing missing?** Bug classes the vision should address but doesn't. Common omission: a residual diagnostic test from a recently-closed campaign that's not mapped to any campaign in the arc.
 - **Does the "right answer" hold up?** Where the proposal picked the expensive option, is the cheap option actually fine? Where it picked the cheap, would the expensive be substantially better? The infinite-budget framing means the bias is toward the structurally-right answer — flag any campaign that smells like an MVP smuggled in.
@@ -125,6 +131,7 @@ Spawn a fresh `general-purpose` agent at the same model tier whose **explicit jo
 - **Is the scope coherent as a single vision?** If the draft has 10+ campaigns spanning unrelated sub-areas, the verifier may recommend splitting into multiple visions rather than killing campaigns to fit.
 
 Verifier returns:
+
 - **APPROVE** — ship as-is.
 - **REVISE** — specific kills/adds/reorderings; the architect re-synthesizes once.
 - **ESCALATE** — the scope itself is wrong (e.g. premature, blocked by external dependency); halt and ask the user.
@@ -145,7 +152,7 @@ The roadmap file is consumable by `/campaign` directly. The user typically picks
 
 ## Engineering values (from CLAUDE.md, non-negotiable)
 
-- **No investment ceiling.** Architect at the level the right solution demands. Cost-of-change is *not* a tiebreaker against the right structural answer.
+- **No investment ceiling.** Architect at the level the right solution demands. Cost-of-change is _not_ a tiebreaker against the right structural answer.
 - **Less code, in the right sense.** Concise expression of the best solution.
 - **Automatic > manual.** Structural impossibility beats callsite discipline.
 - **Perf is paramount.**

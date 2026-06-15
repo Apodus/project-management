@@ -19,10 +19,10 @@ The resolved file is the campaign's source of truth from now on — pass sub-age
 
 ### Vision-file input (multi-campaign arc)
 
-If the resolved file is a **vision file** (filename starts `vision-`, *or* the body contains a `depends_on:` adjacency list block), the file describes an arc of multiple campaigns, not a single campaign's phases. Behavior:
+If the resolved file is a **vision file** (filename starts `vision-`, _or_ the body contains a `depends_on:` adjacency list block), the file describes an arc of multiple campaigns, not a single campaign's phases. Behavior:
 
-- **Mirrored tasks are the *campaigns***, not the phases. Each campaign becomes one task; its phases are planned in-leg by the Plan agent when that campaign comes up.
-- For each campaign, before its plan leg fires, **materialize a per-campaign roadmap** at `roadmaps/roadmap-<YYYYMMDD-HHMM>-<campaign-slug>.md` and pass *that* file path to the Plan agent. This keeps each campaign's phases recorded for inspection and resumption, identical to a normal `/campaign` run.
+- **Mirrored tasks are the _campaigns_**, not the phases. Each campaign becomes one task; its phases are planned in-leg by the Plan agent when that campaign comes up.
+- For each campaign, before its plan leg fires, **materialize a per-campaign roadmap** at `roadmaps/roadmap-<YYYYMMDD-HHMM>-<campaign-slug>.md` and pass _that_ file path to the Plan agent. This keeps each campaign's phases recorded for inspection and resumption, identical to a normal `/campaign` run.
 - The vision file's `depends_on` block is the **authoritative DAG** for which campaigns can run concurrently (see Parallelism below).
 - If the user passed a vision file but only wants one specific campaign driven (signal: they named a campaign in the invocation, or only one is marked as "recommended starting point" and they want to act now), confirm with the user once before expanding the full arc. Default to full-arc drive when unambiguous.
 
@@ -38,7 +38,7 @@ Pass the planner: the step text verbatim, a one-line summary of each completed s
 - The change, in concrete terms.
 - How it will be verified — preference order: **unit tests > build > manual**.
 - Prior steps it depends on (used for parallelism detection).
-- For bug-fix steps: an explicit answer to *"is there a structural change that makes this bug class impossible?"* — even if the answer is "no, callsite fix is correct here, because X."
+- For bug-fix steps: an explicit answer to _"is there a structural change that makes this bug class impossible?"_ — even if the answer is "no, callsite fix is correct here, because X."
 
 ### 2. Adversarial verify — `general-purpose` agent (framed as adversary)
 
@@ -53,15 +53,16 @@ Pass the verifier: the step text, the plan, and the cited file paths. **Frame it
 **Bar for raising an issue: the issue must change the plan's correctness, scope, or shippability.** Do NOT nitpick stylistic details, name-bikeshed, or speculate about hypothetical concerns when the plan as written would land cleanly. Cosmetic preferences are not REVISE-worthy. If the plan ships the goal correctly, APPROVE — even if it's not the verifier's preferred phrasing of the same idea.
 
 Verifier returns one of:
+
 - **APPROVE** — proceed to execute.
-- **REVISE** — specific *correctness or shippability* issues; commander returns to a fresh planner once with these findings, then re-verifies.
+- **REVISE** — specific _correctness or shippability_ issues; commander returns to a fresh planner once with these findings, then re-verifies.
 - **ESCALATE** — the step itself is suspect; halt and ask the user.
 
 If a re-planned plan is again rejected, **ESCALATE — do not loop**.
 
 ### Commander override authority
 
-The commander may **APPROVE-OVERRIDE** a verifier's REVISE verdict and proceed to execute when *all* of these hold:
+The commander may **APPROVE-OVERRIDE** a verifier's REVISE verdict and proceed to execute when _all_ of these hold:
 
 - The verifier's concern is cosmetic, hypothetical, or about a tiny detail (e.g. "prefer name X over Y," "could lift this type for cleaner separation").
 - The plan as written ships the step's goal correctly and matches the roadmap intent.
@@ -104,7 +105,7 @@ Two sources, in precedence:
 1. **Roadmap DAG (authoritative when present).** If the roadmap is a vision file with a `depends_on:` adjacency list (or any roadmap that ships one — phase-level DAGs work the same way), the DAG decides parallelism. Steps with no `depends_on` edge between them and no shared upstream phase-pin are concurrency-eligible — spawn their full plan/verify/execute pipelines in parallel via multiple `Agent` calls in one message. Honor `phase_pins` by holding the downstream step's plan leg until the upstream's named phase reports complete. Trust the DAG: do not re-derive parallelism from the planner when the author already declared it.
 2. **Planner-declared file sets (fallback).** When no DAG is present, fall back to file-set analysis: if two upcoming steps' planners declare disjoint read/write file sets and neither lists the other as a dependency, run them in parallel. Sequential is the default.
 
-If the planner's declared file sets contradict the DAG (e.g. the DAG says C2 and C3 are concurrency-eligible, but C3's planner reports it edits a file C2 also edits), **trust the planner, serialize the conflicting pair, and continue**. Note the contradiction in `<roadmap>.progress.json` (`dag_drift: [{pair: [C2, C3], reason: "..."}]`) so it surfaces in retrospect, but do not escalate to the user — parallelism is execution-mode and the campaign still ships the same output, just slower. Escalation is reserved for changes to *what* ships, not *how* it ships.
+If the planner's declared file sets contradict the DAG (e.g. the DAG says C2 and C3 are concurrency-eligible, but C3's planner reports it edits a file C2 also edits), **trust the planner, serialize the conflicting pair, and continue**. Note the contradiction in `<roadmap>.progress.json` (`dag_drift: [{pair: [C2, C3], reason: "..."}]`) so it surfaces in retrospect, but do not escalate to the user — parallelism is execution-mode and the campaign still ships the same output, just slower. Escalation is reserved for changes to _what_ ships, not _how_ it ships.
 
 ## Progress checkpointing
 
@@ -143,8 +144,8 @@ Write a `project` memory summarizing what shipped: campaign name, date, scope, h
 ## Engineering values (non-negotiable — pass these to every sub-agent)
 
 - **No investment ceiling.** The bar is end-result quality, not minimum viable diff. Pass this framing to planners and executors explicitly — they should not optimize for "smallest change that compiles." If a step deserves a deeper rewrite, plan the deeper rewrite.
-- **Less code, in the right sense.** Prefer the most concise expression of the *best* solution. Never a license to ship skimpy patches because the campaign is in flight.
-- **Automatic > manual.** For any bug-fix step, the planner must first consider whether an architectural change makes the entire bug class impossible by structure, *before* falling back to a callsite-discipline fix. This is part of the planner's required output, not optional.
+- **Less code, in the right sense.** Prefer the most concise expression of the _best_ solution. Never a license to ship skimpy patches because the campaign is in flight.
+- **Automatic > manual.** For any bug-fix step, the planner must first consider whether an architectural change makes the entire bug class impossible by structure, _before_ falling back to a callsite-discipline fix. This is part of the planner's required output, not optional.
 - **Getting it right > getting it done fast.** No lazy patch-ups.
 
 The campaign is not an excuse to ship sloppy work because "the orchestrator said so."

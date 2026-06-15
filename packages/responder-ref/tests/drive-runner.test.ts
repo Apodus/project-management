@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  createClaudeDriveRunner,
-  type DriveRunInput,
-} from "../src/drive-runner.js";
+import { createClaudeDriveRunner, type DriveRunInput } from "../src/drive-runner.js";
 import type { Escalation, EscalationMessage } from "@pm/shared";
 
 const escalation = {
@@ -285,9 +282,7 @@ describe("createClaudeDriveRunner", () => {
 
   it("a bogus command → error(spawn_error)", async () => {
     const runner = createClaudeDriveRunner({});
-    const result = await runner.run(
-      baseInput("this-command-definitely-does-not-exist-xyz", 30),
-    );
+    const result = await runner.run(baseInput("this-command-definitely-does-not-exist-xyz", 30));
     expect(result.kind).toBe("error");
     if (result.kind === "error") expect(result.reason).toBe("spawn_error");
   });

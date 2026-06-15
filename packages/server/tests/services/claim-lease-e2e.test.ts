@@ -43,21 +43,12 @@ describe("claim-lease end-to-end lifecycle (P5)", () => {
     return testApp.db
       .select()
       .from(claimLeases)
-      .where(
-        and(
-          eq(claimLeases.entityType, entityType),
-          eq(claimLeases.entityId, entityId),
-        ),
-      )
+      .where(and(eq(claimLeases.entityType, entityType), eq(claimLeases.entityId, entityId)))
       .get();
   }
 
   function auditRows(targetId: string) {
-    return testApp.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.targetId, targetId))
-      .all();
+    return testApp.db.select().from(auditLog).where(eq(auditLog.targetId, targetId)).all();
   }
 
   function taskRow(id: string) {
@@ -102,14 +93,10 @@ describe("claim-lease end-to-end lifecycle (P5)", () => {
     taskSvc.update(task.id, { title: "renewed" }, aiActor(a.user.id));
     const renewed = leaseRow("task", task.id)!;
     expect(renewed.id).toBe(claimed.id);
-    expect(Date.parse(renewed.expiresAt)).toBeGreaterThan(
-      Date.parse(claimed.expiresAt),
-    );
+    expect(Date.parse(renewed.expiresAt)).toBeGreaterThan(Date.parse(claimed.expiresAt));
 
     // 3. Lapse past TTL + grace (+60s).
-    const later = new Date(
-      t1.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000,
-    );
+    const later = new Date(t1.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000);
 
     // 4. Register the reclaim listener, then sweep mode `on` for this task.
     let reclaimedEvents = 0;
@@ -135,9 +122,7 @@ describe("claim-lease end-to-end lifecycle (P5)", () => {
     expect(taskRow(task.id)!.assigneeId).toBeNull();
 
     // Exactly one claim_reclaimed audit row, before/after honest.
-    const audits = auditRows(task.id).filter(
-      (r) => r.action === "claim_reclaimed",
-    );
+    const audits = auditRows(task.id).filter((r) => r.action === "claim_reclaimed");
     expect(audits).toHaveLength(1);
     expect(audits[0].targetType).toBe("task");
     expect(audits[0].metadataBefore).toEqual({ assignee_id: a.user.id });
@@ -158,9 +143,7 @@ describe("claim-lease end-to-end lifecycle (P5)", () => {
     expect(taskSvc.claim(task2.id, aiActor(c.user.id)).ok).toBe(true);
     const beforeSelfStale = leaseRow("task", task2.id)!;
 
-    const lapsed = new Date(
-      t0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000,
-    );
+    const lapsed = new Date(t0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000);
     vi.setSystemTime(lapsed);
 
     expect(() =>

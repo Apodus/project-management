@@ -43,13 +43,10 @@ export function ReleaseToDialog({
 
   // Listing workers is admin-only — a non-admin gets a 403. Render an inline
   // notice instead of crashing (the dialog stays usable for cancel).
-  const usersForbidden =
-    usersError instanceof ApiError && usersError.status === 403;
+  const usersForbidden = usersError instanceof ApiError && usersError.status === 403;
 
   // Offer active workers other than the current holder.
-  const candidates = (users ?? []).filter(
-    (u) => u.isActive && u.id !== item.holder.id,
-  );
+  const candidates = (users ?? []).filter((u) => u.isActive && u.id !== item.holder.id);
 
   function reset() {
     setTargetId("");
@@ -85,18 +82,18 @@ export function ReleaseToDialog({
         <DialogHeader>
           <DialogTitle>Release claim to another worker</DialogTitle>
           <DialogDescription>
-            Hand &ldquo;{item.title}&rdquo; (currently held by {item.holder.name}) to a
-            named worker. The transfer is audited and the claim lease moves to
-            the new holder. A reason is required.
+            Hand &ldquo;{item.title}&rdquo; (currently held by {item.holder.name}) to a named
+            worker. The transfer is audited and the claim lease moves to the new holder. A reason is
+            required.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="release-to-target">Target worker</Label>
             {usersForbidden ? (
-              <p className="text-sm text-muted-foreground">
-                Listing workers requires admin access — ask an admin to perform
-                this handoff, or use request-takeover from the target worker.
+              <p className="text-muted-foreground text-sm">
+                Listing workers requires admin access — ask an admin to perform this handoff, or use
+                request-takeover from the target worker.
               </p>
             ) : (
               <Select value={targetId} onValueChange={setTargetId}>
@@ -108,7 +105,7 @@ export function ReleaseToDialog({
                     <SelectItem key={u.id} value={u.id}>
                       <span>{u.displayName}</span>
                       {u.type === "ai_agent" && (
-                        <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0">
+                        <Badge variant="outline" className="ml-1.5 px-1 py-0 text-[10px]">
                           AI
                         </Badge>
                       )}
@@ -132,10 +129,7 @@ export function ReleaseToDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!canSubmit || releaseMutation.isPending}
-          >
+          <Button onClick={handleSubmit} disabled={!canSubmit || releaseMutation.isPending}>
             {releaseMutation.isPending ? "Transferring…" : "Release claim"}
           </Button>
         </DialogFooter>

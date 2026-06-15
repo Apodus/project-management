@@ -2,3 +2,9 @@ dist
 node_modules
 pnpm-lock.yaml
 .turbo
+
+# Historical prose artifacts — design docs and generated roadmaps are
+# hand-authored markdown (aligned tables, embedded snippets) that prettier's
+# markdown formatter would reflow into noise. Not enforced as code style.
+docs
+roadmaps

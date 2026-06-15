@@ -1,18 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import {
-  createTestApp,
-  createTestAiAgent,
-  createTestProject,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestAiAgent, createTestProject, type TestApp } from "../utils.js";
 import { integratorHealth } from "../../src/db/index.js";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
 import * as svc from "../../src/services/health.service.js";
 
-function makePayload(
-  overrides: Partial<svc.HeartbeatPayload> = {},
-): svc.HeartbeatPayload {
+function makePayload(overrides: Partial<svc.HeartbeatPayload> = {}): svc.HeartbeatPayload {
   return {
     status: "idle",
     poolSize: 3,

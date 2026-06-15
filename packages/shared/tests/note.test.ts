@@ -18,14 +18,7 @@ const VALID_TIMESTAMP = "2026-05-30T12:00:00.000Z";
 
 describe("note enums", () => {
   it("NOTE_KINDS is the canonical ordered tuple", () => {
-    expect([...NOTE_KINDS]).toEqual([
-      "bug",
-      "question",
-      "idea",
-      "tech_debt",
-      "wtf",
-      "observation",
-    ]);
+    expect([...NOTE_KINDS]).toEqual(["bug", "question", "idea", "tech_debt", "wtf", "observation"]);
   });
 
   it("NOTE_STATUSES is exactly open/triaged (C1 minimality — no triage-outcome leak)", () => {

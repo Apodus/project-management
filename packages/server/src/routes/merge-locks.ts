@@ -77,10 +77,13 @@ const errorEnvelope = z.object({
 
 // ─── Request schemas ──────────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 const resourceParam = z
   .string()
@@ -102,22 +105,10 @@ const landingIntentBody = z
 
 const releaseBody = z
   .object({
-    landedSha: z
-      .string()
-      .min(1)
-      .max(128)
-      .nullable()
-      .optional()
-      .openapi({ example: "abc1234" }),
-    reason: z
-      .string()
-      .min(1)
-      .max(2048)
-      .nullable()
-      .optional()
-      .openapi({
-        example: "verify failed: skinned_renderer.cpp API drift",
-      }),
+    landedSha: z.string().min(1).max(128).nullable().optional().openapi({ example: "abc1234" }),
+    reason: z.string().min(1).max(2048).nullable().optional().openapi({
+      example: "verify failed: skinned_renderer.cpp API drift",
+    }),
   })
   .openapi("MergeLockRelease");
 
@@ -277,12 +268,7 @@ export function createMergeLockRoutes(): OpenAPIHono<{
     } catch {
       // Body is optional.
     }
-    const result = mergeLockService.acquire(
-      projectId,
-      resource,
-      { id: user.id },
-      intent,
-    );
+    const result = mergeLockService.acquire(projectId, resource, { id: user.id }, intent);
     return c.json({ data: result }, 200);
   });
 
@@ -316,21 +302,14 @@ export function createMergeLockRoutes(): OpenAPIHono<{
   router.openapi(getLockRoute, (c) => {
     const { projectId, resource } = c.req.valid("param");
     const user = c.get("currentUser") as AuthUser | null;
-    const view = mergeLockService.getLock(
-      projectId,
-      resource,
-      user ? { id: user.id } : null,
-    );
+    const view = mergeLockService.getLock(projectId, resource, user ? { id: user.id } : null);
     return c.json({ data: view }, 200);
   });
 
   router.openapi(listLocksRoute, (c) => {
     const { projectId } = c.req.valid("param");
     const user = c.get("currentUser") as AuthUser | null;
-    const list = mergeLockService.listLocks(
-      projectId,
-      user ? { id: user.id } : null,
-    );
+    const list = mergeLockService.listLocks(projectId, user ? { id: user.id } : null);
     return c.json({ data: list, pagination: { total: list.length } }, 200);
   });
 

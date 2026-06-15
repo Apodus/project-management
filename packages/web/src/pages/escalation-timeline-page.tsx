@@ -12,16 +12,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  useEscalation,
-  useEscalationMergeRequests,
-} from "@/hooks/use-escalations";
-import {
-  formatRelativeTime,
-  formatStatus,
-  getPriorityColor,
-  getStatusColor,
-} from "@/lib/format";
+import { useEscalation, useEscalationMergeRequests } from "@/hooks/use-escalations";
+import { formatRelativeTime, formatStatus, getPriorityColor, getStatusColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Escalation, EscalationMessage, MergeRequest } from "@/lib/api";
 
@@ -108,9 +100,7 @@ function LifecycleStrip({ status }: { status: Escalation["status"] }) {
               )}
               {stage.label}
             </span>
-            {i < HAPPY_STAGES.length - 1 && (
-              <span className="text-muted-foreground/40">→</span>
-            )}
+            {i < HAPPY_STAGES.length - 1 && <span className="text-muted-foreground/40">→</span>}
           </div>
         );
       })}
@@ -141,13 +131,7 @@ function messageTypeBadgeClass(type: string | null | undefined): string {
   }
 }
 
-function MessageRow({
-  message,
-  isLast,
-}: {
-  message: EscalationMessage;
-  isLast: boolean;
-}) {
+function MessageRow({ message, isLast }: { message: EscalationMessage; isLast: boolean }) {
   return (
     <li className="relative flex gap-4 pb-6 last:pb-0">
       {!isLast && (
@@ -156,7 +140,7 @@ function MessageRow({
           aria-hidden
         />
       )}
-      <span className="bg-background relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border text-muted-foreground">
+      <span className="bg-background text-muted-foreground relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border">
         <MessageSquare className="size-4" />
       </span>
       <div className="min-w-0 flex-1 pt-1">
@@ -171,9 +155,7 @@ function MessageRow({
             </Badge>
           )}
         </div>
-        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-          {message.body}
-        </p>
+        <p className="text-muted-foreground mt-1 whitespace-pre-wrap text-sm">{message.body}</p>
         <p className="text-muted-foreground/70 mt-1 text-[11px]">
           {safeRelative(message.createdAt)}
         </p>
@@ -191,10 +173,7 @@ function EscalationHeader({ escalation }: { escalation: Escalation }) {
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center gap-2">
           <Siren className="text-muted-foreground size-5" />
-          <Badge
-            variant="secondary"
-            className={cn("text-[10px]", getKindColor(escalation.kind))}
-          >
+          <Badge variant="secondary" className={cn("text-[10px]", getKindColor(escalation.kind))}>
             {formatStatus(escalation.kind)}
           </Badge>
           <Badge
@@ -216,9 +195,7 @@ function EscalationHeader({ escalation }: { escalation: Escalation }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {escalation.body && (
-          <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-            {escalation.body}
-          </p>
+          <p className="text-muted-foreground whitespace-pre-wrap text-sm">{escalation.body}</p>
         )}
 
         {loc && (
@@ -230,7 +207,8 @@ function EscalationHeader({ escalation }: { escalation: Escalation }) {
             </span>
             {loc.commitSha && (
               <span className="text-muted-foreground/60 font-mono">
-                {" "}@ {loc.commitSha.slice(0, 10)}
+                {" "}
+                @ {loc.commitSha.slice(0, 10)}
               </span>
             )}
           </div>
@@ -244,9 +222,7 @@ function EscalationHeader({ escalation }: { escalation: Escalation }) {
           <span>author: {escalation.authorId}</span>
           <span>opened {safeRelative(escalation.createdAt)}</span>
           <span>updated {safeRelative(escalation.updatedAt)}</span>
-          {escalation.resolvedAt && (
-            <span>resolved {safeRelative(escalation.resolvedAt)}</span>
-          )}
+          {escalation.resolvedAt && <span>resolved {safeRelative(escalation.resolvedAt)}</span>}
           {escalation.resolvedBy && <span>by {escalation.resolvedBy}</span>}
         </div>
 
@@ -361,10 +337,7 @@ function MergeRequestRow({ mr }: { mr: MergeRequest }) {
         >
           {mr.id.slice(0, 8)}
         </Link>
-        <Badge
-          variant="secondary"
-          className={cn("text-[10px]", getStatusColor(mr.status))}
-        >
+        <Badge variant="secondary" className={cn("text-[10px]", getStatusColor(mr.status))}>
           {formatStatus(mr.status)}
         </Badge>
         {mr.revertOf && (
@@ -378,9 +351,7 @@ function MergeRequestRow({ mr }: { mr: MergeRequest }) {
       </div>
       <div className="text-muted-foreground/80 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
         {mr.branch && <span className="font-mono">{mr.branch}</span>}
-        {mr.landedSha && (
-          <span className="font-mono">landed {shortSha(mr.landedSha)}</span>
-        )}
+        {mr.landedSha && <span className="font-mono">landed {shortSha(mr.landedSha)}</span>}
         {mr.taskId && (
           <Link
             to="/tasks/$taskId"
@@ -402,7 +373,11 @@ function MergeRequestRow({ mr }: { mr: MergeRequest }) {
   );
 }
 
-function AuditChainCard({ escalation }: { escalation: Escalation & { messages?: EscalationMessage[] } }) {
+function AuditChainCard({
+  escalation,
+}: {
+  escalation: Escalation & { messages?: EscalationMessage[] };
+}) {
   const chain = extractAuditChain(escalation.messages ?? []);
   const { data: mrs } = useEscalationMergeRequests(escalation.projectId, escalation.id);
   const mergeRequests = mrs ?? [];
@@ -423,9 +398,7 @@ function AuditChainCard({ escalation }: { escalation: Escalation & { messages?: 
   return (
     <Card className="py-4">
       <CardHeader className="pb-2">
-        <CardTitle className="text-muted-foreground text-sm font-medium">
-          Audit chain
-        </CardTitle>
+        <CardTitle className="text-muted-foreground text-sm font-medium">Audit chain</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Disposition */}
@@ -459,9 +432,7 @@ function AuditChainCard({ escalation }: { escalation: Escalation & { messages?: 
               {chain.epicId}
             </Link>
             {chain.visionPath && (
-              <span className="text-muted-foreground/60 font-mono">
-                {chain.visionPath}
-              </span>
+              <span className="text-muted-foreground/60 font-mono">{chain.visionPath}</span>
             )}
           </div>
         )}
@@ -534,9 +505,7 @@ export function EscalationTimelinePage() {
       <Card className="py-4">
         <CardContent className="flex flex-col items-center py-10">
           <AlertTriangle className="text-muted-foreground/40 mb-2 size-8" />
-          <p className="text-muted-foreground text-sm">
-            Could not load this escalation.
-          </p>
+          <p className="text-muted-foreground text-sm">Could not load this escalation.</p>
         </CardContent>
       </Card>
     );
@@ -555,9 +524,7 @@ export function EscalationTimelinePage() {
 
       <Card className="py-4">
         <CardHeader className="pb-2">
-          <CardTitle className="text-muted-foreground text-sm font-medium">
-            Lifecycle
-          </CardTitle>
+          <CardTitle className="text-muted-foreground text-sm font-medium">Lifecycle</CardTitle>
         </CardHeader>
         <CardContent>
           <LifecycleStrip status={data.status} />
@@ -568,9 +535,7 @@ export function EscalationTimelinePage() {
 
       <Card className="py-4">
         <CardHeader className="pb-2">
-          <CardTitle className="text-muted-foreground text-sm font-medium">
-            Thread
-          </CardTitle>
+          <CardTitle className="text-muted-foreground text-sm font-medium">Thread</CardTitle>
         </CardHeader>
         <CardContent>
           {messages.length === 0 ? (
@@ -581,11 +546,7 @@ export function EscalationTimelinePage() {
           ) : (
             <ol className="m-0 list-none p-0">
               {messages.map((message, i) => (
-                <MessageRow
-                  key={message.id}
-                  message={message}
-                  isLast={i === messages.length - 1}
-                />
+                <MessageRow key={message.id} message={message} isLast={i === messages.length - 1} />
               ))}
             </ol>
           )}

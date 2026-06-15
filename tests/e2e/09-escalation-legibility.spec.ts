@@ -36,10 +36,7 @@ test.describe("Escalation legibility (C4)", () => {
     test.setTimeout(120_000);
     await login(page, ADMIN_USER, ADMIN_PASS);
 
-    const project = await createProjectViaAPI(
-      page,
-      "C4 Dashboard Render Project",
-    );
+    const project = await createProjectViaAPI(page, "C4 Dashboard Render Project");
     const title = `E2E C4 dashboard render seal ${RUN_TAG}`;
     await raiseEscalationViaAPI(page, project.id, {
       kind: "bug_report",
@@ -56,9 +53,9 @@ test.describe("Escalation legibility (C4)", () => {
     // header breadcrumb + the sidebar project-selector (strict-mode multi-match
     // otherwise) — the spec-06 idiom. The badge only paints once the project
     // query resolves, so it is the "page loaded" gate.
-    await expect(
-      page.getByRole("heading", { name: "Escalations" }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Escalations" })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(
       page.locator('[data-slot="badge"]', {
         hasText: "C4 Dashboard Render Project",
@@ -67,9 +64,7 @@ test.describe("Escalation legibility (C4)", () => {
     await expect(page.getByText(title)).toBeVisible({ timeout: 30_000 });
   });
 
-  test("B — timeline renders the thread (DOM, API-seeded)", async ({
-    page,
-  }) => {
+  test("B — timeline renders the thread (DOM, API-seeded)", async ({ page }) => {
     test.setTimeout(120_000);
     await login(page, ADMIN_USER, ADMIN_PASS);
 
@@ -86,24 +81,21 @@ test.describe("Escalation legibility (C4)", () => {
 
     // Seed the thread via the API: acknowledge (open → acknowledged) then answer
     // (acknowledged → answered; the body becomes a `diagnosis` message).
-    const ackResp = await page.request.post(
-      `/api/v1/escalations/${escId}/acknowledge`,
-    );
+    const ackResp = await page.request.post(`/api/v1/escalations/${escId}/acknowledge`);
     expect(ackResp.status()).toBe(200);
 
     const diagnosis = `diagnosis: seal ${RUN_TAG}`;
-    const answerResp = await page.request.post(
-      `/api/v1/escalations/${escId}/answer`,
-      { data: { body: diagnosis } },
-    );
+    const answerResp = await page.request.post(`/api/v1/escalations/${escId}/answer`, {
+      data: { body: diagnosis },
+    });
     expect(answerResp.status()).toBe(200);
 
     await page.goto(`/projects/${project.id}/escalations/${escId}`);
 
     // Positive load-gating: the page <h1> is "Escalation".
-    await expect(
-      page.getByRole("heading", { name: "Escalation" }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Escalation" })).toBeVisible({
+      timeout: 15_000,
+    });
 
     // "Thread" and "Lifecycle" are CardTitle DIVS (data-slot=card-title), NOT
     // heading-role — match them with getByText (NOTE 1). Generous budgets: this
@@ -118,17 +110,11 @@ test.describe("Escalation legibility (C4)", () => {
     // The Lifecycle strip's "Answered" stage. "Answered" ALSO appears as a
     // status badge, so scope to the Lifecycle card (NOTE 2). The Lifecycle
     // CardTitle and the strip share the same Card ancestor.
-    const lifecycleCard = page
-      .locator('[data-slot="card"]')
-      .filter({ hasText: "Lifecycle" });
-    await expect(
-      lifecycleCard.getByText("Answered", { exact: true }),
-    ).toBeVisible();
+    const lifecycleCard = page.locator('[data-slot="card"]').filter({ hasText: "Lifecycle" });
+    await expect(lifecycleCard.getByText("Answered", { exact: true })).toBeVisible();
   });
 
-  test("C — FTS dedup auto-link folds a duplicate (API-level)", async ({
-    page,
-  }) => {
+  test("C — FTS dedup auto-link folds a duplicate (API-level)", async ({ page }) => {
     test.setTimeout(120_000);
     await login(page, ADMIN_USER, ADMIN_PASS);
 
@@ -144,10 +130,9 @@ test.describe("Escalation legibility (C4)", () => {
     };
 
     // First raise → a NEW thread (merged:false).
-    const firstResp = await page.request.post(
-      `/api/v1/projects/${project.id}/escalations`,
-      { data },
-    );
+    const firstResp = await page.request.post(`/api/v1/projects/${project.id}/escalations`, {
+      data,
+    });
     expect(firstResp.status()).toBe(201);
     const first = await firstResp.json();
     expect(first.merged).toBe(false);
@@ -155,10 +140,9 @@ test.describe("Escalation legibility (C4)", () => {
 
     // Second raise — EXACT same title + body + originRepo, both open → FOLDS
     // into the first (merged:true; mergedInto + data.id === the existing id).
-    const secondResp = await page.request.post(
-      `/api/v1/projects/${project.id}/escalations`,
-      { data },
-    );
+    const secondResp = await page.request.post(`/api/v1/projects/${project.id}/escalations`, {
+      data,
+    });
     expect(secondResp.status()).toBe(201);
     const second = await secondResp.json();
     expect(second.merged).toBe(true);
@@ -200,9 +184,9 @@ test.describe("Escalation legibility (C4)", () => {
     // generous first-paint budget (this box runs concurrent agent sessions, so
     // a loaded SPA can paint async-query content well past 10s) rather than on
     // the project badge, whose separate useProject query can lag further.
-    await expect(
-      page.getByRole("heading", { name: "Escalations" }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Escalations" })).toBeVisible({
+      timeout: 15_000,
+    });
 
     // The P2 metrics panel surfaces the PM-side observable responder-outcome
     // signals. We confirm the panel renders — NOT SLA-firing (deferred to P3).

@@ -38,8 +38,15 @@ export function useAgentPool(poolId: string) {
 export function useCreatePool() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, secret, description }: { name: string; secret: string; description?: string }) =>
-      createAgentPool(name, secret, description),
+    mutationFn: ({
+      name,
+      secret,
+      description,
+    }: {
+      name: string;
+      secret: string;
+      description?: string;
+    }) => createAgentPool(name, secret, description),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: agentPoolKeys.pools() });
     },
@@ -49,8 +56,13 @@ export function useCreatePool() {
 export function useUpdatePool() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ poolId, data }: { poolId: string; data: { name?: string; description?: string } }) =>
-      updateAgentPool(poolId, data),
+    mutationFn: ({
+      poolId,
+      data,
+    }: {
+      poolId: string;
+      data: { name?: string; description?: string };
+    }) => updateAgentPool(poolId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: agentPoolKeys.all });
     },
@@ -82,8 +94,15 @@ export function useUpdatePoolSecret() {
 export function useCreatePoolAgents() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ poolId, count, namePrefix }: { poolId: string; count: number; namePrefix?: string }) =>
-      createPoolAgents(poolId, count, namePrefix),
+    mutationFn: ({
+      poolId,
+      count,
+      namePrefix,
+    }: {
+      poolId: string;
+      count: number;
+      namePrefix?: string;
+    }) => createPoolAgents(poolId, count, namePrefix),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: agentPoolKeys.all });
       queryClient.invalidateQueries({ queryKey: userKeys.list() });

@@ -29,11 +29,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
 import type { MergeAttemptView, MergeRequestView } from "@pm/shared";
-import {
-  createGitOps,
-  type GitOps,
-  type PushResult,
-} from "../src/git-ops.js";
+import { createGitOps, type GitOps, type PushResult } from "../src/git-ops.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { createLogger } from "../src/logger.js";
 import {
@@ -63,10 +59,7 @@ const GITLINK_PATH = "vendor/rynx";
 const GIT_REMOTE = "origin";
 const GIT_MAIN = "main";
 
-async function resolveVerified(
-  git: SimpleGit,
-  ref: string,
-): Promise<string | null> {
+async function resolveVerified(git: SimpleGit, ref: string): Promise<string | null> {
   try {
     return (await git.revparse(["--verify", `${ref}^{commit}`])).trim();
   } catch {
@@ -77,12 +70,7 @@ async function resolveVerified(
 // ─── In-memory fake PM client (group-land surface) ────────────────────
 
 interface FakeGroupState {
-  state:
-    | "forming"
-    | "integrating"
-    | "rejected"
-    | "landed"
-    | "partially_landed";
+  state: "forming" | "integrating" | "rejected" | "landed" | "partially_landed";
   members: MergeRequestView[];
 }
 
@@ -154,10 +142,7 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
       }
       return { ...state.group };
     },
-    async startAttempt(
-      requestId: string,
-      baseSha: string,
-    ): Promise<MergeAttemptView> {
+    async startAttempt(requestId: string, baseSha: string): Promise<MergeAttemptView> {
       seq += 1;
       const att: MergeAttemptView = {
         id: `att-${seq}`,
@@ -217,10 +202,7 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
       }
       return { ...state.group };
     },
-    async markInnerOrphaned(
-      requestId: string,
-      orphanedSha: string,
-    ): Promise<unknown> {
+    async markInnerOrphaned(requestId: string, orphanedSha: string): Promise<unknown> {
       state.calls.push("markInnerOrphaned");
       state.orphaned = { requestId, orphanedSha };
       const m = state.group.members.find((x) => x.id === requestId);
@@ -445,11 +427,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
 
   // Read the inner SHA the outer BARE main's tree gitlink references.
   async function readSubmoduleGitlinkOnBareMain(): Promise<string> {
-    const out = await simpleGit(outerBare).raw([
-      "ls-tree",
-      GIT_MAIN,
-      GITLINK_PATH,
-    ]);
+    const out = await simpleGit(outerBare).raw(["ls-tree", GIT_MAIN, GITLINK_PATH]);
     for (const line of out.split("\n")) {
       const parts = line.trim().split(/\s+/);
       if (parts[0] === "160000" && parts[2]) return parts[2];
@@ -513,10 +491,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     };
   }
 
-  function depsFor(
-    state: FakePm,
-    over?: Partial<GroupIntegrationDeps>,
-  ): GroupIntegrationDeps {
+  function depsFor(state: FakePm, over?: Partial<GroupIntegrationDeps>): GroupIntegrationDeps {
     return {
       pmClient: makeFakePm(state),
       logger,
@@ -579,12 +554,8 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
 
     // BOTH attempts completed passed WITH treeSha, BEFORE landGroup (CONSTRAINT C).
     const landIdx = state.calls.indexOf("landGroup");
-    const innerPass = state.attemptCompletions.find(
-      (c) => c.attemptId === integ.innerAttemptId,
-    );
-    const outerPass = state.attemptCompletions.find(
-      (c) => c.attemptId === integ.outerAttemptId,
-    );
+    const innerPass = state.attemptCompletions.find((c) => c.attemptId === integ.innerAttemptId);
+    const outerPass = state.attemptCompletions.find((c) => c.attemptId === integ.outerAttemptId);
     expect(innerPass).toMatchObject({
       attemptId: integ.innerAttemptId,
       status: "passed",
@@ -598,12 +569,8 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     // Phase 7.5 FOLDED-FIX M1: the grouped passing-land carries each repo's
     // per-step results (threaded from ready_to_land — pipeI/pipeO are out of
     // scope in group-land). The synthetic single-step pipeline → a 1-element array.
-    expect((innerPass!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual([
-      "verify",
-    ]);
-    expect((outerPass!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual([
-      "verify",
-    ]);
+    expect((innerPass!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual(["verify"]);
+    expect((outerPass!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual(["verify"]);
     // Both completeAttempt:passed precede landGroup in the call log.
     const passedIndices = state.calls
       .map((c, i) => (c === "completeAttempt:passed" ? i : -1))
@@ -630,11 +597,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
       // Assembly builds both GitOps from the INNER lane factory → fail push only
       // for the inner worktree path.
       innerLane: innerLane({
-        gitOps: failingPushGitOps(
-          (p) => createGitOps(simpleGit(p)),
-          "non_fast_forward",
-          "inner",
-        ),
+        gitOps: failingPushGitOps((p) => createGitOps(simpleGit(p)), "non_fast_forward", "inner"),
       }),
     });
     const integ = await runGroupIntegration(
@@ -662,12 +625,8 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     expect(await bareMainSha(outerBare)).toBe(outerBefore);
 
     // Inner attempt failed; outer attempt cancelled; group rejected.
-    const innerComp = state.attemptCompletions.find(
-      (c) => c.attemptId === integ.innerAttemptId,
-    );
-    const outerComp = state.attemptCompletions.find(
-      (c) => c.attemptId === integ.outerAttemptId,
-    );
+    const innerComp = state.attemptCompletions.find((c) => c.attemptId === integ.innerAttemptId);
+    const outerComp = state.attemptCompletions.find((c) => c.attemptId === integ.outerAttemptId);
     expect(innerComp?.status).toBe("failed");
     expect(outerComp?.status).toBe("cancelled");
     expect(state.calls).toContain("rejectGroup");
@@ -690,11 +649,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
       // for REAL; ONLY the outer worktree's push is induced to fail (discriminate
       // by path "outer") — so inner main advances and outer push fails after.
       innerLane: innerLane({
-        gitOps: failingPushGitOps(
-          (p) => createGitOps(simpleGit(p)),
-          "non_fast_forward",
-          "outer",
-        ),
+        gitOps: failingPushGitOps((p) => createGitOps(simpleGit(p)), "non_fast_forward", "outer"),
       }),
     });
     const integ = await runGroupIntegration(
@@ -739,9 +694,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     expect(seen).toEqual(order);
 
     // a — inner attempt passed WITH treeSha Ri.
-    const innerComp = state.attemptCompletions.find(
-      (c) => c.attemptId === integ.innerAttemptId,
-    );
+    const innerComp = state.attemptCompletions.find((c) => c.attemptId === integ.innerAttemptId);
     expect(innerComp).toMatchObject({
       attemptId: integ.innerAttemptId,
       status: "passed",
@@ -749,9 +702,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     });
     // Phase 7.5 FOLDED-FIX M1: even on the orphan path the inner-passed attempt
     // carries the inner repo's per-step results (it passed verify).
-    expect((innerComp!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual([
-      "verify",
-    ]);
+    expect((innerComp!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual(["verify"]);
     // b — orphaned the INNER request @Ri.
     expect(state.orphaned).toEqual({
       requestId: "req-inner",
@@ -768,9 +719,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
       taskId: "task-inner",
     });
     // d — outer attempt failed.
-    const outerComp = state.attemptCompletions.find(
-      (c) => c.attemptId === integ.outerAttemptId,
-    );
+    const outerComp = state.attemptCompletions.find((c) => c.attemptId === integ.outerAttemptId);
     expect(outerComp?.status).toBe("failed");
     // e — the PLAIN per-request reject targeted the OUTER member (not 409).
     expect(state.requestRejects).toHaveLength(1);
@@ -842,12 +791,8 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     expect(await bareMainSha(outerBare)).toBe(outerBefore);
 
     // Both attempts cancelled; group rejected; NO incident.
-    const innerComp = state.attemptCompletions.find(
-      (c) => c.attemptId === integ.innerAttemptId,
-    );
-    const outerComp = state.attemptCompletions.find(
-      (c) => c.attemptId === integ.outerAttemptId,
-    );
+    const innerComp = state.attemptCompletions.find((c) => c.attemptId === integ.innerAttemptId);
+    const outerComp = state.attemptCompletions.find((c) => c.attemptId === integ.outerAttemptId);
     expect(innerComp?.status).toBe("cancelled");
     expect(outerComp?.status).toBe("cancelled");
     expect(state.calls).toContain("rejectGroup");

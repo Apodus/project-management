@@ -52,21 +52,15 @@ describe("mergeResolutionDetailSchema", () => {
   });
 
   it("accepts a fail verdict", () => {
-    expect(
-      mergeResolutionDetailSchema.parse({ verifyVerdict: "fail" }),
-    ).toBeTruthy();
+    expect(mergeResolutionDetailSchema.parse({ verifyVerdict: "fail" })).toBeTruthy();
   });
 
   it("rejects an unknown verifyVerdict", () => {
-    expect(() =>
-      mergeResolutionDetailSchema.parse({ verifyVerdict: "maybe" }),
-    ).toThrow();
+    expect(() => mergeResolutionDetailSchema.parse({ verifyVerdict: "maybe" })).toThrow();
   });
 
   it("rejects a non-number budgetConsumedSec", () => {
-    expect(() =>
-      mergeResolutionDetailSchema.parse({ budgetConsumedSec: "lots" }),
-    ).toThrow();
+    expect(() => mergeResolutionDetailSchema.parse({ budgetConsumedSec: "lots" })).toThrow();
   });
 });
 
@@ -90,9 +84,7 @@ describe("mergeResolutionSchema", () => {
   };
 
   it("accepts a valid pending resolution", () => {
-    expect(mergeResolutionSchema.parse(validResolution)).toEqual(
-      validResolution,
-    );
+    expect(mergeResolutionSchema.parse(validResolution)).toEqual(validResolution);
   });
 
   it("accepts a resolution with all nullable columns null", () => {
@@ -133,24 +125,18 @@ describe("mergeResolutionSchema", () => {
 
   it("accepts all valid states", () => {
     for (const state of MERGE_RESOLUTION_STATES) {
-      expect(
-        mergeResolutionSchema.parse({ ...validResolution, state }),
-      ).toBeTruthy();
+      expect(mergeResolutionSchema.parse({ ...validResolution, state })).toBeTruthy();
     }
   });
 
   it("accepts both escalation targets", () => {
     for (const escalationTarget of MERGE_ESCALATION_TARGETS) {
-      expect(
-        mergeResolutionSchema.parse({ ...validResolution, escalationTarget }),
-      ).toBeTruthy();
+      expect(mergeResolutionSchema.parse({ ...validResolution, escalationTarget })).toBeTruthy();
     }
   });
 
   it("rejects an unknown state", () => {
-    expect(() =>
-      mergeResolutionSchema.parse({ ...validResolution, state: "done" }),
-    ).toThrow();
+    expect(() => mergeResolutionSchema.parse({ ...validResolution, state: "done" })).toThrow();
   });
 
   it("rejects an unknown escalationTarget", () => {

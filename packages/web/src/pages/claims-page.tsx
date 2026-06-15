@@ -41,11 +41,11 @@ const STATE_RANK: Record<ClaimItem["claimState"], number> = {
 function EntityTypeIcon({ entityType }: { entityType: ClaimItem["entityType"] }) {
   switch (entityType) {
     case "task":
-      return <ListTodo className="size-4 text-muted-foreground" />;
+      return <ListTodo className="text-muted-foreground size-4" />;
     case "epic":
-      return <Milestone className="size-4 text-muted-foreground" />;
+      return <Milestone className="text-muted-foreground size-4" />;
     case "proposal":
-      return <FileText className="size-4 text-muted-foreground" />;
+      return <FileText className="text-muted-foreground size-4" />;
   }
 }
 
@@ -66,11 +66,7 @@ function EntityLink({ item }: { item: ClaimItem }) {
       );
     case "proposal":
       return (
-        <Link
-          to="/proposals/$proposalId"
-          params={{ proposalId: item.id }}
-          className={className}
-        >
+        <Link to="/proposals/$proposalId" params={{ proposalId: item.id }} className={className}>
           {item.title}
         </Link>
       );
@@ -82,13 +78,27 @@ function ClaimsTableSkeleton() {
     <>
       {Array.from({ length: 5 }).map((_, i) => (
         <TableRow key={i}>
-          <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-14" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-4" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-48" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-16" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-14" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-24" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-16" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-20" />
+          </TableCell>
         </TableRow>
       ))}
     </>
@@ -105,25 +115,22 @@ function ClaimRow({ item }: { item: ClaimItem }) {
         <EntityLink item={item} />
       </TableCell>
       <TableCell>
-        <Badge
-          variant="secondary"
-          className={cn("text-[11px]", getStatusColor(item.status))}
-        >
+        <Badge variant="secondary" className={cn("text-[11px]", getStatusColor(item.status))}>
           {formatStatus(item.status)}
         </Badge>
       </TableCell>
       <TableCell>
         <ClaimStateBadge state={item.claimState} />
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">
+      <TableCell className="text-muted-foreground text-sm">
         <span className="truncate">{item.holder.name}</span>
         {item.holder.type === "ai_agent" && (
-          <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0">
+          <Badge variant="outline" className="ml-1.5 px-1 py-0 text-[10px]">
             AI
           </Badge>
         )}
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
+      <TableCell className="text-muted-foreground text-xs">
         {/* claimedAt is the lease-layer acquisition time; a legacy pre-C2 claim
             has none — fall back to the entity's updatedAt. */}
         {formatRelativeTime(item.claimedAt ?? item.updatedAt)}
@@ -146,11 +153,7 @@ function ClaimRowActions({ item }: { item: ClaimItem }) {
 
   return (
     <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setPlainReleaseOpen(true)}
-      >
+      <Button variant="outline" size="sm" onClick={() => setPlainReleaseOpen(true)}>
         Release
       </Button>
       <Button variant="outline" size="sm" onClick={() => setReleaseOpen(true)}>
@@ -161,21 +164,9 @@ function ClaimRowActions({ item }: { item: ClaimItem }) {
           Request takeover
         </Button>
       )}
-      <ReleaseClaimDialog
-        item={item}
-        open={plainReleaseOpen}
-        onOpenChange={setPlainReleaseOpen}
-      />
-      <ReleaseToDialog
-        item={item}
-        open={releaseOpen}
-        onOpenChange={setReleaseOpen}
-      />
-      <RequestTakeoverDialog
-        item={item}
-        open={takeoverOpen}
-        onOpenChange={setTakeoverOpen}
-      />
+      <ReleaseClaimDialog item={item} open={plainReleaseOpen} onOpenChange={setPlainReleaseOpen} />
+      <ReleaseToDialog item={item} open={releaseOpen} onOpenChange={setReleaseOpen} />
+      <RequestTakeoverDialog item={item} open={takeoverOpen} onOpenChange={setTakeoverOpen} />
     </div>
   );
 }
@@ -208,7 +199,7 @@ export function ClaimsPage() {
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <Hand className="size-6 text-muted-foreground" />
+        <Hand className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Claims</h1>
         {project && (
           <Badge variant="outline" className="text-xs font-normal">
@@ -217,19 +208,17 @@ export function ClaimsPage() {
         )}
       </div>
 
-      <p className="text-sm text-muted-foreground">
+      <p className="text-muted-foreground text-sm">
         Every claimed task, epic, and proposal with its liveness. A{" "}
-        <span className="font-medium">stale</span> claim&apos;s lease has lapsed —
-        the holder may have abandoned it; a <span className="font-medium">live</span>{" "}
-        claim is actively held and is never taken over.
+        <span className="font-medium">stale</span> claim&apos;s lease has lapsed — the holder may
+        have abandoned it; a <span className="font-medium">live</span> claim is actively held and is
+        never taken over.
       </p>
 
       {/* Error state */}
       {error && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
-          <p className="text-sm text-destructive">
-            Failed to load claims. Please try again.
-          </p>
+        <div className="border-destructive/50 bg-destructive/10 flex flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">Failed to load claims. Please try again.</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             Retry
           </Button>
@@ -258,19 +247,15 @@ export function ClaimsPage() {
                 <TableRow>
                   <TableCell colSpan={7} className="h-32 text-center">
                     <div className="flex flex-col items-center gap-2">
-                      <Hand className="size-8 text-muted-foreground/40" />
-                      <p className="text-sm text-muted-foreground">
-                        No active claims.
-                      </p>
+                      <Hand className="text-muted-foreground/40 size-8" />
+                      <p className="text-muted-foreground text-sm">No active claims.</p>
                     </div>
                   </TableCell>
                 </TableRow>
               )}
 
               {!isLoading &&
-                items.map((item) => (
-                  <ClaimRow key={`${item.entityType}-${item.id}`} item={item} />
-                ))}
+                items.map((item) => <ClaimRow key={`${item.entityType}-${item.id}`} item={item} />)}
             </TableBody>
           </Table>
         </div>

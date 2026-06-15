@@ -56,9 +56,7 @@ async function waitForClaimState(
 }
 
 test.describe("Claims surface", () => {
-  test("claim → stale → request-takeover auto-grants to the requester", async ({
-    page,
-  }) => {
+  test("claim → stale → request-takeover auto-grants to the requester", async ({ page }) => {
     // Generous budget: this box runs concurrent agent sessions, and the test
     // spans API seeding + a liveness lapse + two page loads.
     test.setTimeout(120_000);
@@ -171,9 +169,7 @@ test.describe("Claims surface", () => {
     await login(page, ADMIN_USER, ADMIN_PASS);
     const project = await createProjectViaAPI(page, "Claims Surface Project C");
     await page.goto(`/projects/${project.id}/claims`);
-    await expect(
-      page.getByRole("heading", { name: "Claims" }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Claims" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("No active claims.")).toBeVisible({
       timeout: 10_000,
     });

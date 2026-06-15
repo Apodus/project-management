@@ -25,12 +25,9 @@ describe("Notes API", () => {
     it("creates a note and returns a {data} envelope", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/notes`,
-        { body: { kind: "bug", title: "Flicker", severity: "high" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+        body: { kind: "bug", title: "Flicker", severity: "high" },
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -44,12 +41,9 @@ describe("Notes API", () => {
     it("attributes authorId to the caller, ignoring any authorId in the body", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/notes`,
-        { body: { kind: "idea", title: "mine", authorId: "bogus-spoofed-id" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+        body: { kind: "idea", title: "mine", authorId: "bogus-spoofed-id" },
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -59,12 +53,9 @@ describe("Notes API", () => {
 
     it("returns similar: [] when no open duplicate exists", async () => {
       const project = createTestProject(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/notes`,
-        { body: { kind: "bug", title: "Totally novel zorvex finding" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+        body: { kind: "bug", title: "Totally novel zorvex finding" },
+      });
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.similar).toEqual([]);
@@ -79,12 +70,9 @@ describe("Notes API", () => {
         })
       ).json();
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/notes`,
-        { body: { kind: "bug", title: "Cursor blinks widget" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+        body: { kind: "bug", title: "Cursor blinks widget" },
+      });
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(Array.isArray(body.similar)).toBe(true);
@@ -94,25 +82,19 @@ describe("Notes API", () => {
     });
 
     it("returns 404 when the project does not exist", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${createId()}/notes`,
-        { body: { kind: "bug", title: "x" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${createId()}/notes`, {
+        body: { kind: "bug", title: "x" },
+      });
       expect(res.status).toBe(404);
     });
 
     it("returns 401 when unauthenticated", async () => {
       const project = createTestProject(testApp.db);
-      const res = await testApp.app.request(
-        `/api/v1/projects/${project.id}/notes`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: "bug", title: "x" }),
-        },
-      );
+      const res = await testApp.app.request(`/api/v1/projects/${project.id}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "bug", title: "x" }),
+      });
       expect(res.status).toBe(401);
     });
   });
@@ -369,12 +351,9 @@ describe("Notes API", () => {
     });
 
     it("returns 404 for an unknown note id", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/notes/${createId()}/dismiss`,
-        { body: { reason: "x" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/notes/${createId()}/dismiss`, {
+        body: { reason: "x" },
+      });
       expect(res.status).toBe(404);
     });
   });

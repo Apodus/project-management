@@ -98,20 +98,12 @@ function ensureProjectExists(projectId: string): void {
   }
 }
 
-function readRow(
-  projectId: string,
-  resource: string,
-): IntegratorHealthRow | undefined {
+function readRow(projectId: string, resource: string): IntegratorHealthRow | undefined {
   const db = getDb();
   return db
     .select()
     .from(integratorHealth)
-    .where(
-      and(
-        eq(integratorHealth.projectId, projectId),
-        eq(integratorHealth.resource, resource),
-      ),
-    )
+    .where(and(eq(integratorHealth.projectId, projectId), eq(integratorHealth.resource, resource)))
     .get() as IntegratorHealthRow | undefined;
 }
 
@@ -227,10 +219,7 @@ export function recordHeartbeat(
           updatedAt: now,
         })
         .where(
-          and(
-            eq(integratorHealth.projectId, projectId),
-            eq(integratorHealth.resource, resource),
-          ),
+          and(eq(integratorHealth.projectId, projectId), eq(integratorHealth.resource, resource)),
         )
         .run();
     }
@@ -300,11 +289,7 @@ export function checkStaleness(row: IntegratorHealthRow, now: string): void {
  * episode, via checkStaleness). No row → "never_seen" (healthy:false,
  * lastSeenAt:null) — distinguishing "never started" from "died."
  */
-export function getHealth(
-  projectId: string,
-  resource: string,
-  now?: string,
-): IntegratorHealthView {
+export function getHealth(projectId: string, resource: string, now?: string): IntegratorHealthView {
   ensureProjectExists(projectId);
   const ts = now ?? new Date().toISOString();
   const row = readRow(projectId, resource);

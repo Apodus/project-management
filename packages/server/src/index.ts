@@ -45,10 +45,7 @@ if (isProduction) {
         onFound: (_filePath, c) => {
           // Cache immutable hashed assets aggressively
           if (_filePath.includes("/assets/")) {
-            c.header(
-              "Cache-Control",
-              "public, immutable, max-age=31536000",
-            );
+            c.header("Cache-Control", "public, immutable, max-age=31536000");
           }
         },
       }),

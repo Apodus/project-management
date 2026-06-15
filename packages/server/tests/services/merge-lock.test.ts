@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import {
-  createTestAiAgent,
-  createTestApp,
-  createTestProject,
-  type TestApp,
-} from "../utils.js";
+import { createTestAiAgent, createTestApp, createTestProject, type TestApp } from "../utils.js";
 import { mergeLocks, mergeLockQueue } from "../../src/db/index.js";
 import * as svc from "../../src/services/merge-lock.service.js";
 
@@ -25,21 +20,13 @@ describe("merge-lock service", () => {
     const a = createTestAiAgent(testApp.db);
 
     expect(
-      testApp.db
-        .select()
-        .from(mergeLocks)
-        .where(eq(mergeLocks.projectId, project.id))
-        .all(),
+      testApp.db.select().from(mergeLocks).where(eq(mergeLocks.projectId, project.id)).all(),
     ).toHaveLength(0);
 
     svc.acquire(project.id, "main", { id: a.user.id });
 
     expect(
-      testApp.db
-        .select()
-        .from(mergeLocks)
-        .where(eq(mergeLocks.projectId, project.id))
-        .all(),
+      testApp.db.select().from(mergeLocks).where(eq(mergeLocks.projectId, project.id)).all(),
     ).toHaveLength(1);
   });
 
@@ -147,9 +134,7 @@ describe("merge-lock service", () => {
 
     const hb = svc.heartbeat(project.id, "main", { id: a.user.id });
     expect(hb.status).toBe("refreshed");
-    expect(new Date(hb.expiresAt as string).getTime()).toBeGreaterThan(
-      new Date(near).getTime(),
-    );
+    expect(new Date(hb.expiresAt as string).getTime()).toBeGreaterThan(new Date(near).getTime());
     // And meaningfully extended (roughly back to LEASE_TTL).
     expect(new Date(hb.expiresAt as string).getTime()).toBeGreaterThan(
       new Date(originalExpiry).getTime() - 1000,

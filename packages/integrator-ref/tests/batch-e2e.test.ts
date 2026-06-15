@@ -42,14 +42,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,11 +59,7 @@ import {
   comments,
   type AppDatabase,
 } from "../../server/src/db/index.js";
-import {
-  createTestProject,
-  createTestAiAgent,
-  createTestTask,
-} from "../../server/tests/utils.js";
+import { createTestProject, createTestAiAgent, createTestTask } from "../../server/tests/utils.js";
 
 // ─── Gating ───────────────────────────────────────────────────────
 
@@ -88,8 +77,7 @@ const RUN = hasGit() && distExists;
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 const isWin = process.platform === "win32";
 
@@ -119,9 +107,7 @@ const SLEEP_600 = isWin ? "ping -n 2 127.0.0.1 > nul" : "sleep 0.6";
 // A verify that SLEEPS then FAILS (exit non-zero). The delay guarantees the
 // successor speculates on this member BEFORE it fails — so the suffix truly
 // chains onto it and must be invalidated when it fails.
-const DELAY_FAIL = isWin
-  ? "ping -n 3 127.0.0.1 > nul & exit 1"
-  : "sleep 2; exit 1";
+const DELAY_FAIL = isWin ? "ping -n 3 127.0.0.1 > nul & exit 1" : "sleep 2; exit 1";
 
 // ─── Module-level live-proc guard ─────────────────────────────────
 // Belt-and-suspenders: never leak a spawned integrator even if an afterAll is
@@ -165,14 +151,9 @@ interface Harness {
   baseUrl: string;
   project: { id: string; slug: string };
   workerToken: string;
-  submit: (
-    token: string,
-    body: Record<string, unknown>,
-  ) => Promise<MergeRequest>;
+  submit: (token: string, body: Record<string, unknown>) => Promise<MergeRequest>;
   getRequest: (id: string) => Promise<MergeRequest>;
-  getDetail: (
-    id: string,
-  ) => Promise<MergeRequest & { attempts: MergeAttempt[] }>;
+  getDetail: (id: string) => Promise<MergeRequest & { attempts: MergeAttempt[] }>;
   pollTerminal: (id: string, timeoutMs?: number) => Promise<MergeRequest>;
   mainSha: () => Promise<string>;
   mainCommitCount: () => number;
@@ -260,10 +241,7 @@ async function makeHarness(parallelism: number): Promise<Harness> {
     },
   });
   const project = { id: proj.id, slug: proj.slug };
-  db.update(projects)
-    .set({ gitRepoUrl: bareRepo })
-    .where(eq(projects.id, project.id))
-    .run();
+  db.update(projects).set({ gitRepoUrl: bareRepo }).where(eq(projects.id, project.id)).run();
 
   // ── Spawn the built integrator (separate process, HTTP only). ──
   const proc = spawn(
@@ -320,21 +298,15 @@ async function makeHarness(parallelism: number): Promise<Harness> {
 
   // ── HTTP + git helpers ──────────────────────────────────────────
 
-  async function submit(
-    token: string,
-    body: Record<string, unknown>,
-  ): Promise<MergeRequest> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/merge-requests`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+  async function submit(token: string, body: Record<string, unknown>): Promise<MergeRequest> {
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/merge-requests`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(body),
+    });
     expect(res.status).toBe(201);
     return (await res.json()).data as MergeRequest;
   }
@@ -347,9 +319,7 @@ async function makeHarness(parallelism: number): Promise<Harness> {
     return (await res.json()).data as MergeRequest;
   }
 
-  async function getDetail(
-    id: string,
-  ): Promise<MergeRequest & { attempts: MergeAttempt[] }> {
+  async function getDetail(id: string): Promise<MergeRequest & { attempts: MergeAttempt[] }> {
     const res = await fetch(`${baseUrl}/api/v1/merge-requests/${id}`, {
       headers: { Authorization: `Bearer ${workerToken}` },
     });
@@ -359,10 +329,7 @@ async function makeHarness(parallelism: number): Promise<Harness> {
     };
   }
 
-  async function pollTerminal(
-    id: string,
-    timeoutMs = 25_000,
-  ): Promise<MergeRequest> {
+  async function pollTerminal(id: string, timeoutMs = 25_000): Promise<MergeRequest> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const r = await getRequest(id);
@@ -377,20 +344,16 @@ async function makeHarness(parallelism: number): Promise<Harness> {
   }
 
   function mainCommitCount(): number {
-    const out = spawnSync(
-      "git",
-      ["-C", bareRepo, "rev-list", "--count", "main"],
-      { encoding: "utf8" },
-    );
+    const out = spawnSync("git", ["-C", bareRepo, "rev-list", "--count", "main"], {
+      encoding: "utf8",
+    });
     return parseInt(out.stdout.trim(), 10);
   }
 
   function fileOnMain(file: string): boolean {
-    const out = spawnSync(
-      "git",
-      ["-C", bareRepo, "cat-file", "-e", `refs/heads/main:${file}`],
-      { stdio: "ignore" },
-    );
+    const out = spawnSync("git", ["-C", bareRepo, "cat-file", "-e", `refs/heads/main:${file}`], {
+      stdio: "ignore",
+    });
     return out.status === 0;
   }
 
@@ -513,10 +476,7 @@ describe.skipIf(!RUN)("batch E2E (a) — 3 clean @parallelism:3", () => {
     const firstStart = Math.min(...windows.map((w) => w.start));
     const lastEnd = Math.max(...windows.map((w) => w.end));
     const span = lastEnd - firstStart;
-    const perVerifyMin = windows.reduce(
-      (min, w) => Math.min(min, w.end - w.start),
-      Infinity,
-    );
+    const perVerifyMin = windows.reduce((min, w) => Math.min(min, w.end - w.start), Infinity);
     const subLinear = span < 3 * perVerifyMin;
     expect(overlap || subLinear).toBe(true);
 
@@ -586,12 +546,7 @@ describe.skipIf(!RUN)("batch E2E (b) — suffix invalidation @parallelism:3", ()
     const rejComments = h.db
       .select()
       .from(comments)
-      .where(
-        and(
-          eq(comments.taskId, task1.id),
-          eq(comments.commentType, "merge_rejection"),
-        ),
-      )
+      .where(and(eq(comments.taskId, task1.id), eq(comments.commentType, "merge_rejection")))
       .all();
     expect(rejComments.length).toBe(1);
 
@@ -752,12 +707,7 @@ describe.skipIf(!RUN)("batch E2E (d) — parallelism:1 serial oracle", () => {
     const rejComments = h.db
       .select()
       .from(comments)
-      .where(
-        and(
-          eq(comments.taskId, task.id),
-          eq(comments.commentType, "merge_rejection"),
-        ),
-      )
+      .where(and(eq(comments.taskId, task.id), eq(comments.commentType, "merge_rejection")))
       .all();
     expect(rejComments.length).toBe(1);
   }, 60_000);
@@ -784,8 +734,7 @@ describe.skipIf(!RUN)("batch E2E (d) — parallelism:1 serial oracle", () => {
     expect(f1.status).toBe("landed");
     expect(f2.status).toBe("landed");
 
-    const [early, late] =
-      f1.enqueuedAt <= f2.enqueuedAt ? [f1, f2] : [f2, f1];
+    const [early, late] = f1.enqueuedAt <= f2.enqueuedAt ? [f1, f2] : [f2, f1];
     expect(early.pickedUpAt).toBeTruthy();
     expect(late.pickedUpAt).toBeTruthy();
     expect(new Date(early.pickedUpAt!).getTime()).toBeLessThanOrEqual(

@@ -28,22 +28,14 @@ describe("Epic Ownership", () => {
       const project = createTestProject(testApp.db);
       const epic = createTestEpic(testApp.db, { projectId: project.id });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/claim`,
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
       expect(body.data).toEqual({ ok: true, status: "claimed_by_you" });
 
       // Verify assigneeId was set
-      const epicRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const epicRes = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`);
       const epicBody = await epicRes.json();
       expect(epicBody.data.assigneeId).toBe(testApp.testUser.id);
     });
@@ -54,11 +46,7 @@ describe("Epic Ownership", () => {
 
       await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/claim`,
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data).toEqual({ ok: true, status: "already_claimed_by_you" });
@@ -73,12 +61,9 @@ describe("Epic Ownership", () => {
 
       // Second user tries to claim
       const agent = createTestAiAgent(testApp.db);
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/claim`,
-        { token: agent.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`, {
+        token: agent.token,
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data).toEqual({
@@ -96,22 +81,14 @@ describe("Epic Ownership", () => {
         status: "completed",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/claim`,
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data).toEqual({ ok: false, status: "closed" });
     });
 
     it("should return 404 for nonexistent epic", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/epics/nonexistent/claim",
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/epics/nonexistent/claim");
       expect(res.status).toBe(404);
     });
   });
@@ -125,21 +102,13 @@ describe("Epic Ownership", () => {
 
       await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/release`,
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/release`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data).toEqual({ ok: true, status: "released" });
 
       // Verify assigneeId is cleared
-      const epicRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const epicRes = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`);
       const epicBody = await epicRes.json();
       expect(epicBody.data.assigneeId).toBeNull();
     });
@@ -148,11 +117,7 @@ describe("Epic Ownership", () => {
       const project = createTestProject(testApp.db);
       const epic = createTestEpic(testApp.db, { projectId: project.id });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/release`,
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/release`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data).toEqual({ ok: false, status: "not_held" });
@@ -164,19 +129,12 @@ describe("Epic Ownership", () => {
       const agent = createTestAiAgent(testApp.db);
 
       // Agent claims
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/claim`,
-        { token: agent.token },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`, {
+        token: agent.token,
+      });
 
       // Human (testUser) releases
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/release`,
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/release`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data).toEqual({ ok: true, status: "released" });
@@ -188,19 +146,13 @@ describe("Epic Ownership", () => {
       const agentA = createTestAiAgent(testApp.db);
       const agentB = createTestAiAgent(testApp.db);
 
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/claim`,
-        { token: agentA.token },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`, {
+        token: agentA.token,
+      });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/epics/${epic.id}/release`,
-        { token: agentB.token },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/release`, {
+        token: agentB.token,
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data).toEqual({
@@ -218,11 +170,7 @@ describe("Epic Ownership", () => {
       const epic = createTestEpic(testApp.db, { projectId: project.id });
 
       // Before claiming
-      const res1 = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const res1 = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`);
       const body1 = await res1.json();
       expect(body1.data.assigneeId).toBeNull();
       expect(body1.data.claimStatus).toBe("unclaimed");
@@ -231,11 +179,7 @@ describe("Epic Ownership", () => {
 
       // After claiming
       await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`);
-      const res2 = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const res2 = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`);
       const body2 = await res2.json();
       expect(body2.data.assigneeId).toBe(testApp.testUser.id);
       expect(body2.data.claimStatus).toBe("claimed_by_you");
@@ -249,12 +193,9 @@ describe("Epic Ownership", () => {
 
       await authRequest(testApp.app, "POST", `/api/v1/epics/${epic.id}/claim`);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-        { token: agent.token },
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`, {
+        token: agent.token,
+      });
       const body = await res.json();
       expect(body.data.claimStatus).toBe("claimed_by_other");
       // C3.P1: another caller sees claimState "live" (held, no lease → fail-safe).
@@ -330,12 +271,10 @@ describe("Epic Ownership", () => {
       const epic = createTestEpic(testApp.db, { projectId: project.id });
       const agent = createTestAiAgent(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${epic.id}`,
-        { token: agent.token, body: { name: "Renamed" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/epics/${epic.id}`, {
+        token: agent.token,
+        body: { name: "Renamed" },
+      });
       expect(res.status).toBe(409);
       const body = await res.json();
       expect(body.error.code).toBe("CLAIM_DENIED");
@@ -351,12 +290,10 @@ describe("Epic Ownership", () => {
         token: agent.token,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${epic.id}`,
-        { token: agent.token, body: { name: "Renamed" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/epics/${epic.id}`, {
+        token: agent.token,
+        body: { name: "Renamed" },
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.name).toBe("Renamed");
@@ -366,12 +303,9 @@ describe("Epic Ownership", () => {
       const project = createTestProject(testApp.db);
       const epic = createTestEpic(testApp.db, { projectId: project.id });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${epic.id}`,
-        { body: { name: "Human edit" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/epics/${epic.id}`, {
+        body: { name: "Human edit" },
+      });
       expect(res.status).toBe(200);
     });
 
@@ -385,18 +319,12 @@ describe("Epic Ownership", () => {
       });
 
       // Complete via update
-      await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${epic.id}`,
-        { token: agent.token, body: { status: "completed" } },
-      );
+      await authRequest(testApp.app, "PATCH", `/api/v1/epics/${epic.id}`, {
+        token: agent.token,
+        body: { status: "completed" },
+      });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`);
       const body = await res.json();
       expect(body.data.assigneeId).toBeNull();
       expect(body.data.status).toBe("completed");
@@ -436,12 +364,9 @@ describe("Epic Ownership", () => {
       });
 
       // Pick next with epic_id filter
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: { epic_id: epic1.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        body: { epic_id: epic1.id },
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.epicId).toBe(epic1.id);
@@ -452,12 +377,9 @@ describe("Epic Ownership", () => {
       const project = createTestProject(testApp.db);
       const epic = createTestEpic(testApp.db, { projectId: project.id });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: { epic_id: epic.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        body: { epic_id: epic.id },
+      });
       expect(res.status).toBe(404);
     });
   });

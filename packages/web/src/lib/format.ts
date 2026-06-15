@@ -15,15 +15,11 @@ export function formatRelativeTime(dateString: string): string {
   const diffMonths = Math.floor(diffDays / 30);
 
   if (diffSeconds < 60) return "just now";
-  if (diffMinutes < 60)
-    return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
-  if (diffHours < 24)
-    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
   if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
-  if (diffWeeks < 5)
-    return `${diffWeeks} week${diffWeeks === 1 ? "" : "s"} ago`;
-  if (diffMonths < 12)
-    return `${diffMonths} month${diffMonths === 1 ? "" : "s"} ago`;
+  if (diffWeeks < 5) return `${diffWeeks} week${diffWeeks === 1 ? "" : "s"} ago`;
+  if (diffMonths < 12) return `${diffMonths} month${diffMonths === 1 ? "" : "s"} ago`;
 
   return date.toLocaleDateString();
 }

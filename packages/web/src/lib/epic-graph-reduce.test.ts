@@ -49,20 +49,8 @@ describe("transitiveReduction", () => {
   });
 
   it("is deterministic: a shuffled input yields identical partitions", () => {
-    const base: BackEdge[] = [
-      e("A", "B"),
-      e("B", "D"),
-      e("A", "C"),
-      e("C", "D"),
-      e("A", "D"),
-    ];
-    const shuffled: BackEdge[] = [
-      e("A", "D"),
-      e("C", "D"),
-      e("A", "B"),
-      e("A", "C"),
-      e("B", "D"),
-    ];
+    const base: BackEdge[] = [e("A", "B"), e("B", "D"), e("A", "C"), e("C", "D"), e("A", "D")];
+    const shuffled: BackEdge[] = [e("A", "D"), e("C", "D"), e("A", "B"), e("A", "C"), e("B", "D")];
     const a = transitiveReduction(base);
     const b = transitiveReduction(shuffled);
     expect(b.reduced).toEqual(a.reduced);

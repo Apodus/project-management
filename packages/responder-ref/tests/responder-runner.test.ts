@@ -2,14 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  createClaudeResponderRunner,
-  type ResponderRunInput,
-} from "../src/responder-runner.js";
-import {
-  buildResponderPrompt,
-  DEFAULT_RESPONDER_PROMPT,
-} from "../src/prompt.js";
+import { createClaudeResponderRunner, type ResponderRunInput } from "../src/responder-runner.js";
+import { buildResponderPrompt, DEFAULT_RESPONDER_PROMPT } from "../src/prompt.js";
 import type { Escalation, EscalationMessage } from "@pm/shared";
 
 let dir: string;
@@ -145,9 +139,7 @@ describe("createClaudeResponderRunner", () => {
 
   it("a bogus command → error(spawn_error)", async () => {
     const runner = createClaudeResponderRunner({});
-    const result = await runner.run(
-      baseInput("this-command-definitely-does-not-exist-xyz", 30),
-    );
+    const result = await runner.run(baseInput("this-command-definitely-does-not-exist-xyz", 30));
     expect(result.kind).toBe("error");
     if (result.kind === "error") expect(result.reason).toBe("spawn_error");
   });

@@ -66,11 +66,7 @@ const VALID_ACTION_TYPES = new Set([
  */
 export function list(projectId: string) {
   const db = getDb();
-  return db
-    .select()
-    .from(automationRules)
-    .where(eq(automationRules.projectId, projectId))
-    .all();
+  return db.select().from(automationRules).where(eq(automationRules.projectId, projectId)).all();
 }
 
 /**
@@ -78,11 +74,7 @@ export function list(projectId: string) {
  */
 export function getById(id: string) {
   const db = getDb();
-  const rule = db
-    .select()
-    .from(automationRules)
-    .where(eq(automationRules.id, id))
-    .get();
+  const rule = db.select().from(automationRules).where(eq(automationRules.id, id)).get();
 
   if (!rule) {
     throw new AppError(404, "NOT_FOUND", `Automation rule not found: ${id}`);
@@ -318,10 +310,7 @@ export function executeAction(
       if (epic.status === toStatus) return;
 
       const now = new Date().toISOString();
-      db.update(epics)
-        .set({ status: toStatus, updatedAt: now })
-        .where(eq(epics.id, epicId))
-        .run();
+      db.update(epics).set({ status: toStatus, updatedAt: now }).where(eq(epics.id, epicId)).run();
 
       const updatedEpic = db.select().from(epics).where(eq(epics.id, epicId)).get();
       getEventBus().emit(EVENT_NAMES.EPIC_UPDATED, {
@@ -342,7 +331,8 @@ export function executeAction(
       const body = config.body as string;
       if (!body) return;
 
-      const targetTaskId = (config.task_id as string) ?? (context.entityType === "task" ? context.entityId : null);
+      const targetTaskId =
+        (config.task_id as string) ?? (context.entityType === "task" ? context.entityId : null);
       if (!targetTaskId) return;
 
       const db = getDb();
@@ -454,9 +444,7 @@ export function createBuiltInRules(projectId: string, createdBy?: string | null)
       description:
         "When a task status changes to done, check if all tasks in the epic are done. If so, transition the epic to completed.",
       triggerEvent: "task.status_changed",
-      conditions: [
-        { field: "changes.status.to", operator: "eq", value: "done" },
-      ],
+      conditions: [{ field: "changes.status.to", operator: "eq", value: "done" }],
       actionType: "transition_epic",
       actionConfig: { to_status: "completed" },
       isActive: true,
@@ -472,12 +460,9 @@ export function createBuiltInRules(projectId: string, createdBy?: string | null)
       id: createId(),
       projectId,
       name: "Auto-advance parent",
-      description:
-        "When all subtasks of a task are done, transition the parent task to in_review.",
+      description: "When all subtasks of a task are done, transition the parent task to in_review.",
       triggerEvent: "task.status_changed",
-      conditions: [
-        { field: "changes.status.to", operator: "eq", value: "done" },
-      ],
+      conditions: [{ field: "changes.status.to", operator: "eq", value: "done" }],
       actionType: "transition_task",
       actionConfig: { to_status: "in_review" },
       isActive: true,

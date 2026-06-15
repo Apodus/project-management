@@ -67,8 +67,7 @@ export function getEdgeStyling(input: EdgeVisualInput): EdgeVisual {
       style: {
         stroke: STROKE_BASE,
         strokeWidth: 1,
-        opacity:
-          highlightState === "highlighted" ? 0.5 : highlightState === "dimmed" ? 0.08 : 0.2,
+        opacity: highlightState === "highlighted" ? 0.5 : highlightState === "dimmed" ? 0.08 : 0.2,
         strokeDasharray: "2 3",
         transition,
       },
@@ -85,8 +84,7 @@ export function getEdgeStyling(input: EdgeVisualInput): EdgeVisual {
   // here, short-circuiting the provenance dash block so its "2 4" can never be
   // overwritten by derived "6 4". No arrowhead: relates_to is non-directional.
   if (!isBackwards && dependencyType === "relates_to") {
-    const relatesStroke =
-      highlightState === "highlighted" ? STROKE_HIGHLIGHT : STROKE_RELATES;
+    const relatesStroke = highlightState === "highlighted" ? STROKE_HIGHLIGHT : STROKE_RELATES;
     return {
       style: {
         stroke: relatesStroke,

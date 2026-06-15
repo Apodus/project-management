@@ -40,13 +40,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,11 +55,7 @@ import {
   projects,
   type AppDatabase,
 } from "../../server/src/db/index.js";
-import {
-  createTestProject,
-  createTestAiAgent,
-  createTestTask,
-} from "../../server/tests/utils.js";
+import { createTestProject, createTestAiAgent, createTestTask } from "../../server/tests/utils.js";
 
 // ─── Gating ───────────────────────────────────────────────────────
 
@@ -96,12 +86,10 @@ const LFS_AVAILABLE = hasGitLfs();
 // group-assembly.test.ts so flow (e)'s real-bytes precondition asserts against
 // the SAME ground-truth content the inner LFS seed writes.
 const originalBytes = Buffer.from([
-  0x00, 0x01, 0x02, 0x03, 0xff, 0xfe, 0xfd, 0xfc, 0x10, 0x20, 0x30, 0x40, 0x50,
-  0x60, 0x70, 0x80,
+  0x00, 0x01, 0x02, 0x03, 0xff, 0xfe, 0xfd, 0xfc, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80,
 ]);
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 const GITLINK_PATH = "vendor/rynx";
 const GIT_REMOTE = "origin";
@@ -175,10 +163,7 @@ interface Harness {
   spawnIntegrator: (extraEnv?: Record<string, string>) => Promise<ChildProcess>;
   /** The current spawned integrator process (re-assigned by spawnIntegrator). */
   proc: () => ChildProcess | null;
-  submitMember: (
-    commitSha: string,
-    taskId: string | null,
-  ) => Promise<MergeRequest>;
+  submitMember: (commitSha: string, taskId: string | null) => Promise<MergeRequest>;
   createGroup: (memberIds: string[]) => Promise<MergeGroup>;
   submitGroup: (
     innerCommit: string,
@@ -208,11 +193,7 @@ interface Harness {
   teardown: () => Promise<void>;
 }
 
-const GROUP_TERMINAL = new Set([
-  "landed",
-  "rejected",
-  "partially_landed",
-]);
+const GROUP_TERMINAL = new Set(["landed", "rejected", "partially_landed"]);
 
 // ─── Two-repo fixture + harness ────────────────────────────────────
 
@@ -274,12 +255,7 @@ async function makeGroupHarness(
     `[submodule "rynx"]\n\tpath = ${GITLINK_PATH}\n\turl = ${innerUrlForGitmodules}\n`,
   );
   await og.add(["top.txt", ".gitmodules"]);
-  await og.raw([
-    "update-index",
-    "--add",
-    "--cacheinfo",
-    `160000,${innerMainSha},${GITLINK_PATH}`,
-  ]);
+  await og.raw(["update-index", "--add", "--cacheinfo", `160000,${innerMainSha},${GITLINK_PATH}`]);
   await og.commit("outer main base with gitlink");
   await og.branch(["-M", "main"]);
   await og.push(["-u", "origin", "main"]);
@@ -340,17 +316,12 @@ async function makeGroupHarness(
     },
   });
   const project = { id: proj.id, slug: proj.slug };
-  db.update(projects)
-    .set({ gitRepoUrl: outerBare })
-    .where(eq(projects.id, project.id))
-    .run();
+  db.update(projects).set({ gitRepoUrl: outerBare }).where(eq(projects.id, project.id)).run();
 
   // ── Spawnable integrator (factored out for re-spawn). ──
   let currentProc: ChildProcess | null = null;
 
-  async function spawnIntegrator(
-    extraEnv: Record<string, string> = {},
-  ): Promise<ChildProcess> {
+  async function spawnIntegrator(extraEnv: Record<string, string> = {}): Promise<ChildProcess> {
     // Kill any previous live integrator first — only ONE integrator owns the
     // lane at a time (the chaos flows re-spawn, and a leftover would race the
     // lane lock and corrupt the next flow's group).
@@ -420,22 +391,19 @@ async function makeGroupHarness(
     taskId: string | null,
     verifyCmd?: string,
   ): Promise<MergeRequest> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/merge-requests`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${workerToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          resource: "main",
-          commitSha,
-          taskId,
-          ...(verifyCmd ? { verifyCmd } : {}),
-        }),
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/merge-requests`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${workerToken}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        resource: "main",
+        commitSha,
+        taskId,
+        ...(verifyCmd ? { verifyCmd } : {}),
+      }),
+    });
     expect(res.status).toBe(201);
     return (await res.json()).data as MergeRequest;
   }
@@ -443,17 +411,14 @@ async function makeGroupHarness(
   async function createGroupRaw(
     memberIds: string[],
   ): Promise<{ status: number; group?: MergeGroup }> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/merge-groups`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${workerToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ resource: "main", memberRequestIds: memberIds }),
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/merge-groups`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${workerToken}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({ resource: "main", memberRequestIds: memberIds }),
+    });
     if (res.status === 201) {
       return { status: 201, group: (await res.json()).data as MergeGroup };
     }
@@ -482,11 +447,7 @@ async function makeGroupHarness(
     // re-submit fresh members and retry — deterministic because the integrator
     // claims at most one per ~1s poll, so a bounded retry converges.
     for (let attempt = 0; attempt < 8; attempt += 1) {
-      const inner = await submitMember(
-        innerCommit,
-        opts.innerTask ?? null,
-        opts.innerVerify,
-      );
+      const inner = await submitMember(innerCommit, opts.innerTask ?? null, opts.innerVerify);
       const outer = await submitMember(outerCommit, null, opts.outerVerify);
       const r = await createGroupRaw([inner.id, outer.id]);
       if (r.status === 201 && r.group) {
@@ -507,29 +468,26 @@ async function makeGroupHarness(
     innerCommit: string,
     opts: { verifyCmd?: string; taskId?: string } = {},
   ): Promise<{ group: MergeGroup; members: MergeRequest[] }> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/merge-groups`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${workerToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          resource: "main",
-          synthesizeOuter: true,
-          members: [
-            {
-              commitSha: innerCommit,
-              verifyCmd: opts.verifyCmd ?? "exit 0",
-              // taskId OMITTED when absent (never null): the route Zod is
-              // z.string().min(1).optional() — an explicit null → 400.
-              ...(opts.taskId ? { taskId: opts.taskId } : {}),
-            },
-          ],
-        }),
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/merge-groups`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${workerToken}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        resource: "main",
+        synthesizeOuter: true,
+        members: [
+          {
+            commitSha: innerCommit,
+            verifyCmd: opts.verifyCmd ?? "exit 0",
+            // taskId OMITTED when absent (never null): the route Zod is
+            // z.string().min(1).optional() — an explicit null → 400.
+            ...(opts.taskId ? { taskId: opts.taskId } : {}),
+          },
+        ],
+      }),
+    });
     expect(res.status).toBe(201);
     const detail = (await res.json()).data as MergeGroupDetail;
     return { group: detail, members: detail.members };
@@ -553,10 +511,7 @@ async function makeGroupHarness(
     return (await res.json()).data as MergeGroupDetail;
   }
 
-  async function pollGroup(
-    id: string,
-    timeoutMs = 60_000,
-  ): Promise<MergeGroup> {
+  async function pollGroup(id: string, timeoutMs = 60_000): Promise<MergeGroup> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const g = await getGroup(id);
@@ -588,11 +543,7 @@ async function makeGroupHarness(
   }
 
   async function gitlinkOnOuterBareMain(): Promise<string> {
-    const out = await simpleGit(outerBare).raw([
-      "ls-tree",
-      GIT_MAIN,
-      GITLINK_PATH,
-    ]);
+    const out = await simpleGit(outerBare).raw(["ls-tree", GIT_MAIN, GITLINK_PATH]);
     for (const line of out.split("\n")) {
       const parts = line.trim().split(/\s+/);
       if (parts[0] === "160000" && parts[2]) return parts[2];
@@ -601,22 +552,18 @@ async function makeGroupHarness(
   }
 
   function outerFileOnMain(file: string): boolean {
-    const out = spawnSync(
-      "git",
-      ["-C", outerBare, "cat-file", "-e", `refs/heads/main:${file}`],
-      { stdio: "ignore" },
-    );
+    const out = spawnSync("git", ["-C", outerBare, "cat-file", "-e", `refs/heads/main:${file}`], {
+      stdio: "ignore",
+    });
     return out.status === 0;
   }
 
   // Inner-side twin of outerFileOnMain — flow (g) asserts the rebased inner
   // main carries BOTH the feature file and the concurrent drift file.
   function innerFileOnMain(file: string): boolean {
-    const out = spawnSync(
-      "git",
-      ["-C", innerBare, "cat-file", "-e", `refs/heads/main:${file}`],
-      { stdio: "ignore" },
-    );
+    const out = spawnSync("git", ["-C", innerBare, "cat-file", "-e", `refs/heads/main:${file}`], {
+      stdio: "ignore",
+    });
     return out.status === 0;
   }
 
@@ -734,11 +681,11 @@ describe.skipIf(!RUN)("group E2E (a) — clean atomic land", () => {
 
   it("both bare mains advance, gitlink @ Ri, group + members landed, no incidents", async () => {
     const innerTask = createTestTask(h.db, { projectId: h.project.id });
-    const { group } = await h.submitGroup(
-      refs.innerFeatureSha,
-      refs.outerFeatureSha,
-      { innerVerify: "exit 0", outerVerify: "exit 0", innerTask: innerTask.id },
-    );
+    const { group } = await h.submitGroup(refs.innerFeatureSha, refs.outerFeatureSha, {
+      innerVerify: "exit 0",
+      outerVerify: "exit 0",
+      innerTask: innerTask.id,
+    });
 
     const final = await h.pollGroup(group.id, 90_000);
     expect(final.state).toBe("landed");
@@ -774,11 +721,10 @@ describe.skipIf(!RUN)("group E2E (b) — assembled verify fail → reject", () =
     const outerBefore = await h.outerBareMainSha();
 
     // Outer verify FAILS → the assembled AND fails → reject from integrating.
-    const { group } = await h.submitGroup(
-      refs.innerFeatureSha,
-      refs.outerFeatureSha,
-      { innerVerify: "exit 0", outerVerify: "exit 1" },
-    );
+    const { group } = await h.submitGroup(refs.innerFeatureSha, refs.outerFeatureSha, {
+      innerVerify: "exit 0",
+      outerVerify: "exit 1",
+    });
 
     const final = await h.pollGroup(group.id, 90_000);
     expect(final.state).toBe("rejected");
@@ -810,11 +756,11 @@ describe.skipIf(!RUN)("group E2E (c) — orphan → PM-visible → auto-resolve"
     const innerTask = createTestTask(h.db, { projectId: h.project.id });
 
     // 1) First group → orphan (outer push fails once).
-    const { group: g1, inner } = await h.submitGroup(
-      refs.innerFeatureSha,
-      refs.outerFeatureSha,
-      { innerVerify: "exit 0", outerVerify: "exit 0", innerTask: innerTask.id },
-    );
+    const { group: g1, inner } = await h.submitGroup(refs.innerFeatureSha, refs.outerFeatureSha, {
+      innerVerify: "exit 0",
+      outerVerify: "exit 0",
+      innerTask: innerTask.id,
+    });
 
     // Poll until an open incident appears (the orphan is PM-visible).
     let incidents: MergeIncident[] = [];
@@ -845,11 +791,10 @@ describe.skipIf(!RUN)("group E2E (c) — orphan → PM-visible → auto-resolve"
     // 2) Submit a SECOND clean group. recoverOrphanedInner runs FIRST under the
     //    lane lock → rolls the gitlink forward to Ri → incident auto_resolved.
     const second = await seedSecondFeaturePair(h, "c2");
-    const { group: g2 } = await h.submitGroup(
-      second.innerFeat,
-      second.outerFeat,
-      { innerVerify: "exit 0", outerVerify: "exit 0" },
-    );
+    const { group: g2 } = await h.submitGroup(second.innerFeat, second.outerFeat, {
+      innerVerify: "exit 0",
+      outerVerify: "exit 0",
+    });
 
     // Poll the incident until auto_resolved.
     let resolved: MergeIncident | undefined;
@@ -890,11 +835,10 @@ describe.skipIf(!RUN)("group E2E (d) — un-reconcilable orphan stays open", () 
 
   it("orphan, then a DIVERGENT gitlink bump → recovery escalates, incident stays open, outer untouched", async () => {
     // 1) Produce an orphan (as flow c).
-    const { group: g1 } = await h.submitGroup(
-      refs.innerFeatureSha,
-      refs.outerFeatureSha,
-      { innerVerify: "exit 0", outerVerify: "exit 0" },
-    );
+    const { group: g1 } = await h.submitGroup(refs.innerFeatureSha, refs.outerFeatureSha, {
+      innerVerify: "exit 0",
+      outerVerify: "exit 0",
+    });
     let incidents: MergeIncident[] = [];
     const deadline = Date.now() + 90_000;
     while (Date.now() < deadline) {
@@ -942,12 +886,7 @@ describe.skipIf(!RUN)("group E2E (d) — un-reconcilable orphan stays open", () 
     await simpleGit().clone(h.outerBare, bumpWk);
     const bg = simpleGit(bumpWk);
     await configIdentity(bg);
-    await bg.raw([
-      "update-index",
-      "--add",
-      "--cacheinfo",
-      `160000,${innerC},${GITLINK_PATH}`,
-    ]);
+    await bg.raw(["update-index", "--add", "--cacheinfo", `160000,${innerC},${GITLINK_PATH}`]);
     await bg.commit("intervening outer: bump gitlink to divergent C");
     await bg.push(["origin", "main"]);
     expect(await h.gitlinkOnOuterBareMain()).toBe(innerC);
@@ -996,11 +935,11 @@ describe.skipIf(!RUN)("group E2E chaos", () => {
     });
 
     const innerTask = createTestTask(h.db, { projectId: h.project.id });
-    const { group } = await h.submitGroup(
-      refs.innerFeatureSha,
-      refs.outerFeatureSha,
-      { innerVerify: "exit 0", outerVerify: "exit 0", innerTask: innerTask.id },
-    );
+    const { group } = await h.submitGroup(refs.innerFeatureSha, refs.outerFeatureSha, {
+      innerVerify: "exit 0",
+      outerVerify: "exit 0",
+      innerTask: innerTask.id,
+    });
 
     // Await the crash (the chaos hook exits the process after PUSH 1).
     await once(proc1, "exit");
@@ -1112,14 +1051,12 @@ describe.skipIf(!RUN || !LFS_AVAILABLE)(
       // overlay shipped real bytes, not that a pointer slipped through. If this
       // precondition cannot smudge (a misconfigured host), it FAILS LOUD here
       // rather than letting the test pass on garbage.
-      const innerFileUrl =
-        "file:///" + h.innerBare.split(path.sep).join("/");
+      const innerFileUrl = "file:///" + h.innerBare.split(path.sep).join("/");
       const preClone = path.join(h.tmpRoot, "precond-inner-clone");
-      const pc = spawnSync(
-        "git",
-        ["clone", "-b", "feature/inner", innerFileUrl, preClone],
-        { stdio: "pipe", encoding: "utf8" },
-      );
+      const pc = spawnSync("git", ["clone", "-b", "feature/inner", innerFileUrl, preClone], {
+        stdio: "pipe",
+        encoding: "utf8",
+      });
       expect(pc.status, `precondition clone failed: ${pc.stderr}`).toBe(0);
       // Force-smudge in case the host has GIT_LFS_SKIP_SMUDGE / a partial clone.
       const pull = spawnSync("git", ["-C", preClone, "lfs", "pull"], {
@@ -1137,21 +1074,15 @@ describe.skipIf(!RUN || !LFS_AVAILABLE)(
         "precondition: inner clone source did not yield the REAL binary (smudge misconfigured) — a 'landed' would be a pointer false-green",
       ).toBe(0);
       // It is NOT a pointer.
-      expect(
-        readFileSync(preBlob, "utf8").startsWith("version https://git-lfs"),
-      ).toBe(false);
+      expect(readFileSync(preBlob, "utf8").startsWith("version https://git-lfs")).toBe(false);
 
       // ── Submit the LFS-inner group (members born group-bound), poll to land ──
       const innerTask = createTestTask(h.db, { projectId: h.project.id });
-      const { group } = await h.submitGroup(
-        refs.innerFeatureSha,
-        refs.outerFeatureSha,
-        {
-          innerVerify: "exit 0",
-          outerVerify: "exit 0",
-          innerTask: innerTask.id,
-        },
-      );
+      const { group } = await h.submitGroup(refs.innerFeatureSha, refs.outerFeatureSha, {
+        innerVerify: "exit 0",
+        outerVerify: "exit 0",
+        innerTask: innerTask.id,
+      });
 
       const final = await h.pollGroup(group.id, 90_000);
       // The LFS-inner group bound via `file://` composed P1 (mirror-bind ref
@@ -1211,11 +1142,10 @@ describe.skipIf(!RUN || !LFS_AVAILABLE)(
       // auto_resolved means the overlay shipped real bytes, not a pointer.
       const innerFileUrl = "file:///" + h.innerBare.split(path.sep).join("/");
       const preClone = path.join(h.tmpRoot, "precond-inner-clone-f");
-      const pc = spawnSync(
-        "git",
-        ["clone", "-b", "feature/inner", innerFileUrl, preClone],
-        { stdio: "pipe", encoding: "utf8" },
-      );
+      const pc = spawnSync("git", ["clone", "-b", "feature/inner", innerFileUrl, preClone], {
+        stdio: "pipe",
+        encoding: "utf8",
+      });
       expect(pc.status, `precondition clone failed: ${pc.stderr}`).toBe(0);
       const pull = spawnSync("git", ["-C", preClone, "lfs", "pull"], {
         stdio: "pipe",
@@ -1228,18 +1158,16 @@ describe.skipIf(!RUN || !LFS_AVAILABLE)(
         Buffer.compare(readFileSync(preBlob), originalBytes),
         "precondition: inner orphan source did not yield the REAL binary (smudge misconfigured) — an 'auto_resolved' would be a pointer false-green",
       ).toBe(0);
-      expect(
-        readFileSync(preBlob, "utf8").startsWith("version https://git-lfs"),
-      ).toBe(false);
+      expect(readFileSync(preBlob, "utf8").startsWith("version https://git-lfs")).toBe(false);
 
       // ── 1) Produce the orphan (mirror flow (c)) ──
       const preOrphanGitlink = await h.gitlinkOnOuterBareMain();
       const innerTask = createTestTask(h.db, { projectId: h.project.id });
-      const { group: g1 } = await h.submitGroup(
-        refs.innerFeatureSha,
-        refs.outerFeatureSha,
-        { innerVerify: "exit 0", outerVerify: "exit 0", innerTask: innerTask.id },
-      );
+      const { group: g1 } = await h.submitGroup(refs.innerFeatureSha, refs.outerFeatureSha, {
+        innerVerify: "exit 0",
+        outerVerify: "exit 0",
+        innerTask: innerTask.id,
+      });
 
       // Poll until one open orphaned_inner incident appears.
       let incidents: MergeIncident[] = [];
@@ -1324,10 +1252,9 @@ describe.skipIf(!RUN)(
 
     it("conflict immunity (campaign seal): gitlink drift between submit and pickup → inner-only group still lands", async () => {
       const innerTask = createTestTask(h.db, { projectId: h.project.id });
-      const { group, members } = await h.submitInnerOnlyGroup(
-        refs.innerFeatureSha,
-        { taskId: innerTask.id },
-      );
+      const { group, members } = await h.submitInnerOnlyGroup(refs.innerFeatureSha, {
+        taskId: innerTask.id,
+      });
 
       // ── Birth shape: forming group, EXACTLY ONE synthetic member with no
       //    refs to land, one real member carrying the inner commit. ──
@@ -1395,14 +1322,7 @@ describe.skipIf(!RUN)(
       expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
       const outerAnc = spawnSync(
         "git",
-        [
-          "-C",
-          h.outerBare,
-          "merge-base",
-          "--is-ancestor",
-          advancedOuterMain,
-          GIT_MAIN,
-        ],
+        ["-C", h.outerBare, "merge-base", "--is-ancestor", advancedOuterMain, GIT_MAIN],
         { stdio: "ignore" },
       );
       expect(outerAnc.status).toBe(0);

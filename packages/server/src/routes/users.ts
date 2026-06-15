@@ -178,8 +178,7 @@ const rotateTokenRoute = createRoute({
   path: "/api/v1/users/{id}/rotate-token",
   tags: ["Users"],
   summary: "Rotate API token",
-  description:
-    "Regenerates the API token for a user. Returns the new raw token. Admin only.",
+  description: "Regenerates the API token for a user. Returns the new raw token. Admin only.",
   request: {
     params: userIdParam,
   },

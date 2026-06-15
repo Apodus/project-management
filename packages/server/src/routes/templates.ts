@@ -1,10 +1,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { AppVariables } from "../types.js";
 import * as templateService from "../services/template.service.js";
-import type {
-  TaskTemplateData,
-  ProjectTemplateData,
-} from "../services/template.service.js";
+import type { TaskTemplateData, ProjectTemplateData } from "../services/template.service.js";
 
 // ─── Response schemas ─────────────────────────────────────────────
 
@@ -74,15 +71,21 @@ const createTemplateFromTaskBody = z
   })
   .openapi("CreateTemplateFromTask");
 
-const templateIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const templateIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const taskIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const taskIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 
@@ -327,14 +330,10 @@ export function createTemplateRoutes(): OpenAPIHono<{
         );
       }
 
-      const result = templateService.instantiateProjectTemplate(
-        id,
-        body.workspace_id,
-        {
-          name: body.name,
-          description: body.overrides?.description as string | undefined,
-        },
-      );
+      const result = templateService.instantiateProjectTemplate(id, body.workspace_id, {
+        name: body.name,
+        description: body.overrides?.description as string | undefined,
+      });
 
       return c.json({ data: result }, 201);
     }
@@ -355,11 +354,7 @@ export function createTemplateRoutes(): OpenAPIHono<{
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
 
-    const template = templateService.createTemplateFromTask(
-      id,
-      body.name,
-      body.description,
-    );
+    const template = templateService.createTemplateFromTask(id, body.name, body.description);
 
     return c.json({ data: template }, 201);
   });

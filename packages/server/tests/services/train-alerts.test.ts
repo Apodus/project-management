@@ -1,12 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import {
-  createTestApp,
-  createTestProject,
-  createTestUser,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestProject, createTestUser, type TestApp } from "../utils.js";
 import {
   mergeAttempts,
   mergeRequestGroups,
@@ -120,10 +115,7 @@ function seedAttempt(
 }
 
 /** Seed a merge_request_groups row so a member's groupId satisfies the FK. */
-function seedGroup(
-  testApp: TestApp,
-  args: { projectId: string; submittedBy: string },
-): string {
+function seedGroup(testApp: TestApp, args: { projectId: string; submittedBy: string }): string {
   const id = createId();
   const ts = ago(HOUR);
   testApp.db
@@ -145,9 +137,7 @@ function seedGroup(
 }
 
 /** A settings blob carrying a specific integrator parallelism / verify timeout. */
-function integratorSettings(
-  integrator: Record<string, unknown>,
-): Record<string, unknown> {
+function integratorSettings(integrator: Record<string, unknown>): Record<string, unknown> {
   return {
     ai_autonomy: {
       can_self_assign: true,
@@ -164,11 +154,7 @@ function integratorSettings(
 }
 
 function readLatch(testApp: TestApp, projectId: string) {
-  return testApp.db
-    .select()
-    .from(trainState)
-    .where(eq(trainState.projectId, projectId))
-    .get();
+  return testApp.db.select().from(trainState).where(eq(trainState.projectId, projectId)).get();
 }
 
 describe("train on-read alerts (§7.3)", () => {
@@ -203,9 +189,7 @@ describe("train on-read alerts (§7.3)", () => {
     // First read → fires once + latches stuckNotified.
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(1);
-    expect((calls[0] as { oldestQueuedAgeMs: number }).oldestQueuedAgeMs).toBe(
-      11 * MIN,
-    );
+    expect((calls[0] as { oldestQueuedAgeMs: number }).oldestQueuedAgeMs).toBe(11 * MIN);
     expect(readLatch(testApp, project.id)?.stuckNotified).toBe(true);
 
     // Second read while still stuck → latched, does NOT re-fire.
@@ -366,9 +350,7 @@ describe("train on-read alerts (§7.3)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_ABANDON_RATE_HIGH, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_ABANDON_RATE_HIGH, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(1);
@@ -393,9 +375,7 @@ describe("train on-read alerts (§7.3)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_ABANDON_RATE_HIGH, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_ABANDON_RATE_HIGH, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(0);
@@ -428,9 +408,7 @@ describe("train on-read alerts (§7.3)", () => {
     }
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_ABANDON_RATE_HIGH, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_ABANDON_RATE_HIGH, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(1);
@@ -497,9 +475,7 @@ describe("train.integration_stalled (§7.3 follow-up)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(0);
@@ -531,9 +507,7 @@ describe("train.integration_stalled (§7.3 follow-up)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(0);
@@ -560,9 +534,7 @@ describe("train.integration_stalled (§7.3 follow-up)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(1);
@@ -585,9 +557,7 @@ describe("train.integration_stalled (§7.3 follow-up)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(1);
@@ -616,9 +586,7 @@ describe("train.integration_stalled (§7.3 follow-up)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(0);
@@ -645,9 +613,7 @@ describe("train.integration_stalled (§7.3 follow-up)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(0);
@@ -674,9 +640,7 @@ describe("train.integration_stalled (§7.3 follow-up)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(0);
@@ -710,9 +674,7 @@ describe("train.integration_stalled (§7.3 follow-up)", () => {
     });
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) => calls.push(p.entity));
 
     // First read → fires + latches.
     metrics.computeMetrics(project.id, "main", NOW);
@@ -776,9 +738,7 @@ describe("train.integration_stalled (§7.3 follow-up)", () => {
     trainSvc.pause(project.id, "main", adminActor(testApp), "draining");
 
     const calls: unknown[] = [];
-    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
-      calls.push(p.entity),
-    );
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) => calls.push(p.entity));
 
     metrics.computeMetrics(project.id, "main", NOW);
     expect(calls).toHaveLength(0);

@@ -152,11 +152,7 @@ export class ResponderClient {
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
-  private async request<T>(
-    method: "GET" | "POST",
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
+  private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
     const url = `${this.baseUrl}/api/v1${path}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.token}`,
@@ -246,10 +242,7 @@ export class ResponderClient {
    * a held one → 403; acking a non-open → 409.
    */
   acknowledge(id: string): Promise<Escalation> {
-    return this.request<Escalation>(
-      "POST",
-      `/escalations/${encodeURIComponent(id)}/acknowledge`,
-    );
+    return this.request<Escalation>("POST", `/escalations/${encodeURIComponent(id)}/acknowledge`);
   }
 
   /**
@@ -258,10 +251,7 @@ export class ResponderClient {
    * prompt with the escalation fields + every thread message.
    */
   getEscalation(id: string): Promise<EscalationWithThread> {
-    return this.request<EscalationWithThread>(
-      "GET",
-      `/escalations/${encodeURIComponent(id)}`,
-    );
+    return this.request<EscalationWithThread>("GET", `/escalations/${encodeURIComponent(id)}`);
   }
 
   /**
@@ -270,11 +260,9 @@ export class ResponderClient {
    * client receives (the C2 delivery path auto-notices the answer).
    */
   answer(id: string, body: string): Promise<Escalation> {
-    return this.request<Escalation>(
-      "POST",
-      `/escalations/${encodeURIComponent(id)}/answer`,
-      { body },
-    );
+    return this.request<Escalation>("POST", `/escalations/${encodeURIComponent(id)}/answer`, {
+      body,
+    });
   }
 
   /**
@@ -282,11 +270,9 @@ export class ResponderClient {
    * reason is recorded as a `system` message — the origin C2-notices it.
    */
   resolve(id: string, reason: string): Promise<Escalation> {
-    return this.request<Escalation>(
-      "POST",
-      `/escalations/${encodeURIComponent(id)}/resolve`,
-      { reason },
-    );
+    return this.request<Escalation>("POST", `/escalations/${encodeURIComponent(id)}/resolve`, {
+      reason,
+    });
   }
 
   /**
@@ -412,10 +398,7 @@ export class ResponderClient {
    * master). `request<T>` unwraps the `{ data }` envelope to the project view.
    */
   getProject(projectId: string): Promise<ResponderProjectView> {
-    return this.request<ResponderProjectView>(
-      "GET",
-      `/projects/${encodeURIComponent(projectId)}`,
-    );
+    return this.request<ResponderProjectView>("GET", `/projects/${encodeURIComponent(projectId)}`);
   }
 
   /** Resolve this responder's own identity (used once at startup for selfId). */

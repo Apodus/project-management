@@ -43,32 +43,32 @@ const createTaskCommentBody = z
   .object({
     body: z.string().min(1, "Comment body is required"),
     commentType: z.enum(COMMENT_TYPES).optional(),
-    metadata: z
-      .record(z.string(), z.unknown())
-      .nullable()
-      .optional(),
+    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   })
   .openapi("CreateTaskComment");
 
 const updateCommentBody = z
   .object({
     body: z.string().min(1).optional(),
-    metadata: z
-      .record(z.string(), z.unknown())
-      .nullable()
-      .optional(),
+    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   })
   .openapi("UpdateComment");
 
-const taskIdParam = z.string().min(1).openapi({
-  param: { name: "taskId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const taskIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "taskId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const commentIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const commentIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 

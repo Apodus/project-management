@@ -22,11 +22,7 @@ describe("Awareness endpoint", () => {
     testApp.cleanup();
   });
 
-  function attachLabel(
-    projectId: string,
-    name: string,
-    taskId: string,
-  ): string {
+  function attachLabel(projectId: string, name: string, taskId: string): string {
     const existing = testApp.db
       .select()
       .from(labels)
@@ -181,11 +177,7 @@ describe("Awareness endpoint", () => {
       title: "two",
     });
 
-    const res = await authRequest(
-      testApp.app,
-      "GET",
-      `/api/v1/projects/${project.id}/awareness`,
-    );
+    const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/awareness`);
     const body = await res.json();
     expect(body.data.label).toBeNull();
     expect(body.data.total).toBe(2);

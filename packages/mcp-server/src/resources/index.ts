@@ -40,10 +40,7 @@ export function registerAllResources(server: McpServer): void {
   );
 
   // pm://project/{id}/proposals — Active proposals for a project
-  const proposalTemplate = new ResourceTemplate(
-    "pm://project/{id}/proposals",
-    { list: undefined },
-  );
+  const proposalTemplate = new ResourceTemplate("pm://project/{id}/proposals", { list: undefined });
 
   server.resource(
     "project-proposals",
@@ -90,10 +87,7 @@ export function registerAllResources(server: McpServer): void {
   );
 
   // pm://project/{id}/board — Tasks grouped by status (kanban-style)
-  const boardTemplate = new ResourceTemplate(
-    "pm://project/{id}/board",
-    { list: undefined },
-  );
+  const boardTemplate = new ResourceTemplate("pm://project/{id}/board", { list: undefined });
 
   server.resource(
     "project-board",

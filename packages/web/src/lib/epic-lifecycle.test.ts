@@ -175,11 +175,7 @@ describe("actionableNow — active epics with all blocks-prereqs done", () => {
       makeNode("D2", { health: "on_track" }),
       makeNode("Iso", { health: "at_risk" }),
     ];
-    const edges = [
-      makeEdge("P1", "D1"),
-      makeEdge("P2", "D2"),
-      makeEdge("P1", "D2", "relates_to"),
-    ];
+    const edges = [makeEdge("P1", "D1"), makeEdge("P2", "D2"), makeEdge("P1", "D2", "relates_to")];
     const shuffledNodes = [nodes[4], nodes[1], nodes[3], nodes[0], nodes[2]];
     const shuffledEdges = [edges[2], edges[0], edges[1]];
 

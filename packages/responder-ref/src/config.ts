@@ -282,9 +282,7 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): ResponderConfig {
   // enablement is `masterAllows && dbSettings.enabled === true` (resolved per project,
   // per tick, in the loop).
   const autoImplementMasterAllows =
-    env.PM_AUTO_IMPLEMENT_ENABLED === undefined
-      ? true
-      : parseBool(env.PM_AUTO_IMPLEMENT_ENABLED);
+    env.PM_AUTO_IMPLEMENT_ENABLED === undefined ? true : parseBool(env.PM_AUTO_IMPLEMENT_ENABLED);
   // auto_implement.mode (A5 P1): the operator rollout knob — off|shadow|on. Now the
   // env-level mode FALLBACK composed under the per-project DB mode
   // (`effectiveMode = dbSettings.mode ?? this`). DEFAULT "on" (so an env-master-allowed

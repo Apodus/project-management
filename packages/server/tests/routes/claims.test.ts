@@ -181,11 +181,7 @@ describe("GET /api/v1/projects/:projectId/claims", () => {
       assigneeId: agent.user.id,
     });
     const epic = createTestEpic(testApp.db, { projectId: project.id, status: "completed" });
-    testApp.db
-      .update(epics)
-      .set({ assigneeId: agent.user.id })
-      .where(eq(epics.id, epic.id))
-      .run();
+    testApp.db.update(epics).set({ assigneeId: agent.user.id }).where(eq(epics.id, epic.id)).run();
     const proposal = createTestProposal(testApp.db, {
       projectId: project.id,
       status: "rejected",

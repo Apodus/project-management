@@ -47,7 +47,10 @@ import type {
   DriveRunResult,
 } from "../../responder-ref/src/drive-runner.js";
 import type { Worktree } from "../../responder-ref/src/worktree.js";
-import type { InjectionSniffer, InjectionSniffResult } from "../../responder-ref/src/injection-sniffer.js";
+import type {
+  InjectionSniffer,
+  InjectionSniffResult,
+} from "../../responder-ref/src/injection-sniffer.js";
 import { tasks as tasksTable, epics as epicsTable } from "../src/db/schema.js";
 
 const silentLogger = {
@@ -138,21 +141,16 @@ describe("C3 responder full-stack seal", () => {
 
     // ── Seed: an OPEN escalation under the CLIENT author (severity null →
     // the chain lands on answer; REVISE FIX #2). ──
-    const raiseRes = await authRequest(
-      app,
-      "POST",
-      `/api/v1/projects/${project.id}/escalations`,
-      {
-        token: client.token,
-        body: {
-          kind: "question",
-          title: "Why does the foo widget show stale data?",
-          originRepo: "client-repo",
-          originWorkerKey: "client-x",
-          severity: null,
-        },
+    const raiseRes = await authRequest(app, "POST", `/api/v1/projects/${project.id}/escalations`, {
+      token: client.token,
+      body: {
+        kind: "question",
+        title: "Why does the foo widget show stale data?",
+        originRepo: "client-repo",
+        originWorkerKey: "client-x",
+        severity: null,
       },
-    );
+    });
     expect(raiseRes.status).toBe(201);
     const escId = (await raiseRes.json()).data.id as string;
 
@@ -171,9 +169,7 @@ describe("C3 responder full-stack seal", () => {
 
     // ── Assertion 2: the diagnosis message exists, body matches, authored by
     // the responder (≠ the origin client author). ──
-    const diag = detail.messages.find(
-      (m: { body: string }) => m.body === DIAGNOSIS,
-    );
+    const diag = detail.messages.find((m: { body: string }) => m.body === DIAGNOSIS);
     expect(diag).toBeDefined();
     expect(diag.authorId).toBe(responder.user.id);
     expect(diag.authorId).not.toBe(client.user.id);
@@ -195,12 +191,9 @@ describe("C3 responder full-stack seal", () => {
 
     // ── Assertion 4: mark-delivered up to the diagnosis seq drains it. ──
     const diagSeq = diag.seq as number;
-    const markRes = await authRequest(
-      app,
-      "POST",
-      `/api/v1/escalations/${escId}/mark-delivered`,
-      { body: { workerKey: "client-x", uptoSeq: diagSeq } },
-    );
+    const markRes = await authRequest(app, "POST", `/api/v1/escalations/${escId}/mark-delivered`, {
+      body: { workerKey: "client-x", uptoSeq: diagSeq },
+    });
     expect(markRes.status).toBe(200);
 
     const afterRes = await authRequest(
@@ -224,21 +217,16 @@ describe("C3 responder full-stack seal", () => {
       fetchImpl: (url, init) => app.request(url as string, init as RequestInit),
     });
 
-    const raiseRes = await authRequest(
-      app,
-      "POST",
-      `/api/v1/projects/${project.id}/escalations`,
-      {
-        token: client.token,
-        body: {
-          kind: "question",
-          title: "Shadow boundary check",
-          originRepo: "client-repo",
-          originWorkerKey: "client-y",
-          severity: null,
-        },
+    const raiseRes = await authRequest(app, "POST", `/api/v1/projects/${project.id}/escalations`, {
+      token: client.token,
+      body: {
+        kind: "question",
+        title: "Shadow boundary check",
+        originRepo: "client-repo",
+        originWorkerKey: "client-y",
+        severity: null,
       },
-    );
+    });
     const escId = (await raiseRes.json()).data.id as string;
 
     await responderTick(
@@ -377,7 +365,10 @@ describe("A2 auto-implement land seal", () => {
   }
 
   /** Find the MR the responder submitted for this escalation (the only one). */
-  function findEscalationMr(db: TestApp["db"], escId: string): { id: string; branch: string | null } {
+  function findEscalationMr(
+    db: TestApp["db"],
+    escId: string,
+  ): { id: string; branch: string | null } {
     const row = db.select().from(mergeRequests).where(eq(mergeRequests.escalationId, escId)).get();
     expect(row).toBeTruthy();
     return { id: row!.id, branch: row!.branch };
@@ -406,7 +397,8 @@ describe("A2 auto-implement land seal", () => {
     );
 
     // The escalation is acknowledged (held by the responder) with a pendingLand handoff.
-    const afterImpl = (await (await authRequest(app, "GET", `/api/v1/escalations/${escId}`)).json()).data;
+    const afterImpl = (await (await authRequest(app, "GET", `/api/v1/escalations/${escId}`)).json())
+      .data;
     expect(afterImpl.status).toBe("acknowledged");
     expect(afterImpl.holderId).toBe(responder.user.id);
     const handoff = afterImpl.messages.find(
@@ -457,9 +449,7 @@ describe("A2 auto-implement land seal", () => {
     // mark-delivered up to the HIGHEST unread seq drains the thread (the land
     // post-back authors BOTH a holder summary AND a system resolution message;
     // draining requires advancing the watermark past the last of them).
-    const maxUnreadSeq = Math.max(
-      ...entry.unreadMessages.map((m: { seq: number }) => m.seq),
-    );
+    const maxUnreadSeq = Math.max(...entry.unreadMessages.map((m: { seq: number }) => m.seq));
     const markRes = await authRequest(app, "POST", `/api/v1/escalations/${escId}/mark-delivered`, {
       body: { workerKey: "client-impl", uptoSeq: maxUnreadSeq },
     });
@@ -469,7 +459,9 @@ describe("A2 auto-implement land seal", () => {
         await authRequest(app, "GET", `/api/v1/escalations/undelivered?worker_key=client-impl`)
       ).json()
     ).data;
-    expect(after.find((u: { escalation: { id: string } }) => u.escalation.id === escId)).toBeFalsy();
+    expect(
+      after.find((u: { escalation: { id: string } }) => u.escalation.id === escId),
+    ).toBeFalsy();
   });
 
   it("reject path: client raises → implement → submit MR → (train) REJECT → escalation needs_human + branch preserved", async () => {
@@ -516,7 +508,9 @@ describe("A2 auto-implement land seal", () => {
       .from(escalationMessages)
       .where(eq(escalationMessages.escalationId, escId))
       .all();
-    expect(msgs.some((m) => m.messageType === "system" && m.body.includes("verify red"))).toBe(true);
+    expect(msgs.some((m) => m.messageType === "system" && m.body.includes("verify red"))).toBe(
+      true,
+    );
 
     // The MR row + its branch ref are untouched (no proven work discarded).
     const mrRow = db.select().from(mergeRequests).where(eq(mergeRequests.id, mr.id)).get();
@@ -816,8 +810,16 @@ describe("A3 autonomous-drive arc seal", () => {
         visionPath: "roadmaps/vision-x.md",
         epicName: "Stale-cache resilience",
         campaigns: [
-          { title: "Phase A — invalidate on write", priority: "high", description: "flush the cache on write" },
-          { title: "Phase B — TTL backstop", priority: "medium", description: "add a TTL backstop" },
+          {
+            title: "Phase A — invalidate on write",
+            priority: "high",
+            description: "flush the cache on write",
+          },
+          {
+            title: "Phase B — TTL backstop",
+            priority: "medium",
+            description: "add a TTL backstop",
+          },
         ],
         durationMs: 1,
       };
@@ -899,7 +901,13 @@ describe("A3 autonomous-drive arc seal", () => {
   function phaseMrs(
     db: TestApp["db"],
     escId: string,
-  ): { id: string; branch: string | null; taskId: string | null; escalationId: string | null; status: string }[] {
+  ): {
+    id: string;
+    branch: string | null;
+    taskId: string | null;
+    escalationId: string | null;
+    status: string;
+  }[] {
     return db
       .select()
       .from(mergeRequests)
@@ -983,11 +991,16 @@ describe("A3 autonomous-drive arc seal", () => {
 
     // ── Tick 1: assess → systemic → drive vision_ready → the LOOP creates the
     // real epic + 2 tasks over HTTP + the intent + terminal pendingDrive markers. ──
-    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    await responderTick(
+      arcDeps(responderClient, project.id, responder.user.id, now),
+      createResponderState(),
+    );
 
     // The escalation is acknowledged + held by the responder.
     expect(await escStatus(app, escId)).toBe("acknowledged");
-    const afterDrive = (await (await authRequest(app, "GET", `/api/v1/escalations/${escId}`)).json()).data;
+    const afterDrive = (
+      await (await authRequest(app, "GET", `/api/v1/escalations/${escId}`)).json()
+    ).data;
     expect(afterDrive.holderId).toBe(responder.user.id);
 
     // Exactly one epic was created, with 2 child campaign-tasks.
@@ -1013,7 +1026,10 @@ describe("A3 autonomous-drive arc seal", () => {
     // ── Tick 2: advance the clock; reclaim re-finds the acknowledged escalation →
     // advanceArc → implement + submit the phase-1 task-LINKED + escalationId MR. ──
     clock += ADVANCE_MS;
-    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    await responderTick(
+      arcDeps(responderClient, project.id, responder.user.id, now),
+      createResponderState(),
+    );
 
     // The phase-1 MR is task-LINKED (to one of the campaign tasks), escalationId-
     // linked, on the per-phase branch.
@@ -1031,7 +1047,10 @@ describe("A3 autonomous-drive arc seal", () => {
 
     // ── Tick 3: advanceArc sees phase-1 landed → implement + submit phase-2; land it. ──
     clock += ADVANCE_MS;
-    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    await responderTick(
+      arcDeps(responderClient, project.id, responder.user.id, now),
+      createResponderState(),
+    );
     const mr2 = newestPhaseMr(db, escId, 1);
     expect(taskIds.has(mr2.taskId!)).toBe(true);
     expect(mr2.taskId).not.toBe(mr1.taskId); // the OTHER campaign task.
@@ -1042,7 +1061,10 @@ describe("A3 autonomous-drive arc seal", () => {
     // ── Tick 4: advanceArc sees ALL phases landed → arcComplete marker → answer→
     // resolve as holder with a summary naming the epic + both landed shas. ──
     clock += ADVANCE_MS;
-    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    await responderTick(
+      arcDeps(responderClient, project.id, responder.user.id, now),
+      createResponderState(),
+    );
 
     const escRow = db.select().from(escalations).where(eq(escalations.id, escId)).get();
     expect(escRow?.status).toBe("resolved");
@@ -1065,11 +1087,15 @@ describe("A3 autonomous-drive arc seal", () => {
 
     // ── C2: the origin auto-notices the holder resolve/answer summary. ──
     const undel = (
-      await (await authRequest(app, "GET", `/api/v1/escalations/undelivered?worker_key=client-arc`)).json()
+      await (
+        await authRequest(app, "GET", `/api/v1/escalations/undelivered?worker_key=client-arc`)
+      ).json()
     ).data;
     const entry = undel.find((u: { escalation: { id: string } }) => u.escalation.id === escId);
     expect(entry).toBeTruthy();
-    const surfaced = entry.unreadMessages.find((m: { body: string }) => m.body.includes("SHA-phase1"));
+    const surfaced = entry.unreadMessages.find((m: { body: string }) =>
+      m.body.includes("SHA-phase1"),
+    );
     expect(surfaced).toBeTruthy();
 
     // mark-delivered up to the highest unread seq drains the thread.
@@ -1079,9 +1105,13 @@ describe("A3 autonomous-drive arc seal", () => {
     });
     expect(markRes.status).toBe(200);
     const after = (
-      await (await authRequest(app, "GET", `/api/v1/escalations/undelivered?worker_key=client-arc`)).json()
+      await (
+        await authRequest(app, "GET", `/api/v1/escalations/undelivered?worker_key=client-arc`)
+      ).json()
     ).data;
-    expect(after.find((u: { escalation: { id: string } }) => u.escalation.id === escId)).toBeFalsy();
+    expect(
+      after.find((u: { escalation: { id: string } }) => u.escalation.id === escId),
+    ).toBeFalsy();
   }, 30000); // 4 ticks × real HTTP + on-demand TS transpile of the responder loop.
 
   it("arc_partial: a mid-arc phase reject → needs_human with the proven phase preserved (no rollback, no re-submit)", async () => {
@@ -1105,15 +1135,25 @@ describe("A3 autonomous-drive arc seal", () => {
     const escId = await raiseOpen(app, project.id, client.token, "client-partial");
 
     // Tick 1: drive → epic + 2 tasks.
-    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
-    const epicId = db.select().from(epicsTable).where(eq(epicsTable.projectId, project.id)).all()[0].id;
+    await responderTick(
+      arcDeps(responderClient, project.id, responder.user.id, now),
+      createResponderState(),
+    );
+    const epicId = db
+      .select()
+      .from(epicsTable)
+      .where(eq(epicsTable.projectId, project.id))
+      .all()[0].id;
     const taskRows = db.select().from(tasksTable).where(eq(tasksTable.epicId, epicId)).all();
     expect(taskRows).toHaveLength(2);
     const taskById = new Map(taskRows.map((t) => [t.id, t]));
 
     // Tick 2: implement + submit phase-1; LAND it (still acknowledged).
     clock += ADVANCE_MS;
-    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    await responderTick(
+      arcDeps(responderClient, project.id, responder.user.id, now),
+      createResponderState(),
+    );
     const mr1 = newestPhaseMr(db, escId, 0);
     const task1 = taskById.get(mr1.taskId!)!;
     await landMr(app, db, integrator.token, mr1.id, "SHA-partial1");
@@ -1121,7 +1161,10 @@ describe("A3 autonomous-drive arc seal", () => {
 
     // Tick 3: implement + submit phase-2; REJECT it (verify-fail) over HTTP.
     clock += ADVANCE_MS;
-    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    await responderTick(
+      arcDeps(responderClient, project.id, responder.user.id, now),
+      createResponderState(),
+    );
     const mr2 = newestPhaseMr(db, escId, 1);
     const task2 = taskById.get(mr2.taskId!)!;
     db.update(mergeRequests)
@@ -1141,7 +1184,10 @@ describe("A3 autonomous-drive arc seal", () => {
     // Tick 4: advanceArc observes phase-1 landed + phase-2 rejected → arc_partial →
     // escalateToHuman the ROOT (needs_human) with the landed sha + the remaining phase.
     clock += ADVANCE_MS;
-    await responderTick(arcDeps(responderClient, project.id, responder.user.id, now), createResponderState());
+    await responderTick(
+      arcDeps(responderClient, project.id, responder.user.id, now),
+      createResponderState(),
+    );
 
     const escRow = db.select().from(escalations).where(eq(escalations.id, escId)).get();
     expect(escRow?.status).toBe("needs_human");
@@ -1168,7 +1214,11 @@ describe("A3 autonomous-drive arc seal", () => {
     expect(mr1Row?.branch).toBe(`pm/escalation-${escId}-${task1.id}`);
 
     // The rejected phase-2 MR was NOT re-submitted — still exactly one MR per task.
-    const allMrs = db.select().from(mergeRequests).where(eq(mergeRequests.escalationId, escId)).all();
+    const allMrs = db
+      .select()
+      .from(mergeRequests)
+      .where(eq(mergeRequests.escalationId, escId))
+      .all();
     expect(allMrs.filter((m) => m.taskId === task2.id)).toHaveLength(1);
   }, 30000); // 4 ticks × real HTTP + on-demand TS transpile of the responder loop.
 });
@@ -1303,19 +1353,14 @@ describe("A5 P3 shadow-mode auto-implement e2e seal", () => {
 
     // ── Assertion 1: the escalation stays acknowledged (NOT resolved/needs_human/
     // answered) — shadow never lands, never resolves. ──
-    const detail = (
-      await (await authRequest(app, "GET", `/api/v1/escalations/${escId}`)).json()
-    ).data;
+    const detail = (await (await authRequest(app, "GET", `/api/v1/escalations/${escId}`)).json())
+      .data;
     expect(detail.status).toBe("acknowledged");
     expect(detail.holderId).toBe(responder.user.id);
 
     // ── Assertion 2 (the no-MR-row proof only the REAL server gives): NO
     // merge_requests row exists for this escalation — shadow never touched the train. ──
-    const mrs = db
-      .select()
-      .from(mergeRequests)
-      .where(eq(mergeRequests.escalationId, escId))
-      .all();
+    const mrs = db.select().from(mergeRequests).where(eq(mergeRequests.escalationId, escId)).all();
     expect(mrs).toHaveLength(0);
 
     // ── Assertion 3: a shadowProposal diagnosis message exists; its body names the
@@ -1471,11 +1516,7 @@ describe("A5 P3 revert e2e seal", () => {
       implementDeps(responderClient, project.id, responder.user.id),
       createResponderState(),
     );
-    const mr1 = db
-      .select()
-      .from(mergeRequests)
-      .where(eq(mergeRequests.escalationId, esc1))
-      .get();
+    const mr1 = db.select().from(mergeRequests).where(eq(mergeRequests.escalationId, esc1)).get();
     expect(mr1?.branch).toBe(`pm/escalation-${esc1}`);
 
     // Scripted land — the integrator's real git materialization is sealed in
@@ -1492,9 +1533,9 @@ describe("A5 P3 revert e2e seal", () => {
     const landedSha = (await landRes.json()).data.landedSha as string;
     expect(landedSha).toBe("BADLAND");
     // Escalation #1 is now resolved by that land (we do NOT reuse it).
-    expect(
-      db.select().from(escalations).where(eq(escalations.id, esc1)).get()?.status,
-    ).toBe("resolved");
+    expect(db.select().from(escalations).where(eq(escalations.id, esc1)).get()?.status).toBe(
+      "resolved",
+    );
 
     // ── Escalation #2: the thread that flagged the bad land. Raise OPEN, then
     // acknowledge it as the integrator ai_agent (auto-claims → holder; non-terminal
@@ -1532,20 +1573,14 @@ describe("A5 P3 revert e2e seal", () => {
       .set({ status: "integrating", pickedUpAt: new Date().toISOString() })
       .where(eq(mergeRequests.id, revertMrId))
       .run();
-    const revLandRes = await authRequest(
-      app,
-      "POST",
-      `/api/v1/merge-requests/${revertMrId}/land`,
-      { token: integrator.token, body: { landedSha: "REVERTSHA" } },
-    );
+    const revLandRes = await authRequest(app, "POST", `/api/v1/merge-requests/${revertMrId}/land`, {
+      token: integrator.token,
+      body: { landedSha: "REVERTSHA" },
+    });
     expect(revLandRes.status).toBe(200);
 
     // ── Assertion 1: the revert MR is landed with landedSha === "REVERTSHA". ──
-    const revertRow = db
-      .select()
-      .from(mergeRequests)
-      .where(eq(mergeRequests.id, revertMrId))
-      .get();
+    const revertRow = db.select().from(mergeRequests).where(eq(mergeRequests.id, revertMrId)).get();
     expect(revertRow?.status).toBe("landed");
     expect(revertRow?.landedSha).toBe("REVERTSHA");
     expect(revertRow?.revertOf).toBe(landedSha);
@@ -1562,9 +1597,9 @@ describe("A5 P3 revert e2e seal", () => {
       .from(escalationMessages)
       .where(eq(escalationMessages.escalationId, esc2))
       .all();
-    expect(
-      esc2Msgs.some((m) => m.body.includes("REVERTSHA") && m.body.includes(revertMrId)),
-    ).toBe(true);
+    expect(esc2Msgs.some((m) => m.body.includes("REVERTSHA") && m.body.includes(revertMrId))).toBe(
+      true,
+    );
 
     // ── Assertion 3 (the independent, robust proof): the audit chain is queryable.
     // GET …/merge-requests?revertOf=<landedSha> returns exactly the revert row. ──

@@ -265,19 +265,13 @@ export function completeAttempt(
 
   const updated = readAttemptOrThrow(attemptId);
   const projectId = readRequestProjectId(updated.requestId);
-  emitAttempt(
-    EVENT_NAMES.MERGE_ATTEMPT_COMPLETED,
-    updated,
-    projectId,
-    actor.id,
-    {
-      requestId: updated.requestId,
-      status: updated.status,
-      treeSha: updated.treeSha,
-      failureCategory: updated.failureCategory,
-      failureReason: updated.failureReason,
-    },
-  );
+  emitAttempt(EVENT_NAMES.MERGE_ATTEMPT_COMPLETED, updated, projectId, actor.id, {
+    requestId: updated.requestId,
+    status: updated.status,
+    treeSha: updated.treeSha,
+    failureCategory: updated.failureCategory,
+    failureReason: updated.failureReason,
+  });
   return toView(updated);
 }
 
@@ -292,9 +286,7 @@ export function completeAttempt(
  * Safe to invoke from inside `db.transaction(...)` because better-sqlite3
  * is single-writer: getDb() calls run inside the outer write context.
  */
-export function cancelOpenAttempts(
-  requestId: string,
-): { cancelledAttempts: MergeAttemptView[] } {
+export function cancelOpenAttempts(requestId: string): { cancelledAttempts: MergeAttemptView[] } {
   const db = getDb();
   const now = new Date().toISOString();
 

@@ -12,20 +12,9 @@ import {
   type DragEndEvent,
   type DragOverEvent,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  ArrowLeft,
-  GripVertical,
-  Kanban,
-  Search,
-  X,
-  Layers,
-} from "lucide-react";
+import { ArrowLeft, GripVertical, Kanban, Search, X, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,24 +34,13 @@ import { useTasks, useTransitionTask } from "@/hooks/use-tasks";
 import { useEpics } from "@/hooks/use-epics";
 import { useUsers } from "@/hooks/use-users";
 import { useProjectStore } from "@/stores/project-store";
-import {
-  formatStatus,
-  getStatusColor,
-  getPriorityColor,
-  getTypeColor,
-} from "@/lib/format";
+import { formatStatus, getStatusColor, getPriorityColor, getTypeColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Task, TaskFilters } from "@/lib/api";
 
 // ---- Constants ----
 
-const BOARD_STATUSES = [
-  "backlog",
-  "ready",
-  "in_progress",
-  "in_review",
-  "done",
-] as const;
+const BOARD_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"] as const;
 
 // On the project-wide board we fetch only open work (terminal `done` excluded)
 // so the board is never a default infinite enumeration. The `done` column is
@@ -71,14 +49,7 @@ const OPEN_WORK_STATUSES = "backlog,ready,in_progress,in_review";
 
 const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 
-const TASK_TYPES = [
-  "feature",
-  "bug",
-  "chore",
-  "spike",
-  "design",
-  "research",
-] as const;
+const TASK_TYPES = ["feature", "bug", "chore", "spike", "design", "research"] as const;
 
 // ---- Epic color palette ----
 
@@ -87,16 +58,66 @@ const TASK_TYPES = [
  * Each entry: [border class, badge bg class, badge text class, dot bg class]
  */
 const EPIC_COLORS = [
-  { border: "border-l-emerald-500", badgeBg: "bg-emerald-500/15", badgeText: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" },
-  { border: "border-l-blue-500", badgeBg: "bg-blue-500/15", badgeText: "text-blue-700 dark:text-blue-400", dot: "bg-blue-500" },
-  { border: "border-l-violet-500", badgeBg: "bg-violet-500/15", badgeText: "text-violet-700 dark:text-violet-400", dot: "bg-violet-500" },
-  { border: "border-l-amber-500", badgeBg: "bg-amber-500/15", badgeText: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" },
-  { border: "border-l-rose-500", badgeBg: "bg-rose-500/15", badgeText: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500" },
-  { border: "border-l-cyan-500", badgeBg: "bg-cyan-500/15", badgeText: "text-cyan-700 dark:text-cyan-400", dot: "bg-cyan-500" },
-  { border: "border-l-orange-500", badgeBg: "bg-orange-500/15", badgeText: "text-orange-700 dark:text-orange-400", dot: "bg-orange-500" },
-  { border: "border-l-pink-500", badgeBg: "bg-pink-500/15", badgeText: "text-pink-700 dark:text-pink-400", dot: "bg-pink-500" },
-  { border: "border-l-teal-500", badgeBg: "bg-teal-500/15", badgeText: "text-teal-700 dark:text-teal-400", dot: "bg-teal-500" },
-  { border: "border-l-indigo-500", badgeBg: "bg-indigo-500/15", badgeText: "text-indigo-700 dark:text-indigo-400", dot: "bg-indigo-500" },
+  {
+    border: "border-l-emerald-500",
+    badgeBg: "bg-emerald-500/15",
+    badgeText: "text-emerald-700 dark:text-emerald-400",
+    dot: "bg-emerald-500",
+  },
+  {
+    border: "border-l-blue-500",
+    badgeBg: "bg-blue-500/15",
+    badgeText: "text-blue-700 dark:text-blue-400",
+    dot: "bg-blue-500",
+  },
+  {
+    border: "border-l-violet-500",
+    badgeBg: "bg-violet-500/15",
+    badgeText: "text-violet-700 dark:text-violet-400",
+    dot: "bg-violet-500",
+  },
+  {
+    border: "border-l-amber-500",
+    badgeBg: "bg-amber-500/15",
+    badgeText: "text-amber-700 dark:text-amber-400",
+    dot: "bg-amber-500",
+  },
+  {
+    border: "border-l-rose-500",
+    badgeBg: "bg-rose-500/15",
+    badgeText: "text-rose-700 dark:text-rose-400",
+    dot: "bg-rose-500",
+  },
+  {
+    border: "border-l-cyan-500",
+    badgeBg: "bg-cyan-500/15",
+    badgeText: "text-cyan-700 dark:text-cyan-400",
+    dot: "bg-cyan-500",
+  },
+  {
+    border: "border-l-orange-500",
+    badgeBg: "bg-orange-500/15",
+    badgeText: "text-orange-700 dark:text-orange-400",
+    dot: "bg-orange-500",
+  },
+  {
+    border: "border-l-pink-500",
+    badgeBg: "bg-pink-500/15",
+    badgeText: "text-pink-700 dark:text-pink-400",
+    dot: "bg-pink-500",
+  },
+  {
+    border: "border-l-teal-500",
+    badgeBg: "bg-teal-500/15",
+    badgeText: "text-teal-700 dark:text-teal-400",
+    dot: "bg-teal-500",
+  },
+  {
+    border: "border-l-indigo-500",
+    badgeBg: "bg-indigo-500/15",
+    badgeText: "text-indigo-700 dark:text-indigo-400",
+    dot: "bg-indigo-500",
+  },
 ] as const;
 
 const NEUTRAL_EPIC_COLOR = {
@@ -141,21 +162,15 @@ interface TaskCardProps {
   isDragOverlay?: boolean;
 }
 
-function TaskCard({
-  task,
-  epicName,
-  assigneeName,
-  onClick,
-  isDragOverlay,
-}: TaskCardProps) {
+function TaskCard({ task, epicName, assigneeName, onClick, isDragOverlay }: TaskCardProps) {
   const epicColor = getEpicColor(task.epicId);
 
   return (
     <div
       className={cn(
-        "group rounded-lg border border-l-4 bg-card p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer",
+        "bg-card group cursor-pointer rounded-lg border border-l-4 p-3 shadow-sm transition-shadow hover:shadow-md",
         epicColor.border,
-        isDragOverlay && "shadow-lg ring-2 ring-primary/20 rotate-1",
+        isDragOverlay && "ring-primary/20 rotate-1 shadow-lg ring-2",
       )}
       onClick={(e) => {
         e.stopPropagation();
@@ -166,7 +181,7 @@ function TaskCard({
       {epicName ? (
         <span
           className={cn(
-            "inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mb-1.5 truncate max-w-full",
+            "mb-1.5 inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[10px] font-medium",
             epicColor.badgeBg,
             epicColor.badgeText,
           )}
@@ -176,28 +191,23 @@ function TaskCard({
       ) : null}
 
       {/* Title */}
-      <p className="text-sm font-medium leading-snug line-clamp-2 mb-2">
-        {task.title}
-      </p>
+      <p className="mb-2 line-clamp-2 text-sm font-medium leading-snug">{task.title}</p>
 
       {/* Priority + Type badges row */}
-      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <Badge
           variant="secondary"
-          className={cn("text-[10px] px-1.5 py-0", getPriorityColor(task.priority))}
+          className={cn("px-1.5 py-0 text-[10px]", getPriorityColor(task.priority))}
         >
           {formatStatus(task.priority)}
         </Badge>
         <Badge
           variant="secondary"
-          className={cn("text-[10px] px-1.5 py-0", getTypeColor(task.type))}
+          className={cn("px-1.5 py-0 text-[10px]", getTypeColor(task.type))}
         >
           {formatStatus(task.type)}
         </Badge>
-        <ClaimStateBadge
-          state={task.claimState}
-          className="text-[10px] px-1.5 py-0"
-        />
+        <ClaimStateBadge state={task.claimState} className="px-1.5 py-0 text-[10px]" />
       </div>
 
       {/* Bottom row: assignee */}
@@ -208,7 +218,7 @@ function TaskCard({
             "flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold",
             assigneeName
               ? "bg-primary/10 text-primary"
-              : "border border-dashed border-muted-foreground/30 text-muted-foreground/40",
+              : "border-muted-foreground/30 text-muted-foreground/40 border border-dashed",
           )}
           title={assigneeName ?? "Unassigned"}
         >
@@ -226,14 +236,9 @@ interface SortableTaskCardProps extends TaskCardProps {
 }
 
 function SortableTaskCard({ id, ...props }: SortableTaskCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -241,27 +246,16 @@ function SortableTaskCard({ id, ...props }: SortableTaskCardProps) {
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "relative",
-        isDragging && "opacity-30",
-      )}
-    >
+    <div ref={setNodeRef} style={style} className={cn("relative", isDragging && "opacity-30")}>
       {/* Drag handle */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing z-10"
+        className="absolute bottom-0 left-0 top-0 z-10 flex w-6 cursor-grab items-center justify-center opacity-0 active:cursor-grabbing group-hover:opacity-100"
         {...attributes}
         {...listeners}
       >
-        <GripVertical className="size-3.5 text-muted-foreground" />
+        <GripVertical className="text-muted-foreground size-3.5" />
       </div>
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing"
-      >
+      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
         <TaskCard {...props} />
       </div>
     </div>
@@ -313,40 +307,35 @@ function BoardColumn({
   return (
     <div
       className={cn(
-        "flex flex-col rounded-xl border bg-muted/30 min-w-[280px] w-[280px] max-h-full transition-colors",
-        isOver && "ring-2 ring-primary/40 bg-primary/5",
+        "bg-muted/30 flex max-h-full w-[280px] min-w-[280px] flex-col rounded-xl border transition-colors",
+        isOver && "ring-primary/40 bg-primary/5 ring-2",
       )}
     >
       {/* Column header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b">
-        <Badge
-          variant="secondary"
-          className={cn("text-xs", getStatusColor(status))}
-        >
+      <div className="flex items-center gap-2 border-b px-3 py-2.5">
+        <Badge variant="secondary" className={cn("text-xs", getStatusColor(status))}>
           {formatStatus(status)}
         </Badge>
-        <span className="text-xs text-muted-foreground font-medium">
-          {tasks.length}
-        </span>
+        <span className="text-muted-foreground text-xs font-medium">{tasks.length}</span>
       </div>
 
       {/* Card list */}
       <ScrollArea className="flex-1 p-2">
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2 min-h-[60px]">
+          <div className="min-h-[60px] space-y-2">
             {epicGroups
               ? epicGroups.map(([epicId, groupTasks]) => {
-                  const epicName = epicId ? epicMap.get(epicId) ?? "Unknown Epic" : "No Epic";
+                  const epicName = epicId ? (epicMap.get(epicId) ?? "Unknown Epic") : "No Epic";
                   const color = getEpicColor(epicId);
                   return (
                     <div key={epicId ?? "__no_epic__"} className="space-y-1.5">
                       {/* Epic group header */}
                       <div className="flex items-center gap-1.5 px-1 pt-1">
-                        <span className={cn("size-2 rounded-full shrink-0", color.dot)} />
-                        <span className="text-[11px] font-medium text-muted-foreground truncate">
+                        <span className={cn("size-2 shrink-0 rounded-full", color.dot)} />
+                        <span className="text-muted-foreground truncate text-[11px] font-medium">
                           {epicName}
                         </span>
-                        <span className="text-[10px] text-muted-foreground/60">
+                        <span className="text-muted-foreground/60 text-[10px]">
                           {groupTasks.length}
                         </span>
                       </div>
@@ -356,9 +345,7 @@ function BoardColumn({
                           id={task.id}
                           task={task}
                           epicName={task.epicId ? epicMap.get(task.epicId) : undefined}
-                          assigneeName={
-                            task.assigneeId ? userMap.get(task.assigneeId) : undefined
-                          }
+                          assigneeName={task.assigneeId ? userMap.get(task.assigneeId) : undefined}
                           onClick={onTaskClick}
                         />
                       ))}
@@ -371,9 +358,7 @@ function BoardColumn({
                     id={task.id}
                     task={task}
                     epicName={task.epicId ? epicMap.get(task.epicId) : undefined}
-                    assigneeName={
-                      task.assigneeId ? userMap.get(task.assigneeId) : undefined
-                    }
+                    assigneeName={task.assigneeId ? userMap.get(task.assigneeId) : undefined}
                     onClick={onTaskClick}
                   />
                 ))}
@@ -388,14 +373,14 @@ function BoardColumn({
 
 function ColumnSkeleton() {
   return (
-    <div className="flex flex-col rounded-xl border bg-muted/30 min-w-[280px] w-[280px]">
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b">
+    <div className="bg-muted/30 flex w-[280px] min-w-[280px] flex-col rounded-xl border">
+      <div className="flex items-center gap-2 border-b px-3 py-2.5">
         <Skeleton className="h-5 w-20" />
         <Skeleton className="h-4 w-5" />
       </div>
-      <div className="p-2 space-y-2">
+      <div className="space-y-2 p-2">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="rounded-lg border bg-card p-3 space-y-2">
+          <div key={i} className="bg-card space-y-2 rounded-lg border p-3">
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-3/4" />
             <div className="flex gap-1.5">
@@ -443,10 +428,8 @@ function SwimlaneSection({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 px-1">
-        <h3 className="text-sm font-semibold text-muted-foreground">{label}</h3>
-        <span className="text-xs text-muted-foreground/60">
-          ({tasks.length})
-        </span>
+        <h3 className="text-muted-foreground text-sm font-semibold">{label}</h3>
+        <span className="text-muted-foreground/60 text-xs">({tasks.length})</span>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-2">
         {BOARD_STATUSES.map((status) => (
@@ -491,12 +474,9 @@ export function BoardPage() {
   const [groupByEpic, setGroupByEpic] = useState(false);
 
   // Build filter object (exclude board-excluded statuses, get all board tasks)
-  const effectivePriority =
-    priorityFilter && priorityFilter !== "all" ? priorityFilter : "";
-  const effectiveType =
-    typeFilter && typeFilter !== "all" ? typeFilter : "";
-  const effectiveAssignee =
-    assigneeFilter && assigneeFilter !== "all" ? assigneeFilter : "";
+  const effectivePriority = priorityFilter && priorityFilter !== "all" ? priorityFilter : "";
+  const effectiveType = typeFilter && typeFilter !== "all" ? typeFilter : "";
+  const effectiveAssignee = assigneeFilter && assigneeFilter !== "all" ? assigneeFilter : "";
   // When epic-scoped, the epic is pinned to the route param (the dropdown is
   // hidden); otherwise it comes from the dropdown.
   const effectiveEpic = isEpicScoped
@@ -518,7 +498,14 @@ export function BoardPage() {
       ...(isEpicScoped ? {} : { status: OPEN_WORK_STATUSES }),
       perPage: 100, // Max allowed by API
     }),
-    [effectivePriority, effectiveType, effectiveAssignee, effectiveEpic, debouncedSearch, isEpicScoped],
+    [
+      effectivePriority,
+      effectiveType,
+      effectiveAssignee,
+      effectiveEpic,
+      debouncedSearch,
+      isEpicScoped,
+    ],
   );
 
   const { data, isLoading, error, refetch } = useTasks(projectId, filters);
@@ -549,25 +536,20 @@ export function BoardPage() {
   // All tasks filtered to board-eligible statuses
   const allTasks = useMemo(() => {
     const tasks = data?.data ?? [];
-    return tasks.filter((t) =>
-      (BOARD_STATUSES as readonly string[]).includes(t.status),
-    );
+    return tasks.filter((t) => (BOARD_STATUSES as readonly string[]).includes(t.status));
   }, [data]);
 
   // Drag state
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnStatus, setOverColumnStatus] = useState<string | null>(null);
   // Optimistic state: temporarily moved tasks
-  const [optimisticMoves, setOptimisticMoves] = useState<
-    Map<string, string>
-  >(new Map());
+  const [optimisticMoves, setOptimisticMoves] = useState<Map<string, string>>(new Map());
 
   const transitionMutation = useTransitionTask();
 
   // The pinned epic (epic-scoped board) is NOT a user-clearable filter, so it
   // must not light up "Clear filters" — only the dropdown epic filter counts.
-  const epicDropdownFilter =
-    !isEpicScoped && epicFilter && epicFilter !== "all" ? epicFilter : "";
+  const epicDropdownFilter = !isEpicScoped && epicFilter && epicFilter !== "all" ? epicFilter : "";
 
   const hasActiveFilters = !!(
     effectivePriority ||
@@ -730,8 +712,7 @@ export function BoardPage() {
               next.delete(taskId);
               return next;
             });
-            const message =
-              err instanceof Error ? err.message : "Failed to transition task";
+            const message = err instanceof Error ? err.message : "Failed to transition task";
             toast.error("Transition failed", {
               description: message,
             });
@@ -743,20 +724,20 @@ export function BoardPage() {
   );
 
   return (
-    <div className="flex flex-col h-full space-y-4">
+    <div className="flex h-full flex-col space-y-4">
       {/* Page header */}
       {isEpicScoped ? (
-        <div className="flex flex-col gap-1 shrink-0">
+        <div className="flex shrink-0 flex-col gap-1">
           <Link
             to="/epics/$epicId"
             params={{ epicId: epicId! }}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="size-4" />
             Back to epic
           </Link>
           <div className="flex items-center gap-3">
-            <Kanban className="size-6 text-muted-foreground" />
+            <Kanban className="text-muted-foreground size-6" />
             <h1 className="text-2xl font-bold tracking-tight">
               {epicMap.get(epicId!) ?? "Epic board"}
             </h1>
@@ -766,8 +747,8 @@ export function BoardPage() {
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-3 shrink-0">
-          <Kanban className="size-6 text-muted-foreground" />
+        <div className="flex shrink-0 items-center gap-3">
+          <Kanban className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Board</h1>
           {project && (
             <Badge variant="outline" className="text-xs font-normal">
@@ -779,10 +760,8 @@ export function BoardPage() {
 
       {/* Error state */}
       {error && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8 shrink-0">
-          <p className="text-sm text-destructive">
-            Failed to load tasks. Please try again.
-          </p>
+        <div className="border-destructive/50 bg-destructive/10 flex shrink-0 flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">Failed to load tasks. Please try again.</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             Retry
           </Button>
@@ -790,15 +769,15 @@ export function BoardPage() {
       )}
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
         {/* Search */}
         <div className="relative w-64">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
           <Input
             placeholder="Search tasks..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-9 h-9"
+            className="h-9 pl-9"
           />
         </div>
 
@@ -882,7 +861,7 @@ export function BoardPage() {
             size="sm"
             onClick={() => setGroupByEpic((v) => !v)}
           >
-            <Layers className="size-4 mr-1" />
+            <Layers className="mr-1 size-4" />
             Group by Epic
           </Button>
         )}
@@ -896,9 +875,9 @@ export function BoardPage() {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex-1 overflow-auto min-h-0">
+        <div className="min-h-0 flex-1 overflow-auto">
           {isLoading ? (
-            <div className="flex gap-3 h-full">
+            <div className="flex h-full gap-3">
               {BOARD_STATUSES.map((status) => (
                 <ColumnSkeleton key={status} />
               ))}
@@ -918,9 +897,7 @@ export function BoardPage() {
                 .map(([epicId, tasks]) => (
                   <SwimlaneSection
                     key={epicId ?? "__no_epic__"}
-                    label={
-                      epicId ? epicMap.get(epicId) ?? "Unknown Epic" : "No Epic"
-                    }
+                    label={epicId ? (epicMap.get(epicId) ?? "Unknown Epic") : "No Epic"}
                     tasks={tasks}
                     epicMap={epicMap}
                     userMap={userMap}
@@ -930,7 +907,7 @@ export function BoardPage() {
                 ))}
             </div>
           ) : (
-            <div className="flex gap-3 h-full">
+            <div className="flex h-full gap-3">
               {BOARD_STATUSES.map((status) => (
                 <BoardColumn
                   key={status}
@@ -953,15 +930,9 @@ export function BoardPage() {
             <div className="w-[264px]">
               <TaskCard
                 task={activeTask}
-                epicName={
-                  activeTask.epicId
-                    ? epicMap.get(activeTask.epicId)
-                    : undefined
-                }
+                epicName={activeTask.epicId ? epicMap.get(activeTask.epicId) : undefined}
                 assigneeName={
-                  activeTask.assigneeId
-                    ? userMap.get(activeTask.assigneeId)
-                    : undefined
+                  activeTask.assigneeId ? userMap.get(activeTask.assigneeId) : undefined
                 }
                 onClick={() => {}}
                 isDragOverlay

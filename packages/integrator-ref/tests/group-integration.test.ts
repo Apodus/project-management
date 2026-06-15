@@ -52,10 +52,7 @@ const GITLINK_PATH = "vendor/rynx";
  * EXISTS here. `--verify <ref>^{commit}` fails (→ null) on an absent object —
  * unlike a bare `rev-parse <full-sha>` which echoes any 40-hex back.
  */
-async function resolveVerified(
-  git: SimpleGit,
-  ref: string,
-): Promise<string | null> {
+async function resolveVerified(git: SimpleGit, ref: string): Promise<string | null> {
   try {
     return (await git.revparse(["--verify", `${ref}^{commit}`])).trim();
   } catch {
@@ -64,8 +61,7 @@ async function resolveVerified(
 }
 
 // win32-safe ~300ms sleep for the overlap test (NEVER bare `sleep 0.3`).
-const SLEEP_300 =
-  process.platform === "win32" ? "ping -n 2 127.0.0.1 > nul" : "sleep 0.3";
+const SLEEP_300 = process.platform === "win32" ? "ping -n 2 127.0.0.1 > nul" : "sleep 0.3";
 
 // ─── In-memory fake PM client (group + attempt surface) ───────────────
 
@@ -114,10 +110,7 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
       }
       return { ...state.group };
     },
-    async startAttempt(
-      requestId: string,
-      baseSha: string,
-    ): Promise<MergeAttemptView> {
+    async startAttempt(requestId: string, baseSha: string): Promise<MergeAttemptView> {
       seq += 1;
       const att: MergeAttemptView = {
         id: `att-${seq}`,
@@ -364,10 +357,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     };
   }
 
-  function depsFor(
-    state: FakePm,
-    over?: Partial<GroupIntegrationDeps>,
-  ): GroupIntegrationDeps {
+  function depsFor(state: FakePm, over?: Partial<GroupIntegrationDeps>): GroupIntegrationDeps {
     return {
       pmClient: makeFakePm(state),
       logger,
@@ -386,10 +376,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       outer: { verifyCmd: "echo outer-ok" },
     });
     const deps = depsFor(state);
-    const outcome = await runGroupIntegration(
-      { id: "grp-1", members: state.group.members },
-      deps,
-    );
+    const outcome = await runGroupIntegration({ id: "grp-1", members: state.group.members }, deps);
 
     expect(outcome.kind).toBe("ready_to_land");
     if (outcome.kind !== "ready_to_land") throw new Error("not ready_to_land");
@@ -483,10 +470,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       outer: { verifyCmd: "echo outer-ok" },
     });
     const deps = depsFor(state);
-    const outcome = await runGroupIntegration(
-      { id: "grp-2", members: state.group.members },
-      deps,
-    );
+    const outcome = await runGroupIntegration({ id: "grp-2", members: state.group.members }, deps);
 
     expect(outcome.kind).toBe("rejected");
     // Post-pickup path: markGroupIntegrating BEFORE the reject (FIX 2).
@@ -504,9 +488,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     // per-repo pipeline steps (the synthetic single step → a 1-element array).
     const failedBody = state.completeBodies!.find((b) => b.status === "failed");
     expect(failedBody).toBeDefined();
-    expect(
-      (failedBody!.steps as { stepId: string }[]).map((s) => s.stepId),
-    ).toEqual(["verify"]);
+    expect((failedBody!.steps as { stepId: string }[]).map((s) => s.stepId)).toEqual(["verify"]);
 
     // Worktrees RELEASED (pools reacquirable).
     const i = innerPool.acquire();
@@ -524,10 +506,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       outer: { verifyCmd: "exit 1" },
     });
     const deps = depsFor(state);
-    const outcome = await runGroupIntegration(
-      { id: "grp-3", members: state.group.members },
-      deps,
-    );
+    const outcome = await runGroupIntegration({ id: "grp-3", members: state.group.members }, deps);
 
     expect(outcome.kind).toBe("rejected");
     expect(state.calls).toContain("completeAttempt:failed");
@@ -568,10 +547,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       innerLane: innerLane({ gitOps: wrap("inner", (p) => createGitOps(simpleGit(p))) }),
       outerLane: outerLane({ gitOps: wrap("outer", (p) => createGitOps(simpleGit(p))) }),
     });
-    const outcome = await runGroupIntegration(
-      { id: "grp-4", members: state.group.members },
-      deps,
-    );
+    const outcome = await runGroupIntegration({ id: "grp-4", members: state.group.members }, deps);
 
     expect(outcome.kind).toBe("ready_to_land");
     expect(windows.length).toBe(2);
@@ -600,10 +576,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       calls: [],
     };
     const deps = depsFor(state);
-    const outcome = await runGroupIntegration(
-      { id: "grp-5a", members: state.group.members },
-      deps,
-    );
+    const outcome = await runGroupIntegration({ id: "grp-5a", members: state.group.members }, deps);
     expect(outcome.kind).toBe("ready_to_land");
     if (outcome.kind !== "ready_to_land") throw new Error("not ready");
 
@@ -612,9 +585,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     expect(outcome.outerMember.id).toBe("req-outer");
 
     // The committed outer gitlink points at the INNER member's Ri (not outer).
-    const readBack = await outcome.assembled.outerGitOps.readSubmoduleGitlink(
-      GITLINK_PATH,
-    );
+    const readBack = await outcome.assembled.outerGitOps.readSubmoduleGitlink(GITLINK_PATH);
     expect(readBack).toBe(outcome.Ri);
 
     outcome.assembled.release();
@@ -638,10 +609,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       innerLane: innerLane({ resolveRefInClone: async () => "deadbeef".repeat(5) }),
       outerLane: outerLane({ resolveRefInClone: async () => "deadbeef".repeat(5) }),
     });
-    const outcome = await runGroupIntegration(
-      { id: "grp-5b", members: state.group.members },
-      deps,
-    );
+    const outcome = await runGroupIntegration({ id: "grp-5b", members: state.group.members }, deps);
     expect(outcome.kind).toBe("rejected");
     if (outcome.kind === "rejected") {
       expect(outcome.reason).toMatch(/could not unambiguously bind/);
@@ -671,10 +639,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       innerLane: innerLane({ resolveRefInClone: async () => null }),
       outerLane: outerLane({ resolveRefInClone: async () => null }),
     });
-    const outcome = await runGroupIntegration(
-      { id: "grp-5c", members: state.group.members },
-      deps,
-    );
+    const outcome = await runGroupIntegration({ id: "grp-5c", members: state.group.members }, deps);
     expect(outcome.kind).toBe("rejected");
     if (outcome.kind === "rejected") {
       expect(outcome.reason).toMatch(/could not unambiguously bind/);
@@ -712,15 +677,10 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       }),
       outerLane: outerLane({
         resolveRefInClone: async (ref) =>
-          ref === "feature/does-not-exist-in-pool"
-            ? null
-            : resolveVerified(outerBindGit, ref),
+          ref === "feature/does-not-exist-in-pool" ? null : resolveVerified(outerBindGit, ref),
       }),
     });
-    const outcome = await runGroupIntegration(
-      { id: "grp-6", members: state.group.members },
-      deps,
-    );
+    const outcome = await runGroupIntegration({ id: "grp-6", members: state.group.members }, deps);
     expect(outcome.kind).toBe("rejected");
     // Rejected from FORMING — NO pickup happened (FIX 2; legal forming→rejected).
     expect(state.calls).not.toContain("markGroupIntegrating");
@@ -741,10 +701,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       outer: { verifyCmd: "echo ok" },
     });
     const deps = depsFor(state);
-    const outcome = await runGroupIntegration(
-      { id: "grp-6b", members: state.group.members },
-      deps,
-    );
+    const outcome = await runGroupIntegration({ id: "grp-6b", members: state.group.members }, deps);
     expect(outcome.kind).toBe("rejected");
     // markGroupIntegrating happened BEFORE rejectGroup (integrating→rejected).
     const mi = state.calls.indexOf("markGroupIntegrating");

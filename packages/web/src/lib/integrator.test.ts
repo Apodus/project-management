@@ -18,15 +18,13 @@ const DEFAULTS: IntegratorConfig = {
 
 // A minimal Project-shaped wrapper for the extractor's `Pick<Project, "settings">`.
 const withSettings = (settings: unknown): Pick<Project, "settings"> =>
-  ({ settings } as Pick<Project, "settings">);
+  ({ settings }) as Pick<Project, "settings">;
 
 describe("integratorConfigFromProject — defaulting", () => {
   it("applies schema defaults for undefined / empty settings / empty integrator", () => {
     expect(integratorConfigFromProject(undefined)).toEqual(DEFAULTS);
     expect(integratorConfigFromProject(withSettings({}))).toEqual(DEFAULTS);
-    expect(
-      integratorConfigFromProject(withSettings({ integrator: {} })),
-    ).toEqual(DEFAULTS);
+    expect(integratorConfigFromProject(withSettings({ integrator: {} }))).toEqual(DEFAULTS);
   });
 
   it("does not fabricate optional keys when absent", () => {
@@ -51,9 +49,7 @@ describe("integratorConfigFromProject — read-through", () => {
     expect(config.parallelism).toBe(4);
     expect(config.clean_keep).toEqual(["dist"]);
     expect(config.git_main_branch).toBe("master");
-    expect(config.linked_repos).toEqual([
-      { name: "rynx", path: "p", role: "inner" },
-    ]);
+    expect(config.linked_repos).toEqual([{ name: "rynx", path: "p", role: "inner" }]);
     // unset fields still fall back to defaults
     expect(config.git_remote).toBe("origin");
     expect(config.enabled).toBe(false);
@@ -159,10 +155,7 @@ describe("cacheConfigWarnings", () => {
     const warnings = cacheConfigWarnings({
       cache_enabled: true,
       cache_mode: "on",
-      verify_steps: [
-        { id: "lint" },
-        { id: "test", cache_key_inputs: ["node -v"] },
-      ],
+      verify_steps: [{ id: "lint" }, { id: "test", cache_key_inputs: ["node -v"] }],
     });
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('"lint"');

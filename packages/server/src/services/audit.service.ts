@@ -1,10 +1,5 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
-import {
-  createId,
-  type AuditAction,
-  type AuditTargetType,
-  type AuditLogView,
-} from "@pm/shared";
+import { createId, type AuditAction, type AuditTargetType, type AuditLogView } from "@pm/shared";
 import { auditLog, getDb, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
@@ -33,9 +28,7 @@ export type { AuditAction, AuditTargetType, AuditLogView } from "@pm/shared";
  * the caller's transaction so the audit row and the state change it records
  * commit atomically (the §1.4 invariant).
  */
-type TxHandle = Parameters<
-  Parameters<ReturnType<typeof getDb>["transaction"]>[0]
->[0];
+type TxHandle = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
 
 export interface RecordArgs {
   projectId: string;

@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import {
-  createTestApp,
-  createTestProject,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestProject, type TestApp } from "../utils.js";
 import { verifyCache } from "../../src/db/index.js";
 import * as svc from "../../src/services/verify-cache.service.js";
 
@@ -19,10 +15,7 @@ function baseKey(projectId: string): svc.LookupArgs {
   };
 }
 
-function recordArgs(
-  projectId: string,
-  overrides: Partial<svc.RecordArgs> = {},
-): svc.RecordArgs {
+function recordArgs(projectId: string, overrides: Partial<svc.RecordArgs> = {}): svc.RecordArgs {
   return {
     ...baseKey(projectId),
     result: "pass",
@@ -34,11 +27,7 @@ function recordArgs(
 }
 
 function rowsFor(testApp: TestApp, projectId: string) {
-  return testApp.db
-    .select()
-    .from(verifyCache)
-    .where(eq(verifyCache.projectId, projectId))
-    .all();
+  return testApp.db.select().from(verifyCache).where(eq(verifyCache.projectId, projectId)).all();
 }
 
 describe("verify-cache service", () => {
@@ -61,10 +50,7 @@ describe("verify-cache service", () => {
     // MISS before anything is recorded.
     expect(svc.lookup(baseKey(project.id), now)).toBeNull();
 
-    svc.record(
-      recordArgs(project.id, { result: "pass", durationMs: 4200 }),
-      now,
-    );
+    svc.record(recordArgs(project.id, { result: "pass", durationMs: 4200 }), now);
 
     // HIT — the cached result + durationMs are served back.
     const hit = svc.lookup(baseKey(project.id), "2026-05-30T12:00:05.000Z");
@@ -88,21 +74,11 @@ describe("verify-cache service", () => {
     expect(svc.lookup(baseKey(project.id), now)).not.toBeNull();
 
     // Each of the 5 fields differing one at a time → MISS (null).
-    expect(
-      svc.lookup({ ...baseKey(project.id), projectId: other.id }, now),
-    ).toBeNull();
-    expect(
-      svc.lookup({ ...baseKey(project.id), resource: "hotfix" }, now),
-    ).toBeNull();
-    expect(
-      svc.lookup({ ...baseKey(project.id), treeSha: "tree-bbb" }, now),
-    ).toBeNull();
-    expect(
-      svc.lookup({ ...baseKey(project.id), stepId: "unit" }, now),
-    ).toBeNull();
-    expect(
-      svc.lookup({ ...baseKey(project.id), stepConfigSha: "cfg-222" }, now),
-    ).toBeNull();
+    expect(svc.lookup({ ...baseKey(project.id), projectId: other.id }, now)).toBeNull();
+    expect(svc.lookup({ ...baseKey(project.id), resource: "hotfix" }, now)).toBeNull();
+    expect(svc.lookup({ ...baseKey(project.id), treeSha: "tree-bbb" }, now)).toBeNull();
+    expect(svc.lookup({ ...baseKey(project.id), stepId: "unit" }, now)).toBeNull();
+    expect(svc.lookup({ ...baseKey(project.id), stepConfigSha: "cfg-222" }, now)).toBeNull();
   });
 
   // ── 3. Hit bump (PM-owned) ───────────────────────────────────────
@@ -133,9 +109,7 @@ describe("verify-cache service", () => {
     expect(h2!.lastHitAt).toBe(t2);
 
     // A MISS (different key) bumps nothing — the seeded row stays at 2.
-    expect(
-      svc.lookup({ ...baseKey(project.id), treeSha: "tree-zzz" }, t2),
-    ).toBeNull();
+    expect(svc.lookup({ ...baseKey(project.id), treeSha: "tree-zzz" }, t2)).toBeNull();
     row = rowsFor(testApp, project.id)[0];
     expect(row.hitCount).toBe(2);
   });
@@ -147,10 +121,7 @@ describe("verify-cache service", () => {
     const t0 = "2026-05-30T12:00:00.000Z";
 
     // First record: pass / 4200.
-    svc.record(
-      recordArgs(project.id, { result: "pass", durationMs: 4200 }),
-      t0,
-    );
+    svc.record(recordArgs(project.id, { result: "pass", durationMs: 4200 }), t0);
     expect(rowsFor(testApp, project.id)).toHaveLength(1);
     const createdAt = rowsFor(testApp, project.id)[0].createdAt;
 
@@ -160,10 +131,7 @@ describe("verify-cache service", () => {
 
     // Second record: the shadow self-heal flips the verdict to fail / 9999.
     const t1 = "2026-05-30T12:00:20.000Z";
-    const view = svc.record(
-      recordArgs(project.id, { result: "fail", durationMs: 9999 }),
-      t1,
-    );
+    const view = svc.record(recordArgs(project.id, { result: "fail", durationMs: 9999 }), t1);
 
     // Exactly ONE row — the upsert did not duplicate.
     expect(rowsFor(testApp, project.id)).toHaveLength(1);

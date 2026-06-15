@@ -18,7 +18,5 @@ export const loggerMiddleware = createMiddleware<{
   const status = c.res.status;
   const requestId = c.get("requestId") ?? "-";
 
-  console.log(
-    `[${requestId}] ${method} ${path} → ${status} (${duration}ms)`,
-  );
+  console.log(`[${requestId}] ${method} ${path} → ${status} (${duration}ms)`);
 });

@@ -64,12 +64,7 @@ function generateUniqueSlug(workspaceId: string, name: string): string {
   const existing = db
     .select({ slug: projects.slug })
     .from(projects)
-    .where(
-      and(
-        eq(projects.workspaceId, workspaceId),
-        eq(projects.slug, baseSlug),
-      ),
-    )
+    .where(and(eq(projects.workspaceId, workspaceId), eq(projects.slug, baseSlug)))
     .get();
 
   if (!existing) {
@@ -83,12 +78,7 @@ function generateUniqueSlug(workspaceId: string, name: string): string {
     const taken = db
       .select({ slug: projects.slug })
       .from(projects)
-      .where(
-        and(
-          eq(projects.workspaceId, workspaceId),
-          eq(projects.slug, candidate),
-        ),
-      )
+      .where(and(eq(projects.workspaceId, workspaceId), eq(projects.slug, candidate)))
       .get();
 
     if (!taken) {
@@ -107,11 +97,7 @@ export function list(filters?: { status?: string }) {
   const db = getDb();
 
   if (filters?.status) {
-    return db
-      .select()
-      .from(projects)
-      .where(eq(projects.status, filters.status))
-      .all();
+    return db.select().from(projects).where(eq(projects.status, filters.status)).all();
   }
 
   return db.select().from(projects).all();
@@ -122,11 +108,7 @@ export function list(filters?: { status?: string }) {
  */
 export function getById(id: string) {
   const db = getDb();
-  const project = db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, id))
-    .get();
+  const project = db.select().from(projects).where(eq(projects.id, id)).get();
 
   if (!project) {
     throw new AppError(404, "NOT_FOUND", `Project not found: ${id}`);
@@ -217,10 +199,7 @@ export function update(id: string, data: UpdateProjectInput) {
   if (data.settings !== undefined) values.settings = data.settings;
   if (data.sortOrder !== undefined) values.sortOrder = data.sortOrder;
 
-  db.update(projects)
-    .set(values)
-    .where(eq(projects.id, id))
-    .run();
+  db.update(projects).set(values).where(eq(projects.id, id)).run();
 
   const result = getById(id);
 
@@ -254,10 +233,7 @@ export function archive(id: string) {
   const db = getDb();
   const now = new Date().toISOString();
 
-  db.update(projects)
-    .set({ status: "archived", updatedAt: now })
-    .where(eq(projects.id, id))
-    .run();
+  db.update(projects).set({ status: "archived", updatedAt: now }).where(eq(projects.id, id)).run();
 
   const result = getById(id);
 
@@ -303,11 +279,7 @@ export function getStats(id: string): ProjectStats {
   }
 
   // Count epics
-  const epicResult = db
-    .select({ count: count() })
-    .from(epics)
-    .where(eq(epics.projectId, id))
-    .get();
+  const epicResult = db.select({ count: count() }).from(epics).where(eq(epics.projectId, id)).get();
 
   // Count proposals
   const proposalResult = db

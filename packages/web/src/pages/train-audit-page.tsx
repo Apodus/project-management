@@ -11,13 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -100,8 +94,7 @@ function formatActionLabel(action: string): string {
 
 /** Human-readable option label: branch handle · status · age · short id. */
 function mergeRequestLabel(r: MergeRequest): string {
-  const handle =
-    r.branch ?? (r.commitSha ? r.commitSha.slice(0, 7) : "(no branch)");
+  const handle = r.branch ?? (r.commitSha ? r.commitSha.slice(0, 7) : "(no branch)");
   const age = r.enqueuedAt ? formatRelativeTime(r.enqueuedAt) : "";
   return `${handle} · ${r.status}${age ? ` · ${age}` : ""} · …${r.id.slice(-5)}`;
 }
@@ -139,11 +132,7 @@ function MergeRequestPicker({
         <SelectTrigger id="mr-picker" className="w-full">
           <SelectValue
             placeholder={
-              isLoading
-                ? "Loading…"
-                : empty
-                  ? `No ${statusList} requests`
-                  : "Select a request"
+              isLoading ? "Loading…" : empty ? `No ${statusList} requests` : "Select a request"
             }
           />
         </SelectTrigger>
@@ -156,7 +145,7 @@ function MergeRequestPicker({
         </SelectContent>
       </Select>
       {empty && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-xs">
           No {statusList} requests in this lane — nothing to act on.
         </p>
       )}
@@ -193,9 +182,7 @@ function ForceLandDialog({
   }
 
   const canSubmit =
-    requestId.trim().length > 0 &&
-    reason.trim().length > 0 &&
-    landedSha.trim().length > 0;
+    requestId.trim().length > 0 && reason.trim().length > 0 && landedSha.trim().length > 0;
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -220,8 +207,7 @@ function ForceLandDialog({
             Force-land merge request
           </DialogTitle>
           <DialogDescription>
-            Land an integrating request without the verify gate. Admin-only,
-            reason-required.
+            Land an integrating request without the verify gate. Admin-only, reason-required.
           </DialogDescription>
         </DialogHeader>
 
@@ -231,8 +217,8 @@ function ForceLandDialog({
         >
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span>
-            This bypasses the verify gate and advances main past an unverified
-            tree. Recorded in the audit log.
+            This bypasses the verify gate and advances main past an unverified tree. Recorded in the
+            audit log.
           </span>
         </div>
 
@@ -332,8 +318,7 @@ function ForceRejectDialog({
             Force-reject merge request
           </DialogTitle>
           <DialogDescription>
-            Reject a stuck integrating request on policy grounds. Admin-only,
-            reason-required.
+            Reject a stuck integrating request on policy grounds. Admin-only, reason-required.
           </DialogDescription>
         </DialogHeader>
 
@@ -342,9 +327,7 @@ function ForceRejectDialog({
           className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400"
         >
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <span>
-            Rejects on policy grounds (overridden). Recorded in the audit log.
-          </span>
+          <span>Rejects on policy grounds (overridden). Recorded in the audit log.</span>
         </div>
 
         <div className="space-y-4">
@@ -433,9 +416,8 @@ function ForceCancelDialog({
             Force-cancel merge request
           </DialogTitle>
           <DialogDescription>
-            Abandon a stuck request — works on a <strong>queued</strong> or
-            integrating request (the queued-state escape hatch force-reject
-            cannot reach). Admin-only, reason-required.
+            Abandon a stuck request — works on a <strong>queued</strong> or integrating request (the
+            queued-state escape hatch force-reject cannot reach). Admin-only, reason-required.
           </DialogDescription>
         </DialogHeader>
 
@@ -444,9 +426,7 @@ function ForceCancelDialog({
           className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400"
         >
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <span>
-            Abandons the request (overridden). Recorded in the audit log.
-          </span>
+          <span>Abandons the request (overridden). Recorded in the audit log.</span>
         </div>
 
         <div className="space-y-4">
@@ -531,8 +511,8 @@ function ForceReleaseLockDialog({
             Force-release merge lock
           </DialogTitle>
           <DialogDescription>
-            Force-release the <code className="font-mono">main</code> merge lock
-            held by the integrator. Recorded in the audit log.
+            Force-release the <code className="font-mono">main</code> merge lock held by the
+            integrator. Recorded in the audit log.
           </DialogDescription>
         </DialogHeader>
 
@@ -620,11 +600,7 @@ function PauseResumeControl({ projectId }: { projectId: string }) {
           Resume train
         </Button>
       ) : (
-        <Button
-          variant="outline"
-          onClick={handlePause}
-          disabled={pauseMutation.isPending}
-        >
+        <Button variant="outline" onClick={handlePause} disabled={pauseMutation.isPending}>
           <PauseCircle className="size-4" />
           Pause train
         </Button>
@@ -649,8 +625,7 @@ function BreakGlassControls({ projectId }: { projectId: string }) {
           Break-glass controls
         </CardTitle>
         <CardDescription>
-          Deliberate human R1-overrides. Every action below is recorded in the
-          audit log.
+          Deliberate human R1-overrides. Every action below is recorded in the audit log.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -660,15 +635,11 @@ function BreakGlassControls({ projectId }: { projectId: string }) {
         {/* Override actions */}
         <div className="grid gap-3 border-t pt-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={() => setForceLandOpen(true)}
-            >
+            <Button variant="destructive" className="w-full" onClick={() => setForceLandOpen(true)}>
               <ShieldAlert className="size-4" />
               Force-land…
             </Button>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Land an integrating request without verify.
             </p>
           </div>
@@ -681,7 +652,7 @@ function BreakGlassControls({ projectId }: { projectId: string }) {
               <ShieldX className="size-4" />
               Force-reject…
             </Button>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Reject a stuck integrating request on policy grounds.
             </p>
           </div>
@@ -694,31 +665,21 @@ function BreakGlassControls({ projectId }: { projectId: string }) {
               <Ban className="size-4" />
               Force-cancel…
             </Button>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Abandon a stuck queued or integrating request.
             </p>
           </div>
           <div className="space-y-2">
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setForceReleaseOpen(true)}
-            >
+            <Button variant="outline" className="w-full" onClick={() => setForceReleaseOpen(true)}>
               <Unlock className="size-4" />
               Force-release lock…
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Release the main merge lock.
-            </p>
+            <p className="text-muted-foreground text-xs">Release the main merge lock.</p>
           </div>
         </div>
       </CardContent>
 
-      <ForceLandDialog
-        open={forceLandOpen}
-        onOpenChange={setForceLandOpen}
-        projectId={projectId}
-      />
+      <ForceLandDialog open={forceLandOpen} onOpenChange={setForceLandOpen} projectId={projectId} />
       <ForceRejectDialog
         open={forceRejectOpen}
         onOpenChange={setForceRejectOpen}
@@ -751,10 +712,7 @@ function AuditLogSection({ projectId }: { projectId: string }) {
   const total = pagination?.total ?? 0;
   const totalPages = total > 0 ? Math.ceil(total / perPage) : 1;
 
-  function setFilter<K extends keyof AuditFilters>(
-    key: K,
-    value: AuditFilters[K],
-  ) {
+  function setFilter<K extends keyof AuditFilters>(key: K, value: AuditFilters[K]) {
     // Any filter change resets to page 1.
     setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
   }
@@ -763,9 +721,7 @@ function AuditLogSection({ projectId }: { projectId: string }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Audit log</CardTitle>
-        <CardDescription>
-          Append-only record of who did what to the train and why.
-        </CardDescription>
+        <CardDescription>Append-only record of who did what to the train and why.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Filters */}
@@ -776,9 +732,7 @@ function AuditLogSection({ projectId }: { projectId: string }) {
               id="audit-filter-user"
               placeholder="user id"
               value={filters.userId ?? ""}
-              onChange={(e) =>
-                setFilter("userId", e.target.value || undefined)
-              }
+              onChange={(e) => setFilter("userId", e.target.value || undefined)}
             />
           </div>
           <div className="space-y-1">
@@ -786,10 +740,7 @@ function AuditLogSection({ projectId }: { projectId: string }) {
             <Select
               value={filters.action ?? ALL}
               onValueChange={(v) =>
-                setFilter(
-                  "action",
-                  v === ALL ? undefined : (v as AuditLogEntry["action"]),
-                )
+                setFilter("action", v === ALL ? undefined : (v as AuditLogEntry["action"]))
               }
             >
               <SelectTrigger id="audit-filter-action" className="w-full">
@@ -810,10 +761,7 @@ function AuditLogSection({ projectId }: { projectId: string }) {
             <Select
               value={filters.targetType ?? ALL}
               onValueChange={(v) =>
-                setFilter(
-                  "targetType",
-                  v === ALL ? undefined : (v as AuditLogEntry["targetType"]),
-                )
+                setFilter("targetType", v === ALL ? undefined : (v as AuditLogEntry["targetType"]))
               }
             >
               <SelectTrigger id="audit-filter-target" className="w-full">
@@ -857,8 +805,8 @@ function AuditLogSection({ projectId }: { projectId: string }) {
             ))}
           </div>
         ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-sm text-muted-foreground">
-            <ShieldAlert className="mb-2 size-8 text-muted-foreground/40" />
+          <div className="text-muted-foreground flex flex-col items-center justify-center py-10 text-sm">
+            <ShieldAlert className="text-muted-foreground/40 mb-2 size-8" />
             No audit entries match these filters.
           </div>
         ) : (
@@ -876,7 +824,7 @@ function AuditLogSection({ projectId }: { projectId: string }) {
               <TableBody>
                 {rows.map((entry) => (
                   <TableRow key={entry.id}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
+                    <TableCell className="text-muted-foreground font-mono text-xs">
                       {entry.actorId.slice(0, 8)}
                     </TableCell>
                     <TableCell>
@@ -898,14 +846,12 @@ function AuditLogSection({ projectId }: { projectId: string }) {
                       <span className="text-muted-foreground">
                         {formatActionLabel(entry.targetType)}
                       </span>{" "}
-                      <span className="font-mono">
-                        {entry.targetId.slice(0, 8)}
-                      </span>
+                      <span className="font-mono">{entry.targetId.slice(0, 8)}</span>
                     </TableCell>
                     <TableCell className="max-w-xs truncate text-sm">
                       {entry.reason ?? "—"}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-muted-foreground text-xs">
                       {formatRelativeTime(entry.createdAt)}
                     </TableCell>
                   </TableRow>
@@ -917,7 +863,7 @@ function AuditLogSection({ projectId }: { projectId: string }) {
 
         {/* Pagination footer */}
         {rows.length > 0 && (
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="text-muted-foreground flex items-center justify-between text-sm">
             <span>
               Page {page} of {totalPages} · {total} entr
               {total === 1 ? "y" : "ies"}
@@ -969,18 +915,15 @@ export function TrainAuditPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
-          <ShieldAlert className="size-6 text-muted-foreground" />
-          <h1 className="text-2xl font-bold tracking-tight">
-            Break-glass / Audit
-          </h1>
+          <ShieldAlert className="text-muted-foreground size-6" />
+          <h1 className="text-2xl font-bold tracking-tight">Break-glass / Audit</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <ShieldAlert className="mb-4 size-12 text-muted-foreground/50" />
+            <ShieldAlert className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">Access Denied</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Only administrators can use break-glass controls and view the
-              audit log.
+            <p className="text-muted-foreground mt-1 text-sm">
+              Only administrators can use break-glass controls and view the audit log.
             </p>
           </CardContent>
         </Card>
@@ -993,10 +936,8 @@ export function TrainAuditPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <ShieldAlert className="size-6 text-muted-foreground" />
-        <h1 className="text-2xl font-bold tracking-tight">
-          Break-glass / Audit
-        </h1>
+        <ShieldAlert className="text-muted-foreground size-6" />
+        <h1 className="text-2xl font-bold tracking-tight">Break-glass / Audit</h1>
       </div>
 
       <BreakGlassControls projectId={projectId} />

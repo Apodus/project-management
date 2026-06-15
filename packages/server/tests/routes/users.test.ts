@@ -1,11 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import bcrypt from "bcryptjs";
-import {
-  createTestApp,
-  createTestUser,
-  authRequest,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestUser, authRequest, type TestApp } from "../utils.js";
 import { users } from "../../src/db/index.js";
 import { eq } from "drizzle-orm";
 
@@ -29,11 +24,7 @@ describe("User routes", () => {
     });
     const rawToken = "member-token-value";
     const hash = bcrypt.hashSync(rawToken, 10);
-    testApp.db
-      .update(users)
-      .set({ apiTokenHash: hash })
-      .where(eq(users.id, member.id))
-      .run();
+    testApp.db.update(users).set({ apiTokenHash: hash }).where(eq(users.id, member.id)).run();
     return { userId: member.id, token: rawToken };
   }
 
@@ -184,17 +175,12 @@ describe("User routes", () => {
         displayName: "Original Name",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/users/${user.id}`,
-        {
-          body: {
-            displayName: "Updated Name",
-            email: "updated@example.com",
-          },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/users/${user.id}`, {
+        body: {
+          displayName: "Updated Name",
+          email: "updated@example.com",
         },
-      );
+      });
 
       expect(res.status).toBe(200);
 
@@ -205,16 +191,11 @@ describe("User routes", () => {
     });
 
     it("should return 404 for non-existent user", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        "/api/v1/users/nonexistent-id",
-        {
-          body: {
-            displayName: "Ghost User",
-          },
+      const res = await authRequest(testApp.app, "PATCH", "/api/v1/users/nonexistent-id", {
+        body: {
+          displayName: "Ghost User",
         },
-      );
+      });
 
       expect(res.status).toBe(404);
     });
@@ -224,16 +205,11 @@ describe("User routes", () => {
         username: "user-to-rename",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/users/${user.id}`,
-        {
-          body: {
-            username: testApp.testUser.username, // Already taken
-          },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/users/${user.id}`, {
+        body: {
+          username: testApp.testUser.username, // Already taken
         },
-      );
+      });
 
       expect(res.status).toBe(409);
     });
@@ -244,19 +220,14 @@ describe("User routes", () => {
   describe("POST /api/v1/users/:id/rotate-token", () => {
     it("should return a new token and invalidate the old one", async () => {
       // Create an AI agent user with a token
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/users",
-        {
-          body: {
-            username: "rotate-agent",
-            displayName: "Rotate Agent",
-            role: "member",
-            type: "ai_agent",
-          },
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/users", {
+        body: {
+          username: "rotate-agent",
+          displayName: "Rotate Agent",
+          role: "member",
+          type: "ai_agent",
         },
-      );
+      });
       expect(createRes.status).toBe(201);
 
       const createBody = await createRes.json();
@@ -264,12 +235,9 @@ describe("User routes", () => {
       const oldToken = createBody.data.apiToken;
 
       // Verify old token works
-      const verifyOld = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/projects",
-        { token: oldToken },
-      );
+      const verifyOld = await authRequest(testApp.app, "GET", "/api/v1/projects", {
+        token: oldToken,
+      });
       expect(verifyOld.status).toBe(200);
 
       // Rotate the token
@@ -289,21 +257,15 @@ describe("User routes", () => {
       expect(newToken).not.toBe(oldToken);
 
       // Verify new token works
-      const verifyNew = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/projects",
-        { token: newToken },
-      );
+      const verifyNew = await authRequest(testApp.app, "GET", "/api/v1/projects", {
+        token: newToken,
+      });
       expect(verifyNew.status).toBe(200);
 
       // Verify old token no longer works
-      const verifyOldAgain = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/projects",
-        { token: oldToken },
-      );
+      const verifyOldAgain = await authRequest(testApp.app, "GET", "/api/v1/projects", {
+        token: oldToken,
+      });
       expect(verifyOldAgain.status).toBe(401);
     });
 
@@ -326,11 +288,7 @@ describe("User routes", () => {
         username: "deactivate-me",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/users/${user.id}/deactivate`,
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/users/${user.id}/deactivate`);
 
       expect(res.status).toBe(200);
 
@@ -339,11 +297,7 @@ describe("User routes", () => {
     });
 
     it("should return 404 for non-existent user", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/users/nonexistent-id/deactivate",
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/users/nonexistent-id/deactivate");
 
       expect(res.status).toBe(404);
     });
@@ -358,17 +312,9 @@ describe("User routes", () => {
       });
 
       // Deactivate first
-      testApp.db
-        .update(users)
-        .set({ isActive: false })
-        .where(eq(users.id, user.id))
-        .run();
+      testApp.db.update(users).set({ isActive: false }).where(eq(users.id, user.id)).run();
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/users/${user.id}/activate`,
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/users/${user.id}/activate`);
 
       expect(res.status).toBe(200);
 
@@ -377,11 +323,7 @@ describe("User routes", () => {
     });
 
     it("should return 404 for non-existent user", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/users/nonexistent-id/activate",
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/users/nonexistent-id/activate");
 
       expect(res.status).toBe(404);
     });

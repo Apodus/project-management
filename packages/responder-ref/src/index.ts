@@ -23,15 +23,13 @@ async function main(): Promise<void> {
     .option("--pm-url <url>", "PM API base URL")
     .option("--log-level <level>", "pino log level (trace|debug|info|warn|error|fatal)")
     .option("--poll-interval-sec <sec>", "Polling interval in seconds", "15")
-    .option(
-      "--project <id>",
-      "Project id to watch (repeatable)",
-      collect,
-      [] as string[],
-    )
+    .option("--project <id>", "Project id to watch (repeatable)", collect, [] as string[])
     .option("--enabled", "Enable the responder (default off)")
     .option("--mode <mode>", "Responder mode (off|shadow|on); default shadow")
-    .option("--repo-cwd <path>", "Working directory the answering session runs in (the PM repo checkout)")
+    .option(
+      "--repo-cwd <path>",
+      "Working directory the answering session runs in (the PM repo checkout)",
+    )
     .parse(process.argv);
 
   const args = program.opts() as CliArgs;
@@ -44,7 +42,10 @@ async function main(): Promise<void> {
     if (err instanceof ConfigError) {
       logger.fatal({ err: err.message }, "Configuration invalid");
     } else {
-      logger.fatal({ err: err instanceof Error ? err.message : String(err) }, "Failed to load config");
+      logger.fatal(
+        { err: err instanceof Error ? err.message : String(err) },
+        "Failed to load config",
+      );
     }
     // Code 2 = config/validation failure (systemd: don't restart). Code 1 is
     // reserved for unexpected runtime errors.
@@ -117,9 +118,7 @@ async function main(): Promise<void> {
     },
     "Responder daemon ready",
   );
-  process.stdout.write(
-    `Responder daemon ready, watching ${cfg.projectIds.length} project(s)\n`,
-  );
+  process.stdout.write(`Responder daemon ready, watching ${cfg.projectIds.length} project(s)\n`);
 
   // ── Shutdown handling. ──
   let stopRequested = false;

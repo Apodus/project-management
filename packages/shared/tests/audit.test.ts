@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  AUDIT_ACTIONS,
-  AUDIT_TARGET_TYPES,
-  auditLogSchema,
-} from "../src/index.js";
+import { AUDIT_ACTIONS, AUDIT_TARGET_TYPES, auditLogSchema } from "../src/index.js";
 
 const VALID_ULID = "01H5K3RCH3EABY3V5SXGM7N1WQ";
 const VALID_TIMESTAMP = "2026-05-30T12:00:00.000Z";
@@ -111,22 +107,16 @@ describe("auditLogSchema", () => {
 
   it("accepts every target type", () => {
     for (const targetType of AUDIT_TARGET_TYPES) {
-      expect(
-        auditLogSchema.parse({ ...validRow, targetType }),
-      ).toBeTruthy();
+      expect(auditLogSchema.parse({ ...validRow, targetType })).toBeTruthy();
     }
   });
 
   it("rejects an unknown action", () => {
-    expect(() =>
-      auditLogSchema.parse({ ...validRow, action: "delete" }),
-    ).toThrow();
+    expect(() => auditLogSchema.parse({ ...validRow, action: "delete" })).toThrow();
   });
 
   it("rejects an unknown target type", () => {
-    expect(() =>
-      auditLogSchema.parse({ ...validRow, targetType: "comment" }),
-    ).toThrow();
+    expect(() => auditLogSchema.parse({ ...validRow, targetType: "comment" })).toThrow();
   });
 
   it("accepts a force_claim/task row", () => {

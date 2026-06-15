@@ -4,14 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
-import {
-  createClaudeImplementRunner,
-  type ImplementRunInput,
-} from "../src/implement-runner.js";
-import {
-  buildImplementPrompt,
-  DEFAULT_IMPLEMENT_PROMPT,
-} from "../src/implement-prompt.js";
+import { createClaudeImplementRunner, type ImplementRunInput } from "../src/implement-runner.js";
+import { buildImplementPrompt, DEFAULT_IMPLEMENT_PROMPT } from "../src/implement-prompt.js";
 import { DEFAULT_RESPONDER_PROMPT } from "../src/prompt.js";
 import type { Escalation, EscalationMessage } from "@pm/shared";
 
@@ -219,9 +213,7 @@ describe.skipIf(!GIT_AVAILABLE)("createClaudeImplementRunner (real git)", () => 
 
   it("a bogus command → error(spawn_error)", async () => {
     const runner = createClaudeImplementRunner({});
-    const result = await runner.run(
-      baseInput("this-command-definitely-does-not-exist-xyz", 30),
-    );
+    const result = await runner.run(baseInput("this-command-definitely-does-not-exist-xyz", 30));
     expect(result.kind).toBe("error");
     if (result.kind === "error") expect(result.reason).toBe("spawn_error");
   });

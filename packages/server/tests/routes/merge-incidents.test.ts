@@ -89,9 +89,7 @@ describe("Merge Incidents API", () => {
         .from(comments)
         .where(eq(comments.taskId, task.id))
         .all();
-      const incidentComment = commentRows.find(
-        (c) => c.commentType === "merge_incident",
-      );
+      const incidentComment = commentRows.find((c) => c.commentType === "merge_incident");
       expect(incidentComment).toBeTruthy();
       const meta = incidentComment?.metadata as Record<string, unknown>;
       expect(meta.incidentId).toBe(incidentId);
@@ -105,12 +103,9 @@ describe("Merge Incidents API", () => {
       const agent = createTestAiAgent(testApp.db);
       const incidentId = await openIncident(project.id, agent.token);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/merge-incidents/${incidentId}`,
-        { token: agent.token },
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/merge-incidents/${incidentId}`, {
+        token: agent.token,
+      });
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.data.id).toBe(incidentId);
@@ -250,14 +245,11 @@ describe("Merge Incidents API", () => {
   // ─── E. 401 ──────────────────────────────────────────────────────
   it("401 when unauthenticated", async () => {
     const project = createTestProject(testApp.db);
-    const res = await testApp.app.request(
-      `/api/v1/projects/${project.id}/merge-incidents`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ innerRepo: "i", orphanedSha: "s", outerRepo: "o" }),
-      },
-    );
+    const res = await testApp.app.request(`/api/v1/projects/${project.id}/merge-incidents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ innerRepo: "i", orphanedSha: "s", outerRepo: "o" }),
+    });
     expect(res.status).toBe(401);
   });
 });

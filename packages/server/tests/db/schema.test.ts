@@ -219,11 +219,7 @@ describe("Database schema", () => {
       // rather than cascade-deleting the merge request.
       db.delete(escalations).where(eq(escalations.id, escalationId)).run();
 
-      const result = db
-        .select()
-        .from(mergeRequests)
-        .where(eq(mergeRequests.id, requestId))
-        .get();
+      const result = db.select().from(mergeRequests).where(eq(mergeRequests.id, requestId)).get();
       expect(result).toBeDefined();
       expect(result!.escalationId).toBeNull();
     });

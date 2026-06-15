@@ -25,13 +25,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -127,20 +121,11 @@ function TokenDialog({
             This token will only be shown once. Copy it now and store it securely.
           </div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 rounded-md border bg-muted px-3 py-2 font-mono text-sm break-all">
+            <code className="bg-muted flex-1 break-all rounded-md border px-3 py-2 font-mono text-sm">
               {token}
             </code>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              onClick={handleCopy}
-              aria-label="Copy token"
-            >
-              {copied ? (
-                <Check className="size-4 text-green-600" />
-              ) : (
-                <Copy className="size-4" />
-              )}
+            <Button variant="outline" size="icon-sm" onClick={handleCopy} aria-label="Copy token">
+              {copied ? <Check className="size-4 text-green-600" /> : <Copy className="size-4" />}
             </Button>
           </div>
         </div>
@@ -239,9 +224,7 @@ function CreateHumanUserDialog({
                 }}
                 autoFocus
               />
-              {errors.username && (
-                <p className="text-xs text-destructive">{errors.username}</p>
-              )}
+              {errors.username && <p className="text-destructive text-xs">{errors.username}</p>}
             </div>
 
             <div className="space-y-2">
@@ -256,7 +239,7 @@ function CreateHumanUserDialog({
                 }}
               />
               {errors.displayName && (
-                <p className="text-xs text-destructive">{errors.displayName}</p>
+                <p className="text-destructive text-xs">{errors.displayName}</p>
               )}
             </div>
 
@@ -286,13 +269,11 @@ function CreateHumanUserDialog({
                 }}
                 autoComplete="new-password"
               />
-              {errors.password && (
-                <p className="text-xs text-destructive">{errors.password}</p>
-              )}
+              {errors.password && <p className="text-destructive text-xs">{errors.password}</p>}
             </div>
 
             {createMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {createMutation.error instanceof ApiError
                   ? createMutation.error.message
                   : "Failed to create user. Please try again."}
@@ -300,11 +281,7 @@ function CreateHumanUserDialog({
             )}
           </div>
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={createMutation.isPending}>
@@ -414,8 +391,8 @@ function CreateIndividualAgentDialog({
           <DialogHeader>
             <DialogTitle>Add Individual Agent</DialogTitle>
             <DialogDescription>
-              Create an AI agent with a static API token. Use this for agents that
-              connect with their own dedicated token (PM_API_TOKEN).
+              Create an AI agent with a static API token. Use this for agents that connect with
+              their own dedicated token (PM_API_TOKEN).
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
@@ -431,9 +408,7 @@ function CreateIndividualAgentDialog({
                 }}
                 autoFocus
               />
-              {errors.username && (
-                <p className="text-xs text-destructive">{errors.username}</p>
-              )}
+              {errors.username && <p className="text-destructive text-xs">{errors.username}</p>}
             </div>
 
             <div className="space-y-2">
@@ -448,7 +423,7 @@ function CreateIndividualAgentDialog({
                 }}
               />
               {errors.displayName && (
-                <p className="text-xs text-destructive">{errors.displayName}</p>
+                <p className="text-destructive text-xs">{errors.displayName}</p>
               )}
             </div>
 
@@ -466,7 +441,7 @@ function CreateIndividualAgentDialog({
             </div>
 
             {createMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {createMutation.error instanceof ApiError
                   ? createMutation.error.message
                   : "Failed to create agent. Please try again."}
@@ -474,11 +449,7 @@ function CreateIndividualAgentDialog({
             )}
           </div>
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={createMutation.isPending}>
@@ -552,9 +523,7 @@ function EditUserDialog({
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>
-              Update user details for {user.displayName}.
-            </DialogDescription>
+            <DialogDescription>Update user details for {user.displayName}.</DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
@@ -568,9 +537,7 @@ function EditUserDialog({
                 }}
                 autoFocus
               />
-              {errors.username && (
-                <p className="text-xs text-destructive">{errors.username}</p>
-              )}
+              {errors.username && <p className="text-destructive text-xs">{errors.username}</p>}
             </div>
 
             <div className="space-y-2">
@@ -584,7 +551,7 @@ function EditUserDialog({
                 }}
               />
               {errors.displayName && (
-                <p className="text-xs text-destructive">{errors.displayName}</p>
+                <p className="text-destructive text-xs">{errors.displayName}</p>
               )}
             </div>
 
@@ -601,20 +568,19 @@ function EditUserDialog({
               </Select>
             </div>
 
-            <div className="flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+            <div className="bg-muted/50 text-muted-foreground flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
               {user.type === "ai_agent" ? (
                 <Bot className="size-4 shrink-0" />
               ) : (
                 <UserIcon className="size-4 shrink-0" />
               )}
               <span>
-                Type: {user.type === "ai_agent" ? "AI Agent" : "Human"} (cannot
-                be changed)
+                Type: {user.type === "ai_agent" ? "AI Agent" : "Human"} (cannot be changed)
               </span>
             </div>
 
             {updateMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {updateMutation.error instanceof ApiError
                   ? updateMutation.error.message
                   : "Failed to update user. Please try again."}
@@ -622,11 +588,7 @@ function EditUserDialog({
             )}
           </div>
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={updateMutation.isPending}>
@@ -727,9 +689,7 @@ function CreatePoolDialog({
                 }}
                 autoFocus
               />
-              {errors.name && (
-                <p className="text-xs text-destructive">{errors.name}</p>
-              )}
+              {errors.name && <p className="text-destructive text-xs">{errors.name}</p>}
             </div>
 
             <div className="space-y-2">
@@ -745,10 +705,8 @@ function CreatePoolDialog({
                 }}
                 autoComplete="off"
               />
-              {errors.secret && (
-                <p className="text-xs text-destructive">{errors.secret}</p>
-              )}
-              <p className="text-xs text-muted-foreground">
+              {errors.secret && <p className="text-destructive text-xs">{errors.secret}</p>}
+              <p className="text-muted-foreground text-xs">
                 This secret will not be shown again after creation. Store it securely.
               </p>
             </div>
@@ -764,7 +722,7 @@ function CreatePoolDialog({
             </div>
 
             {createPoolMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {createPoolMutation.error instanceof ApiError
                   ? createPoolMutation.error.message
                   : "Failed to create pool. Please try again."}
@@ -772,11 +730,7 @@ function CreatePoolDialog({
             )}
           </div>
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={createPoolMutation.isPending}>
@@ -851,8 +805,8 @@ function UpdatePoolSecretDialog({
               Update Secret for "{poolName}"
             </DialogTitle>
             <DialogDescription>
-              Set a new shared secret for this pool. Existing agents will need
-              to use the new secret on their next claim.
+              Set a new shared secret for this pool. Existing agents will need to use the new secret
+              on their next claim.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
@@ -870,13 +824,11 @@ function UpdatePoolSecretDialog({
                 autoFocus
                 autoComplete="off"
               />
-              {error && (
-                <p className="text-xs text-destructive">{error}</p>
-              )}
+              {error && <p className="text-destructive text-xs">{error}</p>}
             </div>
 
             {updateSecretMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {updateSecretMutation.error instanceof ApiError
                   ? updateSecretMutation.error.message
                   : "Failed to update secret. Please try again."}
@@ -884,11 +836,7 @@ function UpdatePoolSecretDialog({
             )}
           </div>
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={updateSecretMutation.isPending}>
@@ -965,8 +913,8 @@ function AddPoolAgentsDialog({
               Add Agents to "{poolName}"
             </DialogTitle>
             <DialogDescription>
-              Create AI agent identities in this pool. They will be claimed
-              dynamically via the pool secret.
+              Create AI agent identities in this pool. They will be claimed dynamically via the pool
+              secret.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
@@ -984,9 +932,7 @@ function AddPoolAgentsDialog({
                 }}
                 autoFocus
               />
-              <p className="text-xs text-muted-foreground">
-                Between 1 and 20 agents.
-              </p>
+              <p className="text-muted-foreground text-xs">Between 1 and 20 agents.</p>
             </div>
 
             <div className="space-y-2">
@@ -999,12 +945,10 @@ function AddPoolAgentsDialog({
               />
             </div>
 
-            {error && (
-              <p className="text-xs text-destructive">{error}</p>
-            )}
+            {error && <p className="text-destructive text-xs">{error}</p>}
 
             {createAgentsMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {createAgentsMutation.error instanceof ApiError
                   ? createAgentsMutation.error.message
                   : "Failed to add agents. Please try again."}
@@ -1012,11 +956,7 @@ function AddPoolAgentsDialog({
             )}
           </div>
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={createAgentsMutation.isPending}>
@@ -1107,10 +1047,7 @@ function HumanUserRow({ user }: { user: AuthUser }) {
                 Edit
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleToggleActive}
-                disabled={isToggling}
-              >
+              <DropdownMenuItem onClick={handleToggleActive} disabled={isToggling}>
                 {user.isActive ? (
                   <>
                     <UserMinus className="mr-2 size-4" />
@@ -1190,9 +1127,7 @@ function IndividualAgentRow({ user }: { user: AuthUser }) {
           </Badge>
         </TableCell>
         <TableCell>
-          <span className="font-mono text-xs text-muted-foreground">
-            {"••••••••"}
-          </span>
+          <span className="text-muted-foreground font-mono text-xs">{"••••••••"}</span>
         </TableCell>
         <TableCell>
           {user.isActive ? (
@@ -1229,10 +1164,7 @@ function IndividualAgentRow({ user }: { user: AuthUser }) {
                 Rotate Token
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleToggleActive}
-                disabled={isToggling}
-              >
+              <DropdownMenuItem onClick={handleToggleActive} disabled={isToggling}>
                 {user.isActive ? (
                   <>
                     <UserMinus className="mr-2 size-4" />
@@ -1257,23 +1189,19 @@ function IndividualAgentRow({ user }: { user: AuthUser }) {
           <DialogHeader>
             <DialogTitle>Rotate API Token</DialogTitle>
             <DialogDescription>
-              This will invalidate the current API token for{" "}
-              <strong>{user.displayName}</strong> and generate a new one. Any
-              systems using the current token will stop working.
+              This will invalidate the current API token for <strong>{user.displayName}</strong> and
+              generate a new one. Any systems using the current token will stop working.
             </DialogDescription>
           </DialogHeader>
           {rotateMutation.isError && (
-            <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
               {rotateMutation.error instanceof ApiError
                 ? rotateMutation.error.message
                 : "Failed to rotate token. Please try again."}
             </div>
           )}
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setRotateConfirmOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setRotateConfirmOpen(false)}>
               Cancel
             </Button>
             <Button
@@ -1314,7 +1242,14 @@ function PoolAgentRow({
   poolId,
 }: {
   agent: {
-    user: { id: string; username: string; displayName: string; type: string; isActive: boolean; poolId: string | null };
+    user: {
+      id: string;
+      username: string;
+      displayName: string;
+      type: string;
+      isActive: boolean;
+      poolId: string | null;
+    };
     claimed: boolean;
     claimedAt: string | null;
     expiresAt: string | null;
@@ -1382,7 +1317,7 @@ function PoolAgentRow({
       <TableRow className={cn(!agent.user.isActive && "opacity-60")}>
         <TableCell className="font-medium">
           <div className="flex items-center gap-2">
-            <Bot className="size-4 shrink-0 text-muted-foreground" />
+            <Bot className="text-muted-foreground size-4 shrink-0" />
             {isEditing ? (
               <div className="flex items-center gap-1">
                 <Input
@@ -1454,12 +1389,8 @@ function PoolAgentRow({
             </Badge>
           )}
         </TableCell>
-        <TableCell className="text-muted-foreground">
-          {formatTime(agent.claimedAt)}
-        </TableCell>
-        <TableCell className="text-muted-foreground">
-          {formatTime(agent.heartbeatAt)}
-        </TableCell>
+        <TableCell className="text-muted-foreground">{formatTime(agent.claimedAt)}</TableCell>
+        <TableCell className="text-muted-foreground">{formatTime(agent.heartbeatAt)}</TableCell>
         <TableCell className="text-right">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1517,13 +1448,13 @@ function PoolAgentRow({
           <DialogHeader>
             <DialogTitle>Remove Agent from Pool</DialogTitle>
             <DialogDescription>
-              Remove <strong>{agent.user.displayName}</strong> from this pool?
-              If the agent has existing activity (comments, task assignments, etc.),
-              it will be deactivated and removed from the pool instead of deleted.
+              Remove <strong>{agent.user.displayName}</strong> from this pool? If the agent has
+              existing activity (comments, task assignments, etc.), it will be deactivated and
+              removed from the pool instead of deleted.
             </DialogDescription>
           </DialogHeader>
           {removeMutation.isError && (
-            <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
               {removeMutation.error instanceof ApiError
                 ? removeMutation.error.message
                 : "Failed to remove agent. Please try again."}
@@ -1570,7 +1501,8 @@ function HumanUsersSection({ users }: { users: AuthUser[] }) {
               Human Users
             </CardTitle>
             <CardDescription>
-              {humanUsers.length} user{humanUsers.length !== 1 ? "s" : ""} with password authentication.
+              {humanUsers.length} user{humanUsers.length !== 1 ? "s" : ""} with password
+              authentication.
             </CardDescription>
           </div>
           <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -1582,8 +1514,8 @@ function HumanUsersSection({ users }: { users: AuthUser[] }) {
       <CardContent>
         {humanUsers.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8">
-            <UserIcon className="mb-3 size-10 text-muted-foreground/50" />
-            <p className="text-sm text-muted-foreground">No human users yet.</p>
+            <UserIcon className="text-muted-foreground/50 mb-3 size-10" />
+            <p className="text-muted-foreground text-sm">No human users yet.</p>
             <Button
               className="mt-3"
               size="sm"
@@ -1627,9 +1559,7 @@ function HumanUsersSection({ users }: { users: AuthUser[] }) {
 
 function IndividualAgentsSection({ users }: { users: AuthUser[] }) {
   const [createOpen, setCreateOpen] = useState(false);
-  const individualAgents = users.filter(
-    (u) => u.type === "ai_agent" && !u.poolId,
-  );
+  const individualAgents = users.filter((u) => u.type === "ai_agent" && !u.poolId);
 
   return (
     <Card>
@@ -1641,8 +1571,8 @@ function IndividualAgentsSection({ users }: { users: AuthUser[] }) {
               Individual Agents
             </CardTitle>
             <CardDescription>
-              {individualAgents.length} agent{individualAgents.length !== 1 ? "s" : ""} with
-              static API tokens (PM_API_TOKEN).
+              {individualAgents.length} agent{individualAgents.length !== 1 ? "s" : ""} with static
+              API tokens (PM_API_TOKEN).
             </CardDescription>
           </div>
           <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -1654,8 +1584,8 @@ function IndividualAgentsSection({ users }: { users: AuthUser[] }) {
       <CardContent>
         {individualAgents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8">
-            <Bot className="mb-3 size-10 text-muted-foreground/50" />
-            <p className="text-sm text-muted-foreground">No individual agents yet.</p>
+            <Bot className="text-muted-foreground/50 mb-3 size-10" />
+            <p className="text-muted-foreground text-sm">No individual agents yet.</p>
             <Button
               className="mt-3"
               size="sm"
@@ -1734,11 +1664,11 @@ function PoolCard({
           className="flex flex-1 items-center gap-3 text-left"
           onClick={() => setExpanded(!expanded)}
         >
-          <Server className="size-4 shrink-0 text-muted-foreground" />
+          <Server className="text-muted-foreground size-4 shrink-0" />
           <div>
             <div className="font-medium">{pool.name}</div>
             {pool.description && (
-              <div className="text-xs text-muted-foreground">{pool.description}</div>
+              <div className="text-muted-foreground text-xs">{pool.description}</div>
             )}
           </div>
           <div className="ml-4 flex items-center gap-2">
@@ -1800,8 +1730,8 @@ function PoolCard({
       {expanded && poolDetail && (
         <div className="border-t px-4 py-3">
           {poolDetail.agents.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-6 text-sm text-muted-foreground">
-              <Bot className="mb-2 size-8 text-muted-foreground/50" />
+            <div className="text-muted-foreground flex flex-col items-center justify-center py-6 text-sm">
+              <Bot className="text-muted-foreground/50 mb-2 size-8" />
               No agents in this pool yet.
               <Button
                 className="mt-2"
@@ -1815,14 +1745,10 @@ function PoolCard({
             </div>
           ) : (
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 {poolDetail.agents.length} agent{poolDetail.agents.length !== 1 ? "s" : ""} in pool
               </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setAddAgentsOpen(true)}
-              >
+              <Button size="sm" variant="outline" onClick={() => setAddAgentsOpen(true)}>
                 <UserPlus className="size-4" />
                 Add Agents to Pool
               </Button>
@@ -1871,12 +1797,12 @@ function PoolCard({
           <DialogHeader>
             <DialogTitle>Delete Pool "{pool.name}"</DialogTitle>
             <DialogDescription>
-              This will delete the pool and deactivate all {pool.agentCount} agent{pool.agentCount !== 1 ? "s" : ""} in it.
-              This action cannot be undone.
+              This will delete the pool and deactivate all {pool.agentCount} agent
+              {pool.agentCount !== 1 ? "s" : ""} in it. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           {deleteMutation.isError && (
-            <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
               {deleteMutation.error instanceof ApiError
                 ? deleteMutation.error.message
                 : "Failed to delete pool. Please try again."}
@@ -1956,8 +1882,8 @@ function AgentPoolSection() {
       <CardContent className="space-y-3">
         {poolList.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8">
-            <Server className="mb-3 size-10 text-muted-foreground/50" />
-            <p className="text-sm text-muted-foreground">No pools yet.</p>
+            <Server className="text-muted-foreground/50 mb-3 size-10" />
+            <p className="text-muted-foreground text-sm">No pools yet.</p>
             <Button
               className="mt-3"
               size="sm"
@@ -1989,14 +1915,14 @@ export function UsersPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
-          <Users className="size-6 text-muted-foreground" />
+          <Users className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Users</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <Shield className="mb-4 size-12 text-muted-foreground/50" />
+            <Shield className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">Access Denied</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Only administrators can manage users.
             </p>
           </CardContent>
@@ -2011,7 +1937,7 @@ export function UsersPage() {
 
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <Users className="size-6 text-muted-foreground" />
+        <Users className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Users & Agents</h1>
       </div>
 
@@ -2019,9 +1945,7 @@ export function UsersPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
-              Failed to load users. Please try again.
-            </p>
+            <p className="text-destructive text-sm">Failed to load users. Please try again.</p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               Retry
             </Button>
@@ -2060,7 +1984,7 @@ export function UsersPage() {
           {/* Section 2: AI Agents */}
           <div className="space-y-4">
             <h2 className="flex items-center gap-2 text-lg font-semibold">
-              <Bot className="size-5 text-muted-foreground" />
+              <Bot className="text-muted-foreground size-5" />
               AI Agents
             </h2>
 

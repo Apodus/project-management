@@ -17,15 +17,9 @@ describe("getInvalidationKeys — merge-train wiring", () => {
   it("invalidates trainKeys on train.* alert events", () => {
     expect(getInvalidationKeys("train.stuck")).toEqual([trainKeys.all]);
     expect(getInvalidationKeys("train.paused")).toEqual([trainKeys.all]);
-    expect(getInvalidationKeys("train.integrator_unhealthy")).toEqual([
-      trainKeys.all,
-    ]);
-    expect(getInvalidationKeys("train.abandon_rate_high")).toEqual([
-      trainKeys.all,
-    ]);
-    expect(getInvalidationKeys("train.integration_stalled")).toEqual([
-      trainKeys.all,
-    ]);
+    expect(getInvalidationKeys("train.integrator_unhealthy")).toEqual([trainKeys.all]);
+    expect(getInvalidationKeys("train.abandon_rate_high")).toEqual([trainKeys.all]);
+    expect(getInvalidationKeys("train.integration_stalled")).toEqual([trainKeys.all]);
   });
 
   it("invalidates trainKeys on audit.recorded (the audit query lives under trainKeys.all)", () => {
@@ -33,12 +27,8 @@ describe("getInvalidationKeys — merge-train wiring", () => {
   });
 
   it("invalidates trainKeys on merge.* lifecycle events (queue/in-flight moved)", () => {
-    expect(getInvalidationKeys("merge.request.landed")).toEqual([
-      trainKeys.all,
-    ]);
-    expect(getInvalidationKeys("merge.request.rejected")).toEqual([
-      trainKeys.all,
-    ]);
+    expect(getInvalidationKeys("merge.request.landed")).toEqual([trainKeys.all]);
+    expect(getInvalidationKeys("merge.request.rejected")).toEqual([trainKeys.all]);
     expect(getInvalidationKeys("merge.group.landed")).toEqual([trainKeys.all]);
     expect(getInvalidationKeys("merge.batch.formed")).toEqual([trainKeys.all]);
   });
@@ -87,18 +77,12 @@ describe("getInvalidationKeys — merge-train wiring", () => {
     expect(getInvalidationKeys("task.updated")).toContainEqual(claimKeys.all);
     expect(getInvalidationKeys("task.assigned")).toContainEqual(claimKeys.all);
     expect(getInvalidationKeys("epic.updated")).toContainEqual(claimKeys.all);
-    expect(getInvalidationKeys("proposal.transitioned")).toContainEqual(
-      claimKeys.all,
-    );
+    expect(getInvalidationKeys("proposal.transitioned")).toContainEqual(claimKeys.all);
   });
 
   it("does NOT invalidate claimKeys on unrelated prefixes", () => {
-    expect(getInvalidationKeys("merge.request.landed")).not.toContainEqual(
-      claimKeys.all,
-    );
-    expect(getInvalidationKeys("note.created")).not.toContainEqual(
-      claimKeys.all,
-    );
+    expect(getInvalidationKeys("merge.request.landed")).not.toContainEqual(claimKeys.all);
+    expect(getInvalidationKeys("note.created")).not.toContainEqual(claimKeys.all);
   });
 });
 
@@ -163,10 +147,7 @@ describe("maybeShowToast — escalation.sla_breached", () => {
   it("raises a masked unanswered-SLA warning toast (no ids/counts)", () => {
     maybeShowToast("escalation.sla_breached", slaPayload);
     expect(toastMock.warning).toHaveBeenCalledTimes(1);
-    const [title, opts] = toastMock.warning.mock.calls[0] as [
-      string,
-      { description?: string },
-    ];
+    const [title, opts] = toastMock.warning.mock.calls[0] as [string, { description?: string }];
     expect(title).toBe("Escalations going unanswered");
     // Masked copy — no ids/counts leak.
     expect(opts.description).not.toMatch(/proj-42/);
@@ -180,9 +161,7 @@ describe("maybeShowToast — escalation.sla_breached", () => {
 // note.backlog_alert mapping to noteKeys.all.
 describe("getInvalidationKeys — escalation.sla_breached prefix mapping", () => {
   it("maps escalation.sla_breached via prefix to escalationKeys.all (toast raised separately)", () => {
-    expect(getInvalidationKeys("escalation.sla_breached")).toEqual([
-      escalationKeys.all,
-    ]);
+    expect(getInvalidationKeys("escalation.sla_breached")).toEqual([escalationKeys.all]);
   });
 
   it("subscribes to escalation.sla_breached (assert via the prefix invalidation)", () => {

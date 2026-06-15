@@ -32,11 +32,7 @@ describe("Activity API", () => {
       const project = (await createRes.json()).data;
 
       // Check activity feed
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/activity`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/activity`);
       expect(res.status).toBe(200);
       const body = await res.json();
 
@@ -59,11 +55,7 @@ describe("Activity API", () => {
         body: { name: "Project After Update" },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/activity`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/activity`);
       const body = await res.json();
 
       const updateActivity = body.data.find(
@@ -86,11 +78,7 @@ describe("Activity API", () => {
       const task = (await createRes.json()).data;
 
       // Check task activity
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/activity`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/activity`);
       expect(res.status).toBe(200);
       const body = await res.json();
 
@@ -119,16 +107,10 @@ describe("Activity API", () => {
         body: { to_status: "in_progress" },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/activity`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/activity`);
       const body = await res.json();
 
-      const statusActivity = body.data.find(
-        (a: any) => a.action === "status_changed",
-      );
+      const statusActivity = body.data.find((a: any) => a.action === "status_changed");
       expect(statusActivity).toBeDefined();
       expect(statusActivity.changes).toBeDefined();
 
@@ -158,16 +140,10 @@ describe("Activity API", () => {
         body: { title: "Updated title" },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/activity`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/activity`);
       const body = await res.json();
 
-      const updateActivity = body.data.find(
-        (a: any) => a.action === "updated",
-      );
+      const updateActivity = body.data.find((a: any) => a.action === "updated");
       expect(updateActivity).toBeDefined();
     });
   });
@@ -202,11 +178,7 @@ describe("Activity API", () => {
       );
       expect(ackRes.status).toBe(200);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/activity`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/activity`);
       expect(res.status).toBe(200);
       const body = await res.json();
 
@@ -252,12 +224,9 @@ describe("Activity API", () => {
       const user = createTestUser(testApp.db);
 
       // Create a task (which logs activity for both project create + task create)
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        { body: { title: "Filter test task", reporterId: user.id } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: { title: "Filter test task", reporterId: user.id },
+      });
 
       const res = await authRequest(
         testApp.app,
@@ -296,11 +265,7 @@ describe("Activity API", () => {
         body: { status: "in_progress" },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/activity`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/activity`);
       expect(res.status).toBe(200);
       const body = await res.json();
 
@@ -335,11 +300,7 @@ describe("Activity API", () => {
         body: { title: "Updated diff test task", priority: "critical" },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/activity`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/activity`);
       const body = await res.json();
 
       const updateEntry = body.data.find((a: any) => a.action === "updated");
@@ -404,12 +365,9 @@ describe("Activity API", () => {
       const user = createTestUser(testApp.db);
 
       // Create a task (activity logged with the authenticated user's actorId)
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        { body: { title: "Actor filter task", reporterId: user.id } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: { title: "Actor filter task", reporterId: user.id },
+      });
 
       // Exclude the test user from activity results
       const res = await authRequest(
@@ -451,12 +409,9 @@ describe("Activity API", () => {
       const pastTimestamp = "2000-01-01T00:00:00Z";
 
       // Create task as the default test user (this will be excluded)
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        { body: { title: "Own task", reporterId: otherUser.id } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: { title: "Own task", reporterId: otherUser.id },
+      });
 
       // The updates endpoint should exclude the authenticated user's own activity
       const res = await authRequest(
@@ -481,18 +436,12 @@ describe("Activity API", () => {
       const pastTimestamp = "2000-01-01T00:00:00Z";
 
       // Create tasks in both projects
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project1.id}/tasks`,
-        { body: { title: "P1 task", reporterId: otherUser.id } },
-      );
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project2.id}/tasks`,
-        { body: { title: "P2 task", reporterId: otherUser.id } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project1.id}/tasks`, {
+        body: { title: "P1 task", reporterId: otherUser.id },
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project2.id}/tasks`, {
+        body: { title: "P2 task", reporterId: otherUser.id },
+      });
 
       const res = await authRequest(
         testApp.app,

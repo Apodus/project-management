@@ -9,8 +9,7 @@ import { search, type SearchOptions, type SearchResult } from "@/lib/api";
 
 export const ftsSearchKeys = {
   all: ["fts-search"] as const,
-  query: (q: string, opts?: SearchOptions) =>
-    [...ftsSearchKeys.all, { q, ...opts }] as const,
+  query: (q: string, opts?: SearchOptions) => [...ftsSearchKeys.all, { q, ...opts }] as const,
 };
 
 export function useFtsSearch(q: string, opts?: SearchOptions) {

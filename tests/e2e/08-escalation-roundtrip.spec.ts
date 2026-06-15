@@ -1,10 +1,5 @@
 import { test, expect } from "@playwright/test";
-import {
-  login,
-  createProjectViaAPI,
-  createUserViaAPI,
-  raiseEscalationViaAPI,
-} from "./helpers";
+import { login, createProjectViaAPI, createUserViaAPI, raiseEscalationViaAPI } from "./helpers";
 
 const ADMIN_USER = "admin";
 const ADMIN_PASS = "password123";
@@ -25,16 +20,11 @@ test.describe("Escalation round-trip", () => {
 
   test("create project via API for escalation tests", async ({ page }) => {
     await login(page, ADMIN_USER, ADMIN_PASS);
-    const project = await createProjectViaAPI(
-      page,
-      "Escalation Round-trip Test Project",
-    );
+    const project = await createProjectViaAPI(page, "Escalation Round-trip Test Project");
     projectId = project.id;
   });
 
-  test("full lifecycle: raise → acknowledge → answer → reply → resolve", async ({
-    page,
-  }) => {
+  test("full lifecycle: raise → acknowledge → answer → reply → resolve", async ({ page }) => {
     await login(page, ADMIN_USER, ADMIN_PASS);
 
     // 1. Raise (open). originRepo/originWorkerKey are required and echoed back.
@@ -51,27 +41,23 @@ test.describe("Escalation round-trip", () => {
     const escId = esc.id;
 
     // 2. Acknowledge (open → acknowledged) — the PM-side pickup.
-    const ackResp = await page.request.post(
-      `/api/v1/escalations/${escId}/acknowledge`,
-    );
+    const ackResp = await page.request.post(`/api/v1/escalations/${escId}/acknowledge`);
     expect(ackResp.status()).toBe(200);
     expect((await ackResp.json()).data.status).toBe("acknowledged");
 
     // 3. Answer (acknowledged → answered) — body appended as a `diagnosis` message.
     const answerBody = "diagnosis: the lane lock was stale; force-released it";
-    const answerResp = await page.request.post(
-      `/api/v1/escalations/${escId}/answer`,
-      { data: { body: answerBody } },
-    );
+    const answerResp = await page.request.post(`/api/v1/escalations/${escId}/answer`, {
+      data: { body: answerBody },
+    });
     expect(answerResp.status()).toBe(200);
     expect((await answerResp.json()).data.status).toBe("answered");
 
     // 4. Reply on the thread (a plain `reply` message). 201.
     const replyBody = "thanks, confirmed — my next submit landed";
-    const replyResp = await page.request.post(
-      `/api/v1/escalations/${escId}/messages`,
-      { data: { body: replyBody } },
-    );
+    const replyResp = await page.request.post(`/api/v1/escalations/${escId}/messages`, {
+      data: { body: replyBody },
+    });
     expect(replyResp.status()).toBe(201);
 
     // 5. GET the full thread: messages present, monotonic seq, the diagnosis
@@ -94,16 +80,13 @@ test.describe("Escalation round-trip", () => {
     expect(diagnosis).toBeTruthy();
     expect(diagnosis.body).toBe(answerBody);
 
-    expect(
-      thread.messages.some((m: { body: string }) => m.body === replyBody),
-    ).toBeTruthy();
+    expect(thread.messages.some((m: { body: string }) => m.body === replyBody)).toBeTruthy();
 
     // 6. Resolve (→ resolved, terminal). reason → a `system` message;
     //    resolvedBy/resolvedAt set.
-    const resolveResp = await page.request.post(
-      `/api/v1/escalations/${escId}/resolve`,
-      { data: { reason: "fixed — lane unwedged, worker unblocked" } },
-    );
+    const resolveResp = await page.request.post(`/api/v1/escalations/${escId}/resolve`, {
+      data: { reason: "fixed — lane unwedged, worker unblocked" },
+    });
     expect(resolveResp.status()).toBe(200);
     const resolved = (await resolveResp.json()).data;
     expect(resolved.status).toBe("resolved");
@@ -113,9 +96,7 @@ test.describe("Escalation round-trip", () => {
     const finalResp = await page.request.get(`/api/v1/escalations/${escId}`);
     const finalThread = (await finalResp.json()).data;
     expect(
-      finalThread.messages.some(
-        (m: { messageType: string | null }) => m.messageType === "system",
-      ),
+      finalThread.messages.some((m: { messageType: string | null }) => m.messageType === "system"),
     ).toBeTruthy();
 
     // 7. The activity feed carries the per-transition audit verbs (one
@@ -128,15 +109,9 @@ test.describe("Escalation round-trip", () => {
       action: string;
       entityId: string;
     }>;
-    const actions = rows
-      .filter((r) => r.entityId === escId)
-      .map((r) => r.action);
+    const actions = rows.filter((r) => r.entityId === escId).map((r) => r.action);
     expect(actions).toContain("opened");
-    expect(
-      actions.some((a) =>
-        ["acknowledged", "answered", "resolved"].includes(a),
-      ),
-    ).toBeTruthy();
+    expect(actions.some((a) => ["acknowledged", "answered", "resolved"].includes(a))).toBeTruthy();
   });
 
   /**
@@ -154,10 +129,7 @@ test.describe("Escalation round-trip", () => {
   }) => {
     await login(page, ADMIN_USER, ADMIN_PASS);
 
-    const project = await createProjectViaAPI(
-      page,
-      "Escalation Delivery Seal Project",
-    );
+    const project = await createProjectViaAPI(page, "Escalation Delivery Seal Project");
 
     // A SECOND ai_agent user (the PM/holder) — its create response reveals the
     // minted apiToken (one-time). Bearer-authed below.
@@ -183,19 +155,19 @@ test.describe("Escalation round-trip", () => {
     const escId = esc.id;
 
     // 2. Acknowledge as the SECOND user (Bearer overrides the admin cookie).
-    const ackResp = await page.request.post(
-      `/api/v1/escalations/${escId}/acknowledge`,
-      { headers: bearer, data: {} },
-    );
+    const ackResp = await page.request.post(`/api/v1/escalations/${escId}/acknowledge`, {
+      headers: bearer,
+      data: {},
+    });
     expect(ackResp.status()).toBe(200);
     expect((await ackResp.json()).data.status).toBe("acknowledged");
 
     // 3. Answer as the SECOND user — its diagnosis message's authorId is the
     //    second user (≠ escalation author), so it's a DIRECTED reply.
-    const answerResp = await page.request.post(
-      `/api/v1/escalations/${escId}/answer`,
-      { headers: bearer, data: { body: "the fix is X" } },
-    );
+    const answerResp = await page.request.post(`/api/v1/escalations/${escId}/answer`, {
+      headers: bearer,
+      data: { body: "the fix is X" },
+    });
     expect(answerResp.status()).toBe(200);
     expect((await answerResp.json()).data.status).toBe("answered");
 
@@ -213,9 +185,7 @@ test.describe("Escalation round-trip", () => {
     const entry = undeliv.find((u) => u.escalation.id === escId);
     expect(entry).toBeTruthy();
     expect(entry!.unreadCount).toBeGreaterThanOrEqual(1);
-    expect(
-      entry!.unreadMessages.some((m) => m.body === "the fix is X"),
-    ).toBeTruthy();
+    expect(entry!.unreadMessages.some((m) => m.body === "the fix is X")).toBeTruthy();
 
     // Isolation: the FIRST test's worker key must NOT carry this escalation.
     const otherResp = await page.request.get(
@@ -228,10 +198,9 @@ test.describe("Escalation round-trip", () => {
 
     // 5. Advance the delivery cursor to the max unread seq.
     const uptoSeq = Math.max(...entry!.unreadMessages.map((m) => m.seq));
-    const markResp = await page.request.post(
-      `/api/v1/escalations/${escId}/mark-delivered`,
-      { data: { workerKey: WORKER_KEY, uptoSeq } },
-    );
+    const markResp = await page.request.post(`/api/v1/escalations/${escId}/mark-delivered`, {
+      data: { workerKey: WORKER_KEY, uptoSeq },
+    });
     expect(markResp.status()).toBe(200);
 
     // 6. Undelivered for this worker no longer carries the escalation (cursor

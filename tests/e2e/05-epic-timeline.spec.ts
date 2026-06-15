@@ -24,17 +24,15 @@ test.describe("Epic Timeline (Roadmap)", () => {
     const projectId = project.id;
 
     // Two epics — create needs only `name` (createdBy is server-filled).
-    const epicAResp = await page.request.post(
-      `/api/v1/projects/${projectId}/epics`,
-      { data: { name: "Foundation epic" } },
-    );
+    const epicAResp = await page.request.post(`/api/v1/projects/${projectId}/epics`, {
+      data: { name: "Foundation epic" },
+    });
     expect(epicAResp.ok()).toBeTruthy();
     const epicA = (await epicAResp.json()).data;
 
-    const epicBResp = await page.request.post(
-      `/api/v1/projects/${projectId}/epics`,
-      { data: { name: "Dependent epic" } },
-    );
+    const epicBResp = await page.request.post(`/api/v1/projects/${projectId}/epics`, {
+      data: { name: "Dependent epic" },
+    });
     expect(epicBResp.ok()).toBeTruthy();
     const epicB = (await epicBResp.json()).data;
 
@@ -46,10 +44,9 @@ test.describe("Epic Timeline (Roadmap)", () => {
     expect(depResp.ok()).toBeTruthy();
 
     // A milestone with a target date exercises a vertical guide line.
-    const msResp = await page.request.post(
-      `/api/v1/projects/${projectId}/milestones`,
-      { data: { name: "Beta", targetDate: "2026-09-01T00:00:00.000Z" } },
-    );
+    const msResp = await page.request.post(`/api/v1/projects/${projectId}/milestones`, {
+      data: { name: "Beta", targetDate: "2026-09-01T00:00:00.000Z" },
+    });
     expect(msResp.ok()).toBeTruthy();
 
     // The page lives at /roadmap (NOT /timeline).
@@ -123,9 +120,9 @@ test.describe("Epic Timeline (Roadmap)", () => {
     // use div/span, so a heading-role locator can't match the in-transition DOM).
     await openEpicLink.click();
     await page.waitForURL("**/epics/**", { timeout: 10_000 });
-    await expect(
-      page.getByRole("heading", { name: "Foundation epic" }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "Foundation epic" })).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Past-rail ABSENT assertion (deterministic, not a soft skip):
     // API-seeded epics have activity_recency ≈ now → always partitioned to the
@@ -149,51 +146,41 @@ test.describe("Epic Timeline (Roadmap)", () => {
     const reporterId = await getCurrentUserId(page);
 
     // Two epics; only the first gets a task so we can assert scoping.
-    const epicResp = await page.request.post(
-      `/api/v1/projects/${projectId}/epics`,
-      { data: { name: "Scoped epic" } },
-    );
+    const epicResp = await page.request.post(`/api/v1/projects/${projectId}/epics`, {
+      data: { name: "Scoped epic" },
+    });
     expect(epicResp.ok()).toBeTruthy();
     const scopedEpic = (await epicResp.json()).data;
 
-    const otherEpicResp = await page.request.post(
-      `/api/v1/projects/${projectId}/epics`,
-      { data: { name: "Other epic" } },
-    );
+    const otherEpicResp = await page.request.post(`/api/v1/projects/${projectId}/epics`, {
+      data: { name: "Other epic" },
+    });
     expect(otherEpicResp.ok()).toBeTruthy();
     const otherEpic = (await otherEpicResp.json()).data;
 
     // One task under the scoped epic, one under the other epic.
-    const inEpicResp = await page.request.post(
-      `/api/v1/projects/${projectId}/tasks`,
-      {
-        data: {
-          title: "Task in scoped epic",
-          reporterId,
-          epicId: scopedEpic.id,
-          status: "ready",
-        },
+    const inEpicResp = await page.request.post(`/api/v1/projects/${projectId}/tasks`, {
+      data: {
+        title: "Task in scoped epic",
+        reporterId,
+        epicId: scopedEpic.id,
+        status: "ready",
       },
-    );
+    });
     expect(inEpicResp.ok()).toBeTruthy();
 
-    const otherTaskResp = await page.request.post(
-      `/api/v1/projects/${projectId}/tasks`,
-      {
-        data: {
-          title: "Task in other epic",
-          reporterId,
-          epicId: otherEpic.id,
-          status: "ready",
-        },
+    const otherTaskResp = await page.request.post(`/api/v1/projects/${projectId}/tasks`, {
+      data: {
+        title: "Task in other epic",
+        reporterId,
+        epicId: otherEpic.id,
+        status: "ready",
       },
-    );
+    });
     expect(otherTaskResp.ok()).toBeTruthy();
 
     // Drill directly to the epic-scoped board.
-    await page.goto(
-      `/projects/${projectId}/epics/${scopedEpic.id}/board`,
-    );
+    await page.goto(`/projects/${projectId}/epics/${scopedEpic.id}/board`);
 
     // Epic-scoped chrome: the back-to-epic link (deep-links to /epics/{id}) is
     // the stable marker that the board is scoped to a single epic. (The h1 shows
@@ -212,8 +199,6 @@ test.describe("Epic Timeline (Roadmap)", () => {
     // The epic-filter dropdown is absent (the epic is pinned by the route):
     // its trigger placeholder "Epic" (exact) and the "Group by Epic" toggle are gone.
     await expect(page.getByText("Epic", { exact: true })).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Group by Epic" }),
-    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Group by Epic" })).toHaveCount(0);
   });
 });

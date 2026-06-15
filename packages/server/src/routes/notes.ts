@@ -205,15 +205,21 @@ const listNotesQuery = z.object({
   severity: z.enum(NOTE_SEVERITIES).optional(),
 });
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const noteIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const noteIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 
@@ -457,10 +463,7 @@ export function createNoteRoutes(): OpenAPIHono<{
     const user = c.get("currentUser")!;
     // Advisory dedup BEFORE create (so the new note never matches itself);
     // `similar` is always present (`[]` when none) and never blocks the 201.
-    const similar = noteService.findSimilarOpenNotes(
-      projectId,
-      `${body.title} ${body.body ?? ""}`,
-    );
+    const similar = noteService.findSimilarOpenNotes(projectId, `${body.title} ${body.body ?? ""}`);
     // Author is always the caller — never accepted from the body.
     const note = noteService.create(projectId, body, user.id);
     return c.json({ data: note, similar }, 201);
@@ -493,7 +496,11 @@ export function createNoteRoutes(): OpenAPIHono<{
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const user = c.get("currentUser");
-    const note = noteService.dismiss(id, { id: user!.id, type: user!.type as UserType }, body.reason);
+    const note = noteService.dismiss(
+      id,
+      { id: user!.id, type: user!.type as UserType },
+      body.reason,
+    );
     return c.json({ data: note }, 200);
   });
 

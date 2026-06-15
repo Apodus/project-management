@@ -31,11 +31,7 @@ describe("Git Refs API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/git-refs`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/git-refs`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -44,11 +40,7 @@ describe("Git Refs API", () => {
     });
 
     it("should return 404 for non-existent task", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${createId()}/git-refs`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${createId()}/git-refs`);
       expect(res.status).toBe(404);
     });
 
@@ -61,31 +53,19 @@ describe("Git Refs API", () => {
       });
 
       // Create two refs
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/git-refs`,
-        { body: { refType: "branch", refValue: "feat/task-123" } },
-      );
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/git-refs`,
-        {
-          body: {
-            refType: "pull_request",
-            refValue: "456",
-            url: "https://github.com/org/repo/pull/456",
-            status: "open",
-          },
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/git-refs`, {
+        body: { refType: "branch", refValue: "feat/task-123" },
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/git-refs`, {
+        body: {
+          refType: "pull_request",
+          refValue: "456",
+          url: "https://github.com/org/repo/pull/456",
+          status: "open",
         },
-      );
+      });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/git-refs`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/git-refs`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -105,12 +85,9 @@ describe("Git Refs API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/git-refs`,
-        { body: { refType: "branch", refValue: "feat/implement-auth" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/git-refs`, {
+        body: { refType: "branch", refValue: "feat/implement-auth" },
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -129,21 +106,16 @@ describe("Git Refs API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/git-refs`,
-        {
-          body: {
-            refType: "pull_request",
-            refValue: "42",
-            url: "https://github.com/org/repo/pull/42",
-            title: "Add authentication middleware",
-            status: "open",
-            metadata: { reviewers: ["alice", "bob"] },
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/git-refs`, {
+        body: {
+          refType: "pull_request",
+          refValue: "42",
+          url: "https://github.com/org/repo/pull/42",
+          title: "Add authentication middleware",
+          status: "open",
+          metadata: { reviewers: ["alice", "bob"] },
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -162,18 +134,13 @@ describe("Git Refs API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/git-refs`,
-        {
-          body: {
-            refType: "commit",
-            refValue: "abc123def456",
-            title: "feat: add auth middleware",
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/git-refs`, {
+        body: {
+          refType: "commit",
+          refValue: "abc123def456",
+          title: "feat: add auth middleware",
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -182,12 +149,9 @@ describe("Git Refs API", () => {
     });
 
     it("should return 404 for non-existent task", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${createId()}/git-refs`,
-        { body: { refType: "branch", refValue: "feat/orphan" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${createId()}/git-refs`, {
+        body: { refType: "branch", refValue: "feat/orphan" },
+      });
       expect(res.status).toBe(404);
     });
 
@@ -234,17 +198,12 @@ describe("Git Refs API", () => {
       );
       const gitRef = (await createRes.json()).data;
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/git-refs/${gitRef.id}`,
-        {
-          body: {
-            status: "merged",
-            title: "Merged PR",
-          },
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/git-refs/${gitRef.id}`, {
+        body: {
+          status: "merged",
+          title: "Merged PR",
         },
-      );
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -253,12 +212,9 @@ describe("Git Refs API", () => {
     });
 
     it("should return 404 for non-existent git ref", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/git-refs/${createId()}`,
-        { body: { status: "closed" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/git-refs/${createId()}`, {
+        body: { status: "closed" },
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -282,32 +238,20 @@ describe("Git Refs API", () => {
       );
       const gitRef = (await createRes.json()).data;
 
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/git-refs/${gitRef.id}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/git-refs/${gitRef.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
       expect(body.data.id).toBe(gitRef.id);
 
       // Verify it's gone
-      const listRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/git-refs`,
-      );
+      const listRes = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/git-refs`);
       const listBody = await listRes.json();
       expect(listBody.data.length).toBe(0);
     });
 
     it("should return 404 for non-existent git ref", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/git-refs/${createId()}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/git-refs/${createId()}`);
       expect(res.status).toBe(404);
     });
   });

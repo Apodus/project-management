@@ -21,7 +21,8 @@ type ToolResult = { content?: unknown[] } & Record<string, unknown>;
 
 // ─── Throttle: dedupe concurrent + rate-limit the unread lookup ───────
 const FETCH_TTL_MS = 10_000;
-let fetchCache: { key: string; at: number; promise: Promise<UndeliveredEscalation[]> } | null = null;
+let fetchCache: { key: string; at: number; promise: Promise<UndeliveredEscalation[]> } | null =
+  null;
 
 /**
  * Fetch the caller's unread escalations, throttled to one live request per
@@ -93,10 +94,7 @@ async function appendEnvelope(
  */
 const PATCHED = Symbol.for("pm.piggyback.patched");
 
-export function withPiggyback(
-  server: McpServer,
-  getKey: () => string | undefined,
-): McpServer {
+export function withPiggyback(server: McpServer, getKey: () => string | undefined): McpServer {
   const marked = server as McpServer & { [PATCHED]?: boolean };
   if (marked[PATCHED]) return server;
   marked[PATCHED] = true;

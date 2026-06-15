@@ -9,14 +9,10 @@ test.describe("Setup and Login", () => {
   test("first visit redirects to /setup", async ({ page }) => {
     await page.goto("/");
     await page.waitForURL("**/setup");
-    await expect(
-      page.getByText("Welcome to Project Management"),
-    ).toBeVisible();
+    await expect(page.getByText("Welcome to Project Management")).toBeVisible();
   });
 
-  test("setup wizard creates admin and redirects to projects", async ({
-    page,
-  }) => {
+  test("setup wizard creates admin and redirects to projects", async ({ page }) => {
     await setupAdmin(page, {
       username: ADMIN_USER,
       displayName: ADMIN_DISPLAY,
@@ -24,9 +20,7 @@ test.describe("Setup and Login", () => {
     });
 
     // Verify we see the projects page heading
-    await expect(
-      page.getByRole("heading", { name: "Projects", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
   });
 
   test("logout redirects to login page", async ({ page }) => {
@@ -34,18 +28,14 @@ test.describe("Setup and Login", () => {
     await logout(page);
 
     // Verify we're on the login page
-    await expect(
-      page.locator('[data-slot="card-title"]', { hasText: "Sign In" }),
-    ).toBeVisible();
+    await expect(page.locator('[data-slot="card-title"]', { hasText: "Sign In" })).toBeVisible();
   });
 
   test("login with valid credentials shows projects", async ({ page }) => {
     await login(page, ADMIN_USER, ADMIN_PASS);
 
     // Verify we see the projects page heading
-    await expect(
-      page.getByRole("heading", { name: "Projects", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
   });
 
   test("invalid login shows error message", async ({ page }) => {

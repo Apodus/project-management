@@ -1,6 +1,15 @@
 import { eq, and, desc, count, gt, ne, inArray } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import { getDb, activityLog, tasks, epics, proposals, projects, users, notes } from "../db/index.js";
+import {
+  getDb,
+  activityLog,
+  tasks,
+  epics,
+  proposals,
+  projects,
+  users,
+  notes,
+} from "../db/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -240,11 +249,7 @@ export function logActivity(data: LogActivityInput) {
     })
     .run();
 
-  return db
-    .select()
-    .from(activityLog)
-    .where(eq(activityLog.id, id))
-    .get()!;
+  return db.select().from(activityLog).where(eq(activityLog.id, id)).get()!;
 }
 
 /**
@@ -253,9 +258,7 @@ export function logActivity(data: LogActivityInput) {
 export function listByProject(projectId: string, options?: ActivityListOptions) {
   const db = getDb();
 
-  const conditions: ReturnType<typeof eq>[] = [
-    eq(activityLog.projectId, projectId),
-  ];
+  const conditions: ReturnType<typeof eq>[] = [eq(activityLog.projectId, projectId)];
 
   if (options?.entityType) {
     conditions.push(eq(activityLog.entityType, options.entityType));
@@ -316,10 +319,7 @@ export function listByEntity(
 ) {
   const db = getDb();
 
-  const conditions = [
-    eq(activityLog.entityType, entityType),
-    eq(activityLog.entityId, entityId),
-  ];
+  const conditions = [eq(activityLog.entityType, entityType), eq(activityLog.entityId, entityId)];
 
   // Count total
   const totalResult = db

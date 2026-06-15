@@ -53,9 +53,7 @@ describe("trainStateSchema", () => {
   });
 
   it("rejects an unknown state", () => {
-    expect(() =>
-      trainStateSchema.parse({ ...runningRow, state: "stopped" }),
-    ).toThrow();
+    expect(() => trainStateSchema.parse({ ...runningRow, state: "stopped" })).toThrow();
   });
 
   it("rejects a missing resource", () => {

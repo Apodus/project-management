@@ -117,12 +117,10 @@ function ChangesDetail({ changes }: { changes: unknown }) {
       {parsed.map((change) => (
         <span
           key={change.field}
-          className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground"
+          className="bg-muted/50 text-muted-foreground inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs"
         >
           <span className="font-medium">{formatStatus(change.field)}:</span>
-          <span className="line-through opacity-60">
-            {formatChangeValue(change.from)}
-          </span>
+          <span className="line-through opacity-60">{formatChangeValue(change.from)}</span>
           <ArrowRight className="size-3" />
           <span className="font-medium">{formatChangeValue(change.to)}</span>
         </span>
@@ -148,13 +146,10 @@ function ActivityEntry({ entry, actorName, actorType }: ActivityEntryProps) {
   const displayTitle = entry.entityTitle ?? entry.entityId.slice(0, 8);
 
   return (
-    <div className="flex gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/30">
+    <div className="bg-card hover:bg-muted/30 flex gap-3 rounded-lg border p-4 transition-colors">
       {/* Action icon */}
       <div
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-full",
-          iconColor,
-        )}
+        className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", iconColor)}
       >
         <Icon className="size-4" />
       </div>
@@ -163,17 +158,14 @@ function ActivityEntry({ entry, actorName, actorType }: ActivityEntryProps) {
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm">
-            <span className="font-medium">{displayActorName}</span>
-            {" "}
-            <span className="text-muted-foreground">{formatStatus(entry.action).toLowerCase()}</span>
-            {" "}
-            <span className="text-muted-foreground">{entry.entityType}</span>
-            {" "}
-            <span className="font-medium">
-              &apos;{displayTitle}&apos;
-            </span>
+            <span className="font-medium">{displayActorName}</span>{" "}
+            <span className="text-muted-foreground">
+              {formatStatus(entry.action).toLowerCase()}
+            </span>{" "}
+            <span className="text-muted-foreground">{entry.entityType}</span>{" "}
+            <span className="font-medium">&apos;{displayTitle}&apos;</span>
             {entry.epicName && (
-              <span className="text-muted-foreground/70 text-xs ml-1">
+              <span className="text-muted-foreground/70 ml-1 text-xs">
                 (Epic: {entry.epicName})
               </span>
             )}
@@ -184,21 +176,21 @@ function ActivityEntry({ entry, actorName, actorType }: ActivityEntryProps) {
             {isAI ? (
               <Badge
                 variant="secondary"
-                className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                className="bg-blue-100 text-[10px] text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
               >
                 AI
               </Badge>
             ) : (
               <Badge
                 variant="secondary"
-                className="text-[10px] bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400"
+                className="bg-gray-100 text-[10px] text-gray-600 dark:bg-gray-800/40 dark:text-gray-400"
               >
                 Human
               </Badge>
             )}
 
             {/* Timestamp */}
-            <span className="whitespace-nowrap text-xs text-muted-foreground/60">
+            <span className="text-muted-foreground/60 whitespace-nowrap text-xs">
               {formatRelativeTime(entry.createdAt)}
             </span>
           </div>
@@ -241,9 +233,7 @@ export function ActivityPage() {
 
   // Fetch users for actor name display
   const { data: users } = useUsers();
-  const userMap = new Map(
-    (users ?? []).map((u) => [u.id, { name: u.displayName, type: u.type }]),
-  );
+  const userMap = new Map((users ?? []).map((u) => [u.id, { name: u.displayName, type: u.type }]));
 
   // Filter state
   const [entityTypeFilter, setEntityTypeFilter] = useState<string>("");
@@ -259,8 +249,7 @@ export function ActivityPage() {
   // Build filters
   const effectiveEntityType =
     entityTypeFilter && entityTypeFilter !== "all" ? entityTypeFilter : "";
-  const effectiveActorId =
-    actorFilter && actorFilter !== "all" ? actorFilter : "";
+  const effectiveActorId = actorFilter && actorFilter !== "all" ? actorFilter : "";
 
   const filters: ActivityFilters = {
     ...(effectiveEntityType ? { entity_type: effectiveEntityType } : {}),
@@ -279,7 +268,7 @@ export function ActivityPage() {
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <Activity className="size-6 text-muted-foreground" />
+        <Activity className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Activity</h1>
         {project && (
           <Badge variant="outline" className="text-xs font-normal">
@@ -290,10 +279,8 @@ export function ActivityPage() {
 
       {/* Error state */}
       {error && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
-          <p className="text-sm text-destructive">
-            Failed to load activity. Please try again.
-          </p>
+        <div className="border-destructive/50 bg-destructive/10 flex flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">Failed to load activity. Please try again.</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             Retry
           </Button>
@@ -349,20 +336,15 @@ export function ActivityPage() {
       {/* Activity list */}
       <div className="space-y-3">
         {/* Loading */}
-        {isLoading &&
-          Array.from({ length: 6 }).map((_, i) => <ActivitySkeleton key={i} />)}
+        {isLoading && Array.from({ length: 6 }).map((_, i) => <ActivitySkeleton key={i} />)}
 
         {/* Empty state */}
         {!isLoading && entries.length === 0 && (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
-            <Activity className="mb-3 size-10 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              No activity found
-            </p>
+            <Activity className="text-muted-foreground/40 mb-3 size-10" />
+            <p className="text-muted-foreground text-sm">No activity found</p>
             {(effectiveEntityType || effectiveActorId) && (
-              <p className="mt-1 text-xs text-muted-foreground/60">
-                Try adjusting your filters
-              </p>
+              <p className="text-muted-foreground/60 mt-1 text-xs">Try adjusting your filters</p>
             )}
           </div>
         )}
@@ -385,7 +367,7 @@ export function ActivityPage() {
       {/* Pagination */}
       {pagination && totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Page {pagination.page} of {totalPages}
             {pagination.total > 0 && (
               <span className="ml-2">

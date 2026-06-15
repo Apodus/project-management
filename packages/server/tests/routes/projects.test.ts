@@ -357,9 +357,7 @@ describe("Projects API", () => {
         body: integratorSettings({
           cache_enabled: true,
           cache_mode: "on",
-          verify_steps: [
-            { id: "verify", command: "pnpm verify", cache_key_inputs: ["node -v"] },
-          ],
+          verify_steps: [{ id: "verify", command: "pnpm verify", cache_key_inputs: ["node -v"] }],
         }),
       });
       expect(res.status).toBe(200);

@@ -1,9 +1,5 @@
 import { test, expect } from "@playwright/test";
-import {
-  login,
-  createProjectViaAPI,
-  getCurrentUserId,
-} from "./helpers";
+import { login, createProjectViaAPI, getCurrentUserId } from "./helpers";
 
 const ADMIN_USER = "admin";
 const ADMIN_PASS = "password123";
@@ -26,15 +22,12 @@ async function createTask(
 ): Promise<{ id: string; title: string; status: string }> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const response = await page.request.post(
-        `/api/v1/projects/${projectId}/tasks`,
-        {
-          data: {
-            reporterId: userId,
-            ...data,
-          },
+      const response = await page.request.post(`/api/v1/projects/${projectId}/tasks`, {
+        data: {
+          reporterId: userId,
+          ...data,
         },
-      );
+      });
       expect(response.ok()).toBeTruthy();
       const json = await response.json();
       return json.data;
@@ -106,9 +99,7 @@ test.describe("Task Management", () => {
     await expect(page.getByText("Write unit tests")).toBeVisible();
   });
 
-  test("click task to view detail, change status, verify on reload", async ({
-    page,
-  }) => {
+  test("click task to view detail, change status, verify on reload", async ({ page }) => {
     await login(page, ADMIN_USER, ADMIN_PASS);
 
     // Create a specific task
@@ -128,21 +119,21 @@ test.describe("Task Management", () => {
 
     // Change status via the API (more reliable than UI Select component)
     // Task starts in "backlog" status, transition to "ready" first, then to "in_progress"
-    const readyResponse = await page.request.post(
-      `/api/v1/tasks/${task.id}/transitions`,
-      {
-        data: { to_status: "ready" },
-      },
-    );
-    expect(readyResponse.ok(), `Ready transition failed: ${readyResponse.status()} ${await readyResponse.text()}`).toBeTruthy();
+    const readyResponse = await page.request.post(`/api/v1/tasks/${task.id}/transitions`, {
+      data: { to_status: "ready" },
+    });
+    expect(
+      readyResponse.ok(),
+      `Ready transition failed: ${readyResponse.status()} ${await readyResponse.text()}`,
+    ).toBeTruthy();
 
-    const inProgressResponse = await page.request.post(
-      `/api/v1/tasks/${task.id}/transitions`,
-      {
-        data: { to_status: "in_progress" },
-      },
-    );
-    expect(inProgressResponse.ok(), `In-progress transition failed: ${inProgressResponse.status()} ${await inProgressResponse.text()}`).toBeTruthy();
+    const inProgressResponse = await page.request.post(`/api/v1/tasks/${task.id}/transitions`, {
+      data: { to_status: "in_progress" },
+    });
+    expect(
+      inProgressResponse.ok(),
+      `In-progress transition failed: ${inProgressResponse.status()} ${await inProgressResponse.text()}`,
+    ).toBeTruthy();
 
     // Reload the page and verify the status persisted
     await page.reload();
@@ -161,18 +152,14 @@ test.describe("Task Management", () => {
     await page.goto(`/projects/${projectId}/board`);
 
     // Wait for the board page to fully render
-    await expect(
-      page.locator("h1", { hasText: "Board" }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("h1", { hasText: "Board" })).toBeVisible({ timeout: 10_000 });
 
     // If the board shows an error, retry with a full page reload
     const retryButton = page.getByRole("button", { name: "Retry" });
     for (let attempt = 0; attempt < 3; attempt++) {
       if (await retryButton.isVisible({ timeout: 2_000 }).catch(() => false)) {
         await page.reload();
-        await expect(
-          page.locator("h1", { hasText: "Board" }),
-        ).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator("h1", { hasText: "Board" })).toBeVisible({ timeout: 10_000 });
       } else {
         break;
       }

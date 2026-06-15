@@ -11,8 +11,16 @@ const CLAIM_TTL_MS = 60 * 60 * 1000; // 1 hour
 const BCRYPT_ROUNDS = 10;
 
 const GREEK_NAMES = [
-  "Alpha", "Beta", "Gamma", "Delta", "Epsilon",
-  "Zeta", "Eta", "Theta", "Iota", "Kappa",
+  "Alpha",
+  "Beta",
+  "Gamma",
+  "Delta",
+  "Epsilon",
+  "Zeta",
+  "Eta",
+  "Theta",
+  "Iota",
+  "Kappa",
 ];
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -78,11 +86,7 @@ export async function createPool(
   const db = getDb();
 
   // Check for duplicate name
-  const existing = db
-    .select()
-    .from(agentPools)
-    .where(eq(agentPools.name, name))
-    .get();
+  const existing = db.select().from(agentPools).where(eq(agentPools.name, name)).get();
   if (existing) {
     throw new AppError(409, "POOL_NAME_EXISTS", `A pool named "${name}" already exists`);
   }
@@ -103,7 +107,14 @@ export async function createPool(
     })
     .run();
 
-  return { id, name, description: description ?? null, createdAt: ts, updatedAt: ts, createdBy: createdBy ?? null };
+  return {
+    id,
+    name,
+    description: description ?? null,
+    createdAt: ts,
+    updatedAt: ts,
+    createdBy: createdBy ?? null,
+  };
 }
 
 /**
@@ -125,9 +136,9 @@ export function deletePool(poolId: string): void {
 
   // Delete all claims for agents in this pool
   const rawDb = getRawDb();
-  rawDb.prepare(
-    `DELETE FROM agent_claims WHERE user_id IN (SELECT id FROM users WHERE pool_id = ?)`,
-  ).run(poolId);
+  rawDb
+    .prepare(`DELETE FROM agent_claims WHERE user_id IN (SELECT id FROM users WHERE pool_id = ?)`)
+    .run(poolId);
 
   // Delete the pool
   db.delete(agentPools).where(eq(agentPools.id, poolId)).run();
@@ -228,16 +239,16 @@ export function listPools(): PoolSummary[] {
        ORDER BY p.name ASC`,
     )
     .all(now, now) as Array<{
-      id: string;
-      name: string;
-      description: string | null;
-      created_at: string;
-      updated_at: string;
-      created_by: string | null;
-      agent_count: number;
-      claimed_count: number;
-      available_count: number;
-    }>;
+    id: string;
+    name: string;
+    description: string | null;
+    created_at: string;
+    updated_at: string;
+    created_by: string | null;
+    agent_count: number;
+    claimed_count: number;
+    available_count: number;
+  }>;
 
   return rows.map((r) => ({
     id: r.id,
@@ -262,7 +273,16 @@ export async function createAgentPool(
   poolId: string,
   count: number,
   namePrefix?: string,
-): Promise<Array<{ id: string; username: string; displayName: string; role: string; type: string; poolId: string }>> {
+): Promise<
+  Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    role: string;
+    type: string;
+    poolId: string;
+  }>
+> {
   const db = getDb();
   const ts = new Date().toISOString();
 
@@ -271,7 +291,14 @@ export async function createAgentPool(
     throw new AppError(404, "POOL_NOT_FOUND", "Pool not found");
   }
 
-  const created: Array<{ id: string; username: string; displayName: string; role: string; type: string; poolId: string }> = [];
+  const created: Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    role: string;
+    type: string;
+    poolId: string;
+  }> = [];
 
   for (let i = 0; i < count; i++) {
     const id = createId();
@@ -284,17 +311,14 @@ export async function createAgentPool(
     } else {
       const greekName = i < GREEK_NAMES.length ? GREEK_NAMES[i] : `Agent ${i + 1}`;
       displayName = i < GREEK_NAMES.length ? `${pool.name}-${greekName}` : greekName;
-      username = i < GREEK_NAMES.length
-        ? `${pool.name}-${greekName.toLowerCase()}`
-        : `${pool.name}-agent-${i + 1}`;
+      username =
+        i < GREEK_NAMES.length
+          ? `${pool.name}-${greekName.toLowerCase()}`
+          : `${pool.name}-agent-${i + 1}`;
     }
 
     // Check for duplicate username and append a suffix if needed
-    const existing = db
-      .select()
-      .from(users)
-      .where(eq(users.username, username))
-      .get();
+    const existing = db.select().from(users).where(eq(users.username, username)).get();
     if (existing) {
       const suffix = createId().slice(0, 4);
       username = `${username}-${suffix}`;
@@ -637,14 +661,9 @@ export function getPoolStatus(poolId: string): PoolAgentStatus[] {
     .all();
 
   // Get all active (non-expired) claims
-  const activeClaims = db
-    .select()
-    .from(agentClaims)
-    .all();
+  const activeClaims = db.select().from(agentClaims).all();
 
-  const claimMap = new Map(
-    activeClaims.map((c) => [c.userId, c]),
-  );
+  const claimMap = new Map(activeClaims.map((c) => [c.userId, c]));
 
   return agents.map((agent) => {
     const claim = claimMap.get(agent.id);
@@ -684,14 +703,9 @@ export function getAllPoolStatus(): PoolAgentStatus[] {
     .filter((u) => u.poolId != null);
 
   // Get all claims
-  const activeClaims = db
-    .select()
-    .from(agentClaims)
-    .all();
+  const activeClaims = db.select().from(agentClaims).all();
 
-  const claimMap = new Map(
-    activeClaims.map((c) => [c.userId, c]),
-  );
+  const claimMap = new Map(activeClaims.map((c) => [c.userId, c]));
 
   return agents.map((agent) => {
     const claim = claimMap.get(agent.id);
@@ -757,8 +771,7 @@ export function removeAgentFromPool(poolId: string, userId: string): RemoveAgent
       typeof err === "object" && err !== null && "code" in err
         ? (err as { code?: unknown }).code
         : undefined;
-    const message =
-      err instanceof Error ? err.message : undefined;
+    const message = err instanceof Error ? err.message : undefined;
     if (
       code === "SQLITE_CONSTRAINT" ||
       code === "SQLITE_CONSTRAINT_FOREIGNKEY" ||

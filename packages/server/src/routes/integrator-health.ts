@@ -6,15 +6,22 @@ import type { IntegratorHealthView } from "../services/health.service.js";
 
 // ─── Param schema ─────────────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const resourceQuery = z.string().min(1).optional().openapi({
-  param: { name: "resource", in: "query" },
-  example: "main",
-});
+const resourceQuery = z
+  .string()
+  .min(1)
+  .optional()
+  .openapi({
+    param: { name: "resource", in: "query" },
+    example: "main",
+  });
 
 // ─── Heartbeat body (§3.2) — Zod-4 mirror, snake_case on the wire ──
 // The integrator MINTS the payload; PM denormalizes it onto the health row.
@@ -94,10 +101,22 @@ const heartbeatRoute = createRoute({
       description: "Heartbeat recorded",
       content: { "application/json": { schema: healthEnvelope } },
     },
-    400: { description: "Validation error", content: { "application/json": { schema: errorEnvelope } } },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    403: { description: "Integrator (ai_agent) only", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator (ai_agent) only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -117,8 +136,14 @@ const healthRoute = createRoute({
       description: "The lane health view",
       content: { "application/json": { schema: healthEnvelope } },
     },
-    401: { description: "Authentication required", content: { "application/json": { schema: errorEnvelope } } },
-    404: { description: "Project not found", content: { "application/json": { schema: errorEnvelope } } },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
   },
 });
 
@@ -162,11 +187,7 @@ export function createIntegratorHealthRoutes(): OpenAPIHono<{
     const user = requireUser(c.get("currentUser") as AuthUser | null);
 
     if (user.type !== "ai_agent") {
-      throw new AppError(
-        403,
-        "FORBIDDEN",
-        "Only integrator (ai_agent) users may post heartbeats.",
-      );
+      throw new AppError(403, "FORBIDDEN", "Only integrator (ai_agent) users may post heartbeats.");
     }
 
     const body = c.req.valid("json");

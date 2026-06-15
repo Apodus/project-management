@@ -54,11 +54,7 @@ export function listByProposal(proposalId: string) {
   const db = getDb();
 
   // Verify proposal exists
-  const proposal = db
-    .select()
-    .from(proposals)
-    .where(eq(proposals.id, proposalId))
-    .get();
+  const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
   if (!proposal) {
     throw new AppError(404, "NOT_FOUND", `Proposal not found: ${proposalId}`);
   }
@@ -113,28 +109,16 @@ export function create(data: CreateCommentInput) {
 
   // Verify parent exists
   if (hasTask) {
-    const task = db
-      .select()
-      .from(tasks)
-      .where(eq(tasks.id, data.taskId!))
-      .get();
+    const task = db.select().from(tasks).where(eq(tasks.id, data.taskId!)).get();
     if (!task) {
       throw new AppError(404, "NOT_FOUND", `Task not found: ${data.taskId}`);
     }
   }
 
   if (hasProposal) {
-    const proposal = db
-      .select()
-      .from(proposals)
-      .where(eq(proposals.id, data.proposalId!))
-      .get();
+    const proposal = db.select().from(proposals).where(eq(proposals.id, data.proposalId!)).get();
     if (!proposal) {
-      throw new AppError(
-        404,
-        "NOT_FOUND",
-        `Proposal not found: ${data.proposalId}`,
-      );
+      throw new AppError(404, "NOT_FOUND", `Proposal not found: ${data.proposalId}`);
     }
   }
 
@@ -162,11 +146,7 @@ export function create(data: CreateCommentInput) {
 export function update(id: string, data: UpdateCommentInput) {
   const db = getDb();
 
-  const existing = db
-    .select()
-    .from(comments)
-    .where(eq(comments.id, id))
-    .get();
+  const existing = db.select().from(comments).where(eq(comments.id, id)).get();
 
   if (!existing) {
     throw new AppError(404, "NOT_FOUND", `Comment not found: ${id}`);
@@ -190,11 +170,7 @@ export function update(id: string, data: UpdateCommentInput) {
 export function deleteComment(id: string) {
   const db = getDb();
 
-  const existing = db
-    .select()
-    .from(comments)
-    .where(eq(comments.id, id))
-    .get();
+  const existing = db.select().from(comments).where(eq(comments.id, id)).get();
 
   if (!existing) {
     throw new AppError(404, "NOT_FOUND", `Comment not found: ${id}`);

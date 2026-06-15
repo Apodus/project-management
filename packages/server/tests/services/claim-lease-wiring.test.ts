@@ -48,12 +48,7 @@ describe("claim-lease wiring (P3)", () => {
     return testApp.db
       .select()
       .from(claimLeases)
-      .where(
-        and(
-          eq(claimLeases.entityType, entityType),
-          eq(claimLeases.entityId, entityId),
-        ),
-      )
+      .where(and(eq(claimLeases.entityType, entityType), eq(claimLeases.entityId, entityId)))
       .get();
   }
 
@@ -61,12 +56,7 @@ describe("claim-lease wiring (P3)", () => {
     return testApp.db
       .select()
       .from(claimLeases)
-      .where(
-        and(
-          eq(claimLeases.entityType, entityType),
-          eq(claimLeases.entityId, entityId),
-        ),
-      )
+      .where(and(eq(claimLeases.entityType, entityType), eq(claimLeases.entityId, entityId)))
       .all();
   }
 
@@ -111,9 +101,7 @@ describe("claim-lease wiring (P3)", () => {
     expect(initial.holderId).toBe(a.user.id);
 
     // Advance well past TTL + grace — the lease is "stale" by liveness.
-    const later = new Date(
-      t0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000,
-    );
+    const later = new Date(t0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000);
     vi.setSystemTime(later);
 
     // A's own write (a non-status update) must NOT be denied — and it heals
@@ -124,12 +112,8 @@ describe("claim-lease wiring (P3)", () => {
 
     const after = leaseRow("task", task.id)!;
     expect(after.holderId).toBe(a.user.id);
-    expect(Date.parse(after.expiresAt)).toBeGreaterThan(
-      Date.parse(initial.expiresAt),
-    );
-    expect(after.expiresAt).toBe(
-      new Date(later.getTime() + LEASE_TTL_MS_DEFAULT).toISOString(),
-    );
+    expect(Date.parse(after.expiresAt)).toBeGreaterThan(Date.parse(initial.expiresAt));
+    expect(after.expiresAt).toBe(new Date(later.getTime() + LEASE_TTL_MS_DEFAULT).toISOString());
   });
 
   // ── 2. Self-stale create-if-missing (legacy holder, no lease row) ──
@@ -210,9 +194,7 @@ describe("claim-lease wiring (P3)", () => {
 
     const after = leaseRow("task", task.id)!;
     expect(after.id).toBe(before.id);
-    expect(Date.parse(after.expiresAt)).toBeGreaterThan(
-      Date.parse(before.expiresAt),
-    );
+    expect(Date.parse(after.expiresAt)).toBeGreaterThan(Date.parse(before.expiresAt));
   });
 
   // ── 5. Release deletes the lease (task/epic/proposal) ─────────────
@@ -319,9 +301,9 @@ describe("claim-lease wiring (P3)", () => {
 
     taskSvc.claim(task.id, aiActor(a.user.id));
 
-    expect(() =>
-      taskSvc.update(task.id, { title: "not mine" }, aiActor(b.user.id)),
-    ).toThrow(/claimed by another agent/i);
+    expect(() => taskSvc.update(task.id, { title: "not mine" }, aiActor(b.user.id))).toThrow(
+      /claimed by another agent/i,
+    );
 
     // The lease still belongs to A — B created nothing.
     const rows = leaseRows("task", task.id);
@@ -366,9 +348,7 @@ describe("claim-lease wiring (P3)", () => {
     });
     taskSvc.claim(stale.id, aiActor(a.user.id)); // idempotent re-claim arms lease
 
-    const later = new Date(
-      t0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000,
-    );
+    const later = new Date(t0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000);
     vi.setSystemTime(later);
 
     let reclaimed = 0;
@@ -392,11 +372,7 @@ describe("claim-lease wiring (P3)", () => {
     const staleLease = leaseRow("task", stale.id);
     expect(staleLease).toBeDefined();
     expect(staleLease!.holderId).toBe(a.user.id);
-    const staleTask = testApp.db
-      .select()
-      .from(tasks)
-      .where(eq(tasks.id, stale.id))
-      .get()!;
+    const staleTask = testApp.db.select().from(tasks).where(eq(tasks.id, stale.id)).get()!;
     expect(staleTask.assigneeId).toBe(a.user.id);
     expect(reclaimed).toBe(0);
   });
@@ -466,17 +442,11 @@ describe("claim-lease wiring (P3)", () => {
     const epic = createTestEpic(testApp.db, { projectId: project.id });
     expect(epicSvc.claim(epic.id, aiActor(a.user.id)).ok).toBe(true);
     expect(leaseRow("epic", epic.id)!.holderId).toBe(a.user.id);
-    const claimedEpic = testApp.db
-      .select()
-      .from(epics)
-      .where(eq(epics.id, epic.id))
-      .get()!;
+    const claimedEpic = testApp.db.select().from(epics).where(eq(epics.id, epic.id)).get()!;
     expect(claimedEpic.assigneeId).toBe(a.user.id);
 
     // Lapse past TTL + grace, then run the sweep in mode `on` explicitly.
-    const later = new Date(
-      t0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000,
-    );
+    const later = new Date(t0.getTime() + LEASE_TTL_MS_DEFAULT + LEASE_GRACE_MS_DEFAULT + 60_000);
     const result = claimLeaseSvc.sweepStaleClaims({
       entityType: "epic",
       entityId: epic.id,
@@ -486,8 +456,7 @@ describe("claim-lease wiring (P3)", () => {
     expect(result.reclaimed).toHaveLength(1);
     expect(leaseRow("epic", epic.id)).toBeUndefined();
     expect(
-      testApp.db.select().from(epics).where(eq(epics.id, epic.id)).get()!
-        .assigneeId,
+      testApp.db.select().from(epics).where(eq(epics.id, epic.id)).get()!.assigneeId,
     ).toBeNull();
   });
 });

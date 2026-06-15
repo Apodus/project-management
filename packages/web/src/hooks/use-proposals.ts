@@ -18,8 +18,7 @@ export const proposalKeys = {
   // Project-scoped list prefix (Campaign C3 P5): TanStack v5 partial object
   // matching — invalidating [..., "list", {projectId}] matches every list()
   // key whose trailing object contains that projectId, and no other project's.
-  listsFor: (projectId: string) =>
-    [...proposalKeys.lists(), { projectId }] as const,
+  listsFor: (projectId: string) => [...proposalKeys.lists(), { projectId }] as const,
   list: (projectId: string, status?: string) =>
     [...proposalKeys.lists(), { projectId, status }] as const,
   details: () => [...proposalKeys.all, "detail"] as const,
@@ -63,13 +62,8 @@ export function useProposalWorkItems(id: string | undefined) {
 export function useCreateProposal() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      projectId,
-      data,
-    }: {
-      projectId: string;
-      data: CreateProposal;
-    }) => createProposal(projectId, data),
+    mutationFn: ({ projectId, data }: { projectId: string; data: CreateProposal }) =>
+      createProposal(projectId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: proposalKeys.lists() });
     },
@@ -79,8 +73,7 @@ export function useCreateProposal() {
 export function useUpdateProposal() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateProposal }) =>
-      updateProposal(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UpdateProposal }) => updateProposal(id, data),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: proposalKeys.lists() });
       queryClient.invalidateQueries({
@@ -93,15 +86,8 @@ export function useUpdateProposal() {
 export function useTransitionProposal() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      toStatus,
-      actorId,
-    }: {
-      id: string;
-      toStatus: string;
-      actorId?: string;
-    }) => transitionProposal(id, toStatus, actorId),
+    mutationFn: ({ id, toStatus, actorId }: { id: string; toStatus: string; actorId?: string }) =>
+      transitionProposal(id, toStatus, actorId),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: proposalKeys.lists() });
       queryClient.invalidateQueries({
@@ -114,15 +100,8 @@ export function useTransitionProposal() {
 export function useAddProposalComment() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      body,
-      type,
-    }: {
-      id: string;
-      body: string;
-      type?: string;
-    }) => addProposalComment(id, body, type),
+    mutationFn: ({ id, body, type }: { id: string; body: string; type?: string }) =>
+      addProposalComment(id, body, type),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: proposalKeys.comments(variables.id),

@@ -1,10 +1,7 @@
 import { Outlet } from "@tanstack/react-router";
 import { Header } from "./header";
 import { Sidebar } from "./sidebar";
-import {
-  CommandPalette,
-  useCommandPalette,
-} from "@/components/command-palette";
+import { CommandPalette, useCommandPalette } from "@/components/command-palette";
 import {
   KeyboardShortcutsDialog,
   useKeyboardShortcuts,
@@ -21,10 +18,8 @@ import { useProjectStore } from "@/stores/project-store";
 export function AppLayout() {
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
   const { data: currentUser } = useCurrentUser();
-  const { open: commandPaletteOpen, setOpen: setCommandPaletteOpen } =
-    useCommandPalette();
-  const { open: shortcutsOpen, setOpen: setShortcutsOpen } =
-    useKeyboardShortcuts();
+  const { open: commandPaletteOpen, setOpen: setCommandPaletteOpen } = useCommandPalette();
+  const { open: shortcutsOpen, setOpen: setShortcutsOpen } = useKeyboardShortcuts();
 
   // Establish SSE connection for real-time updates, scoped to current project
   useSSE(currentProjectId, currentUser?.id);
@@ -59,14 +54,8 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
-      <CommandPalette
-        open={commandPaletteOpen}
-        onOpenChange={setCommandPaletteOpen}
-      />
-      <KeyboardShortcutsDialog
-        open={shortcutsOpen}
-        onOpenChange={setShortcutsOpen}
-      />
+      <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+      <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }

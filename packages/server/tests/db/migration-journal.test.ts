@@ -130,9 +130,7 @@ describe("migration log heal + boot assertion", () => {
     const healedRaw = getRawDb();
 
     const cols = (
-      healedRaw
-        .prepare(`PRAGMA table_info(${LAST_COLUMN_CHECK.table})`)
-        .all() as { name: string }[]
+      healedRaw.prepare(`PRAGMA table_info(${LAST_COLUMN_CHECK.table})`).all() as { name: string }[]
     ).map((c) => c.name);
     expect(cols).toContain(LAST_COLUMN_CHECK.column);
 

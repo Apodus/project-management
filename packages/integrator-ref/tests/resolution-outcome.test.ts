@@ -123,7 +123,12 @@ function makeDeps(opts: {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const onOutcome = makeOnOutcome({ pmClient: pmClient as any, makeGitOps: makeGitOps as any, logger, cfg });
+  const onOutcome = makeOnOutcome({
+    pmClient: pmClient as any,
+    makeGitOps: makeGitOps as any,
+    logger,
+    cfg,
+  });
   return { onOutcome, pmClient, calls };
 }
 
@@ -289,7 +294,9 @@ describe("makeOnOutcome — escalate", () => {
     const { onOutcome, pmClient } = makeDeps({});
     await onOutcome(makeEscalateOutcome({ state: "failed", reason: "infra_error" }));
     expect(pmClient.escalateResolution).toHaveBeenCalledTimes(1);
-    expect((pmClient.escalateResolution.mock.calls[0][1] as { state: string }).state).toBe("failed");
+    expect((pmClient.escalateResolution.mock.calls[0][1] as { state: string }).state).toBe(
+      "failed",
+    );
   });
 
   it("(f) null origin.taskId on escalate ⇒ no comment, no throw", async () => {

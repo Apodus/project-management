@@ -115,9 +115,7 @@ describe("TaskListPage claim badge", () => {
   });
 
   it("renders NO claim badge for an unclaimed task", () => {
-    tasksData = [
-      makeTask({ id: "t1", title: "Unclaimed task", claimState: "unclaimed" }),
-    ];
+    tasksData = [makeTask({ id: "t1", title: "Unclaimed task", claimState: "unclaimed" })];
     renderPage();
     expect(screen.getByText("Unclaimed task")).toBeInTheDocument();
     expect(screen.queryByText("Stale")).not.toBeInTheDocument();

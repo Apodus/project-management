@@ -31,11 +31,7 @@ describe("Comments API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/comments`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/comments`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -59,11 +55,7 @@ describe("Comments API", () => {
         body: { body: "Second comment" },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/comments`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/comments`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -87,11 +79,7 @@ describe("Comments API", () => {
         body: { body: "Second" },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/comments`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/comments`);
       const body = await res.json();
       expect(body.data[0].body).toBe("First");
       expect(body.data[1].body).toBe("Second");
@@ -99,11 +87,7 @@ describe("Comments API", () => {
 
     it("should return 404 for non-existent task", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${fakeId}/comments`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/tasks/${fakeId}/comments`);
       expect(res.status).toBe(404);
     });
   });
@@ -118,16 +102,11 @@ describe("Comments API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/comments`,
-        {
-          body: {
-            body: "This is a comment",
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
+        body: {
+          body: "This is a comment",
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -148,14 +127,9 @@ describe("Comments API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/comments`,
-        {
-          body: {},
-        },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
+        body: {},
+      });
       expect(res.status).toBe(400);
     });
 
@@ -167,17 +141,12 @@ describe("Comments API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/comments`,
-        {
-          body: {
-            body: "Some comment",
-            commentType: "invalid_type",
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
+        body: {
+          body: "Some comment",
+          commentType: "invalid_type",
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
@@ -189,17 +158,12 @@ describe("Comments API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/comments`,
-        {
-          body: {
-            body: "Progress report",
-            commentType: "progress_update",
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
+        body: {
+          body: "Progress report",
+          commentType: "progress_update",
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -210,14 +174,9 @@ describe("Comments API", () => {
       const user = createTestUser(testApp.db);
       const fakeId = createId();
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${fakeId}/comments`,
-        {
-          body: { body: "Comment on nothing" },
-        },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${fakeId}/comments`, {
+        body: { body: "Comment on nothing" },
+      });
       expect(res.status).toBe(404);
     });
 
@@ -229,16 +188,11 @@ describe("Comments API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/comments`,
-        {
-          body: {
-            body: "Task comment via route",
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
+        body: {
+          body: "Task comment via route",
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -263,18 +217,13 @@ describe("Comments API", () => {
         summary: "Good progress on the feature",
       };
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/comments`,
-        {
-          body: {
-            body: "Progress update",
-            commentType: "progress_update",
-            metadata,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
+        body: {
+          body: "Progress update",
+          commentType: "progress_update",
+          metadata,
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -296,18 +245,13 @@ describe("Comments API", () => {
         alternatives_considered: ["SWR", "Apollo Client"],
       };
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/comments`,
-        {
-          body: {
-            body: "Decision made",
-            commentType: "decision",
-            metadata,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
+        body: {
+          body: "Decision made",
+          commentType: "decision",
+          metadata,
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -330,18 +274,13 @@ describe("Comments API", () => {
         test_results: "All 42 tests passing",
       };
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/comments`,
-        {
-          body: {
-            body: "Handoff notes",
-            commentType: "handoff",
-            metadata,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/comments`, {
+        body: {
+          body: "Handoff notes",
+          commentType: "handoff",
+          metadata,
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -370,12 +309,9 @@ describe("Comments API", () => {
       );
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/comments/${created.data.id}`,
-        { body: { body: "Updated body" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/comments/${created.data.id}`, {
+        body: { body: "Updated body" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -404,12 +340,9 @@ describe("Comments API", () => {
       );
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/comments/${created.data.id}`,
-        { body: { metadata: { completion_pct: 80, summary: "Almost done" } } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/comments/${created.data.id}`, {
+        body: { metadata: { completion_pct: 80, summary: "Almost done" } },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -421,12 +354,9 @@ describe("Comments API", () => {
 
     it("should return 404 for non-existent comment", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/comments/${fakeId}`,
-        { body: { body: "Nope" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/comments/${fakeId}`, {
+        body: { body: "Nope" },
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -451,30 +381,18 @@ describe("Comments API", () => {
       );
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/comments/${created.data.id}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/comments/${created.data.id}`);
       expect(res.status).toBe(200);
 
       // Verify it's actually gone
-      const listRes = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/tasks/${task.id}/comments`,
-      );
+      const listRes = await authRequest(testApp.app, "GET", `/api/v1/tasks/${task.id}/comments`);
       const listBody = await listRes.json();
       expect(listBody.data).toHaveLength(0);
     });
 
     it("should return 404 for non-existent comment", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/comments/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/comments/${fakeId}`);
       expect(res.status).toBe(404);
     });
   });

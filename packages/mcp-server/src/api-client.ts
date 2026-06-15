@@ -103,9 +103,7 @@ async function readErrorBody(res: {
     const excerpt = raw.trim().replace(/\s+/g, " ").slice(0, 300);
     return {
       code: "UNKNOWN_ERROR",
-      message: excerpt
-        ? `HTTP ${res.status}: ${excerpt}`
-        : `HTTP ${res.status}: ${res.statusText}`,
+      message: excerpt ? `HTTP ${res.status}: ${excerpt}` : `HTTP ${res.status}: ${res.statusText}`,
     };
   }
 }

@@ -28,7 +28,9 @@ export function registerCheckMessagesTool(server: McpServer): void {
       mark_delivered: z
         .boolean()
         .optional()
-        .describe("Acknowledge (advance the read cursor) after reading. Default true; pass false to peek."),
+        .describe(
+          "Acknowledge (advance the read cursor) after reading. Default true; pass false to peek.",
+        ),
     },
     async ({ project_id, worker_key, mark_delivered }) => {
       const workerKey = worker_key ?? getWorkerKey();
@@ -56,9 +58,7 @@ export function registerCheckMessagesTool(server: McpServer): void {
       if (!undelivered || undelivered.length === 0) {
         const scope = project_id ? ` in project ${project_id}` : "";
         return {
-          content: [
-            { type: "text" as const, text: `No unread directed replies${scope}.` },
-          ],
+          content: [{ type: "text" as const, text: `No unread directed replies${scope}.` }],
         };
       }
 

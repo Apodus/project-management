@@ -77,8 +77,7 @@ const postSetupRoute = createRoute({
   path: "/api/v1/auth/setup",
   tags: ["Auth"],
   summary: "Initial setup",
-  description:
-    "Creates the first admin user. Only works if no users exist in the database.",
+  description: "Creates the first admin user. Only works if no users exist in the database.",
   request: {
     body: {
       content: { "application/json": { schema: setupBody } },
@@ -228,10 +227,7 @@ export function createAuthRoutes(): OpenAPIHono<{
   router.openapi(postLoginRoute, async (c) => {
     const body = c.req.valid("json");
 
-    const user = await userService.validateCredentials(
-      body.username,
-      body.password,
-    );
+    const user = await userService.validateCredentials(body.username, body.password);
 
     if (!user) {
       return c.json(

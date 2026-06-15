@@ -148,7 +148,9 @@ describe("escalationMessageSchema", () => {
   });
 
   it("rejects an unknown messageType", () => {
-    expect(() => escalationMessageSchema.parse({ ...validMessage, messageType: "shout" })).toThrow();
+    expect(() =>
+      escalationMessageSchema.parse({ ...validMessage, messageType: "shout" }),
+    ).toThrow();
   });
 });
 

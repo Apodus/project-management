@@ -80,9 +80,7 @@ describe("IntegratorPage — admin gating", () => {
     mocks.useCurrentUser.mockReturnValue({ data: { role: "user" } });
     render(<IntegratorPage />);
     expect(screen.getByText("Admin access required")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Save Changes" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Changes" })).not.toBeInTheDocument();
   });
 });
 
@@ -97,9 +95,7 @@ describe("IntegratorPage — seeding", () => {
     expect(screen.getByLabelText("Verify timeout (seconds)")).toHaveValue(900);
     expect(screen.getByLabelText("Verify command")).toHaveValue("make test");
     expect(screen.getByLabelText("Worktree root")).toHaveValue("/wt");
-    expect(screen.getByLabelText("Git repository URL")).toHaveValue(
-      "git@x:repo.git",
-    );
+    expect(screen.getByLabelText("Git repository URL")).toHaveValue("git@x:repo.git");
     expect(screen.getByLabelText("Clean keep 1")).toHaveValue(".env");
     expect(screen.getByLabelText("Linked repo name 1")).toHaveValue("a");
   });
@@ -127,9 +123,7 @@ describe("IntegratorPage — verify-cache guardrail hint (C2)", () => {
       projectWith({ ...SEEDED, cache_enabled: true, cache_mode: "on" }),
     );
     render(<IntegratorPage />);
-    expect(
-      screen.getByText(/synthetic verify_command step/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/synthetic verify_command step/)).toBeInTheDocument();
   });
 
   it("shows NO hint in shadow mode / when the cache is off / when inputs are declared", () => {
@@ -150,9 +144,7 @@ describe("IntegratorPage — verify-cache guardrail hint (C2)", () => {
         ...SEEDED,
         cache_enabled: true,
         cache_mode: "on",
-        verify_steps: [
-          { id: "lint", command: "pnpm lint", cache_key_inputs: ["node -v"] },
-        ],
+        verify_steps: [{ id: "lint", command: "pnpm lint", cache_key_inputs: ["node -v"] }],
       }),
     );
     render(<IntegratorPage />);
@@ -171,9 +163,7 @@ describe("IntegratorPage — validation", () => {
     );
     render(<IntegratorPage />);
     expect(
-      screen.getByText(
-        /Enabling the integrator requires a verify command and a worktree root/i,
-      ),
+      screen.getByText(/Enabling the integrator requires a verify command and a worktree root/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
   });
@@ -201,9 +191,7 @@ describe("IntegratorPage — clean_keep editor", () => {
     expect(screen.queryByLabelText("Clean keep 2")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add path" }));
     expect(screen.getByLabelText("Clean keep 2")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Remove clean keep 2" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove clean keep 2" }));
     expect(screen.queryByLabelText("Clean keep 2")).not.toBeInTheDocument();
   });
 });
@@ -211,17 +199,11 @@ describe("IntegratorPage — clean_keep editor", () => {
 describe("IntegratorPage — linked_repos editor", () => {
   it("adds and removes linked_repos rows", () => {
     render(<IntegratorPage />);
-    expect(
-      screen.queryByLabelText("Linked repo name 2"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Linked repo name 2")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add repository" }));
     expect(screen.getByLabelText("Linked repo name 2")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Remove linked repo 2" }),
-    );
-    expect(
-      screen.queryByLabelText("Linked repo name 2"),
-    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove linked repo 2" }));
+    expect(screen.queryByLabelText("Linked repo name 2")).not.toBeInTheDocument();
   });
 });
 

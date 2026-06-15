@@ -59,9 +59,7 @@ beforeEach(() => {
     isError: false,
     error: null,
   });
-  mocks.useProject.mockReturnValue(
-    projectWith({ enabled: true, mode: "on" }),
-  );
+  mocks.useProject.mockReturnValue(projectWith({ enabled: true, mode: "on" }));
 });
 
 describe("AutoImplementPage — admin gating", () => {
@@ -69,9 +67,7 @@ describe("AutoImplementPage — admin gating", () => {
     mocks.useCurrentUser.mockReturnValue({ data: { role: "user" } });
     render(<AutoImplementPage />);
     expect(screen.getByText("Admin access required")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Save Changes" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Changes" })).not.toBeInTheDocument();
   });
 });
 
@@ -81,37 +77,30 @@ describe("AutoImplementPage — defaults / tolerant read", () => {
       projectWith(undefined, { integrator: { verify_command: "make test" } }),
     );
     render(<AutoImplementPage />);
-    expect(
-      screen.getByRole("switch", { name: /Enabled/i }),
-    ).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByRole("combobox", { name: "Mode" })).toHaveTextContent(
-      "shadow",
+    expect(screen.getByRole("switch", { name: /Enabled/i })).toHaveAttribute(
+      "aria-checked",
+      "false",
     );
+    expect(screen.getByRole("combobox", { name: "Mode" })).toHaveTextContent("shadow");
   });
 });
 
 describe("AutoImplementPage — seeding", () => {
   it("seeds the switch + mode from the persisted block", () => {
-    mocks.useProject.mockReturnValue(
-      projectWith({ enabled: true, mode: "on" }),
-    );
+    mocks.useProject.mockReturnValue(projectWith({ enabled: true, mode: "on" }));
     render(<AutoImplementPage />);
-    expect(
-      screen.getByRole("switch", { name: /Enabled/i }),
-    ).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("combobox", { name: "Mode" })).toHaveTextContent(
-      "on",
+    expect(screen.getByRole("switch", { name: /Enabled/i })).toHaveAttribute(
+      "aria-checked",
+      "true",
     );
+    expect(screen.getByRole("combobox", { name: "Mode" })).toHaveTextContent("on");
   });
 });
 
 describe("AutoImplementPage — save payload", () => {
   it("hands the hook only the autoImplement block (merge is the hook's job)", async () => {
     mocks.useProject.mockReturnValue(
-      projectWith(
-        { enabled: false, mode: "shadow" },
-        { integrator: { x: 1 } },
-      ),
+      projectWith({ enabled: false, mode: "shadow" }, { integrator: { x: 1 } }),
     );
     render(<AutoImplementPage />);
 

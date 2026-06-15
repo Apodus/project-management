@@ -54,11 +54,7 @@ const ACTION_LABELS: Record<GuardrailAction, string> = {
  */
 export function getAutonomySettings(projectId: string): AiAutonomySettings {
   const db = getDb();
-  const project = db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .get();
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
 
   if (!project) {
     return { ...DEFAULT_AUTONOMY };
@@ -75,12 +71,30 @@ export function getAutonomySettings(projectId: string): AiAutonomySettings {
   }
 
   return {
-    can_self_assign: typeof aiAutonomy.can_self_assign === "boolean" ? aiAutonomy.can_self_assign : DEFAULT_AUTONOMY.can_self_assign,
-    can_create_subtasks: typeof aiAutonomy.can_create_subtasks === "boolean" ? aiAutonomy.can_create_subtasks : DEFAULT_AUTONOMY.can_create_subtasks,
-    can_create_tasks: typeof aiAutonomy.can_create_tasks === "boolean" ? aiAutonomy.can_create_tasks : DEFAULT_AUTONOMY.can_create_tasks,
-    can_change_priority: typeof aiAutonomy.can_change_priority === "boolean" ? aiAutonomy.can_change_priority : DEFAULT_AUTONOMY.can_change_priority,
-    can_close_epics: typeof aiAutonomy.can_close_epics === "boolean" ? aiAutonomy.can_close_epics : DEFAULT_AUTONOMY.can_close_epics,
-    max_concurrent_tasks: typeof aiAutonomy.max_concurrent_tasks === "number" ? aiAutonomy.max_concurrent_tasks : DEFAULT_AUTONOMY.max_concurrent_tasks,
+    can_self_assign:
+      typeof aiAutonomy.can_self_assign === "boolean"
+        ? aiAutonomy.can_self_assign
+        : DEFAULT_AUTONOMY.can_self_assign,
+    can_create_subtasks:
+      typeof aiAutonomy.can_create_subtasks === "boolean"
+        ? aiAutonomy.can_create_subtasks
+        : DEFAULT_AUTONOMY.can_create_subtasks,
+    can_create_tasks:
+      typeof aiAutonomy.can_create_tasks === "boolean"
+        ? aiAutonomy.can_create_tasks
+        : DEFAULT_AUTONOMY.can_create_tasks,
+    can_change_priority:
+      typeof aiAutonomy.can_change_priority === "boolean"
+        ? aiAutonomy.can_change_priority
+        : DEFAULT_AUTONOMY.can_change_priority,
+    can_close_epics:
+      typeof aiAutonomy.can_close_epics === "boolean"
+        ? aiAutonomy.can_close_epics
+        : DEFAULT_AUTONOMY.can_close_epics,
+    max_concurrent_tasks:
+      typeof aiAutonomy.max_concurrent_tasks === "number"
+        ? aiAutonomy.max_concurrent_tasks
+        : DEFAULT_AUTONOMY.max_concurrent_tasks,
   };
 }
 
@@ -90,11 +104,7 @@ export function getAutonomySettings(projectId: string): AiAutonomySettings {
  *
  * Throws AppError(403) if the guardrail blocks the action.
  */
-export function checkGuardrail(
-  actor: AuthUser,
-  action: GuardrailAction,
-  projectId: string,
-): void {
+export function checkGuardrail(actor: AuthUser, action: GuardrailAction, projectId: string): void {
   // Humans are not constrained by AI autonomy guardrails
   if (actor.type !== "ai_agent") {
     return;

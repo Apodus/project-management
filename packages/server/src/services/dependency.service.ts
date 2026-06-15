@@ -16,11 +16,7 @@ const VALID_DEPENDENCY_TYPES = new Set<string>(DEPENDENCY_TYPES);
  * CRITICAL: Performs cycle detection via BFS before insert.
  * Prevents self-dependencies and duplicate dependencies.
  */
-export function addDependency(
-  taskId: string,
-  dependsOnTaskId: string,
-  type: string = "blocks",
-) {
+export function addDependency(taskId: string, dependsOnTaskId: string, type: string = "blocks") {
   const db = getDb();
 
   // Validate dependency type
@@ -34,11 +30,7 @@ export function addDependency(
 
   // Prevent self-dependency
   if (taskId === dependsOnTaskId) {
-    throw new AppError(
-      400,
-      "SELF_DEPENDENCY",
-      "A task cannot depend on itself",
-    );
+    throw new AppError(400, "SELF_DEPENDENCY", "A task cannot depend on itself");
   }
 
   // Verify both tasks exist
@@ -47,17 +39,9 @@ export function addDependency(
     throw new AppError(404, "NOT_FOUND", `Task not found: ${taskId}`);
   }
 
-  const dependsOnTask = db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.id, dependsOnTaskId))
-    .get();
+  const dependsOnTask = db.select().from(tasks).where(eq(tasks.id, dependsOnTaskId)).get();
   if (!dependsOnTask) {
-    throw new AppError(
-      404,
-      "NOT_FOUND",
-      `Task not found: ${dependsOnTaskId}`,
-    );
+    throw new AppError(404, "NOT_FOUND", `Task not found: ${dependsOnTaskId}`);
   }
 
   // Check for duplicate dependency
@@ -73,11 +57,7 @@ export function addDependency(
     .get();
 
   if (existing) {
-    throw new AppError(
-      409,
-      "CONFLICT",
-      "This dependency already exists",
-    );
+    throw new AppError(409, "CONFLICT", "This dependency already exists");
   }
 
   // Cycle detection via BFS:
@@ -108,11 +88,7 @@ export function addDependency(
     })
     .run();
 
-  return db
-    .select()
-    .from(taskDependencies)
-    .where(eq(taskDependencies.id, id))
-    .get()!;
+  return db.select().from(taskDependencies).where(eq(taskDependencies.id, id)).get()!;
 }
 
 /**
@@ -145,10 +121,7 @@ function wouldCreateCycle(taskId: string, dependsOnTaskId: string): boolean {
       .select()
       .from(taskDependencies)
       .where(
-        and(
-          eq(taskDependencies.taskId, current),
-          eq(taskDependencies.dependencyType, "blocks"),
-        ),
+        and(eq(taskDependencies.taskId, current), eq(taskDependencies.dependencyType, "blocks")),
       )
       .all();
 
@@ -169,11 +142,7 @@ function wouldCreateCycle(taskId: string, dependsOnTaskId: string): boolean {
 export function removeDependency(id: string) {
   const db = getDb();
 
-  const existing = db
-    .select()
-    .from(taskDependencies)
-    .where(eq(taskDependencies.id, id))
-    .get();
+  const existing = db.select().from(taskDependencies).where(eq(taskDependencies.id, id)).get();
 
   if (!existing) {
     throw new AppError(404, "NOT_FOUND", `Dependency not found: ${id}`);
@@ -224,12 +193,7 @@ export function isBlocked(taskId: string): boolean {
   const deps = db
     .select()
     .from(taskDependencies)
-    .where(
-      and(
-        eq(taskDependencies.taskId, taskId),
-        eq(taskDependencies.dependencyType, "blocks"),
-      ),
-    )
+    .where(and(eq(taskDependencies.taskId, taskId), eq(taskDependencies.dependencyType, "blocks")))
     .all();
 
   if (deps.length === 0) {
@@ -238,11 +202,7 @@ export function isBlocked(taskId: string): boolean {
 
   // Check if any blocking task is NOT done
   for (const dep of deps) {
-    const blockingTask = db
-      .select()
-      .from(tasks)
-      .where(eq(tasks.id, dep.dependsOnTaskId))
-      .get();
+    const blockingTask = db.select().from(tasks).where(eq(tasks.id, dep.dependsOnTaskId)).get();
 
     if (blockingTask && blockingTask.status !== "done") {
       return true; // At least one blocking task is not done

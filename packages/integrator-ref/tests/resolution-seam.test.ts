@@ -26,10 +26,10 @@ const ARGS = {
   ref: "feature/x",
 };
 
-function fakePm(opts: {
-  freshResolvedFrom?: string | null;
-  throws?: boolean;
-}): { pmClient: PmClient; fetches: string[] } {
+function fakePm(opts: { freshResolvedFrom?: string | null; throws?: boolean }): {
+  pmClient: PmClient;
+  fetches: string[];
+} {
   const fetches: string[] = [];
   const pmClient = {
     getMergeRequest: async (id: string) => {
@@ -81,10 +81,7 @@ describe("maybeOpenResolution — resolved_from fresh re-read (C2)", () => {
     const { resolver, openAndEnqueue } = resolverSpy();
 
     await expect(
-      maybeOpenResolution(
-        { resolver, logger, pmClient },
-        { ...ARGS, originResolvedFrom: null },
-      ),
+      maybeOpenResolution({ resolver, logger, pmClient }, { ...ARGS, originResolvedFrom: null }),
     ).resolves.toBeUndefined();
     expect(openAndEnqueue).not.toHaveBeenCalled();
   });

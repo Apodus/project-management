@@ -115,7 +115,12 @@ describe("wakeTick", () => {
     const runner = new FakeRunner();
     const esc = mkEscalation("e1");
     client.listResults = [
-      [undelivered(esc, [mkMsg("e1", 3, "2026-06-13T01:00:00.000Z"), mkMsg("e1", 5, "2026-06-13T02:00:00.000Z")])],
+      [
+        undelivered(esc, [
+          mkMsg("e1", 3, "2026-06-13T01:00:00.000Z"),
+          mkMsg("e1", 5, "2026-06-13T02:00:00.000Z"),
+        ]),
+      ],
     ];
     const state = createWakeState();
     await wakeTick(baseDeps(client, runner), state);
@@ -183,7 +188,9 @@ describe("wakeTick", () => {
     expect(runner.run).not.toHaveBeenCalled();
     // Recovery: clear the error, real data flows.
     client.listError = undefined;
-    client.listResults = [[undelivered(mkEscalation("e1"), [mkMsg("e1", 1, "2026-06-13T01:00:00.000Z")])]];
+    client.listResults = [
+      [undelivered(mkEscalation("e1"), [mkMsg("e1", 1, "2026-06-13T01:00:00.000Z")])],
+    ];
     await wakeTick(baseDeps(client, runner), state);
     expect(runner.run).toHaveBeenCalledTimes(1);
   });

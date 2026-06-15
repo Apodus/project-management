@@ -35,8 +35,7 @@ function baseParams(
     innerRepo: overrides.innerRepo ?? "inner-repo",
     orphanedSha: overrides.orphanedSha ?? "Ri000",
     outerRepo: overrides.outerRepo ?? "outer-repo",
-    innerRequestId:
-      overrides.innerRequestId === undefined ? null : overrides.innerRequestId,
+    innerRequestId: overrides.innerRequestId === undefined ? null : overrides.innerRequestId,
     taskId: overrides.taskId === undefined ? null : overrides.taskId,
   };
 }
@@ -124,11 +123,7 @@ describe("merge-incident service", () => {
         AGENT(integrator.user.id),
       );
 
-      const rows = testApp.db
-        .select()
-        .from(comments)
-        .where(eq(comments.taskId, task.id))
-        .all();
+      const rows = testApp.db.select().from(comments).where(eq(comments.taskId, task.id)).all();
       expect(rows).toHaveLength(1);
       expect(rows[0].commentType).toBe("merge_incident");
       expect(rows[0].body).toContain("Orphaned inner: core@RiAA");
@@ -148,10 +143,7 @@ describe("merge-incident service", () => {
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_OPENED, listener);
 
-      const out = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const out = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
 
       expect(listener).toHaveBeenCalledTimes(1);
       const payload = listener.mock.calls[0][0];
@@ -174,17 +166,13 @@ describe("merge-incident service", () => {
       expect(out.state).toBe("open");
       expect(listener).toHaveBeenCalledTimes(1);
       const all = testApp.db.select().from(comments).all();
-      expect(all.filter((c) => c.commentType === "merge_incident")).toHaveLength(
-        0,
-      );
+      expect(all.filter((c) => c.commentType === "merge_incident")).toHaveLength(0);
     });
 
     it("non-ai_agent → 403 FORBIDDEN", () => {
       const project = createTestProject(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
-      expect(() =>
-        svc.openIncident(baseParams(project.id), HUMAN(admin.id, "admin")),
-      ).toThrowError(
+      expect(() => svc.openIncident(baseParams(project.id), HUMAN(admin.id, "admin"))).toThrowError(
         expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
       );
     });
@@ -192,13 +180,8 @@ describe("merge-incident service", () => {
     it("missing project → 404 NOT_FOUND", () => {
       const integrator = createTestAiAgent(testApp.db);
       expect(() =>
-        svc.openIncident(
-          baseParams("01PROJECTMISSING000000000000"),
-          AGENT(integrator.user.id),
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),
-      );
+        svc.openIncident(baseParams("01PROJECTMISSING000000000000"), AGENT(integrator.user.id)),
+      ).toThrowError(expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }));
     });
 
     it("emit-after-commit: listener reads the persisted open incident", () => {
@@ -218,10 +201,7 @@ describe("merge-incident service", () => {
     it("returns the view incl resolution null while open; 404 for missing", () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
-      const out = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const out = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       const got = svc.getById(out.id);
       expect(got.id).toBe(out.id);
       expect(got.state).toBe("open");
@@ -238,14 +218,8 @@ describe("merge-incident service", () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
 
-      const i1 = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
-      const i2 = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const i1 = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
+      const i2 = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       // Resolve i1 so it drops out of the open filter.
       svc.resolve(
         i1.id,
@@ -265,10 +239,7 @@ describe("merge-incident service", () => {
       const integrator = createTestAiAgent(testApp.db);
       const ids: string[] = [];
       for (let i = 0; i < 3; i++) {
-        ids.push(
-          svc.openIncident(baseParams(project.id), AGENT(integrator.user.id))
-            .id,
-        );
+        ids.push(svc.openIncident(baseParams(project.id), AGENT(integrator.user.id)).id);
       }
       const open = svc.list(project.id, { state: "open" });
       const got = open.map((i) => i.id);
@@ -291,10 +262,7 @@ describe("merge-incident service", () => {
         baseParams(project.id, { groupId: gA }),
         AGENT(integrator.user.id),
       );
-      svc.openIncident(
-        baseParams(project.id, { groupId: gB }),
-        AGENT(integrator.user.id),
-      );
+      svc.openIncident(baseParams(project.id, { groupId: gB }), AGENT(integrator.user.id));
       const got = svc.list(project.id, { groupId: gA });
       expect(got.map((i) => i.id)).toEqual([a.id]);
     });
@@ -302,10 +270,7 @@ describe("merge-incident service", () => {
     it("filters by state=auto_resolved", () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
-      const a = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const a = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       svc.resolve(
         a.id,
@@ -317,9 +282,9 @@ describe("merge-incident service", () => {
     });
 
     it("404 for missing project", () => {
-      expect(() =>
-        svc.list("01PROJECTMISSING000000000000"),
-      ).toThrowError(expect.objectContaining({ statusCode: 404 }));
+      expect(() => svc.list("01PROJECTMISSING000000000000")).toThrowError(
+        expect.objectContaining({ statusCode: 404 }),
+      );
     });
   });
 
@@ -330,10 +295,7 @@ describe("merge-incident service", () => {
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const groupId = makeGroup(project, submitter).groupId;
-      const inc = svc.openIncident(
-        baseParams(project.id, { groupId }),
-        AGENT(integrator.user.id),
-      );
+      const inc = svc.openIncident(baseParams(project.id, { groupId }), AGENT(integrator.user.id));
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_AUTO_RESOLVED, listener);
 
@@ -363,10 +325,7 @@ describe("merge-incident service", () => {
     it("emit-after-commit: listener reads the persisted auto_resolved state", () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
-      const inc = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const inc = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       let observed: string | undefined;
       getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_AUTO_RESOLVED, () => {
         observed = svc.getById(inc.id).state;
@@ -388,10 +347,7 @@ describe("merge-incident service", () => {
       const integrator = createTestAiAgent(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
       const groupId = makeGroup(project, submitter).groupId;
-      const inc = svc.openIncident(
-        baseParams(project.id, { groupId }),
-        AGENT(integrator.user.id),
-      );
+      const inc = svc.openIncident(baseParams(project.id, { groupId }), AGENT(integrator.user.id));
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED, listener);
 
@@ -407,9 +363,7 @@ describe("merge-incident service", () => {
         note: "manually bumped the submodule",
       });
       expect(listener).toHaveBeenCalledTimes(1);
-      expect(listener.mock.calls[0][0].entity.note).toBe(
-        "manually bumped the submodule",
-      );
+      expect(listener.mock.calls[0][0].entity.note).toBe("manually bumped the submodule");
     });
   });
 
@@ -418,10 +372,7 @@ describe("merge-incident service", () => {
     it("second resolve(auto) on auto_resolved → idempotent noop, no 2nd event", () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
-      const inc = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const inc = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       svc.resolve(
         inc.id,
         { mode: "auto_rollforward", outerLandedSha: "O" },
@@ -444,10 +395,7 @@ describe("merge-incident service", () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
-      const inc = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const inc = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       svc.resolve(
         inc.id,
         { mode: "auto_rollforward", outerLandedSha: "O" },
@@ -455,9 +403,7 @@ describe("merge-incident service", () => {
       );
       expect(() =>
         svc.resolve(inc.id, { mode: "human", note: "x" }, HUMAN(admin.id, "admin")),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
   });
 
@@ -467,52 +413,33 @@ describe("merge-incident service", () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
-      const inc = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const inc = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       expect(() =>
         svc.resolve(
           inc.id,
           { mode: "auto_rollforward", outerLandedSha: "O" },
           HUMAN(admin.id, "admin"),
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
 
     it("ai_agent CANNOT human-resolve → 403", () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
-      const inc = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const inc = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       expect(() =>
-        svc.resolve(
-          inc.id,
-          { mode: "human", note: "x" },
-          AGENT(integrator.user.id),
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+        svc.resolve(inc.id, { mode: "human", note: "x" }, AGENT(integrator.user.id)),
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
 
     it("plain member CANNOT human-resolve → 403", () => {
       const project = createTestProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const member = createTestUser(testApp.db, { role: "member" });
-      const inc = svc.openIncident(
-        baseParams(project.id),
-        AGENT(integrator.user.id),
-      );
+      const inc = svc.openIncident(baseParams(project.id), AGENT(integrator.user.id));
       expect(() =>
         svc.resolve(inc.id, { mode: "human", note: "x" }, HUMAN(member.id)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 });

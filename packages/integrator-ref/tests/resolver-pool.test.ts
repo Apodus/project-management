@@ -14,10 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit } from "simple-git";
 import { createWorktreePool } from "../src/worktree-pool.js";
-import {
-  createResolverPool,
-  type ResolutionJob,
-} from "../src/resolver-pool.js";
+import { createResolverPool, type ResolutionJob } from "../src/resolver-pool.js";
 
 function hasGit(): boolean {
   try {

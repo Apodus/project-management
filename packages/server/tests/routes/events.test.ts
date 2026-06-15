@@ -60,9 +60,7 @@ async function readSSEStream(
   const decoder = new TextDecoder();
   let text = "";
 
-  const timeout = new Promise<void>((resolve) =>
-    setTimeout(() => resolve(), timeoutMs),
-  );
+  const timeout = new Promise<void>((resolve) => setTimeout(() => resolve(), timeoutMs));
 
   const read = async () => {
     try {
@@ -340,11 +338,7 @@ describe("SSE Events API", () => {
       const taskA = createTestTask(testApp.db, { projectId: projectA.id });
       const taskB = createTestTask(testApp.db, { projectId: projectB.id });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/events?project_id=${projectA.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${projectA.id}`);
       const bus = getEventBus();
 
       setTimeout(() => {
@@ -454,11 +448,7 @@ describe("SSE Events API", () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestUser(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/events?project_id=${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);
       expect(res.status).toBe(200);
 
       let submittedId = "";
@@ -491,11 +481,7 @@ describe("SSE Events API", () => {
       const integrator = createTestAiAgent(testApp.db).user;
       const actor = { id: integrator.id, role: "member", type: "ai_agent" };
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/events?project_id=${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);
       expect(res.status).toBe(200);
 
       setTimeout(() => {
@@ -506,11 +492,7 @@ describe("SSE Events API", () => {
         });
         mergeRequestSvc.transitionToIntegrating(r.id, actor);
         const att = mergeAttemptSvc.startAttempt(r.id, { baseSha: "base000" }, actor);
-        mergeAttemptSvc.completeAttempt(
-          att.id,
-          { status: "passed", treeSha: "tree111" },
-          actor,
-        );
+        mergeAttemptSvc.completeAttempt(att.id, { status: "passed", treeSha: "tree111" }, actor);
         mergeRequestSvc.land(r.id, { landedSha: "tree111" }, actor);
       }, 50);
 
@@ -544,11 +526,7 @@ describe("SSE Events API", () => {
       const integrator = createTestAiAgent(testApp.db).user;
       const actor = { id: integrator.id, role: "member", type: "ai_agent" };
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/events?project_id=${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);
       expect(res.status).toBe(200);
 
       setTimeout(() => {
@@ -589,11 +567,7 @@ describe("SSE Events API", () => {
       const integrator = createTestAiAgent(testApp.db).user;
       const actor = { id: integrator.id, role: "member", type: "ai_agent" };
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/events?project_id=${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);
       expect(res.status).toBe(200);
 
       setTimeout(() => {
@@ -621,11 +595,7 @@ describe("SSE Events API", () => {
 
   describe("Phase 7.3 group/incident events over SSE", () => {
     /** Create a real, FK-valid forming group from 2 queued members. */
-    function makeGroup(
-      project: { id: string },
-      submitter: { id: string },
-      resource = "main",
-    ) {
+    function makeGroup(project: { id: string }, submitter: { id: string }, resource = "main") {
       const m1 = mergeRequestSvc.submit({
         projectId: project.id,
         submittedBy: submitter.id,
@@ -654,11 +624,7 @@ describe("SSE Events API", () => {
       const integrator = createTestAiAgent(testApp.db).user;
       const actor = { id: integrator.id, role: "member", type: "ai_agent" };
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/events?project_id=${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);
       expect(res.status).toBe(200);
 
       let groupId = "";
@@ -692,9 +658,7 @@ describe("SSE Events API", () => {
       expect(startedData.action).toBe("group.started");
       expect(startedData.group_id).toBe(groupId);
 
-      const memberLanded = events.find(
-        (e) => e.event === "merge.group.member_landed",
-      );
+      const memberLanded = events.find((e) => e.event === "merge.group.member_landed");
       expect(memberLanded).toBeDefined();
       const memberLandedData = JSON.parse(memberLanded!.data!);
       expect(memberLandedData.group_id).toBe(groupId);
@@ -711,11 +675,7 @@ describe("SSE Events API", () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestUser(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/events?project_id=${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);
       expect(res.status).toBe(200);
 
       let groupId = "";
@@ -748,11 +708,7 @@ describe("SSE Events API", () => {
       const integrator = createTestAiAgent(testApp.db).user;
       const actor = { id: integrator.id, role: "member", type: "ai_agent" };
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/events?project_id=${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);
       expect(res.status).toBe(200);
 
       let incidentId = "";
@@ -835,9 +791,7 @@ describe("SSE Events API", () => {
       const textA = await readSSEStream(resA, { maxEvents: 5, timeoutMs: 3000 });
       const eventsA = parseSSEEvents(textA);
 
-      const autoResolved = eventsA.find(
-        (e) => e.event === "merge.incident.auto_resolved",
-      );
+      const autoResolved = eventsA.find((e) => e.event === "merge.incident.auto_resolved");
       expect(autoResolved).toBeDefined();
       const autoData = JSON.parse(autoResolved!.data!);
       expect(autoData.entity_type).toBe("merge_incident");
@@ -887,9 +841,7 @@ describe("SSE Events API", () => {
       const textB = await readSSEStream(resB, { maxEvents: 5, timeoutMs: 3000 });
       const eventsB = parseSSEEvents(textB);
 
-      const humanResolved = eventsB.find(
-        (e) => e.event === "merge.incident.human_resolved",
-      );
+      const humanResolved = eventsB.find((e) => e.event === "merge.incident.human_resolved");
       expect(humanResolved).toBeDefined();
       const humanData = JSON.parse(humanResolved!.data!);
       expect(humanData.entity_type).toBe("merge_incident");
@@ -903,11 +855,7 @@ describe("SSE Events API", () => {
       const project = createTestProject(testApp.db);
       const submitter = createTestUser(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/events?project_id=${project.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);
       expect(res.status).toBe(200);
 
       setTimeout(() => {

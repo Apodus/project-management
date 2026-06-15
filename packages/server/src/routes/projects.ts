@@ -398,7 +398,7 @@ const updateProjectRoute = createRoute({
   tags: ["Projects"],
   summary: "Update project",
   description:
-    "Update project fields. The 200 envelope may carry advisory `warnings` (omitted when empty) — e.g. the verify-cache guardrail: cache_mode \"on\" with verify steps lacking cache_key_inputs is the documented false-pass precondition (deployment guide §16.2; shadow-first discipline). Warnings never block the save.",
+    'Update project fields. The 200 envelope may carry advisory `warnings` (omitted when empty) — e.g. the verify-cache guardrail: cache_mode "on" with verify steps lacking cache_key_inputs is the documented false-pass precondition (deployment guide §16.2; shadow-first discipline). Warnings never block the save.',
   request: {
     params: z.object({ id: projectIdParam }),
     body: {
@@ -509,10 +509,7 @@ export function createProjectRoutes(): OpenAPIHono<{ Variables: AppVariables }> 
     };
     const warnings = cacheConfigWarnings(settings.integrator);
 
-    return c.json(
-      warnings.length > 0 ? { data: project, warnings } : { data: project },
-      200,
-    );
+    return c.json(warnings.length > 0 ? { data: project, warnings } : { data: project }, 200);
   });
 
   // DELETE /api/v1/projects/:id

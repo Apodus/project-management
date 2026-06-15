@@ -39,7 +39,9 @@ describe("PmClient HTTP construction", () => {
       calledUrl = String(url);
       calledHeaders = (init?.headers as Record<string, string>) ?? {};
       return new Response(
-        JSON.stringify({ data: { id: "p1", name: "P", slug: "p", status: "active", settings: null } }),
+        JSON.stringify({
+          data: { id: "p1", name: "P", slug: "p", status: "active", settings: null },
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     };
@@ -59,14 +61,9 @@ const distExists = existsSync(new URL("../dist/index.js", import.meta.url).pathn
 
 describe.skipIf(!distExists)("CLI smoke", () => {
   it("starts, prints ready line, exits cleanly on SIGTERM", async () => {
-    const proc = spawn(
-      "node",
-      [
-        new URL("../dist/index.js", import.meta.url).pathname,
-        "--help",
-      ],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
+    const proc = spawn("node", [new URL("../dist/index.js", import.meta.url).pathname, "--help"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let stdout = "";
     proc.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();

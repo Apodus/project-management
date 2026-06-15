@@ -230,10 +230,7 @@ describe("computeRanks — degenerate + edge cases", () => {
   });
 
   it("case 12: a disconnected isolated node stays rank 0 alongside a chain", () => {
-    const r = computeRanks(nodes("A", "B", "C", "ISO"), [
-      makeEdge("A", "B"),
-      makeEdge("B", "C"),
-    ]);
+    const r = computeRanks(nodes("A", "B", "C", "ISO"), [makeEdge("A", "B"), makeEdge("B", "C")]);
     expect(r.ranks.get("ISO")).toBe(0);
     expect(r.ranks.get("C")).toBe(2);
     expect(r.maxRank).toBe(2);

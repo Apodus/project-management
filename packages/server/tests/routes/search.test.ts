@@ -62,11 +62,7 @@ describe("Search API", () => {
         title: "Implement authentication middleware",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/search?q=authentication",
-      );
+      const res = await authRequest(testApp.app, "GET", "/api/v1/search?q=authentication");
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -85,11 +81,7 @@ describe("Search API", () => {
         description: "We need to implement a blockchain integration module",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/search?q=blockchain",
-      );
+      const res = await authRequest(testApp.app, "GET", "/api/v1/search?q=blockchain");
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -112,11 +104,7 @@ describe("Search API", () => {
         body: "The refactoring of the database layer is complete",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/search?q=refactoring",
-      );
+      const res = await authRequest(testApp.app, "GET", "/api/v1/search?q=refactoring");
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -181,11 +169,7 @@ describe("Search API", () => {
     });
 
     it("should return empty results for no matches", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/search?q=xyznonexistentquery123",
-      );
+      const res = await authRequest(testApp.app, "GET", "/api/v1/search?q=xyznonexistentquery123");
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -212,11 +196,7 @@ describe("Search API", () => {
         title: "Database optimization improvements",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/search?q=optimization",
-      );
+      const res = await authRequest(testApp.app, "GET", "/api/v1/search?q=optimization");
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -227,11 +207,7 @@ describe("Search API", () => {
     });
 
     it("should require a query parameter", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/search",
-      );
+      const res = await authRequest(testApp.app, "GET", "/api/v1/search");
       expect(res.status).toBe(400);
     });
   });
@@ -242,12 +218,9 @@ describe("Search API", () => {
       projectId: string,
       body: { kind: string; title: string; body?: string },
     ) {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${projectId}/notes`,
-        { body },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${projectId}/notes`, {
+        body,
+      });
       expect(res.status).toBe(201);
       return (await res.json()).data;
     }

@@ -192,29 +192,25 @@ describe("Automation Service", () => {
     });
 
     it("should evaluate 'contains' operator on strings", () => {
-      const conditions = [
-        { field: "title", operator: "contains" as const, value: "bug" },
-      ];
-      expect(automationService.evaluateConditions(conditions, { title: "Fix bug #123" })).toBe(true);
-      expect(automationService.evaluateConditions(conditions, { title: "Add feature" })).toBe(false);
+      const conditions = [{ field: "title", operator: "contains" as const, value: "bug" }];
+      expect(automationService.evaluateConditions(conditions, { title: "Fix bug #123" })).toBe(
+        true,
+      );
+      expect(automationService.evaluateConditions(conditions, { title: "Add feature" })).toBe(
+        false,
+      );
     });
 
     it("should evaluate 'contains' operator on arrays", () => {
-      const conditions = [
-        { field: "tags", operator: "contains" as const, value: "urgent" },
-      ];
-      expect(
-        automationService.evaluateConditions(conditions, { tags: ["urgent", "bug"] }),
-      ).toBe(true);
-      expect(
-        automationService.evaluateConditions(conditions, { tags: ["feature"] }),
-      ).toBe(false);
+      const conditions = [{ field: "tags", operator: "contains" as const, value: "urgent" }];
+      expect(automationService.evaluateConditions(conditions, { tags: ["urgent", "bug"] })).toBe(
+        true,
+      );
+      expect(automationService.evaluateConditions(conditions, { tags: ["feature"] })).toBe(false);
     });
 
     it("should support nested field access via dot notation", () => {
-      const conditions = [
-        { field: "changes.status.to", operator: "eq" as const, value: "done" },
-      ];
+      const conditions = [{ field: "changes.status.to", operator: "eq" as const, value: "done" }];
       const payload = {
         changes: { status: { from: "in_progress", to: "done" } },
       };
@@ -222,26 +218,22 @@ describe("Automation Service", () => {
     });
 
     it("should handle deep nested field access", () => {
-      const conditions = [
-        { field: "a.b.c.d", operator: "eq" as const, value: 42 },
-      ];
-      expect(
-        automationService.evaluateConditions(conditions, { a: { b: { c: { d: 42 } } } }),
-      ).toBe(true);
-      expect(
-        automationService.evaluateConditions(conditions, { a: { b: { c: { d: 99 } } } }),
-      ).toBe(false);
+      const conditions = [{ field: "a.b.c.d", operator: "eq" as const, value: 42 }];
+      expect(automationService.evaluateConditions(conditions, { a: { b: { c: { d: 42 } } } })).toBe(
+        true,
+      );
+      expect(automationService.evaluateConditions(conditions, { a: { b: { c: { d: 99 } } } })).toBe(
+        false,
+      );
     });
 
     it("should handle missing nested fields gracefully", () => {
-      const conditions = [
-        { field: "changes.status.to", operator: "eq" as const, value: "done" },
-      ];
+      const conditions = [{ field: "changes.status.to", operator: "eq" as const, value: "done" }];
       expect(automationService.evaluateConditions(conditions, {})).toBe(false);
       expect(automationService.evaluateConditions(conditions, { changes: null })).toBe(false);
-      expect(
-        automationService.evaluateConditions(conditions, { changes: { priority: {} } }),
-      ).toBe(false);
+      expect(automationService.evaluateConditions(conditions, { changes: { priority: {} } })).toBe(
+        false,
+      );
     });
 
     it("should AND multiple conditions", () => {
@@ -264,16 +256,12 @@ describe("Automation Service", () => {
     });
 
     it("should handle 'in' with non-array value gracefully", () => {
-      const conditions = [
-        { field: "status", operator: "in" as const, value: "not-an-array" },
-      ];
+      const conditions = [{ field: "status", operator: "in" as const, value: "not-an-array" }];
       expect(automationService.evaluateConditions(conditions, { status: "done" })).toBe(false);
     });
 
     it("should handle 'contains' on non-string/non-array gracefully", () => {
-      const conditions = [
-        { field: "count", operator: "contains" as const, value: "5" },
-      ];
+      const conditions = [{ field: "count", operator: "contains" as const, value: "5" }];
       expect(automationService.evaluateConditions(conditions, { count: 5 })).toBe(false);
     });
   });
@@ -576,14 +564,9 @@ describe("Automation API Routes", () => {
         actionType: "notify",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/automation-rules/${rule.id}`,
-        {
-          body: { name: "After" },
-        },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/automation-rules/${rule.id}`, {
+        body: { name: "After" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -591,14 +574,9 @@ describe("Automation API Routes", () => {
     });
 
     it("should return 404 for non-existent rule", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        "/api/v1/automation-rules/nonexistent",
-        {
-          body: { name: "Test" },
-        },
-      );
+      const res = await authRequest(testApp.app, "PATCH", "/api/v1/automation-rules/nonexistent", {
+        body: { name: "Test" },
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -613,11 +591,7 @@ describe("Automation API Routes", () => {
         actionType: "notify",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/automation-rules/${rule.id}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/automation-rules/${rule.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -702,9 +676,7 @@ describe("Automation Event Triggering", () => {
       projectId: project.id,
       name: "Auto-complete epic",
       triggerEvent: "task.status_changed",
-      conditions: [
-        { field: "changes.status.to", operator: "eq", value: "done" },
-      ],
+      conditions: [{ field: "changes.status.to", operator: "eq", value: "done" }],
       actionType: "transition_epic",
       actionConfig: { to_status: "completed" },
     });
@@ -763,9 +735,7 @@ describe("Automation Event Triggering", () => {
       projectId: project.id,
       name: "Auto-advance parent",
       triggerEvent: "task.status_changed",
-      conditions: [
-        { field: "changes.status.to", operator: "eq", value: "done" },
-      ],
+      conditions: [{ field: "changes.status.to", operator: "eq", value: "done" }],
       actionType: "transition_task",
       actionConfig: { to_status: "in_review" },
     });
@@ -812,9 +782,7 @@ describe("Automation Event Triggering", () => {
       projectId: project.id,
       name: "Only on done",
       triggerEvent: "task.status_changed",
-      conditions: [
-        { field: "changes.status.to", operator: "eq", value: "done" },
-      ],
+      conditions: [{ field: "changes.status.to", operator: "eq", value: "done" }],
       actionType: "transition_epic",
       actionConfig: { to_status: "completed" },
     });
@@ -872,9 +840,7 @@ describe("Automation Event Triggering", () => {
       _automationDepth: 3,
     });
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Loop prevention"),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Loop prevention"));
     warnSpy.mockRestore();
   });
 
@@ -898,9 +864,7 @@ describe("Automation Event Triggering", () => {
       projectId: project.id,
       name: "Auto-complete epic",
       triggerEvent: "task.status_changed",
-      conditions: [
-        { field: "changes.status.to", operator: "eq", value: "done" },
-      ],
+      conditions: [{ field: "changes.status.to", operator: "eq", value: "done" }],
       actionType: "transition_epic",
       actionConfig: { to_status: "completed" },
       isActive: false,

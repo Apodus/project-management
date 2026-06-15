@@ -1,10 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import type {
-  MergeEscalationTarget,
-  MergeResolutionDetail,
-  MergeResolutionView,
-} from "@pm/shared";
+import type { MergeEscalationTarget, MergeResolutionDetail, MergeResolutionView } from "@pm/shared";
 import { getDb, mergeResolutions, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
@@ -88,11 +84,7 @@ function ensureProjectExists(projectId: string): void {
 
 function readResolution(id: string): MergeResolutionRow | null {
   const db = getDb();
-  const row = db
-    .select()
-    .from(mergeResolutions)
-    .where(eq(mergeResolutions.id, id))
-    .get();
+  const row = db.select().from(mergeResolutions).where(eq(mergeResolutions.id, id)).get();
   return (row as MergeResolutionRow | undefined) ?? null;
 }
 
@@ -106,11 +98,7 @@ function readResolutionOrThrow(id: string): MergeResolutionRow {
 
 function requireIntegrator(actor: Actor, what: string): void {
   if (actor.type !== "ai_agent") {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      `Only integrator (ai_agent) users may ${what}.`,
-    );
+    throw new AppError(403, "FORBIDDEN", `Only integrator (ai_agent) users may ${what}.`);
   }
 }
 
@@ -121,19 +109,13 @@ function requireIntegrator(actor: Actor, what: string): void {
  * resolved_request_id off one flat object. Always fires AFTER the txn commits
  * (caller responsibility — guarantees a listener sees the persisted state).
  */
-function emit(
-  event: string,
-  row: MergeResolutionRow,
-  actorId: string | null,
-): void {
+function emit(event: string, row: MergeResolutionRow, actorId: string | null): void {
   getEventBus().emit(event as never, {
     entity: {
       ...row,
       resolutionId: row.id,
       originRequestId: row.originRequestId,
-      ...(row.resolvedRequestId
-        ? { resolvedRequestId: row.resolvedRequestId }
-        : {}),
+      ...(row.resolvedRequestId ? { resolvedRequestId: row.resolvedRequestId } : {}),
       state: row.state,
     },
     entityType: "merge_resolution",
@@ -186,8 +168,7 @@ function toView(row: MergeResolutionRow): MergeResolutionView {
     conflictingFiles: row.conflictingFiles,
     attemptStartedAt: row.attemptStartedAt,
     attemptEndedAt: row.attemptEndedAt,
-    escalationTarget:
-      row.escalationTarget as MergeResolutionView["escalationTarget"],
+    escalationTarget: row.escalationTarget as MergeResolutionView["escalationTarget"],
     detail: row.detail,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -204,10 +185,7 @@ function toView(row: MergeResolutionRow): MergeResolutionView {
  * Authz: integrator (ai_agent) only. Emits MERGE_RESOLUTION_PENDING after
  * the insert commits.
  */
-export function open(
-  params: OpenResolutionParams,
-  actor: Actor,
-): MergeResolutionView {
+export function open(params: OpenResolutionParams, actor: Actor): MergeResolutionView {
   requireIntegrator(actor, "open a merge resolution");
   ensureProjectExists(params.projectId);
 
@@ -376,10 +354,7 @@ export function getById(id: string): MergeResolutionView {
  * ordered by createdAt asc (oldest-first — the resolver-pickup sweep order).
  * 404 if the project is missing.
  */
-export function list(
-  projectId: string,
-  params: ListResolutionsParams = {},
-): MergeResolutionView[] {
+export function list(projectId: string, params: ListResolutionsParams = {}): MergeResolutionView[] {
   ensureProjectExists(projectId);
   const db = getDb();
 
@@ -408,9 +383,7 @@ export function list(
  * origin id uniquely scopes the lane). Empty for a request that never
  * conflicted under an enabled resolver.
  */
-export function listByOriginRequest(
-  originRequestId: string,
-): MergeResolutionView[] {
+export function listByOriginRequest(originRequestId: string): MergeResolutionView[] {
   const db = getDb();
   const rows = db
     .select()

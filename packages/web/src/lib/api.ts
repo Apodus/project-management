@@ -384,10 +384,7 @@ export interface NoteFilters {
   severity?: Note["severity"];
 }
 
-export async function getNotes(
-  projectId: string,
-  filters?: NoteFilters,
-): Promise<NoteListResult> {
+export async function getNotes(projectId: string, filters?: NoteFilters): Promise<NoteListResult> {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.kind) params.set("kind", filters.kind);
@@ -395,10 +392,9 @@ export async function getNotes(
   if (filters?.anchorId) params.set("anchorId", filters.anchorId);
   if (filters?.severity) params.set("severity", filters.severity);
   const query = params.toString();
-  return apiFetch<NoteListResult>(
-    `/projects/${projectId}/notes${query ? `?${query}` : ""}`,
-    { rawResponse: true },
-  );
+  return apiFetch<NoteListResult>(`/projects/${projectId}/notes${query ? `?${query}` : ""}`, {
+    rawResponse: true,
+  });
 }
 
 export async function getNote(id: string): Promise<Note> {
@@ -409,10 +405,7 @@ export async function getNotesHealth(projectId: string): Promise<NotesHealth> {
   return apiFetch<NotesHealth>(`/projects/${projectId}/notes/health`);
 }
 
-export async function createNote(
-  projectId: string,
-  data: CreateNote,
-): Promise<CreateNoteResult> {
+export async function createNote(projectId: string, data: CreateNote): Promise<CreateNoteResult> {
   return apiFetch<CreateNoteResult>(`/projects/${projectId}/notes`, {
     method: "POST",
     body: JSON.stringify(data),
@@ -500,9 +493,7 @@ export async function getEscalation(id: string): Promise<EscalationWithThread> {
 // {data} envelope — mirrors getTrainMetrics (NOT rawResponse).
 export type EscalationMetrics = components["schemas"]["EscalationMetrics"];
 
-export async function getEscalationMetrics(
-  projectId: string,
-): Promise<EscalationMetrics> {
+export async function getEscalationMetrics(projectId: string): Promise<EscalationMetrics> {
   return apiFetch<EscalationMetrics>(`/projects/${projectId}/escalations/metrics`);
 }
 
@@ -524,10 +515,7 @@ export interface SearchOptions {
  * `limit` is passed EXPLICITLY, defaulting to 100 (the route's own default is
  * 20 — without the explicit param a documented "100-hit cap" would be a lie).
  */
-export async function search(
-  q: string,
-  options?: SearchOptions,
-): Promise<SearchResult[]> {
+export async function search(q: string, options?: SearchOptions): Promise<SearchResult[]> {
   const trimmed = q.trim();
   if (!trimmed) return [];
   const prefixed = trimmed.endsWith("*") ? trimmed : `${trimmed}*`;
@@ -1117,10 +1105,10 @@ export async function releaseClaimTo(
   id: string,
   body: { reason: string; targetId: string },
 ): Promise<ReleaseClaimToResult> {
-  return apiFetch<ReleaseClaimToResult>(
-    `/${CLAIM_ENTITY_SEGMENT[entityType]}/${id}/release-to`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
+  return apiFetch<ReleaseClaimToResult>(`/${CLAIM_ENTITY_SEGMENT[entityType]}/${id}/release-to`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /**
@@ -1150,10 +1138,9 @@ export async function releaseClaim(
   entityType: ClaimEntityType,
   id: string,
 ): Promise<ReleaseClaimResult> {
-  return apiFetch<ReleaseClaimResult>(
-    `/${CLAIM_ENTITY_SEGMENT[entityType]}/${id}/release`,
-    { method: "POST" },
-  );
+  return apiFetch<ReleaseClaimResult>(`/${CLAIM_ENTITY_SEGMENT[entityType]}/${id}/release`, {
+    method: "POST",
+  });
 }
 
 export async function getTrainInFlight(

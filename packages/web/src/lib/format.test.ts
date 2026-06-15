@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  formatDurationMs,
-  formatPercent,
-  formatFreshness,
-} from "./format";
+import { formatDurationMs, formatPercent, formatFreshness } from "./format";
 
 describe("formatDurationMs", () => {
   it("returns '—' for null/undefined (empty data set)", () => {

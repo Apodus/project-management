@@ -95,9 +95,7 @@ describe("merge-request service", () => {
           submittedBy: submitter.id,
           taskId: taskInB.id,
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
     });
 
     it("submit with non-existent taskId → 404 NOT_FOUND", () => {
@@ -109,9 +107,7 @@ describe("merge-request service", () => {
           submittedBy: submitter.id,
           taskId: "01TASKDOESNOTEXIST0000000000",
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }));
     });
 
     it("submit with non-existent project → 404 NOT_FOUND", () => {
@@ -121,9 +117,7 @@ describe("merge-request service", () => {
           projectId: "01PROJECTDOESNOTEXIST0000000",
           submittedBy: submitter.id,
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }));
     });
 
     it("submit with non-existent submittedBy → 404 NOT_FOUND", () => {
@@ -133,9 +127,7 @@ describe("merge-request service", () => {
           projectId: project.id,
           submittedBy: "01USERDOESNOTEXIST0000000000",
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }));
     });
 
     it("submit accepts a valid same-project taskId", () => {
@@ -310,9 +302,7 @@ describe("merge-request service", () => {
         .run();
       expect(() =>
         svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }));
     });
 
     it("cancel of a QUEUED grouped member → 409 GROUPED_MEMBER", () => {
@@ -336,16 +326,10 @@ describe("merge-request service", () => {
           updatedAt: now,
         })
         .run();
-      testApp.db
-        .update(mergeRequests)
-        .set({ groupId })
-        .where(eq(mergeRequests.id, r.id))
-        .run();
+      testApp.db.update(mergeRequests).set({ groupId }).where(eq(mergeRequests.id, r.id)).run();
       expect(() =>
         svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }));
     });
 
     it("integrating-cancel writes exactly ONE `cancel` audit row (before/after, reason, cancelledBy, no overridden)", () => {
@@ -363,11 +347,7 @@ describe("merge-request service", () => {
         { id: submitter.id, role: "member", type: "human" },
         "changed my mind mid-integration",
       );
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.targetId, r.id))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.targetId, r.id)).all();
       expect(rows).toHaveLength(1);
       expect(rows[0].action).toBe("cancel");
       expect(rows[0].targetType).toBe("merge_request");
@@ -376,9 +356,7 @@ describe("merge-request service", () => {
       expect(rows[0].metadataBefore).toEqual({ status: "integrating" });
       expect(rows[0].metadataAfter).toEqual({ status: "abandoned" });
       // No `overridden` key — that distinguishes self-service cancel from force_cancel.
-      expect(
-        (rows[0].metadataAfter as Record<string, unknown>).overridden,
-      ).toBeUndefined();
+      expect((rows[0].metadataAfter as Record<string, unknown>).overridden).toBeUndefined();
     });
 
     it("queued-cancel writes NO audit row (back-compat with 7.1)", () => {
@@ -386,11 +364,7 @@ describe("merge-request service", () => {
       const submitter = createTestUser(testApp.db, { role: "member" });
       const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
       svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" });
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.targetId, r.id))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.targetId, r.id)).all();
       expect(rows).toHaveLength(0);
     });
 
@@ -409,9 +383,7 @@ describe("merge-request service", () => {
       expect(landed.status).toBe("landed");
       expect(() =>
         svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("race: cancel() 200 then land() → 409 INVALID_TRANSITION", () => {
@@ -431,9 +403,7 @@ describe("merge-request service", () => {
         type: "human",
       });
       expect(cancelled.status).toBe("abandoned");
-      expect(() =>
-        svc.land(r.id, { landedSha: "deadbeef" }, integratorActor),
-      ).toThrowError(
+      expect(() => svc.land(r.id, { landedSha: "deadbeef" }, integratorActor)).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
     });
@@ -453,11 +423,7 @@ describe("merge-request service", () => {
         { id: submitter.id, role: "member", type: "human" },
         "superseded by a newer branch",
       );
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.targetId, r.id))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.targetId, r.id)).all();
       expect(rows).toHaveLength(1);
       expect(rows[0].reason).toBe("superseded by a newer branch");
     });
@@ -473,9 +439,7 @@ describe("merge-request service", () => {
         .run();
       expect(() =>
         svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("cancel from rejected → 409 INVALID_TRANSITION", () => {
@@ -489,9 +453,7 @@ describe("merge-request service", () => {
         .run();
       expect(() =>
         svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("cancel on abandoned → 200 idempotent (returns existing row, no new event)", () => {
@@ -518,9 +480,7 @@ describe("merge-request service", () => {
           role: "admin",
           type: "human",
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }));
     });
   });
 
@@ -552,11 +512,7 @@ describe("merge-request service", () => {
       });
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_REQUEST_ABANDONED, listener);
-      const out = svc.forceCancel(
-        r.id,
-        { id: admin.id, role: "admin", type: "human" },
-        "stuck",
-      );
+      const out = svc.forceCancel(r.id, { id: admin.id, role: "admin", type: "human" }, "stuck");
       expect(out.status).toBe("abandoned");
       expect(listener).toHaveBeenCalledTimes(1);
       const payload = listener.mock.calls[0][0];
@@ -568,14 +524,8 @@ describe("merge-request service", () => {
       const submitter = createTestUser(testApp.db);
       const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
       expect(() =>
-        svc.forceCancel(
-          r.id,
-          { id: submitter.id, role: "member", type: "human" },
-          null,
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+        svc.forceCancel(r.id, { id: submitter.id, role: "member", type: "human" }, null),
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
 
     it("forceCancel from landed → 409 INVALID_TRANSITION", () => {
@@ -590,9 +540,7 @@ describe("merge-request service", () => {
         .run();
       expect(() =>
         svc.forceCancel(r.id, { id: admin.id, role: "admin", type: "human" }, null),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("forceCancel from rejected → 409 INVALID_TRANSITION", () => {
@@ -607,9 +555,7 @@ describe("merge-request service", () => {
         .run();
       expect(() =>
         svc.forceCancel(r.id, { id: admin.id, role: "admin", type: "human" }, null),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("forceCancel on abandoned → 200 idempotent", () => {
@@ -618,11 +564,7 @@ describe("merge-request service", () => {
       const admin = createTestUser(testApp.db, { role: "admin" });
       const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
       svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" });
-      const out = svc.forceCancel(
-        r.id,
-        { id: admin.id, role: "admin", type: "human" },
-        null,
-      );
+      const out = svc.forceCancel(r.id, { id: admin.id, role: "admin", type: "human" }, null);
       expect(out.status).toBe("abandoned");
     });
 
@@ -636,18 +578,12 @@ describe("merge-request service", () => {
         { id: admin.id, role: "admin", type: "human" },
         "content hand-landed out-of-band; clearing stale queued entry",
       );
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.targetId, r.id))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.targetId, r.id)).all();
       expect(rows).toHaveLength(1);
       expect(rows[0].action).toBe("force_cancel");
       expect(rows[0].targetType).toBe("merge_request");
       expect(rows[0].actorId).toBe(admin.id);
-      expect(rows[0].reason).toBe(
-        "content hand-landed out-of-band; clearing stale queued entry",
-      );
+      expect(rows[0].reason).toBe("content hand-landed out-of-band; clearing stale queued entry");
     });
 
     it("submitter cancel writes NO audit row (only force_cancel is audited)", () => {
@@ -655,11 +591,7 @@ describe("merge-request service", () => {
       const submitter = createTestUser(testApp.db);
       const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
       svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" });
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.targetId, r.id))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.targetId, r.id)).all();
       expect(rows).toHaveLength(0);
     });
   });
@@ -717,9 +649,7 @@ describe("merge-request service", () => {
           role: "member",
           type: "ai_agent",
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("from rejected → 409", () => {
@@ -738,9 +668,7 @@ describe("merge-request service", () => {
           role: "member",
           type: "ai_agent",
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("from abandoned → 409", () => {
@@ -755,9 +683,7 @@ describe("merge-request service", () => {
           role: "member",
           type: "ai_agent",
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("a grouped member → 409 GROUPED_MEMBER (Part B structural guard, independent of group path)", () => {
@@ -785,20 +711,14 @@ describe("merge-request service", () => {
           updatedAt: now,
         })
         .run();
-      testApp.db
-        .update(mergeRequests)
-        .set({ groupId })
-        .where(eq(mergeRequests.id, r.id))
-        .run();
+      testApp.db.update(mergeRequests).set({ groupId }).where(eq(mergeRequests.id, r.id)).run();
       expect(() =>
         svc.transitionToIntegrating(r.id, {
           id: integrator.user.id,
           role: "member",
           type: "ai_agent",
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }));
     });
 
     it("non-integrator (human) → 403 FORBIDDEN", () => {
@@ -811,9 +731,7 @@ describe("merge-request service", () => {
           role: "admin",
           type: "human",
         }),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 
@@ -861,11 +779,7 @@ describe("merge-request service", () => {
 
       svc.resetToQueued(r.id, actor, "main drifted at land; re-verify");
 
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.targetId, r.id))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.targetId, r.id)).all();
       const requeue = rows.find((e) => e.action === "requeue");
       expect(requeue).toBeDefined();
       expect(requeue?.targetType).toBe("merge_request");
@@ -883,14 +797,8 @@ describe("merge-request service", () => {
       const integrator = createTestAiAgent(testApp.db);
       const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
       expect(() =>
-        svc.resetToQueued(
-          r.id,
-          { id: integrator.user.id, role: "member", type: "ai_agent" },
-          "x",
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+        svc.resetToQueued(r.id, { id: integrator.user.id, role: "member", type: "ai_agent" }, "x"),
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("from landed → 409", () => {
@@ -904,14 +812,8 @@ describe("merge-request service", () => {
         .where(eq(mergeRequests.id, r.id))
         .run();
       expect(() =>
-        svc.resetToQueued(
-          r.id,
-          { id: integrator.user.id, role: "member", type: "ai_agent" },
-          "x",
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+        svc.resetToQueued(r.id, { id: integrator.user.id, role: "member", type: "ai_agent" }, "x"),
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("from rejected → 409", () => {
@@ -925,14 +827,8 @@ describe("merge-request service", () => {
         .where(eq(mergeRequests.id, r.id))
         .run();
       expect(() =>
-        svc.resetToQueued(
-          r.id,
-          { id: integrator.user.id, role: "member", type: "ai_agent" },
-          "x",
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+        svc.resetToQueued(r.id, { id: integrator.user.id, role: "member", type: "ai_agent" }, "x"),
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("from abandoned → 409", () => {
@@ -942,14 +838,8 @@ describe("merge-request service", () => {
       const r = svc.submit({ projectId: project.id, submittedBy: submitter.id });
       svc.cancel(r.id, { id: submitter.id, role: "member", type: "human" });
       expect(() =>
-        svc.resetToQueued(
-          r.id,
-          { id: integrator.user.id, role: "member", type: "ai_agent" },
-          "x",
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+        svc.resetToQueued(r.id, { id: integrator.user.id, role: "member", type: "ai_agent" }, "x"),
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("non-integrator → 403 FORBIDDEN", () => {
@@ -963,14 +853,8 @@ describe("merge-request service", () => {
         type: "ai_agent",
       });
       expect(() =>
-        svc.resetToQueued(
-          r.id,
-          { id: submitter.id, role: "admin", type: "human" },
-          "x",
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+        svc.resetToQueued(r.id, { id: submitter.id, role: "admin", type: "human" }, "x"),
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 
@@ -981,9 +865,7 @@ describe("merge-request service", () => {
       const submitter = createTestUser(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const actor = { id: agent.user.id, role: "member", type: "ai_agent" };
-      const task = opts?.withTask
-        ? createTestTask(testApp.db, { projectId: project.id })
-        : null;
+      const task = opts?.withTask ? createTestTask(testApp.db, { projectId: project.id }) : null;
       const r = svc.submit({
         projectId: project.id,
         submittedBy: submitter.id,
@@ -1016,11 +898,7 @@ describe("merge-request service", () => {
 
       svc.land(r.id, { landedSha: "deadbeef" }, actor);
 
-      const refs = testApp.db
-        .select()
-        .from(gitRefs)
-        .where(eq(gitRefs.taskId, task!.id))
-        .all();
+      const refs = testApp.db.select().from(gitRefs).where(eq(gitRefs.taskId, task!.id)).all();
       expect(refs).toHaveLength(1);
       expect(refs[0].refType).toBe("landed_sha");
       expect(refs[0].refValue).toBe("deadbeef");
@@ -1038,11 +916,7 @@ describe("merge-request service", () => {
       expect(out.status).toBe("landed");
       expect(listener).not.toHaveBeenCalled();
 
-      const refs = testApp.db
-        .select()
-        .from(gitRefs)
-        .where(eq(gitRefs.taskId, task!.id))
-        .all();
+      const refs = testApp.db.select().from(gitRefs).where(eq(gitRefs.taskId, task!.id)).all();
       expect(refs).toHaveLength(1);
     });
 
@@ -1050,11 +924,7 @@ describe("merge-request service", () => {
       const { r, actor } = setupIntegrating(testApp);
       svc.land(r.id, { landedSha: "ff1122" }, actor);
 
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.targetId, r.id))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.targetId, r.id)).all();
       expect(rows).toHaveLength(1);
       const a = rows[0];
       expect(a.action).toBe("land");
@@ -1076,11 +946,7 @@ describe("merge-request service", () => {
       svc.land(r.id, { landedSha: "sha1" }, actor);
       svc.land(r.id, { landedSha: "sha1" }, actor);
 
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.targetId, r.id))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.targetId, r.id)).all();
       expect(rows).toHaveLength(1);
     });
 
@@ -1093,14 +959,8 @@ describe("merge-request service", () => {
         submittedBy: submitter.id,
       });
       expect(() =>
-        svc.land(
-          r.id,
-          { landedSha: "x" },
-          { id: agent.user.id, role: "member", type: "ai_agent" },
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+        svc.land(r.id, { landedSha: "x" }, { id: agent.user.id, role: "member", type: "ai_agent" }),
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("from rejected → 409 INVALID_TRANSITION", () => {
@@ -1118,14 +978,8 @@ describe("merge-request service", () => {
     it("non-integrator → 403 FORBIDDEN", () => {
       const { r } = setupIntegrating(testApp);
       expect(() =>
-        svc.land(
-          r.id,
-          { landedSha: "x" },
-          { id: "u", role: "admin", type: "human" },
-        ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+        svc.land(r.id, { landedSha: "x" }, { id: "u", role: "admin", type: "human" }),
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 
@@ -1136,9 +990,7 @@ describe("merge-request service", () => {
       const submitter = createTestUser(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const actor = { id: agent.user.id, role: "member", type: "ai_agent" };
-      const task = opts?.withTask
-        ? createTestTask(testApp.db, { projectId: project.id })
-        : null;
+      const task = opts?.withTask ? createTestTask(testApp.db, { projectId: project.id }) : null;
       const r = svc.submit({
         projectId: project.id,
         submittedBy: submitter.id,
@@ -1209,11 +1061,7 @@ describe("merge-request service", () => {
         actor,
       );
 
-      const list = testApp.db
-        .select()
-        .from(comments)
-        .where(eq(comments.taskId, task!.id))
-        .all();
+      const list = testApp.db.select().from(comments).where(eq(comments.taskId, task!.id)).all();
       expect(list).toHaveLength(1);
       expect(list[0].commentType).toBe("merge_rejection");
       const meta = list[0].metadata as Record<string, unknown>;
@@ -1227,11 +1075,7 @@ describe("merge-request service", () => {
       const { r, actor } = setupIntegrating(testApp);
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_REQUEST_REJECTED, listener);
-      const out = svc.reject(
-        r.id,
-        { category: "other", reason: "x" },
-        actor,
-      );
+      const out = svc.reject(r.id, { category: "other", reason: "x" }, actor);
       expect(out.rejectCategory).toBe("other");
       expect(listener.mock.calls[0][0].entity.commentId).toBeNull();
     });
@@ -1240,11 +1084,7 @@ describe("merge-request service", () => {
       const { r, actor } = setupIntegrating(testApp);
       svc.reject(r.id, { category: "build_failed", reason: "boom" }, actor);
 
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.targetId, r.id))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.targetId, r.id)).all();
       expect(rows).toHaveLength(1);
       const a = rows[0];
       expect(a.action).toBe("reject");
@@ -1267,11 +1107,7 @@ describe("merge-request service", () => {
       const out = svc.reject(r.id, { category: "other", reason: "2" }, actor);
       expect(out.status).toBe("rejected");
       expect(listener).not.toHaveBeenCalled();
-      const list = testApp.db
-        .select()
-        .from(comments)
-        .where(eq(comments.taskId, task!.id))
-        .all();
+      const list = testApp.db.select().from(comments).where(eq(comments.taskId, task!.id)).all();
       expect(list).toHaveLength(1);
     });
 
@@ -1286,17 +1122,13 @@ describe("merge-request service", () => {
           { category: "other", reason: "x" },
           { id: agent.user.id, role: "member", type: "ai_agent" },
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("from landed → 409", () => {
       const { r, actor } = setupIntegrating(testApp);
       svc.land(r.id, { landedSha: "x" }, actor);
-      expect(() =>
-        svc.reject(r.id, { category: "other", reason: "x" }, actor),
-      ).toThrowError(
+      expect(() => svc.reject(r.id, { category: "other", reason: "x" }, actor)).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
     });
@@ -1309,9 +1141,7 @@ describe("merge-request service", () => {
           { category: "other", reason: "x" },
           { id: "u", role: "admin", type: "human" },
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 
@@ -1336,11 +1166,7 @@ describe("merge-request service", () => {
       expect(out.status).toBe("queued");
       expect(out.pickedUpAt).toBeNull();
 
-      const row = testApp.db
-        .select()
-        .from(mergeAttempts)
-        .where(eq(mergeAttempts.id, a.id))
-        .get();
+      const row = testApp.db.select().from(mergeAttempts).where(eq(mergeAttempts.id, a.id)).get();
       expect(row?.status).toBe("cancelled");
 
       expect(attemptListener).toHaveBeenCalledTimes(1);

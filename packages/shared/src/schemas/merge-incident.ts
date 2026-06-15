@@ -6,11 +6,7 @@ import { z } from "zod";
 // packages/server/src/db/schema.ts. Incident state machine lives in
 // docs/design/phase-7.3-design.md §4.2:
 //   open → auto_resolved | human_resolved
-export const MERGE_INCIDENT_STATES = [
-  "open",
-  "auto_resolved",
-  "human_resolved",
-] as const;
+export const MERGE_INCIDENT_STATES = ["open", "auto_resolved", "human_resolved"] as const;
 export type MergeIncidentState = (typeof MERGE_INCIDENT_STATES)[number];
 
 // Incident type. For 7.3 the only value is "orphaned_inner" — an enum so
@@ -28,9 +24,7 @@ export const mergeIncidentResolutionSchema = z.object({
   resolvedByGroupId: z.string().optional(),
   note: z.string().optional(),
 });
-export type MergeIncidentResolution = z.infer<
-  typeof mergeIncidentResolutionSchema
->;
+export type MergeIncidentResolution = z.infer<typeof mergeIncidentResolutionSchema>;
 
 // ─── View shapes ──────────────────────────────────────────────────
 // Full GET response shape for a merge_incidents row. Field names mirror

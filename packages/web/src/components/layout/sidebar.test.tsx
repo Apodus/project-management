@@ -14,9 +14,7 @@ vi.mock("@tanstack/react-router", () => ({
 const mocks = vi.hoisted(() => ({
   useProjects: vi.fn(() => ({ data: [] })),
   useNotesHealth: vi.fn(),
-  useEscalations: vi.fn(
-    (): { data?: { pagination: { total: number } } } => ({ data: undefined }),
-  ),
+  useEscalations: vi.fn((): { data?: { pagination: { total: number } } } => ({ data: undefined })),
   useClaimsHealth: vi.fn(
     (): { data?: { stale_count: number; oldest_stale_age_ms: number | null } } => ({
       data: undefined,

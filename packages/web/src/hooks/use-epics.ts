@@ -37,8 +37,7 @@ export function useEpic(id: string | undefined) {
 export function useUpdateEpic() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateEpic }) =>
-      updateEpic(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UpdateEpic }) => updateEpic(id, data),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: epicKeys.lists() });
       queryClient.invalidateQueries({

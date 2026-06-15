@@ -37,9 +37,7 @@ describe("use-escalations query hooks", () => {
     });
     const filters = { status: "open" as const };
     renderHook(() => useEscalations("proj-1", filters), { wrapper });
-    await waitFor(() =>
-      expect(apiMock.getEscalations).toHaveBeenCalledWith("proj-1", filters),
-    );
+    await waitFor(() => expect(apiMock.getEscalations).toHaveBeenCalledWith("proj-1", filters));
   });
 
   it("useEscalation is disabled when id is undefined", () => {
@@ -50,8 +48,6 @@ describe("use-escalations query hooks", () => {
   it("useEscalation fetches by id", async () => {
     apiMock.getEscalation.mockResolvedValue({ id: "esc-1", messages: [] });
     renderHook(() => useEscalation("esc-1"), { wrapper });
-    await waitFor(() =>
-      expect(apiMock.getEscalation).toHaveBeenCalledWith("esc-1"),
-    );
+    await waitFor(() => expect(apiMock.getEscalation).toHaveBeenCalledWith("esc-1"));
   });
 });

@@ -21,7 +21,10 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "*": "secretlint --maskSecrets --secretlintignore .gitignore"
+    "*": [
+      "secretlint --maskSecrets --secretlintignore .gitignore",
+      "prettier --write --ignore-unknown"
+    ]
   },
   "devDependencies": {
     "@eslint/js": "^9",

@@ -70,8 +70,16 @@ describe("task-graph.service getTaskGraph", () => {
     const epic = createTestEpic(ctx.db, { projectId: project.id });
 
     const t1 = createTestTask(ctx.db, { projectId: project.id, epicId: epic.id, status: "done" });
-    const t2 = createTestTask(ctx.db, { projectId: project.id, epicId: epic.id, status: "in_progress" });
-    const t3 = createTestTask(ctx.db, { projectId: project.id, epicId: epic.id, status: "backlog" });
+    const t2 = createTestTask(ctx.db, {
+      projectId: project.id,
+      epicId: epic.id,
+      status: "in_progress",
+    });
+    const t3 = createTestTask(ctx.db, {
+      projectId: project.id,
+      epicId: epic.id,
+      status: "backlog",
+    });
 
     const graph = taskGraphService.getTaskGraph(project.id, epic.id);
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
@@ -85,8 +93,16 @@ describe("task-graph.service getTaskGraph", () => {
     const project = createTestProject(ctx.db);
     const epic = createTestEpic(ctx.db, { projectId: project.id });
 
-    const live = createTestTask(ctx.db, { projectId: project.id, epicId: epic.id, status: "in_progress" });
-    const cancelled = createTestTask(ctx.db, { projectId: project.id, epicId: epic.id, status: "cancelled" });
+    const live = createTestTask(ctx.db, {
+      projectId: project.id,
+      epicId: epic.id,
+      status: "in_progress",
+    });
+    const cancelled = createTestTask(ctx.db, {
+      projectId: project.id,
+      epicId: epic.id,
+      status: "cancelled",
+    });
 
     const graph = taskGraphService.getTaskGraph(project.id, epic.id);
     const ids = new Set(graph.nodes.map((n) => n.id));

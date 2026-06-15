@@ -12,8 +12,7 @@ import {
 export const automationKeys = {
   all: ["automation-rules"] as const,
   lists: () => [...automationKeys.all, "list"] as const,
-  list: (projectId: string) =>
-    [...automationKeys.lists(), { projectId }] as const,
+  list: (projectId: string) => [...automationKeys.lists(), { projectId }] as const,
 };
 
 export function useAutomationRules(projectId: string | undefined) {
@@ -27,13 +26,8 @@ export function useAutomationRules(projectId: string | undefined) {
 export function useCreateAutomationRule() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      projectId,
-      data,
-    }: {
-      projectId: string;
-      data: CreateAutomationRuleData;
-    }) => createAutomationRule(projectId, data),
+    mutationFn: ({ projectId, data }: { projectId: string; data: CreateAutomationRuleData }) =>
+      createAutomationRule(projectId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: automationKeys.lists() });
     },
@@ -43,13 +37,8 @@ export function useCreateAutomationRule() {
 export function useUpdateAutomationRule() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      data,
-    }: {
-      id: string;
-      data: UpdateAutomationRuleData;
-    }) => updateAutomationRule(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UpdateAutomationRuleData }) =>
+      updateAutomationRule(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: automationKeys.lists() });
     },

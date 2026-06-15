@@ -41,49 +41,33 @@ function setCount(n: number) {
 describe("AnchoredNotesBadge", () => {
   it("renders the plural count when there are multiple open findings", () => {
     setCount(3);
-    render(
-      <AnchoredNotesBadge projectId="proj-1" anchorType="task" anchorId="task-1" />,
-    );
-    expect(
-      screen.getByText("3 open findings reference this"),
-    ).toBeInTheDocument();
+    render(<AnchoredNotesBadge projectId="proj-1" anchorType="task" anchorId="task-1" />);
+    expect(screen.getByText("3 open findings reference this")).toBeInTheDocument();
   });
 
   it("renders the singular form for exactly one finding", () => {
     setCount(1);
-    render(
-      <AnchoredNotesBadge projectId="proj-1" anchorType="epic" anchorId="epic-1" />,
-    );
-    expect(
-      screen.getByText("1 open finding reference this"),
-    ).toBeInTheDocument();
+    render(<AnchoredNotesBadge projectId="proj-1" anchorType="epic" anchorId="epic-1" />);
+    expect(screen.getByText("1 open finding reference this")).toBeInTheDocument();
   });
 
   it("renders nothing when there are no open findings", () => {
     setCount(0);
     const { container } = render(
-      <AnchoredNotesBadge
-        projectId="proj-1"
-        anchorType="proposal"
-        anchorId="prop-1"
-      />,
+      <AnchoredNotesBadge projectId="proj-1" anchorType="proposal" anchorId="prop-1" />,
     );
     expect(container).toBeEmptyDOMElement();
   });
 
   it("renders nothing when the query has no data (e.g. null projectId)", () => {
     mocks.useNotes.mockReturnValue({ data: undefined });
-    const { container } = render(
-      <AnchoredNotesBadge anchorType="task" anchorId="task-1" />,
-    );
+    const { container } = render(<AnchoredNotesBadge anchorType="task" anchorId="task-1" />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("deep-links to the inbox with the anchor + open status in search", () => {
     setCount(2);
-    render(
-      <AnchoredNotesBadge projectId="proj-1" anchorType="task" anchorId="task-9" />,
-    );
+    render(<AnchoredNotesBadge projectId="proj-1" anchorType="task" anchorId="task-9" />);
     const link = screen.getByTestId("link");
     expect(link).toHaveAttribute("data-to", "/projects/$projectId/notes");
     expect(JSON.parse(link.getAttribute("data-params")!)).toEqual({

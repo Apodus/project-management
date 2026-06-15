@@ -29,13 +29,9 @@ export function ClaimStateBadge({ state, className }: ClaimStateBadgeProps) {
         </Badge>
       );
     case "live":
-      return (
-        <Badge className={cn(getClaimStateStyle(state), className)}>Live</Badge>
-      );
+      return <Badge className={cn(getClaimStateStyle(state), className)}>Live</Badge>;
     case "yours":
-      return (
-        <Badge className={cn(getClaimStateStyle(state), className)}>Yours</Badge>
-      );
+      return <Badge className={cn(getClaimStateStyle(state), className)}>Yours</Badge>;
     case "unclaimed":
       return null;
     default: {

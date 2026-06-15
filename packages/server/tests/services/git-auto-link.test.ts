@@ -5,12 +5,7 @@ import {
   autoLinkBranch,
   linkCommitToTasks,
 } from "../../src/services/git-auto-link.service.js";
-import {
-  createTestApp,
-  createTestProject,
-  createTestTask,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestProject, createTestTask, type TestApp } from "../utils.js";
 import { createId } from "@pm/shared";
 
 // ─── parseBranchName ──────────────────────────────────────────────
@@ -42,9 +37,7 @@ describe("parseBranchName", () => {
   });
 
   it("should handle multi-segment slugs", () => {
-    const result = parseBranchName(
-      `feat/${VALID_ULID}-add-user-authentication-flow`,
-    );
+    const result = parseBranchName(`feat/${VALID_ULID}-add-user-authentication-flow`);
     expect(result).toEqual({
       taskId: VALID_ULID,
       slug: "add-user-authentication-flow",
@@ -105,9 +98,7 @@ describe("parseCommitMessage", () => {
   });
 
   it("should parse multiple [PM-<id>] references", () => {
-    const result = parseCommitMessage(
-      `feat: implement auth [PM-${ID1}] and [PM-${ID2}]`,
-    );
+    const result = parseCommitMessage(`feat: implement auth [PM-${ID1}] and [PM-${ID2}]`);
     expect(result).toHaveLength(2);
     expect(result).toContain(ID1);
     expect(result).toContain(ID2);
@@ -126,9 +117,7 @@ describe("parseCommitMessage", () => {
   });
 
   it("should deduplicate task IDs", () => {
-    const result = parseCommitMessage(
-      `fix: something [PM-${ID1}]\nrefs: ${ID1}`,
-    );
+    const result = parseCommitMessage(`fix: something [PM-${ID1}]\nrefs: ${ID1}`);
     expect(result).toEqual([ID1]);
   });
 
@@ -243,22 +232,14 @@ describe("linkCommitToTasks", () => {
 
   it("should return empty array when no tasks are referenced", () => {
     const project = createTestProject(testApp.db);
-    const refs = linkCommitToTasks(
-      "abc123",
-      "chore: clean up code",
-      project.id,
-    );
+    const refs = linkCommitToTasks("abc123", "chore: clean up code", project.id);
     expect(refs).toEqual([]);
   });
 
   it("should skip tasks that don't exist", () => {
     const project = createTestProject(testApp.db);
     const fakeId = createId();
-    const refs = linkCommitToTasks(
-      "abc123",
-      `fix: thing [PM-${fakeId}]`,
-      project.id,
-    );
+    const refs = linkCommitToTasks("abc123", `fix: thing [PM-${fakeId}]`, project.id);
     expect(refs).toEqual([]);
   });
 

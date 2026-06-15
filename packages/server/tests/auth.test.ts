@@ -1,11 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import bcrypt from "bcryptjs";
-import {
-  createTestApp,
-  createTestUser,
-  authRequest,
-  type TestApp,
-} from "./utils.js";
+import { createTestApp, createTestUser, authRequest, type TestApp } from "./utils.js";
 import { users, sessions } from "../src/db/index.js";
 import { eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
@@ -167,19 +162,12 @@ describe("Auth", () => {
       expect(token).toHaveLength(64);
 
       // Verify hash is stored in DB
-      const dbUser = testApp.db
-        .select()
-        .from(users)
-        .where(eq(users.id, user.id))
-        .get();
+      const dbUser = testApp.db.select().from(users).where(eq(users.id, user.id)).get();
       expect(dbUser?.apiTokenHash).toBeDefined();
       expect(dbUser?.apiTokenHash).not.toBe(token);
 
       // Verify the stored hash matches the raw token
-      const matches = await authService.compareToken(
-        token,
-        dbUser!.apiTokenHash!,
-      );
+      const matches = await authService.compareToken(token, dbUser!.apiTokenHash!);
       expect(matches).toBe(true);
     });
 

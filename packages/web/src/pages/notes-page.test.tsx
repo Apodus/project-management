@@ -20,9 +20,7 @@ vi.mock("@/components/ui/select", () => ({
     children?: ReactNode;
   }) => <SelectCtx.Provider value={onValueChange}>{children}</SelectCtx.Provider>,
   SelectTrigger: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  SelectValue: ({ placeholder }: { placeholder?: string }) => (
-    <span>{placeholder}</span>
-  ),
+  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
   SelectContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   SelectItem: ({ value, children }: { value: string; children?: ReactNode }) => {
     const onSelect = useContext(SelectCtx);
@@ -200,9 +198,7 @@ describe("NotesPage", () => {
       target: { value: "caching" },
     });
     // Search is debounced (300ms) — wait for the filtered render.
-    await waitFor(() =>
-      expect(screen.queryByText("Login is broken")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText("Login is broken")).not.toBeInTheDocument());
     expect(screen.getByText("Idea for caching")).toBeInTheDocument();
     // The hook received the debounced query, project-scoped to notes.
     expect(useFtsSearchSpy).toHaveBeenLastCalledWith("caching", {
@@ -226,9 +222,7 @@ describe("NotesPage", () => {
     await waitFor(() =>
       expect(screen.queryByText("ranked-second-created")).not.toBeInTheDocument(),
     );
-    const titles = screen
-      .getAllByText(/^ranked-/)
-      .map((el) => el.textContent);
+    const titles = screen.getAllByText(/^ranked-/).map((el) => el.textContent);
     expect(titles).toEqual(["ranked-third-created", "ranked-first-created"]);
   });
 
@@ -241,9 +235,7 @@ describe("NotesPage", () => {
     fireEvent.change(screen.getByPlaceholderText("Search notes..."), {
       target: { value: "note" },
     });
-    await waitFor(() =>
-      expect(screen.getByText("Visible note")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Visible note")).toBeInTheDocument());
     // Exactly one card (the excluded hit contributed nothing).
     expect(screen.getAllByText(/note/i).length).toBeGreaterThan(0);
     expect(screen.queryByText("hit n-excluded")).not.toBeInTheDocument();
@@ -384,15 +376,11 @@ describe("NotesPage", () => {
     notesData = [makeNote({ id: "n1", title: "Open note", status: "open" })];
     render(<NotesPage />);
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Promote to proposal" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Promote to proposal" })).toBeInTheDocument();
   });
 
   it("dismiss: dialog requires a reason, then calls mutateAsync with {id, projectId, reason}", async () => {
-    notesData = [
-      makeNote({ id: "n1", projectId: "proj-1", title: "Open note", status: "open" }),
-    ];
+    notesData = [makeNote({ id: "n1", projectId: "proj-1", title: "Open note", status: "open" })];
     render(<NotesPage />);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 
@@ -463,9 +451,7 @@ describe("NotesPage", () => {
     // ai_agent → hidden.
     useCurrentUserMock.mockReturnValue({ data: { type: "ai_agent" } });
     const { unmount } = render(<NotesPage />);
-    expect(
-      screen.queryByRole("button", { name: "Promote to task" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Promote to task" })).not.toBeInTheDocument();
     unmount();
 
     // human → shown.
@@ -491,26 +477,18 @@ describe("NotesPage", () => {
   // ── Epic picker in the promote-to-task dialog (C3 P5) ───────────
 
   it("epic picker lists non-terminal epics only (completed/cancelled excluded)", () => {
-    notesData = [
-      makeNote({ id: "n1", projectId: "proj-1", title: "Bug to fix", status: "open" }),
-    ];
+    notesData = [makeNote({ id: "n1", projectId: "proj-1", title: "Bug to fix", status: "open" })];
     render(<NotesPage />);
     fireEvent.click(screen.getByRole("button", { name: "Promote to task" }));
 
     expect(screen.getByRole("button", { name: "Alpha epic" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "No epic" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Done epic" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Dead epic" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Done epic" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dead epic" })).not.toBeInTheDocument();
   });
 
   it("picking an epic submits its id", async () => {
-    notesData = [
-      makeNote({ id: "n1", projectId: "proj-1", title: "Bug to fix", status: "open" }),
-    ];
+    notesData = [makeNote({ id: "n1", projectId: "proj-1", title: "Bug to fix", status: "open" })];
     render(<NotesPage />);
     fireEvent.click(screen.getByRole("button", { name: "Promote to task" }));
     fireEvent.click(screen.getByRole("button", { name: "Alpha epic" }));
@@ -527,9 +505,7 @@ describe("NotesPage", () => {
   });
 
   it("leaving the picker on No-epic submits epicId undefined", async () => {
-    notesData = [
-      makeNote({ id: "n1", projectId: "proj-1", title: "Bug to fix", status: "open" }),
-    ];
+    notesData = [makeNote({ id: "n1", projectId: "proj-1", title: "Bug to fix", status: "open" })];
     render(<NotesPage />);
     fireEvent.click(screen.getByRole("button", { name: "Promote to task" }));
 
@@ -554,17 +530,13 @@ describe("NotesPage", () => {
     "fixture comfortably past five hundred characters total length here now.";
 
   it("opens the detail from the title showing the FULL unclamped body", () => {
-    notesData = [
-      makeNote({ id: "n1", title: "Short title", body: LONG_BODY }),
-    ];
+    notesData = [makeNote({ id: "n1", title: "Short title", body: LONG_BODY })];
     render(<NotesPage />);
     fireEvent.click(screen.getByRole("button", { name: "Short title" }));
 
     // The body has newlines (pre-wrap) — getByText normalizes whitespace, so
     // match on raw textContent inside the dialog instead.
-    const content = document.querySelector(
-      "[data-slot='dialog-content']",
-    ) as HTMLElement;
+    const content = document.querySelector("[data-slot='dialog-content']") as HTMLElement;
     const dialog = Array.from(content.querySelectorAll("p")).find(
       (p) => p.textContent === LONG_BODY,
     )!;
@@ -595,9 +567,7 @@ describe("NotesPage", () => {
     const anchorTitle = screen
       .getAllByText("Anchor target")
       .find((el) => el.closest("[data-slot='dialog-content']"))!;
-    const content = anchorTitle.closest(
-      "[data-slot='dialog-content']",
-    ) as HTMLElement;
+    const content = anchorTitle.closest("[data-slot='dialog-content']") as HTMLElement;
     // codeLocator proves the detail surfaces what the card never showed.
     expect(content.textContent).toContain("src/x.ts:42");
     expect(content.textContent).toContain("High");
@@ -657,14 +627,8 @@ describe("NotesPage", () => {
       }),
     ];
     render(<NotesPage />);
-    expect(
-      screen.queryByRole("button", { name: "Dismiss" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Promote to proposal" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Promote to task" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Promote to proposal" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Promote to task" })).not.toBeInTheDocument();
   });
 });

@@ -20,10 +20,7 @@ describe("loadConfig", () => {
       { watch: ["wk-a", "wk-b:proj-b"] },
       { ...baseEnv, PM_WORKER_KEY: "ignored" },
     );
-    expect(cfg.watch).toEqual([
-      { workerKey: "wk-a" },
-      { workerKey: "wk-b", projectId: "proj-b" },
-    ]);
+    expect(cfg.watch).toEqual([{ workerKey: "wk-a" }, { workerKey: "wk-b", projectId: "proj-b" }]);
   });
 
   it("is fatal (ConfigError) when the token is missing", () => {
@@ -47,17 +44,19 @@ describe("loadConfig", () => {
   });
 
   it("strips a trailing slash from the pm url", () => {
-    const cfg = loadConfig(
-      { pmUrl: "http://host:3000///" },
-      { ...baseEnv, PM_WORKER_KEY: "w" },
-    );
+    const cfg = loadConfig({ pmUrl: "http://host:3000///" }, { ...baseEnv, PM_WORKER_KEY: "w" });
     expect(cfg.pmUrl).toBe("http://host:3000");
   });
 
   it("honors PM_WAKE_WORKER_COMMAND and PM_WAKE_PROMPT overrides", () => {
     const cfg = loadConfig(
       {},
-      { ...baseEnv, PM_WORKER_KEY: "w", PM_WAKE_WORKER_COMMAND: "my-agent", PM_WAKE_PROMPT: "hi {messages}" },
+      {
+        ...baseEnv,
+        PM_WORKER_KEY: "w",
+        PM_WAKE_WORKER_COMMAND: "my-agent",
+        PM_WAKE_PROMPT: "hi {messages}",
+      },
     );
     expect(cfg.workerCommand).toBe("my-agent");
     expect(cfg.promptTemplate).toBe("hi {messages}");

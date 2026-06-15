@@ -255,22 +255,14 @@ describe("Export/Import API", () => {
 
     it("should return 404 for non-existent project", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${fakeId}/export`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${fakeId}/export`);
       expect(res.status).toBe(404);
     });
 
     it("should export a project with no related data", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/export`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/export`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -289,11 +281,7 @@ describe("Export/Import API", () => {
     it("should set Content-Disposition header for download", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/export`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/export`);
       expect(res.status).toBe(200);
 
       const disposition = res.headers.get("content-disposition");
@@ -316,12 +304,9 @@ describe("Export/Import API", () => {
       const exportData = await exportRes.json();
 
       // Import
-      const importRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/projects/import",
-        { body: exportData },
-      );
+      const importRes = await authRequest(testApp.app, "POST", "/api/v1/projects/import", {
+        body: exportData,
+      });
       expect(importRes.status).toBe(201);
 
       const importBody = await importRes.json();
@@ -343,12 +328,9 @@ describe("Export/Import API", () => {
       const exportData = await exportRes.json();
 
       // Import
-      const importRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/projects/import",
-        { body: exportData },
-      );
+      const importRes = await authRequest(testApp.app, "POST", "/api/v1/projects/import", {
+        body: exportData,
+      });
       expect(importRes.status).toBe(201);
 
       const importBody = await importRes.json();
@@ -367,26 +349,18 @@ describe("Export/Import API", () => {
       // Verify counts match
       expect(reExportData.proposals).toHaveLength(exportData.proposals.length);
       expect(reExportData.epics).toHaveLength(exportData.epics.length);
-      expect(reExportData.milestones).toHaveLength(
-        exportData.milestones.length,
-      );
+      expect(reExportData.milestones).toHaveLength(exportData.milestones.length);
       expect(reExportData.tasks).toHaveLength(exportData.tasks.length);
       expect(reExportData.comments).toHaveLength(exportData.comments.length);
       expect(reExportData.labels).toHaveLength(exportData.labels.length);
-      expect(reExportData.task_labels).toHaveLength(
-        exportData.task_labels.length,
-      );
-      expect(reExportData.task_dependencies).toHaveLength(
-        exportData.task_dependencies.length,
-      );
+      expect(reExportData.task_labels).toHaveLength(exportData.task_labels.length);
+      expect(reExportData.task_dependencies).toHaveLength(exportData.task_dependencies.length);
       expect(reExportData.git_refs).toHaveLength(exportData.git_refs.length);
 
       // Verify all IDs are different
       expect(reExportData.project.id).not.toBe(exportData.project.id);
       for (let i = 0; i < reExportData.proposals.length; i++) {
-        expect(reExportData.proposals[i].id).not.toBe(
-          exportData.proposals[i].id,
-        );
+        expect(reExportData.proposals[i].id).not.toBe(exportData.proposals[i].id);
       }
       for (let i = 0; i < reExportData.tasks.length; i++) {
         expect(reExportData.tasks[i].id).not.toBe(exportData.tasks[i].id);
@@ -405,12 +379,9 @@ describe("Export/Import API", () => {
       const exportData = await exportRes.json();
 
       // Import
-      const importRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/projects/import",
-        { body: exportData },
-      );
+      const importRes = await authRequest(testApp.app, "POST", "/api/v1/projects/import", {
+        body: exportData,
+      });
       const importBody = await importRes.json();
       const newProjectId = importBody.data.id;
 
@@ -424,32 +395,20 @@ describe("Export/Import API", () => {
 
       // Verify field-by-field data matches (ignoring IDs and timestamps)
       // Project fields
-      expect(reExportData.project.description).toBe(
-        exportData.project.description,
-      );
+      expect(reExportData.project.description).toBe(exportData.project.description);
       expect(reExportData.project.status).toBe(exportData.project.status);
 
       // Milestone fields
-      expect(reExportData.milestones[0].name).toBe(
-        exportData.milestones[0].name,
-      );
-      expect(reExportData.milestones[0].description).toBe(
-        exportData.milestones[0].description,
-      );
+      expect(reExportData.milestones[0].name).toBe(exportData.milestones[0].name);
+      expect(reExportData.milestones[0].description).toBe(exportData.milestones[0].description);
 
       // Proposal fields
-      expect(reExportData.proposals[0].title).toBe(
-        exportData.proposals[0].title,
-      );
-      expect(reExportData.proposals[0].description).toBe(
-        exportData.proposals[0].description,
-      );
+      expect(reExportData.proposals[0].title).toBe(exportData.proposals[0].title);
+      expect(reExportData.proposals[0].description).toBe(exportData.proposals[0].description);
 
       // Epic fields
       expect(reExportData.epics[0].name).toBe(exportData.epics[0].name);
-      expect(reExportData.epics[0].description).toBe(
-        exportData.epics[0].description,
-      );
+      expect(reExportData.epics[0].description).toBe(exportData.epics[0].description);
 
       // Verify relationships are internally consistent
       const newEpic = reExportData.epics[0];
@@ -475,9 +434,7 @@ describe("Export/Import API", () => {
       // Task dependency: should reference remapped task IDs
       if (reExportData.task_dependencies.length > 0) {
         const dep = reExportData.task_dependencies[0];
-        const taskIds = reExportData.tasks.map(
-          (t: Record<string, unknown>) => t.id,
-        );
+        const taskIds = reExportData.tasks.map((t: Record<string, unknown>) => t.id);
         expect(taskIds).toContain(dep.taskId);
         expect(taskIds).toContain(dep.dependsOnTaskId);
       }
@@ -485,12 +442,8 @@ describe("Export/Import API", () => {
       // Task labels: should reference remapped IDs
       if (reExportData.task_labels.length > 0) {
         const tl = reExportData.task_labels[0];
-        const taskIds = reExportData.tasks.map(
-          (t: Record<string, unknown>) => t.id,
-        );
-        const labelIds = reExportData.labels.map(
-          (l: Record<string, unknown>) => l.id,
-        );
+        const taskIds = reExportData.tasks.map((t: Record<string, unknown>) => t.id);
+        const labelIds = reExportData.labels.map((l: Record<string, unknown>) => l.id);
         expect(taskIds).toContain(tl.taskId);
         expect(labelIds).toContain(tl.labelId);
       }
@@ -509,88 +462,69 @@ describe("Export/Import API", () => {
       expect(taskComment.body).toBe(origTaskComment.body);
 
       // Git ref fields
-      expect(reExportData.git_refs[0].refType).toBe(
-        exportData.git_refs[0].refType,
-      );
-      expect(reExportData.git_refs[0].refValue).toBe(
-        exportData.git_refs[0].refValue,
-      );
+      expect(reExportData.git_refs[0].refType).toBe(exportData.git_refs[0].refType);
+      expect(reExportData.git_refs[0].refValue).toBe(exportData.git_refs[0].refValue);
       expect(reExportData.git_refs[0].url).toBe(exportData.git_refs[0].url);
     });
 
     it("should reject invalid data (missing version)", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/projects/import",
-        {
-          body: {
-            version: "2.0",
-            exported_at: new Date().toISOString(),
-            project: { name: "Test" },
-            proposals: [],
-            epics: [],
-            milestones: [],
-            tasks: [],
-            comments: [],
-            labels: [],
-            task_labels: [],
-            task_dependencies: [],
-            git_refs: [],
-          },
+      const res = await authRequest(testApp.app, "POST", "/api/v1/projects/import", {
+        body: {
+          version: "2.0",
+          exported_at: new Date().toISOString(),
+          project: { name: "Test" },
+          proposals: [],
+          epics: [],
+          milestones: [],
+          tasks: [],
+          comments: [],
+          labels: [],
+          task_labels: [],
+          task_dependencies: [],
+          git_refs: [],
         },
-      );
+      });
       // Should fail with 400 (unsupported version)
       expect(res.status).toBe(400);
     });
 
     it("should reject import data missing required arrays", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/projects/import",
-        {
-          body: {
-            version: "1.0",
-            exported_at: new Date().toISOString(),
-            project: { name: "Test" },
-            // Missing arrays — will fail zod validation before reaching service
-          },
+      const res = await authRequest(testApp.app, "POST", "/api/v1/projects/import", {
+        body: {
+          version: "1.0",
+          exported_at: new Date().toISOString(),
+          project: { name: "Test" },
+          // Missing arrays — will fail zod validation before reaching service
         },
-      );
+      });
       expect(res.status).toBe(400);
     });
 
     it("should import a project with no related data", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/projects/import",
-        {
-          body: {
-            version: "1.0",
-            exported_at: new Date().toISOString(),
-            project: {
-              id: createId(),
-              name: "Empty Project",
-              slug: "empty-project",
-              description: null,
-              status: "active",
-              settings: null,
-              sortOrder: 0,
-            },
-            proposals: [],
-            epics: [],
-            milestones: [],
-            tasks: [],
-            comments: [],
-            labels: [],
-            task_labels: [],
-            task_dependencies: [],
-            git_refs: [],
+      const res = await authRequest(testApp.app, "POST", "/api/v1/projects/import", {
+        body: {
+          version: "1.0",
+          exported_at: new Date().toISOString(),
+          project: {
+            id: createId(),
+            name: "Empty Project",
+            slug: "empty-project",
+            description: null,
+            status: "active",
+            settings: null,
+            sortOrder: 0,
           },
+          proposals: [],
+          epics: [],
+          milestones: [],
+          tasks: [],
+          comments: [],
+          labels: [],
+          task_labels: [],
+          task_dependencies: [],
+          git_refs: [],
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();

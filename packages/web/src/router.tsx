@@ -20,22 +20,13 @@ import { ApiError, getCurrentUser, getSetupStatus } from "@/lib/api";
 // index <Navigate>. defaultPreload: "intent" (already set below) prefetches a
 // chunk on hover/focus, so the lazy hop is rarely felt.
 
-const ActivityPage = lazyRouteComponent(
-  () => import("@/pages/activity-page"),
-  "ActivityPage",
-);
-const DashboardPage = lazyRouteComponent(
-  () => import("@/pages/dashboard-page"),
-  "DashboardPage",
-);
+const ActivityPage = lazyRouteComponent(() => import("@/pages/activity-page"), "ActivityPage");
+const DashboardPage = lazyRouteComponent(() => import("@/pages/dashboard-page"), "DashboardPage");
 const EpicDetailPage = lazyRouteComponent(
   () => import("@/pages/epic-detail-page"),
   "EpicDetailPage",
 );
-const EpicListPage = lazyRouteComponent(
-  () => import("@/pages/epic-list-page"),
-  "EpicListPage",
-);
+const EpicListPage = lazyRouteComponent(() => import("@/pages/epic-list-page"), "EpicListPage");
 const EpicTimelinePage = lazyRouteComponent(
   () => import("@/pages/epic-timeline-page"),
   "EpicTimelinePage",
@@ -56,10 +47,7 @@ const ProposalListPage = lazyRouteComponent(
   () => import("@/pages/proposal-list-page"),
   "ProposalListPage",
 );
-const NotesPage = lazyRouteComponent(
-  () => import("@/pages/notes-page"),
-  "NotesPage",
-);
+const NotesPage = lazyRouteComponent(() => import("@/pages/notes-page"), "NotesPage");
 const EscalationsPage = lazyRouteComponent(
   () => import("@/pages/escalations-page"),
   "EscalationsPage",
@@ -72,18 +60,9 @@ const TaskDetailPage = lazyRouteComponent(
   () => import("@/pages/task-detail-page"),
   "TaskDetailPage",
 );
-const TaskListPage = lazyRouteComponent(
-  () => import("@/pages/task-list-page"),
-  "TaskListPage",
-);
-const BoardPage = lazyRouteComponent(
-  () => import("@/pages/board-page"),
-  "BoardPage",
-);
-const ClaimsPage = lazyRouteComponent(
-  () => import("@/pages/claims-page"),
-  "ClaimsPage",
-);
+const TaskListPage = lazyRouteComponent(() => import("@/pages/task-list-page"), "TaskListPage");
+const BoardPage = lazyRouteComponent(() => import("@/pages/board-page"), "BoardPage");
+const ClaimsPage = lazyRouteComponent(() => import("@/pages/claims-page"), "ClaimsPage");
 const TrainDashboardPage = lazyRouteComponent(
   () => import("@/pages/train-dashboard-page"),
   "TrainDashboardPage",
@@ -96,14 +75,8 @@ const MergeRequestTimelinePage = lazyRouteComponent(
   () => import("@/pages/merge-request-timeline-page"),
   "MergeRequestTimelinePage",
 );
-const UsersPage = lazyRouteComponent(
-  () => import("@/pages/settings/users-page"),
-  "UsersPage",
-);
-const BackupPage = lazyRouteComponent(
-  () => import("@/pages/settings/backup-page"),
-  "BackupPage",
-);
+const UsersPage = lazyRouteComponent(() => import("@/pages/settings/users-page"), "UsersPage");
+const BackupPage = lazyRouteComponent(() => import("@/pages/settings/backup-page"), "BackupPage");
 const TemplatesPage = lazyRouteComponent(
   () => import("@/pages/settings/templates-page"),
   "TemplatesPage",
@@ -132,10 +105,7 @@ const CategoriesPage = lazyRouteComponent(
   () => import("@/pages/settings/categories-page"),
   "CategoriesPage",
 );
-const HelpPage = lazyRouteComponent(
-  () => import("@/pages/help-page"),
-  "HelpPage",
-);
+const HelpPage = lazyRouteComponent(() => import("@/pages/help-page"), "HelpPage");
 
 // ---- Root route (no layout — just an outlet) ----
 
@@ -240,8 +210,7 @@ const projectNotesRoute = createRoute({
   path: "/notes",
   component: NotesPage,
   validateSearch: (search: Record<string, unknown>): NotesSearch => ({
-    anchorType:
-      typeof search.anchorType === "string" ? search.anchorType : undefined,
+    anchorType: typeof search.anchorType === "string" ? search.anchorType : undefined,
     anchorId: typeof search.anchorId === "string" ? search.anchorId : undefined,
     status: typeof search.status === "string" ? search.status : undefined,
     q: typeof search.q === "string" ? search.q : undefined,
@@ -265,8 +234,7 @@ const projectEscalationsRoute = createRoute({
     status: typeof search.status === "string" ? search.status : undefined,
     kind: typeof search.kind === "string" ? search.kind : undefined,
     severity: typeof search.severity === "string" ? search.severity : undefined,
-    originRepo:
-      typeof search.originRepo === "string" ? search.originRepo : undefined,
+    originRepo: typeof search.originRepo === "string" ? search.originRepo : undefined,
   }),
 });
 
@@ -305,7 +273,12 @@ const projectTaskListRoute = createRoute({
     search: typeof search.search === "string" ? search.search : undefined,
     sort: typeof search.sort === "string" ? search.sort : undefined,
     order: search.order === "asc" || search.order === "desc" ? search.order : undefined,
-    page: typeof search.page === "number" ? search.page : (typeof search.page === "string" ? parseInt(search.page, 10) || undefined : undefined),
+    page:
+      typeof search.page === "number"
+        ? search.page
+        : typeof search.page === "string"
+          ? parseInt(search.page, 10) || undefined
+          : undefined,
     group_by: typeof search.group_by === "string" ? search.group_by : undefined,
   }),
 });

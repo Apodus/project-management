@@ -116,10 +116,7 @@ function makeFakeClient(state: FakeState): PmClient {
       state.calls.push("startAttempt");
       return att;
     },
-    async completeAttempt(
-      attemptId: string,
-      body: { status: string },
-    ): Promise<MergeAttemptView> {
+    async completeAttempt(attemptId: string, body: { status: string }): Promise<MergeAttemptView> {
       const att = state.attempts.find((a) => a.id === attemptId);
       if (!att) throw new PmApiError(404, "NOT_FOUND", "no attempt");
       att.status = body.status as MergeAttemptView["status"];
@@ -310,8 +307,7 @@ describe.skipIf(!GIT_AVAILABLE)("runOnce (real git + fake PM)", () => {
     const req = makeRequest({
       id: "req-bad",
       branch: "feature/badtest",
-      verifyCmd:
-        process.platform === "win32" ? "exit 1" : "exit 1",
+      verifyCmd: process.platform === "win32" ? "exit 1" : "exit 1",
     });
     const state: FakeState = {
       requests: [req],

@@ -34,12 +34,9 @@ describe("Task Workflow API", () => {
         status: "backlog",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "ready" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "ready" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -55,12 +52,9 @@ describe("Task Workflow API", () => {
         status: "ready",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "in_progress" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "in_progress" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -76,12 +70,9 @@ describe("Task Workflow API", () => {
         status: "in_progress",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "in_review" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "in_review" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -97,12 +88,9 @@ describe("Task Workflow API", () => {
         status: "in_review",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "done" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "done" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -118,12 +106,9 @@ describe("Task Workflow API", () => {
         status: "backlog",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "done" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "done" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -141,12 +126,9 @@ describe("Task Workflow API", () => {
         status: "done",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "backlog" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "backlog" },
+      });
       expect(res.status).toBe(400);
 
       const body = await res.json();
@@ -162,12 +144,9 @@ describe("Task Workflow API", () => {
         status: "cancelled",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "ready" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "ready" },
+      });
       expect(res.status).toBe(400);
 
       const body = await res.json();
@@ -183,12 +162,9 @@ describe("Task Workflow API", () => {
         status: "ready",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "in_progress" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "in_progress" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -206,30 +182,21 @@ describe("Task Workflow API", () => {
       });
 
       // First transition to in_progress
-      const res1 = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "in_progress" } },
-      );
+      const res1 = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "in_progress" },
+      });
       const firstStartedAt = (await res1.json()).data.startedAt;
 
       // Transition back to in_review then to in_progress
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "in_review" } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "in_review" },
+      });
 
       await new Promise((r) => setTimeout(r, 10));
 
-      const res2 = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "in_progress" } },
-      );
+      const res2 = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "in_progress" },
+      });
       const secondStartedAt = (await res2.json()).data.startedAt;
 
       expect(secondStartedAt).toBe(firstStartedAt);
@@ -244,12 +211,9 @@ describe("Task Workflow API", () => {
         status: "in_review",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "done" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "done" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -267,12 +231,9 @@ describe("Task Workflow API", () => {
         assigneeId: null,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "in_progress" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "in_progress" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -289,12 +250,9 @@ describe("Task Workflow API", () => {
         status: "backlog",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/transitions`,
-        { body: { to_status: "ready", comment: "Ready for development" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/transitions`, {
+        body: { to_status: "ready", comment: "Ready for development" },
+      });
       expect(res.status).toBe(200);
 
       // Verify the comment was created
@@ -310,12 +268,9 @@ describe("Task Workflow API", () => {
 
     it("should return 404 for non-existent task", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${fakeId}/transitions`,
-        { body: { to_status: "ready" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${fakeId}/transitions`, {
+        body: { to_status: "ready" },
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -349,12 +304,7 @@ describe("Task Workflow API", () => {
         title: "High priority",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: {} },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", { body: {} });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -407,12 +357,7 @@ describe("Task Workflow API", () => {
         title: "Unblocked task",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: {} },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", { body: {} });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -444,12 +389,7 @@ describe("Task Workflow API", () => {
         assigneeId: null,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: {} },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", { body: {} });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -476,12 +416,9 @@ describe("Task Workflow API", () => {
         title: "Project 2 task",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: { project_id: project1.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        body: { project_id: project1.id },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -509,12 +446,9 @@ describe("Task Workflow API", () => {
         title: "Bug task",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: { task_types: ["bug"] } },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        body: { task_types: ["bug"] },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -550,12 +484,9 @@ describe("Task Workflow API", () => {
         title: "No effort estimate",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: { max_effort: "m" } },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        body: { max_effort: "m" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -577,12 +508,9 @@ describe("Task Workflow API", () => {
         title: "No effort",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: { max_effort: "xs" } },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        body: { max_effort: "xs" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -590,12 +518,7 @@ describe("Task Workflow API", () => {
     });
 
     it("should return 404 when nothing available", async () => {
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: {} },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", { body: {} });
       expect(res.status).toBe(404);
 
       const body = await res.json();
@@ -616,23 +539,13 @@ describe("Task Workflow API", () => {
       });
 
       // First pick should succeed
-      const res1 = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: {} },
-      );
+      const res1 = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", { body: {} });
       expect(res1.status).toBe(200);
       const body1 = await res1.json();
       expect(body1.data.title).toBe("Only task");
 
       // Second pick should find nothing
-      const res2 = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: {} },
-      );
+      const res2 = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", { body: {} });
       expect(res2.status).toBe(404);
     });
 
@@ -664,12 +577,10 @@ describe("Task Workflow API", () => {
         title: "Available task",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { token: agentToken, body: { project_id: project.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        token: agentToken,
+        body: { project_id: project.id },
+      });
       expect(res.status).toBe(403);
 
       const body = await res.json();
@@ -687,12 +598,7 @@ describe("Task Workflow API", () => {
         title: "Ready task",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: {} },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", { body: {} });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -721,12 +627,7 @@ describe("Task Workflow API", () => {
         title: "Second created",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: {} },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", { body: {} });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -755,12 +656,10 @@ describe("Task Workflow API", () => {
         title: "Available task",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { token: agentToken, body: { project_id: project.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        token: agentToken,
+        body: { project_id: project.id },
+      });
       expect(res.status).toBe(403);
 
       const body = await res.json();
@@ -778,18 +677,13 @@ describe("Task Workflow API", () => {
       });
       const { user: agent, token: agentToken } = createTestAiAgent(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        {
-          token: agentToken,
-          body: {
-            title: "AI created task",
-            reporterId: agent.id,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        token: agentToken,
+        body: {
+          title: "AI created task",
+          reporterId: agent.id,
         },
-      );
+      });
       expect(res.status).toBe(403);
 
       const body = await res.json();
@@ -801,18 +695,13 @@ describe("Task Workflow API", () => {
       const project = createTestProject(testApp.db);
       const { user: agent, token: agentToken } = createTestAiAgent(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        {
-          token: agentToken,
-          body: {
-            title: "AI created task",
-            reporterId: agent.id,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        token: agentToken,
+        body: {
+          title: "AI created task",
+          reporterId: agent.id,
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -832,15 +721,10 @@ describe("Task Workflow API", () => {
         priority: "medium",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        {
-          token: agentToken,
-          body: { priority: "critical" },
-        },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        token: agentToken,
+        body: { priority: "critical" },
+      });
       expect(res.status).toBe(403);
 
       const body = await res.json();
@@ -864,15 +748,10 @@ describe("Task Workflow API", () => {
         priority: "medium",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        {
-          token: agentToken,
-          body: { priority: "critical" },
-        },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        token: agentToken,
+        body: { priority: "critical" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -925,29 +804,21 @@ describe("Task Workflow API", () => {
       });
 
       // Human can still create tasks even when AI is blocked
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/tasks`,
-        {
-          body: {
-            title: "Human created task",
-            reporterId: testApp.testUser.id,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+        body: {
+          title: "Human created task",
+          reporterId: testApp.testUser.id,
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
       const taskId = body.data.id;
 
       // Human can change priority
-      const patchRes = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${taskId}`,
-        { body: { priority: "critical" } },
-      );
+      const patchRes = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${taskId}`, {
+        body: { priority: "critical" },
+      });
       expect(patchRes.status).toBe(200);
 
       // Human can pick-next
@@ -956,12 +827,9 @@ describe("Task Workflow API", () => {
         reporterId: testApp.testUser.id,
         status: "ready",
       });
-      const pickRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { body: {} },
-      );
+      const pickRes = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        body: {},
+      });
       expect(pickRes.status).toBe(200);
     });
 
@@ -977,12 +845,10 @@ describe("Task Workflow API", () => {
         title: "Ready task",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/tasks/pick-next",
-        { token: agentToken, body: { project_id: project.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", "/api/v1/tasks/pick-next", {
+        token: agentToken,
+        body: { project_id: project.id },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -1002,12 +868,9 @@ describe("Task Workflow API", () => {
         status: "backlog",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/tasks/${task.id}`,
-        { body: { status: "done" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/tasks/${task.id}`, {
+        body: { status: "done" },
+      });
       // Status is stripped from the body by Zod, so PATCH succeeds but status is unchanged
       expect(res.status).toBe(200);
 

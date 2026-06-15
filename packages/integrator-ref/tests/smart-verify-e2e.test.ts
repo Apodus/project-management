@@ -76,11 +76,7 @@ import {
   comments,
   type AppDatabase,
 } from "../../server/src/db/index.js";
-import {
-  createTestProject,
-  createTestAiAgent,
-  createTestTask,
-} from "../../server/tests/utils.js";
+import { createTestProject, createTestAiAgent, createTestTask } from "../../server/tests/utils.js";
 
 // ─── Gating ───────────────────────────────────────────────────────
 
@@ -98,8 +94,7 @@ const RUN = hasGit() && distExists;
 
 const isWin = process.platform === "win32";
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Bounded poll over an async predicate (the §13 de-flake discipline — NEVER a
@@ -233,10 +228,7 @@ interface Harness {
   project: { id: string; slug: string };
   workerToken: string;
   spawnIntegrator: () => Promise<ChildProcess>;
-  submit: (
-    token: string,
-    body: Record<string, unknown>,
-  ) => Promise<MergeRequest>;
+  submit: (token: string, body: Record<string, unknown>) => Promise<MergeRequest>;
   getRequest: (id: string) => Promise<MergeRequest>;
   pollTerminal: (id: string, timeoutMs?: number) => Promise<MergeRequest>;
   getTimeline: (id: string) => Promise<TimelineEvent[]>;
@@ -332,10 +324,7 @@ async function makeHarness(opts: HarnessOpts): Promise<Harness> {
     },
   });
   const project = { id: proj.id, slug: proj.slug };
-  db.update(projects)
-    .set({ gitRepoUrl: bareRepo })
-    .where(eq(projects.id, project.id))
-    .run();
+  db.update(projects).set({ gitRepoUrl: bareRepo }).where(eq(projects.id, project.id)).run();
 
   // ── Spawnable integrator. ──
   let currentProc: ChildProcess | null = null;
@@ -396,21 +385,15 @@ async function makeHarness(opts: HarnessOpts): Promise<Harness> {
   }
 
   // ── HTTP + git helpers. ──
-  async function submit(
-    token: string,
-    body: Record<string, unknown>,
-  ): Promise<MergeRequest> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/merge-requests`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+  async function submit(token: string, body: Record<string, unknown>): Promise<MergeRequest> {
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/merge-requests`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(body),
+    });
     expect(res.status).toBe(201);
     return (await res.json()).data as MergeRequest;
   }
@@ -423,10 +406,7 @@ async function makeHarness(opts: HarnessOpts): Promise<Harness> {
     return (await res.json()).data as MergeRequest;
   }
 
-  async function pollTerminal(
-    id: string,
-    timeoutMs = 40_000,
-  ): Promise<MergeRequest> {
+  async function pollTerminal(id: string, timeoutMs = 40_000): Promise<MergeRequest> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const r = await getRequest(id);
@@ -437,10 +417,9 @@ async function makeHarness(opts: HarnessOpts): Promise<Harness> {
   }
 
   async function getTimeline(id: string): Promise<TimelineEvent[]> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/merge-requests/${id}/timeline`,
-      { headers: { Authorization: `Bearer ${workerToken}` } },
-    );
+    const res = await fetch(`${baseUrl}/api/v1/merge-requests/${id}/timeline`, {
+      headers: { Authorization: `Bearer ${workerToken}` },
+    });
     expect(res.status).toBe(200);
     return ((await res.json()).data as { events: TimelineEvent[] }).events;
   }
@@ -486,13 +465,10 @@ async function makeHarness(opts: HarnessOpts): Promise<Harness> {
     let buffer = "";
     void (async () => {
       try {
-        const res = await fetch(
-          `${baseUrl}/api/v1/events?project_id=${project.id}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal,
-          },
-        );
+        const res = await fetch(`${baseUrl}/api/v1/events?project_id=${project.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
         if (!res.body) return;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -706,9 +682,7 @@ describe.skipIf(!RUN)("smart-verify E2E (B) — cache on MISS→HIT", () => {
     // committed race: don't read one then assume the other).
     const hitBumped = await pollUntil(async () => {
       const rows = await h.getVerifyCache();
-      const row = rows.find(
-        (r) => r.stepId === "unit" && r.treeSha === recordedTree,
-      );
+      const row = rows.find((r) => r.stepId === "unit" && r.treeSha === recordedTree);
       return (row?.hitCount ?? 0) >= 1;
     }, 15_000);
     expect(hitBumped, "the recorded row's hitCount bumped to >=1").toBe(true);
@@ -795,11 +769,7 @@ describe.skipIf(!RUN)("smart-verify E2E (C) — shadow mismatch, real fail wins"
 
     // The mismatch is asserted ONLY via the SSE event (cache_mismatches metric is
     // hardcoded 0 — a non-persisted relay).
-    const sawMismatch = await pollUntil(
-      async () => sse.saw("verify.cache_mismatch"),
-      5_000,
-      100,
-    );
+    const sawMismatch = await pollUntil(async () => sse.saw("verify.cache_mismatch"), 5_000, 100);
     expect(sawMismatch, "verify.cache_mismatch SSE within 5s").toBe(true);
     sse.stop();
 
@@ -807,17 +777,13 @@ describe.skipIf(!RUN)("smart-verify E2E (C) — shadow mismatch, real fail wins"
     // while hitCount/createdAt SURVIVE (preserve-on-re-record).
     const healed = await pollUntil(async () => {
       const rows = await h.getVerifyCache();
-      const row = rows.find(
-        (r) => r.stepId === "gate" && r.treeSha === gateTree,
-      );
+      const row = rows.find((r) => r.stepId === "gate" && r.treeSha === gateTree);
       return row?.result === "fail";
     }, 15_000);
     expect(healed, "gate row self-healed to fail").toBe(true);
 
     const finalRows = await h.getVerifyCache();
-    const finalGate = finalRows.find(
-      (r) => r.stepId === "gate" && r.treeSha === gateTree,
-    )!;
+    const finalGate = finalRows.find((r) => r.stepId === "gate" && r.treeSha === gateTree)!;
     expect(finalGate.result).toBe("fail");
     // createdAt preserved across the re-record (metric integrity).
     expect(finalGate.createdAt).toBe(firstCreatedAt);
@@ -923,9 +889,7 @@ describe.skipIf(!RUN)("smart-verify E2E (E) — backward-compat (cache inert)", 
     const refs = h.db
       .select()
       .from(gitRefs)
-      .where(
-        and(eq(gitRefs.taskId, task1.id), eq(gitRefs.refType, "landed_sha")),
-      )
+      .where(and(eq(gitRefs.taskId, task1.id), eq(gitRefs.refType, "landed_sha")))
       .all();
     expect(refs.length).toBe(1);
     expect(refs[0].refValue).toBe(f1.landedSha);
@@ -946,12 +910,7 @@ describe.skipIf(!RUN)("smart-verify E2E (E) — backward-compat (cache inert)", 
     const rejComments = h.db
       .select()
       .from(comments)
-      .where(
-        and(
-          eq(comments.taskId, task2.id),
-          eq(comments.commentType, "merge_rejection"),
-        ),
-      )
+      .where(and(eq(comments.taskId, task2.id), eq(comments.commentType, "merge_rejection")))
       .all();
     expect(rejComments.length).toBe(1);
 
@@ -961,15 +920,9 @@ describe.skipIf(!RUN)("smart-verify E2E (E) — backward-compat (cache inert)", 
     const stayedInert = await pollUntil(async () => {
       const rows = await h.getVerifyCache();
       const m = await h.getMetrics();
-      return (
-        rows.length === 0 &&
-        m.cache_enabled === false &&
-        m.cache_hit_rate.lookups === 0
-      );
+      return rows.length === 0 && m.cache_enabled === false && m.cache_hit_rate.lookups === 0;
     }, 3_000);
-    expect(stayedInert, "cache stayed inert (no rows, disabled, 0 lookups)").toBe(
-      true,
-    );
+    expect(stayedInert, "cache stayed inert (no rows, disabled, 0 lookups)").toBe(true);
 
     // Final hard assertions (a single read after the bounded window).
     expect(await h.getVerifyCache()).toEqual([]);

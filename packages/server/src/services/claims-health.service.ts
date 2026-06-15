@@ -1,10 +1,5 @@
 import { and, asc, desc, eq, inArray, isNotNull, lt, notInArray } from "drizzle-orm";
-import {
-  createId,
-  type ClaimState,
-  type LeaseEntityType,
-  type UserType,
-} from "@pm/shared";
+import { createId, type ClaimState, type LeaseEntityType, type UserType } from "@pm/shared";
 import {
   getDb,
   claimLeases,
@@ -17,11 +12,7 @@ import {
 } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
-import {
-  deriveLiveness,
-  readLeasesFor,
-  resolveActiveLeaseGraceMs,
-} from "./claim-lease.service.js";
+import { deriveLiveness, readLeasesFor, resolveActiveLeaseGraceMs } from "./claim-lease.service.js";
 import { deriveClaimState } from "./claim-helpers.js";
 
 // ─── Constants ────────────────────────────────────────────────────
@@ -184,10 +175,7 @@ function aggregateStaleClaims(projectId: string, now: Date): ClaimsHealth {
       })
       .from(claimLeases)
       .where(
-        and(
-          eq(claimLeases.entityType, entityType),
-          lt(claimLeases.expiresAt, staleThresholdIso),
-        ),
+        and(eq(claimLeases.entityType, entityType), lt(claimLeases.expiresAt, staleThresholdIso)),
       )
       .orderBy(asc(claimLeases.expiresAt))
       .limit(CANDIDATE_LIMIT)
@@ -456,8 +444,7 @@ export function listProjectClaims(
 
   const items: ProjectClaimItem[] = pending.map(({ holderId, ...rest }) => ({
     ...rest,
-    holder:
-      holderById.get(holderId) ??
+    holder: holderById.get(holderId) ??
       // FK-backed, so a miss is theoretical — fall back to the raw id so the
       // row still renders rather than vanishing.
       { id: holderId, name: holderId, type: "ai_agent" as UserType },

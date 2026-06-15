@@ -109,10 +109,7 @@ export function sanitizeFtsQuery(query: string): string {
 
   // Split into tokens and wrap each in double quotes
   const tokens = trimmed.split(/\s+/).filter(Boolean);
-  return tokens
-    .map(quoteFtsToken)
-    .filter(Boolean)
-    .join(" ");
+  return tokens.map(quoteFtsToken).filter(Boolean).join(" ");
 }
 
 /**

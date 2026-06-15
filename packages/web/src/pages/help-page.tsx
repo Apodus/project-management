@@ -26,9 +26,7 @@ export function HelpPage() {
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Getting Started</h1>
-        <p className="text-muted-foreground mt-1">
-          Set up AI agents and learn the workflow
-        </p>
+        <p className="text-muted-foreground mt-1">Set up AI agents and learn the workflow</p>
       </div>
 
       <Card>
@@ -44,22 +42,21 @@ export function HelpPage() {
               Go to <strong>Projects</strong> and create your first project.
             </Step>
             <Step n={2} title="Write a proposal">
-              Navigate to <strong>Proposals</strong> within your project.
-              Describe what you want to build — be as vague or detailed as you
-              like. This is your &ldquo;hand-wave&rdquo; to the AI.
+              Navigate to <strong>Proposals</strong> within your project. Describe what you want to
+              build — be as vague or detailed as you like. This is your &ldquo;hand-wave&rdquo; to
+              the AI.
             </Step>
             <Step n={3} title="AI discusses your proposal">
-              Once an AI agent is connected (see below), it will pick up your
-              proposal and start a design discussion in the comments.
+              Once an AI agent is connected (see below), it will pick up your proposal and start a
+              design discussion in the comments.
             </Step>
             <Step n={4} title="Accept the design">
-              When you're happy with the AI's design, click{" "}
-              <strong>Accept</strong>. The AI will then create epics and tasks.
+              When you're happy with the AI's design, click <strong>Accept</strong>. The AI will
+              then create epics and tasks.
             </Step>
             <Step n={5} title="AI executes">
-              The AI picks up tasks from the ready queue, implements them, and
-              reports progress. You monitor via the{" "}
-              <strong>Dashboard</strong>, <strong>Board</strong>, and{" "}
+              The AI picks up tasks from the ready queue, implements them, and reports progress. You
+              monitor via the <strong>Dashboard</strong>, <strong>Board</strong>, and{" "}
               <strong>Activity</strong> feed.
             </Step>
           </div>
@@ -76,20 +73,14 @@ export function HelpPage() {
         <CardContent className="space-y-4">
           <div className="space-y-3">
             <Step n={1} title="Create an AI agent user">
-              Go to <strong>Settings &rarr; Users</strong> and click{" "}
-              <strong>Add User</strong>. Set the type to{" "}
-              <Badge variant="outline">AI Agent</Badge>. Copy the API token
-              shown after creation — it&apos;s only displayed once.
+              Go to <strong>Settings &rarr; Users</strong> and click <strong>Add User</strong>. Set
+              the type to <Badge variant="outline">AI Agent</Badge>. Copy the API token shown after
+              creation — it&apos;s only displayed once.
             </Step>
             <Step n={2} title="Configure MCP in Claude">
               Add this to your Claude MCP settings (
-              <code className="bg-muted rounded px-1 text-sm">
-                .claude/settings.json
-              </code>{" "}
-              or{" "}
-              <code className="bg-muted rounded px-1 text-sm">
-                claude_desktop_config.json
-              </code>
+              <code className="bg-muted rounded px-1 text-sm">.claude/settings.json</code> or{" "}
+              <code className="bg-muted rounded px-1 text-sm">claude_desktop_config.json</code>
               ):
             </Step>
           </div>
@@ -102,39 +93,27 @@ export function HelpPage() {
             <Step n={3} title="Replace the placeholders">
               <ul className="text-muted-foreground mt-1 list-inside list-disc space-y-1 text-sm">
                 <li>
-                  <code className="bg-muted rounded px-1">
-                    &lt;path-to&gt;/pm-mcp-server.mjs
-                  </code>{" "}
-                  — the standalone MCP client file (365 KB, zero dependencies).
-                  Find it at{" "}
+                  <code className="bg-muted rounded px-1">&lt;path-to&gt;/pm-mcp-server.mjs</code> —
+                  the standalone MCP client file (365 KB, zero dependencies). Find it at{" "}
                   <code className="bg-muted rounded px-1">
                     packages/mcp-server/dist/bundle/pm-mcp-server.mjs
                   </code>{" "}
                   after building, then copy it wherever you like
                 </li>
                 <li>
-                  <code className="bg-muted rounded px-1">
-                    &lt;your-ai-agent-api-token&gt;
-                  </code>{" "}
-                  — the token from step 1
+                  <code className="bg-muted rounded px-1">&lt;your-ai-agent-api-token&gt;</code> —
+                  the token from step 1
                 </li>
                 <li>
-                  <code className="bg-muted rounded px-1">
-                    PM_API_URL
-                  </code>{" "}
-                  — already set to this server&apos;s address. Change it if the
-                  server moves (e.g., to a Raspberry Pi at{" "}
+                  <code className="bg-muted rounded px-1">PM_API_URL</code> — already set to this
+                  server&apos;s address. Change it if the server moves (e.g., to a Raspberry Pi at{" "}
                   <code className="bg-muted rounded px-1">http://192.168.1.x:3000</code>)
                 </li>
               </ul>
             </Step>
             <Step n={4} title="Restart Claude">
-              Claude will pick up the new MCP server on restart. You can verify
-              by asking Claude to run{" "}
-              <code className="bg-muted rounded px-1 text-sm">
-                pm_list_projects
-              </code>
-              .
+              Claude will pick up the new MCP server on restart. You can verify by asking Claude to
+              run <code className="bg-muted rounded px-1 text-sm">pm_list_projects</code>.
             </Step>
           </div>
         </CardContent>
@@ -226,15 +205,7 @@ export function HelpPage() {
   );
 }
 
-function Step({
-  n,
-  title,
-  children,
-}: {
-  n: number;
-  title: string;
-  children: React.ReactNode;
-}) {
+function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-3">
       <div className="bg-primary text-primary-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-medium">
@@ -248,13 +219,7 @@ function Step({
   );
 }
 
-function ToolGroup({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function ToolGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
       <h4 className="mb-2 text-sm font-semibold">{title}</h4>
@@ -272,15 +237,7 @@ function Tool({ name, desc }: { name: string; desc: string }) {
   );
 }
 
-function LinkItem({
-  href,
-  title,
-  desc,
-}: {
-  href: string;
-  title: string;
-  desc: string;
-}) {
+function LinkItem({ href, title, desc }: { href: string; title: string; desc: string }) {
   return (
     <a
       href={href}
@@ -301,9 +258,7 @@ function Shortcut({ keys, desc }: { keys: string; desc: string }) {
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-muted-foreground">{desc}</span>
-      <kbd className="bg-muted rounded border px-2 py-0.5 font-mono text-xs">
-        {keys}
-      </kbd>
+      <kbd className="bg-muted rounded border px-2 py-0.5 font-mono text-xs">{keys}</kbd>
     </div>
   );
 }

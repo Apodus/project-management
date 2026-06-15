@@ -35,11 +35,7 @@ export class WakeClient {
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
-  private async request<T>(
-    method: "GET" | "POST",
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
+  private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
     const url = `${this.baseUrl}/api/v1${path}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.token}`,

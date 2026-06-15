@@ -10,10 +10,7 @@ function edge(from: string, to: string): BackEdge {
 }
 
 /** Mean over forward edges of |y(to) - y(from)| — the alignment proxy. */
-function meanEdgeDisplacement(
-  y: Map<string, number>,
-  edges: BackEdge[],
-): number {
+function meanEdgeDisplacement(y: Map<string, number>, edges: BackEdge[]): number {
   if (edges.length === 0) return 0;
   let sum = 0;
   for (const e of edges) sum += Math.abs(y.get(e.to)! - y.get(e.from)!);
@@ -57,7 +54,10 @@ describe("assignCoordinates — min-gap + order preservation", () => {
 describe("assignCoordinates — empty slot (CORRECTION A)", () => {
   it("a dependent aligns deep to its only prereq, leaving a real gap above it", () => {
     // P0,P1,P2 on rank 0; A,B on rank 1. ONLY P2 → B. A is unconstrained.
-    const layers = [["P0", "P1", "P2"], ["A", "B"]];
+    const layers = [
+      ["P0", "P1", "P2"],
+      ["A", "B"],
+    ];
     const edges = [edge("P2", "B")];
     const y = assignCoordinates(layers, edges, OPTS);
     // B pulled deep to P2 (the bottom prereq); A keeps its seed near the top.
@@ -84,7 +84,10 @@ describe("assignCoordinates — no-neighbor stability", () => {
 
     // ISO is order index 1 in rank 0, no edges → seed = 1 * RH; stays put.
     // Changing an unrelated chain (X→Y geometry) must not move ISO.
-    const layersB = [["X", "ISO"], ["Y", "Z"]];
+    const layersB = [
+      ["X", "ISO"],
+      ["Y", "Z"],
+    ];
     const edgesB = [edge("X", "Y"), edge("X", "Z")];
     const y2 = assignCoordinates(layersB, edgesB, OPTS);
 
@@ -95,7 +98,10 @@ describe("assignCoordinates — no-neighbor stability", () => {
 
 describe("assignCoordinates — determinism", () => {
   it("shuffling the forwardEdges array yields an identical Map", () => {
-    const layers = [["A", "B", "C"], ["D", "E"]];
+    const layers = [
+      ["A", "B", "C"],
+      ["D", "E"],
+    ];
     const edges = [edge("A", "D"), edge("B", "D"), edge("C", "E"), edge("A", "E")];
     const shuffled = [edges[3], edges[1], edges[0], edges[2]];
     const y1 = assignCoordinates(layers, edges, OPTS);
@@ -123,7 +129,11 @@ describe("assignCoordinates — mean-displacement gate (CORRECTION B)", () => {
     // rank0: A, B, C ; rank1: D, E ; rank2: F, G, H
     // A→D, B→D, C→E  (fan-in to D, single to E)
     // D→F, D→G, E→H, E→G  (fan-out + a join at G)
-    const layers = [["A", "B", "C"], ["D", "E"], ["F", "G", "H"]];
+    const layers = [
+      ["A", "B", "C"],
+      ["D", "E"],
+      ["F", "G", "H"],
+    ];
     const edges = [
       edge("A", "D"),
       edge("B", "D"),

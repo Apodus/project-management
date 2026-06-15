@@ -27,10 +27,8 @@ export const trainKeys = {
   health: (projectId: string, resource?: string) =>
     [...trainKeys.all, "health", projectId, { resource }] as const,
   state: (projectId: string) => [...trainKeys.all, "state", projectId] as const,
-  claimsHealth: (projectId: string) =>
-    [...trainKeys.all, "claims-health", projectId] as const,
-  timeline: (requestId: string) =>
-    [...trainKeys.all, "timeline", requestId] as const,
+  claimsHealth: (projectId: string) => [...trainKeys.all, "claims-health", projectId] as const,
+  timeline: (requestId: string) => [...trainKeys.all, "timeline", requestId] as const,
   // Lives UNDER trainKeys.all so the shipped useSSE audit.recorded / train.* /
   // merge.* invalidation refreshes the audit log live.
   audit: (projectId: string, filters?: AuditFilters) =>
@@ -41,10 +39,7 @@ export const trainKeys = {
     [...trainKeys.all, "merge-requests", projectId, [...statuses]] as const,
 };
 
-export function useTrainMetrics(
-  projectId: string | undefined,
-  resource?: string,
-) {
+export function useTrainMetrics(projectId: string | undefined, resource?: string) {
   return useQuery({
     queryKey: trainKeys.metrics(projectId!, resource),
     queryFn: () => getTrainMetrics(projectId!, resource),
@@ -54,10 +49,7 @@ export function useTrainMetrics(
   });
 }
 
-export function useTrainInFlight(
-  projectId: string | undefined,
-  resource?: string,
-) {
+export function useTrainInFlight(projectId: string | undefined, resource?: string) {
   return useQuery({
     queryKey: trainKeys.inFlight(projectId!, resource),
     queryFn: () => getTrainInFlight(projectId!, resource),
@@ -65,10 +57,7 @@ export function useTrainInFlight(
   });
 }
 
-export function useTrainHealth(
-  projectId: string | undefined,
-  resource?: string,
-) {
+export function useTrainHealth(projectId: string | undefined, resource?: string) {
   return useQuery({
     queryKey: trainKeys.health(projectId!, resource),
     queryFn: () => getIntegratorHealth(projectId!, resource),
@@ -116,10 +105,7 @@ export function useMergeRequestTimeline(requestId: string | undefined) {
 
 // ─── Break-glass / Audit (admin R1-override surface) ──────────────
 
-export function useAuditLog(
-  projectId: string | undefined,
-  filters?: AuditFilters,
-) {
+export function useAuditLog(projectId: string | undefined, filters?: AuditFilters) {
   return useQuery({
     queryKey: trainKeys.audit(projectId!, filters),
     queryFn: () => getAuditLog(projectId!, filters),
@@ -218,13 +204,8 @@ export function useForceLand() {
 export function useForceReject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      requestId,
-      reason,
-    }: {
-      requestId: string;
-      reason: string;
-    }) => forceReject(requestId, { reason }),
+    mutationFn: ({ requestId, reason }: { requestId: string; reason: string }) =>
+      forceReject(requestId, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: trainKeys.all });
       toast.success("Merge request force-rejected");
@@ -238,13 +219,8 @@ export function useForceReject() {
 export function useForceCancel() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      requestId,
-      reason,
-    }: {
-      requestId: string;
-      reason: string;
-    }) => forceCancel(requestId, { reason }),
+    mutationFn: ({ requestId, reason }: { requestId: string; reason: string }) =>
+      forceCancel(requestId, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: trainKeys.all });
       toast.success("Merge request force-cancelled");

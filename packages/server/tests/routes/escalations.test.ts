@@ -347,7 +347,11 @@ describe("Escalations API", () => {
     it("a human acks an open escalation (200 acknowledged)", async () => {
       const project = createTestProject(testApp.db);
       const esc = await raise(testApp, project.id);
-      const res = await authRequest(testApp.app, "POST", `/api/v1/escalations/${esc.id}/acknowledge`);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/escalations/${esc.id}/acknowledge`,
+      );
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.status).toBe("acknowledged");
@@ -357,7 +361,11 @@ describe("Escalations API", () => {
       const project = createTestProject(testApp.db);
       const esc = await raise(testApp, project.id);
       await authRequest(testApp.app, "POST", `/api/v1/escalations/${esc.id}/acknowledge`);
-      const res = await authRequest(testApp.app, "POST", `/api/v1/escalations/${esc.id}/acknowledge`);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/escalations/${esc.id}/acknowledge`,
+      );
       expect(res.status).toBe(409);
     });
 
@@ -365,9 +373,14 @@ describe("Escalations API", () => {
       const project = createTestProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const esc = await raise(testApp, project.id, { token: agent.token });
-      const res = await authRequest(testApp.app, "POST", `/api/v1/escalations/${esc.id}/acknowledge`, {
-        token: agent.token,
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/escalations/${esc.id}/acknowledge`,
+        {
+          token: agent.token,
+        },
+      );
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.status).toBe("acknowledged");
@@ -384,9 +397,14 @@ describe("Escalations API", () => {
       });
       // Held + already acknowledged; a different agent is gated at authz (403)
       // before the transition check.
-      const res = await authRequest(testApp.app, "POST", `/api/v1/escalations/${esc.id}/acknowledge`, {
-        token: other.token,
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/escalations/${esc.id}/acknowledge`,
+        {
+          token: other.token,
+        },
+      );
       expect(res.status).toBe(403);
     });
 
@@ -471,7 +489,9 @@ describe("Escalations API", () => {
       const get = await (
         await authRequest(testApp.app, "GET", `/api/v1/escalations/${esc.id}`)
       ).json();
-      const sys = get.data.messages.find((m: { messageType: string }) => m.messageType === "system");
+      const sys = get.data.messages.find(
+        (m: { messageType: string }) => m.messageType === "system",
+      );
       expect(sys).toBeDefined();
       expect(sys.body).toContain("fixed it");
     });
@@ -552,7 +572,9 @@ describe("Escalations API", () => {
       const get = await (
         await authRequest(testApp.app, "GET", `/api/v1/escalations/${esc.id}`)
       ).json();
-      const sys = get.data.messages.find((m: { messageType: string }) => m.messageType === "system");
+      const sys = get.data.messages.find(
+        (m: { messageType: string }) => m.messageType === "system",
+      );
       expect(sys).toBeDefined();
       expect(sys.body).toContain("need a human");
     });
@@ -881,10 +903,9 @@ describe("Escalations API", () => {
 
     it("returns 401 when unauthenticated", async () => {
       const project = createTestProject(testApp.db);
-      const res = await testApp.app.request(
-        `/api/v1/projects/${project.id}/escalations/metrics`,
-        { method: "GET" },
-      );
+      const res = await testApp.app.request(`/api/v1/projects/${project.id}/escalations/metrics`, {
+        method: "GET",
+      });
       expect(res.status).toBe(401);
     });
 

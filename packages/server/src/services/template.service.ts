@@ -119,11 +119,7 @@ export function list(projectId?: string, templateType?: string) {
  */
 export function getById(id: string) {
   const db = getDb();
-  const template = db
-    .select()
-    .from(templates)
-    .where(eq(templates.id, id))
-    .get();
+  const template = db.select().from(templates).where(eq(templates.id, id)).get();
 
   if (!template) {
     throw new AppError(404, "NOT_FOUND", `Template not found: ${id}`);
@@ -376,11 +372,7 @@ export function instantiateProjectTemplate(
  * Create a template from an existing task (snapshot).
  * Captures the task's fields and subtasks as a task template.
  */
-export function createTemplateFromTask(
-  taskId: string,
-  name: string,
-  description?: string,
-) {
+export function createTemplateFromTask(taskId: string, name: string, description?: string) {
   const task = taskService.getById(taskId);
   const subtasks = taskService.listSubtasks(taskId);
 
@@ -389,9 +381,10 @@ export function createTemplateFromTask(
     type: task.type,
     priority: task.priority,
     estimated_effort: task.estimatedEffort ?? undefined,
-    context: task.context && typeof task.context === "object"
-      ? (task.context as Record<string, unknown>)
-      : undefined,
+    context:
+      task.context && typeof task.context === "object"
+        ? (task.context as Record<string, unknown>)
+        : undefined,
     subtasks: subtasks.map((st) => ({
       title: st.title,
       type: st.type,
@@ -404,9 +397,11 @@ export function createTemplateFromTask(
   if (templateData.description !== undefined) cleanData.description = templateData.description;
   if (templateData.type !== undefined) cleanData.type = templateData.type;
   if (templateData.priority !== undefined) cleanData.priority = templateData.priority;
-  if (templateData.estimated_effort !== undefined) cleanData.estimated_effort = templateData.estimated_effort;
+  if (templateData.estimated_effort !== undefined)
+    cleanData.estimated_effort = templateData.estimated_effort;
   if (templateData.context !== undefined) cleanData.context = templateData.context;
-  if (templateData.subtasks && templateData.subtasks.length > 0) cleanData.subtasks = templateData.subtasks;
+  if (templateData.subtasks && templateData.subtasks.length > 0)
+    cleanData.subtasks = templateData.subtasks;
 
   return create({
     projectId: task.projectId,

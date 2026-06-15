@@ -43,9 +43,14 @@ describe("Agent Pool", () => {
   }
 
   async function createPoolAgentsViaAPI(poolId: string, count: number, namePrefix?: string) {
-    const res = await authRequest(testApp.app, "POST", `/api/v1/auth/agent-pools/${poolId}/agents`, {
-      body: { count, ...(namePrefix ? { namePrefix } : {}) },
-    });
+    const res = await authRequest(
+      testApp.app,
+      "POST",
+      `/api/v1/auth/agent-pools/${poolId}/agents`,
+      {
+        body: { count, ...(namePrefix ? { namePrefix } : {}) },
+      },
+    );
     expect(res.status).toBe(201);
     const body = await res.json();
     return body.data as Array<{ id: string; username: string; displayName: string }>;
@@ -129,9 +134,14 @@ describe("Agent Pool", () => {
       await createPoolAgentsViaAPI(pool.id, 1);
 
       // Update secret
-      const res = await authRequest(testApp.app, "POST", `/api/v1/auth/agent-pools/${pool.id}/secret`, {
-        body: { secret: "new-secret-456" },
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/auth/agent-pools/${pool.id}/secret`,
+        {
+          body: { secret: "new-secret-456" },
+        },
+      );
       expect(res.status).toBe(200);
 
       // Old secret should fail
@@ -220,9 +230,14 @@ describe("Agent Pool", () => {
     });
 
     it("should reject agent creation for non-existent pool", async () => {
-      const res = await authRequest(testApp.app, "POST", "/api/v1/auth/agent-pools/nonexistent/agents", {
-        body: { count: 1 },
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        "/api/v1/auth/agent-pools/nonexistent/agents",
+        {
+          body: { count: 1 },
+        },
+      );
       expect(res.status).toBe(404);
     });
   });
@@ -366,13 +381,16 @@ describe("Agent Pool", () => {
 
       // Create an expired claim directly
       const expiredTime = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-      testApp.db.insert(agentClaims).values({
-        id: "expired-claim-id",
-        userId: agents[0].id,
-        claimedAt: expiredTime,
-        expiresAt: expiredTime,
-        heartbeatAt: expiredTime,
-      }).run();
+      testApp.db
+        .insert(agentClaims)
+        .values({
+          id: "expired-claim-id",
+          userId: agents[0].id,
+          claimedAt: expiredTime,
+          expiresAt: expiredTime,
+          heartbeatAt: expiredTime,
+        })
+        .run();
 
       const res = await testApp.app.request("/api/v1/auth/agent-claim", {
         method: "POST",
@@ -398,7 +416,9 @@ describe("Agent Pool", () => {
       const token = claimBody.data.token;
 
       // Release
-      const releaseRes = await authRequest(testApp.app, "POST", "/api/v1/auth/agent-release", { token });
+      const releaseRes = await authRequest(testApp.app, "POST", "/api/v1/auth/agent-release", {
+        token,
+      });
       expect(releaseRes.status).toBe(200);
 
       // Should be claimable again
@@ -424,11 +444,15 @@ describe("Agent Pool", () => {
       const claimBody = await claimRes.json();
       const token = claimBody.data.token;
 
-      const hbRes = await authRequest(testApp.app, "POST", "/api/v1/auth/agent-heartbeat", { token });
+      const hbRes = await authRequest(testApp.app, "POST", "/api/v1/auth/agent-heartbeat", {
+        token,
+      });
       expect(hbRes.status).toBe(200);
 
       // Verify claim still exists
-      const claims = testApp.db.select().from(agentClaims)
+      const claims = testApp.db
+        .select()
+        .from(agentClaims)
         .where(eq(agentClaims.userId, agents[0].id))
         .all();
       expect(claims.length).toBe(1);
@@ -537,7 +561,11 @@ describe("Agent Pool", () => {
       );
 
       // Check pool detail
-      const detailRes = await authRequest(testApp.app, "GET", `/api/v1/auth/agent-pools/${pool.id}`);
+      const detailRes = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/auth/agent-pools/${pool.id}`,
+      );
       const detail = await detailRes.json();
       expect(detail.data.agents.length).toBe(2);
     });
@@ -585,11 +613,7 @@ describe("Agent Pool", () => {
       expect(r3.body.data.bindHandle).toBe(r1.body.data.bindHandle);
 
       // Exactly one binding row for this user.
-      const rows = testApp.db
-        .select()
-        .from(agentClaims)
-        .where(eq(agentClaims.userId, id))
-        .all();
+      const rows = testApp.db.select().from(agentClaims).where(eq(agentClaims.userId, id)).all();
       expect(rows.length).toBe(1);
       expect(rows[0].workerKey).toBe("worker-1");
       expect(rows[0].workerKeyPoolId).toBe(pool.id);
@@ -648,7 +672,11 @@ describe("Agent Pool", () => {
       // The assignee and lease holder must still be U — nothing stranded.
       const taskRow = testApp.db.select().from(tasks).where(eq(tasks.id, task.id)).get();
       expect(taskRow?.assigneeId).toBe(userId);
-      const leaseRow = testApp.db.select().from(claimLeases).where(eq(claimLeases.id, leaseId)).get();
+      const leaseRow = testApp.db
+        .select()
+        .from(claimLeases)
+        .where(eq(claimLeases.id, leaseId))
+        .get();
       expect(leaseRow?.holderId).toBe(userId);
 
       // Exactly one agent_claims row for U.
@@ -799,20 +827,12 @@ describe("Agent Pool", () => {
       expect(rebindB2.body.data.bindHandle).toBe(handleB);
 
       // Exactly one agent_claims row per user.
-      const rowsA = testApp.db
-        .select()
-        .from(agentClaims)
-        .where(eq(agentClaims.userId, idA))
-        .all();
+      const rowsA = testApp.db.select().from(agentClaims).where(eq(agentClaims.userId, idA)).all();
       expect(rowsA.length).toBe(1);
       expect(rowsA[0].workerKey).toBe("host-worker-a");
       expect(rowsA[0].workerKeyPoolId).toBe(pool.id);
 
-      const rowsB = testApp.db
-        .select()
-        .from(agentClaims)
-        .where(eq(agentClaims.userId, idB))
-        .all();
+      const rowsB = testApp.db.select().from(agentClaims).where(eq(agentClaims.userId, idB)).all();
       expect(rowsB.length).toBe(1);
       expect(rowsB[0].workerKey).toBe("host-worker-b");
       expect(rowsB[0].workerKeyPoolId).toBe(pool.id);

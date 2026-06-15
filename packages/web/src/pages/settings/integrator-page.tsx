@@ -2,13 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import { Boxes, Check, Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -22,10 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useProject, useUpdateIntegratorConfig } from "@/hooks/use-projects";
 import { useCurrentUser } from "@/hooks/use-auth";
-import {
-  cacheConfigWarnings,
-  integratorConfigFromProject,
-} from "@/lib/integrator";
+import { cacheConfigWarnings, integratorConfigFromProject } from "@/lib/integrator";
 import { ApiError, type IntegratorConfig, type LinkedRepo } from "@/lib/api";
 import { useProjectStore } from "@/stores/project-store";
 
@@ -33,9 +24,7 @@ export function IntegratorPage() {
   const params = useParams({ strict: false });
   const { currentProjectId } = useProjectStore();
   const projectId =
-    (params as Record<string, string | undefined>).projectId ??
-    currentProjectId ??
-    undefined;
+    (params as Record<string, string | undefined>).projectId ?? currentProjectId ?? undefined;
 
   const { data: user } = useCurrentUser();
   const isAdmin = user?.role === "admin";
@@ -76,29 +65,26 @@ export function IntegratorPage() {
   // ── Validation ──────────────────────────────────────────────────
   const parallelismNum = Number(parallelism);
   const verifyTimeoutNum = Number(verifyTimeoutSec);
-  const parallelismValid =
-    Number.isInteger(parallelismNum) && parallelismNum >= 1;
-  const verifyTimeoutValid =
-    Number.isInteger(verifyTimeoutNum) && verifyTimeoutNum >= 1;
-  const enabledReqsMet =
-    !enabled || (verifyCommand.trim() !== "" && worktreeRoot.trim() !== "");
+  const parallelismValid = Number.isInteger(parallelismNum) && parallelismNum >= 1;
+  const verifyTimeoutValid = Number.isInteger(verifyTimeoutNum) && verifyTimeoutNum >= 1;
+  const enabledReqsMet = !enabled || (verifyCommand.trim() !== "" && worktreeRoot.trim() !== "");
   const linkedReposValid = linkedRepos.every(
     (r) =>
       (r.name.trim() === "" && r.path.trim() === "") ||
       (r.name.trim() !== "" && r.path.trim() !== ""),
   );
-  const isValid =
-    parallelismValid &&
-    verifyTimeoutValid &&
-    enabledReqsMet &&
-    linkedReposValid;
+  const isValid = parallelismValid && verifyTimeoutValid && enabledReqsMet && linkedReposValid;
 
   // C2 guardrail: advisory verify-cache warnings computed from the PERSISTED
   // settings on load (the cache/verify_steps fields are REST-only — not
   // editable here — so the hint reflects the stored config, never the form).
   const cacheWarnings = cacheConfigWarnings(
-    (project?.settings as { integrator?: Parameters<typeof cacheConfigWarnings>[0] } | null | undefined)
-      ?.integrator,
+    (
+      project?.settings as
+        | { integrator?: Parameters<typeof cacheConfigWarnings>[0] }
+        | null
+        | undefined
+    )?.integrator,
   );
 
   // ── clean_keep editors ──────────────────────────────────────────
@@ -117,9 +103,7 @@ export function IntegratorPage() {
 
   // ── linked_repos editors ────────────────────────────────────────
   function updateRow(i: number, patch: Partial<LinkedRepo>) {
-    setLinkedRepos((prev) =>
-      prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
-    );
+    setLinkedRepos((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
     if (saved) setSaved(false);
   }
   function addRow() {
@@ -181,9 +165,9 @@ export function IntegratorPage() {
         <PageHeader />
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <Boxes className="mb-4 size-12 text-muted-foreground/50" />
+            <Boxes className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">No Project Selected</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Select a project to configure the integrator.
             </p>
           </CardContent>
@@ -199,9 +183,9 @@ export function IntegratorPage() {
         <PageHeader />
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <ShieldAlert className="mb-4 size-12 text-muted-foreground/50" />
+            <ShieldAlert className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">Admin access required</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Only project administrators can configure the integrator.
             </p>
           </CardContent>
@@ -217,7 +201,7 @@ export function IntegratorPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
+            <p className="text-destructive text-sm">
               Failed to load project settings. Please try again.
             </p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -245,18 +229,16 @@ export function IntegratorPage() {
           <CardHeader>
             <CardTitle className="text-base">Integrator daemon</CardTitle>
             <CardDescription>
-              Configure how the merge-train integrator clones, verifies, and
-              lands changes for this project. These fields map to the editable
-              part of <code className="text-xs">settings.integrator</code>;
-              every other integrator field is preserved untouched on save.
+              Configure how the merge-train integrator clones, verifies, and lands changes for this
+              project. These fields map to the editable part of{" "}
+              <code className="text-xs">settings.integrator</code>; every other integrator field is
+              preserved untouched on save.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Git repository URL */}
             <div className="space-y-2">
-              <Label htmlFor="integrator-git-repo-url">
-                Git repository URL
-              </Label>
+              <Label htmlFor="integrator-git-repo-url">Git repository URL</Label>
               <Input
                 id="integrator-git-repo-url"
                 value={gitRepoUrl}
@@ -267,7 +249,7 @@ export function IntegratorPage() {
                 placeholder="git@github.com:org/repo.git"
                 className="max-w-xl"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 Clone URL the integrator pushes/pulls; blank to unset.
               </p>
             </div>
@@ -276,7 +258,7 @@ export function IntegratorPage() {
             <div className="flex items-center justify-between rounded-md border px-4 py-3">
               <div className="space-y-0.5">
                 <Label htmlFor="integrator-enabled">Enabled</Label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Turn the integrator on for this project.
                 </p>
               </div>
@@ -290,9 +272,8 @@ export function IntegratorPage() {
               />
             </div>
             {enabled && !enabledReqsMet && (
-              <p className="text-xs text-destructive">
-                Enabling the integrator requires a verify command and a worktree
-                root.
+              <p className="text-destructive text-xs">
+                Enabling the integrator requires a verify command and a worktree root.
               </p>
             )}
 
@@ -310,9 +291,8 @@ export function IntegratorPage() {
                 placeholder="/var/integrator/worktrees"
                 className="max-w-xl"
               />
-              <p className="text-xs text-muted-foreground">
-                Directory under which the integrator creates isolated worktree
-                clones.
+              <p className="text-muted-foreground text-xs">
+                Directory under which the integrator creates isolated worktree clones.
               </p>
             </div>
 
@@ -333,21 +313,17 @@ export function IntegratorPage() {
                 className="max-w-xs"
               />
               {parallelismValid ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Number of integrations to run in flight at once (1 = serial).
                 </p>
               ) : (
-                <p className="text-xs text-destructive">
-                  Must be a whole number ≥ 1.
-                </p>
+                <p className="text-destructive text-xs">Must be a whole number ≥ 1.</p>
               )}
             </div>
 
             {/* Verify timeout */}
             <div className="space-y-2">
-              <Label htmlFor="integrator-verify-timeout">
-                Verify timeout (seconds)
-              </Label>
+              <Label htmlFor="integrator-verify-timeout">Verify timeout (seconds)</Label>
               <Input
                 id="integrator-verify-timeout"
                 type="number"
@@ -362,13 +338,11 @@ export function IntegratorPage() {
                 className="max-w-xs"
               />
               {verifyTimeoutValid ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Wall-clock budget for a verify run before it is killed.
                 </p>
               ) : (
-                <p className="text-xs text-destructive">
-                  Must be a whole number ≥ 1.
-                </p>
+                <p className="text-destructive text-xs">Must be a whole number ≥ 1.</p>
               )}
             </div>
 
@@ -384,16 +358,14 @@ export function IntegratorPage() {
                 }}
                 className="max-w-xs"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 Remote name the integrator fetches from and pushes to.
               </p>
             </div>
 
             {/* Git main branch */}
             <div className="space-y-2">
-              <Label htmlFor="integrator-git-main-branch">
-                Git main branch
-              </Label>
+              <Label htmlFor="integrator-git-main-branch">Git main branch</Label>
               <Input
                 id="integrator-git-main-branch"
                 value={gitMainBranch}
@@ -403,9 +375,7 @@ export function IntegratorPage() {
                 }}
                 className="max-w-xs"
               />
-              <p className="text-xs text-muted-foreground">
-                Branch that changes land onto.
-              </p>
+              <p className="text-muted-foreground text-xs">Branch that changes land onto.</p>
             </div>
 
             {/* Verify command */}
@@ -422,9 +392,8 @@ export function IntegratorPage() {
                 placeholder="pnpm verify"
                 className="max-w-xl"
               />
-              <p className="text-xs text-muted-foreground">
-                Command run in the worktree to gate a land. Required when the
-                integrator is enabled.
+              <p className="text-muted-foreground text-xs">
+                Command run in the worktree to gate a land. Required when the integrator is enabled.
               </p>
             </div>
 
@@ -454,9 +423,9 @@ export function IntegratorPage() {
               <Button variant="outline" size="sm" onClick={addCleanKeep}>
                 Add path
               </Button>
-              <p className="text-xs text-muted-foreground">
-                Glob paths preserved when the integrator cleans a worktree.
-                Blank entries are dropped on save.
+              <p className="text-muted-foreground text-xs">
+                Glob paths preserved when the integrator cleans a worktree. Blank entries are
+                dropped on save.
               </p>
             </div>
 
@@ -471,18 +440,14 @@ export function IntegratorPage() {
                         aria-label={`Linked repo name ${i + 1}`}
                         placeholder="name"
                         value={repo.name}
-                        onChange={(e) =>
-                          updateRow(i, { name: e.target.value })
-                        }
+                        onChange={(e) => updateRow(i, { name: e.target.value })}
                         className="max-w-xs"
                       />
                       <Input
                         aria-label={`Linked repo path ${i + 1}`}
                         placeholder="path"
                         value={repo.path}
-                        onChange={(e) =>
-                          updateRow(i, { path: e.target.value })
-                        }
+                        onChange={(e) => updateRow(i, { path: e.target.value })}
                         className="max-w-xs"
                       />
                       <Select
@@ -493,10 +458,7 @@ export function IntegratorPage() {
                           })
                         }
                       >
-                        <SelectTrigger
-                          aria-label={`Linked repo role ${i + 1}`}
-                          className="w-32"
-                        >
+                        <SelectTrigger aria-label={`Linked repo role ${i + 1}`} className="w-32">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -518,18 +480,14 @@ export function IntegratorPage() {
                         aria-label={`Linked repo gitlink parent ${i + 1}`}
                         placeholder="gitlink parent (optional)"
                         value={repo.gitlink_parent ?? ""}
-                        onChange={(e) =>
-                          updateRow(i, { gitlink_parent: e.target.value })
-                        }
+                        onChange={(e) => updateRow(i, { gitlink_parent: e.target.value })}
                         className="max-w-xs"
                       />
                       <Input
                         aria-label={`Linked repo gitlink path ${i + 1}`}
                         placeholder="gitlink path (optional)"
                         value={repo.gitlink_path ?? ""}
-                        onChange={(e) =>
-                          updateRow(i, { gitlink_path: e.target.value })
-                        }
+                        onChange={(e) => updateRow(i, { gitlink_path: e.target.value })}
                         className="max-w-xs"
                       />
                     </div>
@@ -539,16 +497,15 @@ export function IntegratorPage() {
               <Button variant="outline" size="sm" onClick={addRow}>
                 Add repository
               </Button>
-              <p className="text-xs text-muted-foreground">
-                Inner/outer repos that land atomically as a cross-repo group.
-                Rows with a blank name and path are dropped on save.
+              <p className="text-muted-foreground text-xs">
+                Inner/outer repos that land atomically as a cross-repo group. Rows with a blank name
+                and path are dropped on save.
               </p>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Advanced integrator fields (verify steps DAG, cache, SLO,
-              resolver) are REST-only for now — see
-              docs/integrator-deployment.md.
+            <p className="text-muted-foreground text-xs">
+              Advanced integrator fields (verify steps DAG, cache, SLO, resolver) are REST-only for
+              now — see docs/integrator-deployment.md.
             </p>
 
             {cacheWarnings.map((warning, i) => (
@@ -561,7 +518,7 @@ export function IntegratorPage() {
             ))}
 
             {updateMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {updateMutation.error instanceof ApiError
                   ? updateMutation.error.message
                   : "Failed to save integrator settings. Please try again."}
@@ -569,10 +526,7 @@ export function IntegratorPage() {
             )}
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                onClick={handleSave}
-                disabled={updateMutation.isPending || !isValid}
-              >
+              <Button onClick={handleSave} disabled={updateMutation.isPending || !isValid}>
                 {updateMutation.isPending ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
@@ -599,7 +553,7 @@ export function IntegratorPage() {
 function PageHeader() {
   return (
     <div className="flex items-center gap-3">
-      <Boxes className="size-6 text-muted-foreground" />
+      <Boxes className="text-muted-foreground size-6" />
       <h1 className="text-2xl font-bold tracking-tight">Integrator</h1>
     </div>
   );

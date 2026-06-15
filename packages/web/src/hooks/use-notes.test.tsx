@@ -58,18 +58,13 @@ describe("use-notes promote mutations — project-scoped invalidation", () => {
     result.current.mutate({ id: "n1", projectId: "proj-1", title: "T" });
 
     await waitFor(() =>
-      expect(
-        client.getQueryState(taskKeys.list("proj-1"))?.isInvalidated,
-      ).toBe(true),
+      expect(client.getQueryState(taskKeys.list("proj-1"))?.isInvalidated).toBe(true),
     );
-    expect(
-      client.getQueryState(taskKeys.list("proj-1", { status: "ready" }))
-        ?.isInvalidated,
-    ).toBe(true);
+    expect(client.getQueryState(taskKeys.list("proj-1", { status: "ready" }))?.isInvalidated).toBe(
+      true,
+    );
     // The OTHER project's list is untouched.
-    expect(client.getQueryState(taskKeys.list("proj-2"))?.isInvalidated).toBe(
-      false,
-    );
+    expect(client.getQueryState(taskKeys.list("proj-2"))?.isInvalidated).toBe(false);
   });
 
   it("promote-to-proposal invalidates ONLY the matching project's proposal lists", async () => {
@@ -86,15 +81,9 @@ describe("use-notes promote mutations — project-scoped invalidation", () => {
     result.current.mutate({ id: "n1", projectId: "proj-1", title: "P" });
 
     await waitFor(() =>
-      expect(
-        client.getQueryState(proposalKeys.list("proj-1"))?.isInvalidated,
-      ).toBe(true),
+      expect(client.getQueryState(proposalKeys.list("proj-1"))?.isInvalidated).toBe(true),
     );
-    expect(
-      client.getQueryState(proposalKeys.list("proj-1", "open"))?.isInvalidated,
-    ).toBe(true);
-    expect(
-      client.getQueryState(proposalKeys.list("proj-2"))?.isInvalidated,
-    ).toBe(false);
+    expect(client.getQueryState(proposalKeys.list("proj-1", "open"))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(proposalKeys.list("proj-2"))?.isInvalidated).toBe(false);
   });
 });

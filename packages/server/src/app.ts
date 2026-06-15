@@ -169,8 +169,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
     info: {
       title: "Project Management API",
       version: "0.1.0",
-      description:
-        "REST API for the Human-AI Collaborative Project Management System.",
+      description: "REST API for the Human-AI Collaborative Project Management System.",
     },
     servers: [
       {

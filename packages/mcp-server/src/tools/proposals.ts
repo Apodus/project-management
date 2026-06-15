@@ -49,9 +49,7 @@ export function registerProposalTools(server: McpServer): void {
       const text = proposals
         .map((p) => {
           const claimLine = `  Claim: ${claimStateLabel(p.claimState) || claimStatusLabel(p.claimStatus)}`;
-          const descLine = p.description
-            ? p.description.slice(0, 200)
-            : "(no description)";
+          const descLine = p.description ? p.description.slice(0, 200) : "(no description)";
           return [
             `- **${p.title}**`,
             `  ID: ${p.id}`,
@@ -164,9 +162,7 @@ export function registerProposalTools(server: McpServer): void {
       proposal_id: z.string(),
       reason: z
         .string()
-        .describe(
-          "Why you are taking over this claim (required, recorded in the audit log)",
-        ),
+        .describe("Why you are taking over this claim (required, recorded in the audit log)"),
       assignee_id: z
         .string()
         .optional()
@@ -211,12 +207,8 @@ export function registerProposalTools(server: McpServer): void {
     "Hand off your proposal claim to a named worker (reason required, audited). You must currently hold the claim (a human director may hand off any claim). The claim and its liveness lease transfer to the target.",
     {
       proposal_id: z.string().describe("The proposal ID to hand off"),
-      reason: z
-        .string()
-        .describe("Why you are handing off (required, recorded in the audit log)"),
-      target: z
-        .string()
-        .describe("The user id of the worker to hand the claim to"),
+      reason: z.string().describe("Why you are handing off (required, recorded in the audit log)"),
+      target: z.string().describe("The user id of the worker to hand the claim to"),
     },
     async ({ proposal_id, reason, target }) => {
       const result = await releaseProposalTo(proposal_id, reason, target);
@@ -235,9 +227,7 @@ export function registerProposalTools(server: McpServer): void {
     "pm_request_takeover_proposal",
     "Request to take over a proposal's claim (stomp-safe). If the current claim is stale (the holder's liveness lease lapsed) it is auto-granted to you; if it is LIVE (actively held) nothing changes — the holder is notified and you should pick a different proposal or wait.",
     {
-      proposal_id: z
-        .string()
-        .describe("The proposal ID to request takeover of"),
+      proposal_id: z.string().describe("The proposal ID to request takeover of"),
       reason: z
         .string()
         .describe(
@@ -299,7 +289,9 @@ export function registerProposalTools(server: McpServer): void {
       } catch (err) {
         if (err instanceof ApiError && err.code === "CLAIM_DENIED") {
           return {
-            content: [{ type: "text" as const, text: claimDeniedText("proposal", "pm_claim_proposal") }],
+            content: [
+              { type: "text" as const, text: claimDeniedText("proposal", "pm_claim_proposal") },
+            ],
           };
         }
         throw err;
@@ -335,7 +327,9 @@ export function registerProposalTools(server: McpServer): void {
       } catch (err) {
         if (err instanceof ApiError && err.code === "CLAIM_DENIED") {
           return {
-            content: [{ type: "text" as const, text: claimDeniedText("proposal", "pm_claim_proposal") }],
+            content: [
+              { type: "text" as const, text: claimDeniedText("proposal", "pm_claim_proposal") },
+            ],
           };
         }
         throw err;

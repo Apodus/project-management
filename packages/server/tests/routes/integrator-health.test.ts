@@ -47,14 +47,11 @@ describe("Integrator health endpoints", () => {
 
   it("returns 401 with no token", async () => {
     const project = createTestProject(testApp.db);
-    const res = await testApp.app.request(
-      `/api/v1/projects/${project.id}/integrator/heartbeat`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(heartbeatBody()),
-      },
-    );
+    const res = await testApp.app.request(`/api/v1/projects/${project.id}/integrator/heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(heartbeatBody()),
+    });
     expect(res.status).toBe(401);
   });
 
@@ -106,12 +103,10 @@ describe("Integrator health endpoints", () => {
     const project = createTestProject(testApp.db);
     const agent = createTestAiAgent(testApp.db);
 
-    await authRequest(
-      testApp.app,
-      "POST",
-      `/api/v1/projects/${project.id}/integrator/heartbeat`,
-      { token: agent.token, body: heartbeatBody() },
-    );
+    await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/integrator/heartbeat`, {
+      token: agent.token,
+      body: heartbeatBody(),
+    });
 
     // Read as the default human user — any authed user may view.
     const res = await authRequest(

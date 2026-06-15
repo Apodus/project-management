@@ -1,30 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
-import {
-  ArrowDown,
-  ArrowUp,
-  Check,
-  Loader2,
-  Plus,
-  Tags,
-  Trash2,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Loader2, Plus, Tags, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProject, useUpdateProject } from "@/hooks/use-projects";
 import { ApiError, type UpdateProject } from "@/lib/api";
-import {
-  epicCategoriesFromProject,
-  type EpicCategory,
-} from "@/lib/epic-categories";
+import { epicCategoriesFromProject, type EpicCategory } from "@/lib/epic-categories";
 import { cn } from "@/lib/utils";
 import { useProjectStore } from "@/stores/project-store";
 
@@ -47,9 +30,7 @@ export function CategoriesPage() {
   const params = useParams({ strict: false });
   const { currentProjectId } = useProjectStore();
   const projectId =
-    (params as Record<string, string | undefined>).projectId ??
-    currentProjectId ??
-    undefined;
+    (params as Record<string, string | undefined>).projectId ?? currentProjectId ?? undefined;
 
   const { data: project, isLoading, error, refetch } = useProject(projectId);
   const updateMutation = useUpdateProject();
@@ -66,17 +47,12 @@ export function CategoriesPage() {
   }, [project]);
 
   function patchRow(index: number, patch: Partial<EpicCategory>) {
-    setCategories((prev) =>
-      prev.map((c, i) => (i === index ? { ...c, ...patch } : c)),
-    );
+    setCategories((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
     if (saved) setSaved(false);
   }
 
   function addCategory() {
-    setCategories((prev) => [
-      ...prev,
-      { name: "", color: "#3b82f6", sort_order: prev.length },
-    ]);
+    setCategories((prev) => [...prev, { name: "", color: "#3b82f6", sort_order: prev.length }]);
     if (saved) setSaved(false);
   }
 
@@ -100,8 +76,7 @@ export function CategoriesPage() {
   const trimmedNames = categories.map((c) => c.name.trim());
   const hasBlank = trimmedNames.some((n) => n === "");
   const hasDuplicate =
-    new Set(trimmedNames.map((n) => n.toLowerCase())).size !==
-    trimmedNames.length;
+    new Set(trimmedNames.map((n) => n.toLowerCase())).size !== trimmedNames.length;
   const canSave = !hasBlank && !hasDuplicate;
 
   async function handleSave() {
@@ -138,14 +113,14 @@ export function CategoriesPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
-          <Tags className="size-6 text-muted-foreground" />
+          <Tags className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Categories</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <Tags className="mb-4 size-12 text-muted-foreground/50" />
+            <Tags className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">No Project Selected</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Select a project to configure epic categories.
             </p>
           </CardContent>
@@ -158,7 +133,7 @@ export function CategoriesPage() {
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <Tags className="size-6 text-muted-foreground" />
+        <Tags className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Categories</h1>
       </div>
 
@@ -166,7 +141,7 @@ export function CategoriesPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
+            <p className="text-destructive text-sm">
               Failed to load project settings. Please try again.
             </p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -194,20 +169,20 @@ export function CategoriesPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Tags className="size-4 text-muted-foreground" />
+              <Tags className="text-muted-foreground size-4" />
               Epic categories
             </CardTitle>
             <CardDescription>
-              Define a palette of categories to group and color-code epics.
-              Categories are assigned per-epic from the epic detail page. Order
-              here controls how they appear in the assign menu.
+              Define a palette of categories to group and color-code epics. Categories are assigned
+              per-epic from the epic detail page. Order here controls how they appear in the assign
+              menu.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {categories.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-10">
-                <Tags className="mb-2 size-8 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">
+                <Tags className="text-muted-foreground/40 mb-2 size-8" />
+                <p className="text-muted-foreground text-sm">
                   No categories yet. Add one to get started.
                 </p>
               </div>
@@ -217,9 +192,8 @@ export function CategoriesPage() {
                   const trimmed = category.name.trim();
                   const isDuplicate =
                     trimmed !== "" &&
-                    trimmedNames.filter(
-                      (n) => n.toLowerCase() === trimmed.toLowerCase(),
-                    ).length > 1;
+                    trimmedNames.filter((n) => n.toLowerCase() === trimmed.toLowerCase()).length >
+                      1;
                   return (
                     <li
                       key={index}
@@ -230,9 +204,7 @@ export function CategoriesPage() {
                         type="color"
                         aria-label={`Color for category ${index + 1}`}
                         value={category.color}
-                        onChange={(e) =>
-                          patchRow(index, { color: e.target.value })
-                        }
+                        onChange={(e) => patchRow(index, { color: e.target.value })}
                         className="size-8 shrink-0 cursor-pointer rounded-md border bg-transparent p-0.5"
                       />
 
@@ -242,18 +214,10 @@ export function CategoriesPage() {
                           aria-label={`Name for category ${index + 1}`}
                           placeholder="Category name"
                           value={category.name}
-                          onChange={(e) =>
-                            patchRow(index, { name: e.target.value })
-                          }
-                          className={cn(
-                            isDuplicate && "border-destructive",
-                          )}
+                          onChange={(e) => patchRow(index, { name: e.target.value })}
+                          className={cn(isDuplicate && "border-destructive")}
                         />
-                        {isDuplicate && (
-                          <p className="text-xs text-destructive">
-                            Duplicate name.
-                          </p>
-                        )}
+                        {isDuplicate && <p className="text-destructive text-xs">Duplicate name.</p>}
                       </div>
 
                       {/* Suggested swatches */}
@@ -268,7 +232,7 @@ export function CategoriesPage() {
                             className={cn(
                               "size-5 rounded-full border transition-transform hover:scale-110",
                               category.color.toLowerCase() === hex &&
-                                "ring-2 ring-ring ring-offset-1 ring-offset-background",
+                                "ring-ring ring-offset-background ring-2 ring-offset-1",
                             )}
                             style={{ backgroundColor: hex }}
                           />
@@ -304,7 +268,7 @@ export function CategoriesPage() {
                           aria-label="Remove category"
                           onClick={() => removeCategory(index)}
                         >
-                          <Trash2 className="size-4 text-destructive" />
+                          <Trash2 className="text-destructive size-4" />
                         </Button>
                       </div>
                     </li>
@@ -319,7 +283,7 @@ export function CategoriesPage() {
             </Button>
 
             {updateMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {updateMutation.error instanceof ApiError
                   ? updateMutation.error.message
                   : "Failed to save categories. Please try again."}
@@ -327,10 +291,7 @@ export function CategoriesPage() {
             )}
 
             <div className="flex items-center gap-3">
-              <Button
-                onClick={handleSave}
-                disabled={updateMutation.isPending || !canSave}
-              >
+              <Button onClick={handleSave} disabled={updateMutation.isPending || !canSave}>
                 {updateMutation.isPending ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
@@ -341,12 +302,10 @@ export function CategoriesPage() {
                 )}
               </Button>
               {hasBlank && (
-                <span className="text-sm text-muted-foreground">
-                  Every category needs a name.
-                </span>
+                <span className="text-muted-foreground text-sm">Every category needs a name.</span>
               )}
               {!hasBlank && hasDuplicate && (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-muted-foreground text-sm">
                   Category names must be unique.
                 </span>
               )}

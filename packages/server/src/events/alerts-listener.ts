@@ -1,11 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb, projects } from "../db/index.js";
-import {
-  EVENT_NAMES,
-  getEventBus,
-  type EventName,
-  type EventPayload,
-} from "./event-bus.js";
+import { EVENT_NAMES, getEventBus, type EventName, type EventPayload } from "./event-bus.js";
 
 // ─── Outbound Discord alert delivery (Phase 7.4 §7.2 — half (b)) ───
 //
@@ -40,10 +35,7 @@ function readWebhookSettings(projectId: string | null): WebhookSettings | null {
     .from(projects)
     .where(eq(projects.id, projectId))
     .get();
-  const settings = row?.settings as
-    | { webhooks?: WebhookSettings }
-    | null
-    | undefined;
+  const settings = row?.settings as { webhooks?: WebhookSettings } | null | undefined;
   return settings?.webhooks ?? null;
 }
 
@@ -94,15 +86,15 @@ function formatAlert(event: EventName, payload: EventPayload): string {
       const count = Number(e.openCount ?? 0);
       const items = count === 1 ? "1 untriaged note" : `${count} untriaged notes`;
       const ageMs = e.oldestUntriagedAgeMs == null ? null : Number(e.oldestUntriagedAgeMs);
-      const oldest = ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 86_400_000))}d)`;
+      const oldest =
+        ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 86_400_000))}d)`;
       return `:warning: Note backlog on project — ${items}${oldest}. Triage or dismiss.`;
     }
     case EVENT_NAMES.ESCALATION_SLA_BREACHED: {
       // Identity-masked (Campaign C4 §P3): aggregate count + oldest breaching
       // age only — never an escalation/holder id. Mirrors NOTE_BACKLOG_ALERT.
       const count = Number(e.breachCount ?? 0);
-      const items =
-        count === 1 ? "1 escalation unanswered" : `${count} escalations unanswered`;
+      const items = count === 1 ? "1 escalation unanswered" : `${count} escalations unanswered`;
       const ageMs = e.oldestBreachingAgeMs == null ? null : Number(e.oldestBreachingAgeMs);
       const oldest =
         ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 3_600_000))}h)`;
@@ -134,10 +126,7 @@ function formatAlert(event: EventName, payload: EventPayload): string {
  * disabled. The settings read is sync; the fetch is awaited only INSIDE this
  * async function (the caller does NOT await it).
  */
-async function deliverDiscordAlert(
-  event: EventName,
-  payload: EventPayload,
-): Promise<void> {
+async function deliverDiscordAlert(event: EventName, payload: EventPayload): Promise<void> {
   const settings = readWebhookSettings(payload.projectId);
   const url = settings?.discord_url;
   if (!url || settings?.alerts_enabled === false) return;
@@ -170,9 +159,7 @@ export function registerWebhookAlertListener(): void {
     }
   };
 
-  bus.on(EVENT_NAMES.TRAIN_STUCK, (p) =>
-    handler(EVENT_NAMES.TRAIN_STUCK, p),
-  );
+  bus.on(EVENT_NAMES.TRAIN_STUCK, (p) => handler(EVENT_NAMES.TRAIN_STUCK, p));
   bus.on(EVENT_NAMES.TRAIN_ABANDON_RATE_HIGH, (p) =>
     handler(EVENT_NAMES.TRAIN_ABANDON_RATE_HIGH, p),
   );
@@ -185,23 +172,17 @@ export function registerWebhookAlertListener(): void {
   // Campaign C3 §P5a — the stale-claim alert rides the same outbound Discord
   // path (explicit B2 wiring, NOT auto). Identity-masked message; the handler's
   // settings read + format are guarded, the fetch un-awaited (NOTE 2).
-  bus.on(EVENT_NAMES.CLAIM_STALE_ALERT, (p) =>
-    handler(EVENT_NAMES.CLAIM_STALE_ALERT, p),
-  );
+  bus.on(EVENT_NAMES.CLAIM_STALE_ALERT, (p) => handler(EVENT_NAMES.CLAIM_STALE_ALERT, p));
   // Campaign C2 §P5 — the notes backlog-age alert rides the same outbound
   // Discord path (explicit wiring, NOT auto). Identity-masked message; the
   // handler's settings read + format are guarded, the fetch un-awaited (NOTE 2).
-  bus.on(EVENT_NAMES.NOTE_BACKLOG_ALERT, (p) =>
-    handler(EVENT_NAMES.NOTE_BACKLOG_ALERT, p),
-  );
+  bus.on(EVENT_NAMES.NOTE_BACKLOG_ALERT, (p) => handler(EVENT_NAMES.NOTE_BACKLOG_ALERT, p));
   // Campaign C2 §P5 — the needs_human escalation bridge: the ONE out-of-band
   // escalation notification. Per-event (NOT latched / no on-read eval — it
   // fires once in escalateToHuman, gated by assertTransition so needs_human is
   // never re-entered). Inherits the missing-url no-op + un-awaited-fetch
   // resilience of the shared handler.
-  bus.on(EVENT_NAMES.ESCALATION_NEEDS_HUMAN, (p) =>
-    handler(EVENT_NAMES.ESCALATION_NEEDS_HUMAN, p),
-  );
+  bus.on(EVENT_NAMES.ESCALATION_NEEDS_HUMAN, (p) => handler(EVENT_NAMES.ESCALATION_NEEDS_HUMAN, p));
   // Campaign C4 §P3 — the unanswered-SLA alert rides the same outbound Discord
   // path (explicit wiring, NOT auto). Identity-masked message; the handler's
   // settings read + format are guarded, the fetch un-awaited (NOTE 2).

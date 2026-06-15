@@ -6,18 +6,25 @@ import { AUDIT_ACTIONS, AUDIT_TARGET_TYPES } from "../services/audit.service.js"
 
 // ─── Param + query schemas ────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // The audit-log query filters (§8.4) — every filter optional. Maps 1:1 onto
 // auditService.list's ListArgs. action/targetType are constrained to the audit
 // enums; page/perPage are coerced (query strings → numbers).
 const auditQuery = z.object({
-  userId: z.string().min(1).optional().openapi({
-    param: { name: "userId", in: "query" },
-  }),
+  userId: z
+    .string()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "userId", in: "query" },
+    }),
   action: z
     .enum(AUDIT_ACTIONS)
     .optional()
@@ -26,23 +33,46 @@ const auditQuery = z.object({
     .enum(AUDIT_TARGET_TYPES)
     .optional()
     .openapi({ param: { name: "targetType", in: "query" } }),
-  targetId: z.string().min(1).optional().openapi({
-    param: { name: "targetId", in: "query" },
-  }),
-  from: z.string().min(1).optional().openapi({
-    param: { name: "from", in: "query" },
-    example: "2026-05-29T00:00:00.000Z",
-  }),
-  to: z.string().min(1).optional().openapi({
-    param: { name: "to", in: "query" },
-    example: "2026-05-30T00:00:00.000Z",
-  }),
-  page: z.coerce.number().int().min(1).optional().openapi({
-    param: { name: "page", in: "query" },
-  }),
-  perPage: z.coerce.number().int().min(1).max(200).optional().openapi({
-    param: { name: "perPage", in: "query" },
-  }),
+  targetId: z
+    .string()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "targetId", in: "query" },
+    }),
+  from: z
+    .string()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "from", in: "query" },
+      example: "2026-05-29T00:00:00.000Z",
+    }),
+  to: z
+    .string()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "to", in: "query" },
+      example: "2026-05-30T00:00:00.000Z",
+    }),
+  page: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "page", in: "query" },
+    }),
+  perPage: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .openapi({
+      param: { name: "perPage", in: "query" },
+    }),
 });
 
 // ─── Response schema (Zod-4 LOCAL mirror of @pm/shared auditLogSchema) ──
@@ -128,11 +158,7 @@ function requireUser(user: AuthUser | null): AuthUser {
  */
 function requireAdmin(user: AuthUser): void {
   if (user.role !== "admin") {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "Admin role required to read the audit log.",
-    );
+    throw new AppError(403, "FORBIDDEN", "Admin role required to read the audit log.");
   }
 }
 

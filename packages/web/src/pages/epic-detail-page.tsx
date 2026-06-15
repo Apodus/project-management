@@ -1,12 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  Kanban,
-  ListTodo,
-  Milestone as MilestoneIcon,
-  Pencil,
-} from "lucide-react";
+import { ArrowLeft, Kanban, ListTodo, Milestone as MilestoneIcon, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,12 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  useEpic,
-  useUpdateEpic,
-  useClaimEpic,
-  useReleaseEpic,
-} from "@/hooks/use-epics";
+import { useEpic, useUpdateEpic, useClaimEpic, useReleaseEpic } from "@/hooks/use-epics";
 import { useTasks } from "@/hooks/use-tasks";
 import { useMilestones } from "@/hooks/use-milestones";
 import { useProject } from "@/hooks/use-projects";
@@ -43,12 +32,7 @@ import { epicCategoriesFromProject } from "@/lib/epic-categories";
 import { useUsers } from "@/hooks/use-users";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useProjectStore } from "@/stores/project-store";
-import {
-  formatRelativeTime,
-  formatStatus,
-  getStatusColor,
-  getPriorityColor,
-} from "@/lib/format";
+import { formatRelativeTime, formatStatus, getStatusColor, getPriorityColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Task } from "@/lib/api";
 
@@ -68,13 +52,7 @@ const TASK_STATUSES_ORDER = [
 
 // ---- Inline editable title ----
 
-function EditableTitle({
-  value,
-  onSave,
-}: {
-  value: string;
-  onSave: (newTitle: string) => void;
-}) {
+function EditableTitle({ value, onSave }: { value: string; onSave: (newTitle: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -124,23 +102,17 @@ function EditableTitle({
       className="group flex items-center gap-2 text-left"
     >
       <h1 className="text-2xl font-bold tracking-tight">{value}</h1>
-      <Pencil className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      <Pencil className="text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100" />
     </button>
   );
 }
 
 // ---- Metadata field ----
 
-function MetadataField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function MetadataField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <span className="text-sm text-muted-foreground shrink-0">{label}</span>
+      <span className="text-muted-foreground shrink-0 text-sm">{label}</span>
       <div className="flex items-center">{children}</div>
     </div>
   );
@@ -159,31 +131,25 @@ function EpicTaskRow({
 }) {
   return (
     <TableRow className="cursor-pointer" onClick={onClick}>
-      <TableCell className="font-medium max-w-[350px]">
+      <TableCell className="max-w-[350px] font-medium">
         <span className="line-clamp-1">{task.title}</span>
       </TableCell>
       <TableCell>
-        <Badge
-          variant="secondary"
-          className={cn("text-[11px]", getStatusColor(task.status))}
-        >
+        <Badge variant="secondary" className={cn("text-[11px]", getStatusColor(task.status))}>
           {formatStatus(task.status)}
         </Badge>
       </TableCell>
       <TableCell>
-        <Badge
-          variant="secondary"
-          className={cn("text-[11px]", getPriorityColor(task.priority))}
-        >
+        <Badge variant="secondary" className={cn("text-[11px]", getPriorityColor(task.priority))}>
           {formatStatus(task.priority)}
         </Badge>
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">
+      <TableCell className="text-muted-foreground text-sm">
         <div className="flex items-center gap-1.5">
           {task.assigneeId ? (
-            assigneeName ?? "Unknown User"
+            (assigneeName ?? "Unknown User")
           ) : (
-            <span className="italic text-muted-foreground/50">Unassigned</span>
+            <span className="text-muted-foreground/50 italic">Unassigned</span>
           )}
           <ClaimStateBadge state={task.claimState} />
         </div>
@@ -252,7 +218,7 @@ export function EpicDetailPage() {
           <Link
             to="/projects/$projectId/epics"
             params={{ projectId: currentProjectId! }}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="size-4" />
             Back to epics
@@ -260,14 +226,14 @@ export function EpicDetailPage() {
         ) : (
           <Link
             to="/projects"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="size-4" />
             Back to projects
           </Link>
         )}
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
-          <p className="text-sm text-destructive">
+        <div className="border-destructive/50 bg-destructive/10 flex flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">
             {error ? "Failed to load epic." : "Epic not found."}
           </p>
           {error && (
@@ -317,7 +283,7 @@ export function EpicDetailPage() {
         <Link
           to="/projects/$projectId/epics"
           params={{ projectId: currentProjectId! }}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
         >
           <ArrowLeft className="size-4" />
           Back to epics
@@ -325,7 +291,7 @@ export function EpicDetailPage() {
       ) : (
         <Link
           to="/projects"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
         >
           <ArrowLeft className="size-4" />
           Back to projects
@@ -335,7 +301,7 @@ export function EpicDetailPage() {
       {/* Header */}
       <div className="space-y-2">
         <EditableTitle value={epic.name} onSave={handleTitleSave} />
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="text-muted-foreground flex items-center gap-2 text-xs">
           <span>Created {formatRelativeTime(epic.createdAt)}</span>
           <AnchoredNotesBadge
             projectId={projectId ?? undefined}
@@ -354,9 +320,7 @@ export function EpicDetailPage() {
           {/* Description */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-muted-foreground">
-                Description
-              </h2>
+              <h2 className="text-muted-foreground text-sm font-medium">Description</h2>
               {!editingDescription && (
                 <Button
                   variant="ghost"
@@ -381,30 +345,20 @@ export function EpicDetailPage() {
                   autoFocus
                 />
                 <div className="flex justify-end gap-2">
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => setEditingDescription(false)}
-                  >
+                  <Button size="xs" variant="outline" onClick={() => setEditingDescription(false)}>
                     Cancel
                   </Button>
-                  <Button
-                    size="xs"
-                    onClick={handleDescriptionSave}
-                    disabled={updateEpic.isPending}
-                  >
+                  <Button size="xs" onClick={handleDescriptionSave} disabled={updateEpic.isPending}>
                     Save
                   </Button>
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="bg-muted/30 rounded-lg border p-4">
                 {epic.description ? (
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {epic.description}
-                  </p>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{epic.description}</p>
                 ) : (
-                  <p className="text-sm italic text-muted-foreground/50">
+                  <p className="text-muted-foreground/50 text-sm italic">
                     No description provided. Click Edit to add one.
                   </p>
                 )}
@@ -414,19 +368,19 @@ export function EpicDetailPage() {
 
           {/* Progress section */}
           <section className="space-y-3">
-            <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <h2 className="text-muted-foreground flex items-center gap-2 text-sm font-medium">
               Progress
             </h2>
 
             {/* Progress bar */}
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <div className="text-muted-foreground flex items-center justify-between text-xs">
                 <span>
                   {done} of {total} task{total === 1 ? "" : "s"} done
                 </span>
                 <span>{progressPct}%</span>
               </div>
-              <div className="h-2 w-full rounded-full bg-muted">
+              <div className="bg-muted h-2 w-full rounded-full">
                 <div
                   className={cn(
                     "h-2 rounded-full transition-all",
@@ -462,7 +416,7 @@ export function EpicDetailPage() {
           {/* Task list */}
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <h2 className="text-muted-foreground flex items-center gap-2 text-sm font-medium">
                 <ListTodo className="size-4" />
                 Tasks
                 {tasks.length > 0 && (
@@ -494,10 +448,8 @@ export function EpicDetailPage() {
 
             {!tasksLoading && tasks.length === 0 && (
               <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8">
-                <ListTodo className="mb-2 size-8 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">
-                  No tasks in this epic yet.
-                </p>
+                <ListTodo className="text-muted-foreground/40 mb-2 size-8" />
+                <p className="text-muted-foreground text-sm">No tasks in this epic yet.</p>
               </div>
             )}
 
@@ -518,11 +470,7 @@ export function EpicDetailPage() {
                         key={task.id}
                         task={task}
                         onClick={() => handleTaskClick(task.id)}
-                        assigneeName={
-                          task.assigneeId
-                            ? usersById.get(task.assigneeId)
-                            : undefined
-                        }
+                        assigneeName={task.assigneeId ? usersById.get(task.assigneeId) : undefined}
                       />
                     ))}
                   </TableBody>
@@ -533,7 +481,7 @@ export function EpicDetailPage() {
         </div>
 
         {/* Metadata panel (right sidebar) */}
-        <div className="space-y-1 rounded-lg border bg-card p-4">
+        <div className="bg-card space-y-1 rounded-lg border p-4">
           <h3 className="mb-3 text-sm font-medium">Details</h3>
 
           {/* Status */}
@@ -552,7 +500,9 @@ export function EpicDetailPage() {
                       <span
                         className={cn(
                           "inline-block size-2 rounded-full",
-                          getStatusColor(s).replace(/text-\S+/g, "").trim(),
+                          getStatusColor(s)
+                            .replace(/text-\S+/g, "")
+                            .trim(),
                         )}
                       />
                       {formatStatus(s)}
@@ -575,10 +525,7 @@ export function EpicDetailPage() {
               <SelectContent>
                 {PRIORITIES.map((p) => (
                   <SelectItem key={p} value={p}>
-                    <Badge
-                      variant="secondary"
-                      className={cn("text-[10px]", getPriorityColor(p))}
-                    >
+                    <Badge variant="secondary" className={cn("text-[10px]", getPriorityColor(p))}>
                       {formatStatus(p)}
                     </Badge>
                   </SelectItem>
@@ -592,17 +539,10 @@ export function EpicDetailPage() {
             <Select
               value={epic.category ?? "__none__"}
               onValueChange={(value) =>
-                handleFieldChange(
-                  "category",
-                  value === "__none__" ? null : value,
-                )
+                handleFieldChange("category", value === "__none__" ? null : value)
               }
             >
-              <SelectTrigger
-                size="sm"
-                className="h-7 w-[130px] text-xs"
-                aria-label="Category"
-              >
+              <SelectTrigger size="sm" className="h-7 w-[130px] text-xs" aria-label="Category">
                 <SelectValue placeholder="None" />
               </SelectTrigger>
               <SelectContent>
@@ -626,12 +566,9 @@ export function EpicDetailPage() {
           <MetadataField label="Assignee">
             {epic.assigneeId ? (
               <div className="flex items-center gap-1.5">
-                <span className="text-sm">
-                  {usersById.get(epic.assigneeId) ?? epic.assigneeId}
-                </span>
+                <span className="text-sm">{usersById.get(epic.assigneeId) ?? epic.assigneeId}</span>
                 <ClaimStateBadge state={epic.claimState} />
-                {(currentUser?.id === epic.assigneeId ||
-                  currentUser?.role === "admin") && (
+                {(currentUser?.id === epic.assigneeId || currentUser?.role === "admin") && (
                   <Button
                     variant="ghost"
                     size="xs"
@@ -660,10 +597,7 @@ export function EpicDetailPage() {
             <Select
               value={epic.milestoneId ?? "__none__"}
               onValueChange={(value) =>
-                handleFieldChange(
-                  "milestoneId",
-                  value === "__none__" ? null : value,
-                )
+                handleFieldChange("milestoneId", value === "__none__" ? null : value)
               }
             >
               <SelectTrigger size="sm" className="h-7 w-[130px] text-xs">
@@ -691,9 +625,7 @@ export function EpicDetailPage() {
               {epic.targetDate ? (
                 new Date(epic.targetDate).toLocaleDateString()
               ) : (
-                <span className="italic text-muted-foreground/60">
-                  Not set
-                </span>
+                <span className="text-muted-foreground/60 italic">Not set</span>
               )}
             </span>
           </MetadataField>
@@ -701,18 +633,14 @@ export function EpicDetailPage() {
           {/* Created by */}
           <MetadataField label="Created by">
             <span className="text-sm">
-              {epic.createdBy ?? (
-                <span className="italic text-muted-foreground/60">
-                  System
-                </span>
-              )}
+              {epic.createdBy ?? <span className="text-muted-foreground/60 italic">System</span>}
             </span>
           </MetadataField>
 
           {/* Milestone display (name) */}
           {currentMilestone && (
             <MetadataField label="Milestone target">
-              <span className="text-xs text-muted-foreground">
+              <span className="text-muted-foreground text-xs">
                 {currentMilestone.targetDate
                   ? new Date(currentMilestone.targetDate).toLocaleDateString()
                   : "No date"}
@@ -725,9 +653,7 @@ export function EpicDetailPage() {
             <>
               <Separator className="my-2" />
               <div className="py-2">
-                <span className="text-sm text-muted-foreground">
-                  Created from proposal:{" "}
-                </span>
+                <span className="text-muted-foreground text-sm">Created from proposal: </span>
                 <Link
                   to="/proposals/$proposalId"
                   params={{ proposalId: epic.proposalId }}

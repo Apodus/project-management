@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  createTestApp,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, type TestApp } from "../utils.js";
 import { users } from "../../src/db/index.js";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -156,11 +153,7 @@ describe("Auth routes", () => {
     it("should login with valid credentials and return user + cookie", async () => {
       // Create a user with a known password
       const passwordHash = bcrypt.hashSync("mypassword", 10);
-      testApp.db
-        .update(users)
-        .set({ passwordHash })
-        .where(eq(users.id, testApp.testUser.id))
-        .run();
+      testApp.db.update(users).set({ passwordHash }).where(eq(users.id, testApp.testUser.id)).run();
 
       const res = await testApp.app.request("/api/v1/auth/login", {
         method: "POST",
@@ -185,11 +178,7 @@ describe("Auth routes", () => {
 
     it("should reject invalid password with 401", async () => {
       const passwordHash = bcrypt.hashSync("correctpassword", 10);
-      testApp.db
-        .update(users)
-        .set({ passwordHash })
-        .where(eq(users.id, testApp.testUser.id))
-        .run();
+      testApp.db.update(users).set({ passwordHash }).where(eq(users.id, testApp.testUser.id)).run();
 
       const res = await testApp.app.request("/api/v1/auth/login", {
         method: "POST",
@@ -249,11 +238,7 @@ describe("Auth routes", () => {
     it("should clear session and cookie", async () => {
       // First login to get a session
       const passwordHash = bcrypt.hashSync("logouttest", 10);
-      testApp.db
-        .update(users)
-        .set({ passwordHash })
-        .where(eq(users.id, testApp.testUser.id))
-        .run();
+      testApp.db.update(users).set({ passwordHash }).where(eq(users.id, testApp.testUser.id)).run();
 
       const loginRes = await testApp.app.request("/api/v1/auth/login", {
         method: "POST",
@@ -267,9 +252,7 @@ describe("Auth routes", () => {
 
       // Extract the session cookie
       const setCookieHeader = loginRes.headers.get("set-cookie")!;
-      const sessionToken = setCookieHeader
-        .split("pm_session=")[1]
-        .split(";")[0];
+      const sessionToken = setCookieHeader.split("pm_session=")[1].split(";")[0];
 
       // Logout using the cookie
       const logoutRes = await testApp.app.request("/api/v1/auth/logout", {
@@ -328,11 +311,7 @@ describe("Auth routes", () => {
     it("should return current user when authenticated via session cookie", async () => {
       // Create a session
       const passwordHash = bcrypt.hashSync("metest", 10);
-      testApp.db
-        .update(users)
-        .set({ passwordHash })
-        .where(eq(users.id, testApp.testUser.id))
-        .run();
+      testApp.db.update(users).set({ passwordHash }).where(eq(users.id, testApp.testUser.id)).run();
 
       const loginRes = await testApp.app.request("/api/v1/auth/login", {
         method: "POST",
@@ -343,9 +322,7 @@ describe("Auth routes", () => {
         }),
       });
       const setCookieHeader = loginRes.headers.get("set-cookie")!;
-      const sessionToken = setCookieHeader
-        .split("pm_session=")[1]
-        .split(";")[0];
+      const sessionToken = setCookieHeader.split("pm_session=")[1].split(";")[0];
 
       const res = await testApp.app.request("/api/v1/auth/me", {
         headers: {

@@ -39,11 +39,7 @@ describe("GET /api/v1/projects/:projectId/epic-graph", () => {
       })
       .run();
 
-    const res = await authRequest(
-      testApp.app,
-      "GET",
-      `/api/v1/projects/${project.id}/epic-graph`,
-    );
+    const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/epic-graph`);
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -69,23 +65,13 @@ describe("GET /api/v1/projects/:projectId/epic-graph", () => {
       projectId: project.id,
     });
 
-    const res = await authRequest(
-      testApp.app,
-      "GET",
-      `/api/v1/projects/${project.id}/epic-graph`,
-    );
+    const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/epic-graph`);
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    const nodeById = new Map(
-      body.data.nodes.map((n: { id: string }) => [n.id, n]),
-    );
-    expect((nodeById.get(categorized.id) as { category: unknown }).category).toBe(
-      "Backend",
-    );
-    expect(
-      (nodeById.get(uncategorized.id) as { category: unknown }).category,
-    ).toBeNull();
+    const nodeById = new Map(body.data.nodes.map((n: { id: string }) => [n.id, n]));
+    expect((nodeById.get(categorized.id) as { category: unknown }).category).toBe("Backend");
+    expect((nodeById.get(uncategorized.id) as { category: unknown }).category).toBeNull();
   });
 });
 
@@ -100,11 +86,7 @@ describe("Epic dependency CRUD routes", () => {
     testApp.cleanup();
   });
 
-  function postDep(
-    projectId: string,
-    epicId: string,
-    body: unknown,
-  ): Promise<Response> {
+  function postDep(projectId: string, epicId: string, body: unknown): Promise<Response> {
     return authRequest(
       testApp.app,
       "POST",
@@ -180,11 +162,7 @@ describe("Epic dependency CRUD routes", () => {
 
     await postDep(project.id, epicB.id, { dependsOnEpicId: epicA.id });
 
-    const res = await authRequest(
-      testApp.app,
-      "GET",
-      `/api/v1/projects/${project.id}/epic-graph`,
-    );
+    const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/epic-graph`);
     const body = await res.json();
     expect(body.data.edges).toEqual([
       {
@@ -204,11 +182,7 @@ describe("Epic dependency CRUD routes", () => {
     await postDep(project.id, epicB.id, { dependsOnEpicId: epicA.id });
     await postDep(project.id, epicA.id, { dependsOnEpicId: epicB.id });
 
-    const res = await authRequest(
-      testApp.app,
-      "GET",
-      `/api/v1/projects/${project.id}/epic-graph`,
-    );
+    const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/epic-graph`);
     const body = await res.json();
     expect(body.data.hasCycle).toBe(true);
     expect(Array.isArray(body.data.cycles)).toBe(true);

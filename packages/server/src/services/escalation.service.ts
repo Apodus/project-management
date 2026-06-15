@@ -71,7 +71,10 @@ const ESCALATION_TRANSITIONS: Record<EscalationStatus, EscalationStatus[]> = {
 /**
  * Assert that `to` is a legal next status from `esc.status`, else 409.
  */
-function assertTransition(esc: { id: string; status: EscalationStatus }, to: EscalationStatus): void {
+function assertTransition(
+  esc: { id: string; status: EscalationStatus },
+  to: EscalationStatus,
+): void {
   if (!ESCALATION_TRANSITIONS[esc.status].includes(to)) {
     throw new AppError(
       409,
@@ -278,10 +281,7 @@ export function create(projectId: string, input: CreateEscalation, actor: Actor)
   // ── Advisory dedup + strict auto-link (fail-safe) ──────────────
   // ANY throw here falls through to a normal create with similar:[].
   try {
-    const similar = findSimilarOpenEscalations(
-      projectId,
-      `${input.title} ${input.body ?? ""}`,
-    );
+    const similar = findSimilarOpenEscalations(projectId, `${input.title} ${input.body ?? ""}`);
     const existing = findExactOpenEscalation(
       projectId,
       input.originRepo,
@@ -374,7 +374,11 @@ export function addMessage(id: string, input: CreateEscalationMessage, actor: Ac
   const esc = getRowOr404(id);
 
   if (actor.type !== "human" && actor.id !== esc.authorId && actor.id !== esc.holderId) {
-    throw new AppError(403, "FORBIDDEN", `User "${actor.id}" is not allowed to reply to escalation ${id}`);
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      `User "${actor.id}" is not allowed to reply to escalation ${id}`,
+    );
   }
   assertNotTerminal(toView(esc));
 
@@ -422,7 +426,11 @@ export function acknowledge(id: string, actor: Actor) {
   const esc = getRowOr404(id);
 
   if (actor.type !== "human" && esc.holderId != null && actor.id !== esc.holderId) {
-    throw new AppError(403, "FORBIDDEN", `User "${actor.id}" is not allowed to acknowledge escalation ${id}`);
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      `User "${actor.id}" is not allowed to acknowledge escalation ${id}`,
+    );
   }
   assertTransition(toView(esc), "acknowledged");
 
@@ -463,7 +471,11 @@ export function answer(id: string, input: { body?: string }, actor: Actor) {
   const esc = getRowOr404(id);
 
   if (actor.type !== "human" && actor.id !== esc.holderId && esc.holderId != null) {
-    throw new AppError(403, "FORBIDDEN", `User "${actor.id}" is not allowed to answer escalation ${id}`);
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      `User "${actor.id}" is not allowed to answer escalation ${id}`,
+    );
   }
   assertTransition(toView(esc), "answered");
 
@@ -514,7 +526,11 @@ export function resolve(id: string, input: { reason: string }, actor: Actor) {
   const esc = getRowOr404(id);
 
   if (actor.type !== "human" && actor.id !== esc.authorId && actor.id !== esc.holderId) {
-    throw new AppError(403, "FORBIDDEN", `User "${actor.id}" is not allowed to resolve escalation ${id}`);
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      `User "${actor.id}" is not allowed to resolve escalation ${id}`,
+    );
   }
 
   const view = toView(esc);
@@ -561,7 +577,11 @@ export function escalateToHuman(id: string, input: { reason: string }, actor: Ac
   const esc = getRowOr404(id);
 
   if (actor.type !== "human" && actor.id !== esc.authorId && actor.id !== esc.holderId) {
-    throw new AppError(403, "FORBIDDEN", `User "${actor.id}" is not allowed to escalate ${id} to a human`);
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      `User "${actor.id}" is not allowed to escalate ${id} to a human`,
+    );
   }
   assertTransition(toView(esc), "needs_human");
 
@@ -600,7 +620,8 @@ export function list(projectId: string, filters: ListEscalationsQuery) {
   if (filters.kind) conditions.push(eq(escalations.kind, filters.kind));
   if (filters.severity) conditions.push(eq(escalations.severity, filters.severity));
   if (filters.originRepo) conditions.push(eq(escalations.originRepo, filters.originRepo));
-  if (filters.originWorkerKey) conditions.push(eq(escalations.originWorkerKey, filters.originWorkerKey));
+  if (filters.originWorkerKey)
+    conditions.push(eq(escalations.originWorkerKey, filters.originWorkerKey));
   if (filters.holderId) conditions.push(eq(escalations.holderId, filters.holderId));
 
   const rows = db

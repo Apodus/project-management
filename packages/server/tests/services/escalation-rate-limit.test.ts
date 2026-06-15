@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  checkRaiseRate,
-  resetRaiseRateLimiter,
-} from "../../src/services/escalation-rate-limit.js";
+import { checkRaiseRate, resetRaiseRateLimiter } from "../../src/services/escalation-rate-limit.js";
 
 // ──────────────────────────────────────────────────────────────────
 // Campaign C4 §P4: the per-origin_worker_key raise rate-limiter — an

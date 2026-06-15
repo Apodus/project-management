@@ -13,9 +13,8 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/stores/project-store", () => ({
-  useProjectStore: (
-    selector: (s: { currentProjectId: string | null }) => unknown,
-  ) => selector({ currentProjectId: "proj-1" }),
+  useProjectStore: (selector: (s: { currentProjectId: string | null }) => unknown) =>
+    selector({ currentProjectId: "proj-1" }),
 }));
 
 const searchMock = vi.fn();
@@ -25,12 +24,7 @@ vi.mock("@/lib/api", () => ({
 
 import { CommandPalette } from "./command-palette";
 
-function makeHit(
-  entityType: string,
-  entityId: string,
-  title: string,
-  rank = -1,
-): SearchResult {
+function makeHit(entityType: string, entityId: string, title: string, rank = -1): SearchResult {
   return {
     entityType,
     entityId,
@@ -42,10 +36,9 @@ function makeHit(
 }
 
 async function typeQuery(value: string) {
-  fireEvent.change(
-    screen.getByPlaceholderText("Search tasks, proposals, or type a command..."),
-    { target: { value } },
-  );
+  fireEvent.change(screen.getByPlaceholderText("Search tasks, proposals, or type a command..."), {
+    target: { value },
+  });
 }
 
 beforeEach(() => {
@@ -75,9 +68,7 @@ describe("CommandPalette (server FTS)", () => {
     );
     expect(searchMock).toHaveBeenCalledTimes(1);
 
-    await waitFor(() =>
-      expect(screen.getByText("Cache the responses")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Cache the responses")).toBeInTheDocument());
     // Group headings (cmdk renders heading via aria-label + visible div).
     expect(screen.getByText("Tasks")).toBeInTheDocument();
     expect(screen.getByText("Proposals")).toBeInTheDocument();
@@ -87,23 +78,17 @@ describe("CommandPalette (server FTS)", () => {
     expect(screen.getByText("Proposal: cache layer")).toBeInTheDocument();
     expect(screen.getByText("Note about caching")).toBeInTheDocument();
     // Comment hits have no nav target → dropped, never rendered.
-    expect(
-      screen.queryByText("A comment mentioning cache"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("A comment mentioning cache")).not.toBeInTheDocument();
   });
 
   it("caps each group at 8 hits (rank order)", async () => {
     searchMock.mockResolvedValue(
-      Array.from({ length: 10 }, (_, i) =>
-        makeHit("task", `t${i}`, `cap-task-${i}`, -10 + i),
-      ),
+      Array.from({ length: 10 }, (_, i) => makeHit("task", `t${i}`, `cap-task-${i}`, -10 + i)),
     );
     render(<CommandPalette open={true} onOpenChange={vi.fn()} />);
     await typeQuery("cap");
 
-    await waitFor(() =>
-      expect(screen.getByText("cap-task-0")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("cap-task-0")).toBeInTheDocument());
     expect(screen.getByText("cap-task-7")).toBeInTheDocument();
     expect(screen.queryByText("cap-task-8")).not.toBeInTheDocument();
     expect(screen.queryByText("cap-task-9")).not.toBeInTheDocument();
@@ -115,9 +100,7 @@ describe("CommandPalette (server FTS)", () => {
     render(<CommandPalette open={true} onOpenChange={onOpenChange} />);
     await typeQuery("flicker");
 
-    await waitFor(() =>
-      expect(screen.getByText("Flicker on login")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Flicker on login")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Flicker on login"));
 
     expect(navigateMock).toHaveBeenCalledWith({
@@ -133,9 +116,7 @@ describe("CommandPalette (server FTS)", () => {
     render(<CommandPalette open={true} onOpenChange={vi.fn()} />);
     await typeQuery("spinner");
 
-    await waitFor(() =>
-      expect(screen.getByText("Fix the spinner")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Fix the spinner")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Fix the spinner"));
 
     expect(navigateMock).toHaveBeenCalledWith({

@@ -21,16 +21,7 @@ import {
   LEASE_PICK_MARGIN_MS_DEFAULT,
 } from "@pm/shared";
 import type { ClaimResult, ClaimState, ClaimStatus, TaskStatus, UserType } from "@pm/shared";
-import {
-  getDb,
-  getRawDb,
-  tasks,
-  taskLabels,
-  labels,
-  epics,
-  projects,
-  users,
-} from "../db/index.js";
+import { getDb, getRawDb, tasks, taskLabels, labels, epics, projects, users } from "../db/index.js";
 import { AppError } from "../types.js";
 import type { AuthUser } from "../types.js";
 import { computeChanges } from "./activity.service.js";
@@ -158,9 +149,7 @@ export type EnrichedFields = {
  * projects, parent tasks, assignees, and reporters. Single query per
  * referenced table — safe for large pages.
  */
-export function enrichTasks<T extends TaskFKShape>(
-  rawTasks: T[],
-): (T & EnrichedFields)[] {
+export function enrichTasks<T extends TaskFKShape>(rawTasks: T[]): (T & EnrichedFields)[] {
   if (rawTasks.length === 0) return [];
   const db = getDb();
 
@@ -228,11 +217,9 @@ export function enrichTasks<T extends TaskFKShape>(
     const reporter = userMap.get(t.reporterId);
     return {
       ...t,
-      epicName: t.epicId ? epicMap.get(t.epicId) ?? null : null,
+      epicName: t.epicId ? (epicMap.get(t.epicId) ?? null) : null,
       projectName: projectMap.get(t.projectId) ?? null,
-      parentTaskTitle: t.parentTaskId
-        ? parentMap.get(t.parentTaskId) ?? null
-        : null,
+      parentTaskTitle: t.parentTaskId ? (parentMap.get(t.parentTaskId) ?? null) : null,
       assigneeName: assignee?.displayName ?? null,
       assigneeType: assignee?.type ?? null,
       reporterName: reporter?.displayName ?? null,
@@ -241,9 +228,7 @@ export function enrichTasks<T extends TaskFKShape>(
   });
 }
 
-export function enrichTask<T extends TaskFKShape>(
-  rawTask: T,
-): T & EnrichedFields {
+export function enrichTask<T extends TaskFKShape>(rawTask: T): T & EnrichedFields {
   return enrichTasks([rawTask])[0];
 }
 
@@ -252,10 +237,7 @@ export function enrichTask<T extends TaskFKShape>(
 // decision (see epic.service.ts). For AI agents, the assignee IS the
 // claim — writes require assigneeId === actor.id. Humans always pass.
 
-const CLAIM_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  "done",
-  "cancelled",
-]);
+const CLAIM_TERMINAL_STATUSES: ReadonlySet<string> = new Set(["done", "cancelled"]);
 
 export type Actor = ClaimActor;
 export { type ClaimFilter };
@@ -277,12 +259,7 @@ export function withClaimStatus<T extends { assigneeId?: string | null }>(
   return {
     ...row,
     claimStatus: deriveClaimStatus(row.assigneeId ?? null, caller),
-    claimState: deriveClaimState(
-      row.assigneeId ?? null,
-      lease ?? null,
-      now ?? new Date(),
-      caller,
-    ),
+    claimState: deriveClaimState(row.assigneeId ?? null, lease ?? null, now ?? new Date(), caller),
   };
 }
 
@@ -299,10 +276,7 @@ export function assertTaskClaimOk(
  * so the filter narrows to an empty result rather than silently
  * matching everything.
  */
-function resolveLabelIdByName(
-  projectId: string,
-  name: string,
-): string | null {
+function resolveLabelIdByName(projectId: string, name: string): string | null {
   const db = getDb();
   const row = db
     .select({ id: labels.id })
@@ -319,11 +293,7 @@ function resolveLabelIdByName(
  * The optional `caller` is used to (a) resolve the `claim` filter
  * relative to the caller and (b) decorate each task with `claimStatus`.
  */
-export function list(
-  projectId: string,
-  filters?: TaskListFilters,
-  caller?: { id: string } | null,
-) {
+export function list(projectId: string, filters?: TaskListFilters, caller?: { id: string } | null) {
   const db = getDb();
 
   const conditions: SQL[] = [eq(tasks.projectId, projectId)];
@@ -399,10 +369,7 @@ export function list(
     if (filters.claim === "mine") {
       conditions.push(eq(tasks.assigneeId, caller.id));
     } else {
-      const availClause = or(
-        isNull(tasks.assigneeId),
-        eq(tasks.assigneeId, caller.id),
-      );
+      const availClause = or(isNull(tasks.assigneeId), eq(tasks.assigneeId, caller.id));
       if (availClause) conditions.push(availClause);
     }
   }
@@ -461,8 +428,7 @@ export function list(
       WHEN 'low' THEN 3
       ELSE 4
     END`;
-    orderClause =
-      orderDir === "asc" ? asc(priorityCase) : desc(priorityCase);
+    orderClause = orderDir === "asc" ? asc(priorityCase) : desc(priorityCase);
   } else {
     const columnMap: Record<string, SQLWrapper> = {
       created_at: tasks.createdAt,
@@ -514,12 +480,7 @@ export function getById(id: string, caller?: { id: string } | null) {
     throw new AppError(404, "NOT_FOUND", `Task not found: ${id}`);
   }
 
-  return withClaimStatus(
-    enrichTask(task),
-    caller ?? null,
-    readLease("task", task.id),
-    new Date(),
-  );
+  return withClaimStatus(enrichTask(task), caller ?? null, readLease("task", task.id), new Date());
 }
 
 /**
@@ -615,8 +576,7 @@ export function update(id: string, data: UpdateTaskInput, actor?: AuthUser) {
   if (data.reporterId !== undefined) values.reporterId = data.reporterId;
   if (data.epicId !== undefined) values.epicId = data.epicId;
   if (data.proposalId !== undefined) values.proposalId = data.proposalId;
-  if (data.estimatedEffort !== undefined)
-    values.estimatedEffort = data.estimatedEffort;
+  if (data.estimatedEffort !== undefined) values.estimatedEffort = data.estimatedEffort;
   if (data.dueDate !== undefined) values.dueDate = data.dueDate;
   if (data.sortOrder !== undefined) values.sortOrder = data.sortOrder;
   if (data.gitBranch !== undefined) values.gitBranch = data.gitBranch;
@@ -682,10 +642,7 @@ export function archive(id: string, actor?: AuthUser) {
   const db = getDb();
   const now = new Date().toISOString();
 
-  db.update(tasks)
-    .set({ status: "cancelled", updatedAt: now })
-    .where(eq(tasks.id, id))
-    .run();
+  db.update(tasks).set({ status: "cancelled", updatedAt: now }).where(eq(tasks.id, id)).run();
 
   // cancelled is terminal — tear down the lease (fixes the R4 leak where an
   // archived-while-claimed task left a dangling lease).
@@ -711,7 +668,11 @@ export function archive(id: string, actor?: AuthUser) {
  * Create a subtask of a given parent task.
  * The parent task must exist. The subtask inherits the parent's projectId.
  */
-export function createSubtask(parentTaskId: string, data: Omit<CreateTaskInput, "projectId" | "parentTaskId">, actor?: AuthUser) {
+export function createSubtask(
+  parentTaskId: string,
+  data: Omit<CreateTaskInput, "projectId" | "parentTaskId">,
+  actor?: AuthUser,
+) {
   const parent = getById(parentTaskId);
 
   // Check autonomy guardrails for AI agents creating subtasks
@@ -729,19 +690,12 @@ export function createSubtask(parentTaskId: string, data: Omit<CreateTaskInput, 
 /**
  * List subtasks of a given task. The parent task must exist.
  */
-export function listSubtasks(
-  parentTaskId: string,
-  caller?: { id: string } | null,
-) {
+export function listSubtasks(parentTaskId: string, caller?: { id: string } | null) {
   // Verify parent exists
   getById(parentTaskId);
 
   const db = getDb();
-  const rows = db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.parentTaskId, parentTaskId))
-    .all();
+  const rows = db.select().from(tasks).where(eq(tasks.parentTaskId, parentTaskId)).all();
   const leases = readLeasesFor(
     "task",
     rows.map((r) => r.id),
@@ -924,12 +878,7 @@ export function pickNextTask(
   const inProgressCount = db
     .select({ count: count() })
     .from(tasks)
-    .where(
-      and(
-        eq(tasks.assigneeId, actor.id),
-        eq(tasks.status, "in_progress"),
-      ),
-    )
+    .where(and(eq(tasks.assigneeId, actor.id), eq(tasks.status, "in_progress")))
     .get();
 
   // For AI agents, enforce max_concurrent_tasks
@@ -940,11 +889,7 @@ export function pickNextTask(
       : 3; // default
 
     if ((inProgressCount?.count ?? 0) >= maxConcurrent) {
-      throw new AppError(
-        403,
-        "MAX_CONCURRENT_TASKS",
-        "Maximum concurrent tasks reached",
-      );
+      throw new AppError(403, "MAX_CONCURRENT_TASKS", "Maximum concurrent tasks reached");
     }
   }
 
@@ -953,8 +898,7 @@ export function pickNextTask(
   // holder possibly mid-action) is never grabbed: grace + LEASE_PICK_MARGIN_MS_DEFAULT.
   const nowDate = internalOpts?.now ?? new Date();
   const pickGraceMs =
-    (internalOpts?.graceMs ?? LEASE_GRACE_MS_DEFAULT) +
-    LEASE_PICK_MARGIN_MS_DEFAULT;
+    (internalOpts?.graceMs ?? LEASE_GRACE_MS_DEFAULT) + LEASE_PICK_MARGIN_MS_DEFAULT;
 
   // Shared candidate FILTERS (everything except the assignee predicate, which
   // differs per phase). Reused by Phase A (unassigned) and Phase B (stale-held).
@@ -1025,18 +969,11 @@ export function pickNextTask(
   // Shared atomic-claim closure: the EXACT existing claim UPDATE (guarded by
   // status='ready' AND assignee_id IS NULL + changes===0). Used by both phases.
   // Runs in its own txn; returns the claimed id or null on a lost race.
-  const claimAtomically = (candidate: {
-    id: string;
-    project_id: string;
-  }): string | null => {
+  const claimAtomically = (candidate: { id: string; project_id: string }): string | null => {
     const txn = rawDb.transaction(() => {
       // For AI agents without a projectId filter, check guardrails per-candidate
       if (actor.type === "ai_agent" && !options?.projectId) {
-        autonomyService.checkGuardrail(
-          actor,
-          "self_assign",
-          candidate.project_id,
-        );
+        autonomyService.checkGuardrail(actor, "self_assign", candidate.project_id);
       }
 
       const updateSql = `
@@ -1050,9 +987,7 @@ export function pickNextTask(
           AND assignee_id IS NULL
       `;
 
-      const result = rawDb
-        .prepare(updateSql)
-        .run(actor.id, now, now, candidate.id);
+      const result = rawDb.prepare(updateSql).run(actor.id, now, now, candidate.id);
 
       if (result.changes === 0) {
         // Another caller claimed it between our SELECT and UPDATE
@@ -1095,9 +1030,7 @@ export function pickNextTask(
   // the holder + tears down the lease + 1 audit + 1 SSE), then run the EXACT
   // atomic claim. A healed/raced candidate is skipped to the next.
   if (!claimedId) {
-    const staleThreshold = new Date(
-      nowDate.getTime() - pickGraceMs,
-    ).toISOString();
+    const staleThreshold = new Date(nowDate.getTime() - pickGraceMs).toISOString();
     const whereClause = [
       "t.status = 'ready'",
       "t.assignee_id IS NOT NULL",
@@ -1115,9 +1048,7 @@ export function pickNextTask(
       ORDER BY${PRIORITY_ORDER_SQL}
       LIMIT 10
     `;
-    const candidates = rawDb
-      .prepare(candidateSql)
-      .all(staleThreshold, ...filterParams) as {
+    const candidates = rawDb.prepare(candidateSql).all(staleThreshold, ...filterParams) as {
       id: string;
       project_id: string;
       expires_at: string;
@@ -1264,10 +1195,7 @@ export function release(id: string, actor: Actor): ClaimResult {
 
   const now = new Date().toISOString();
   const previousAssignee = task.assigneeId;
-  db.update(tasks)
-    .set({ assigneeId: null, updatedAt: now })
-    .where(eq(tasks.id, id))
-    .run();
+  db.update(tasks).set({ assigneeId: null, updatedAt: now }).where(eq(tasks.id, id)).run();
 
   // The holder is gone — tear down the lease.
   deleteLease("task", id);
@@ -1362,10 +1290,7 @@ export interface AwarenessResult {
  * the boundary query agents use to detect concurrent activity in a
  * subsystem before starting work.
  */
-export function awareness(
-  projectId: string,
-  labelName: string | null,
-): AwarenessResult {
+export function awareness(projectId: string, labelName: string | null): AwarenessResult {
   // Project existence is enforced by upstream routes; the list call
   // narrows safely even for unknown projects (empty result).
   const result = list(projectId, {

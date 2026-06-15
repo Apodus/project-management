@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createId } from "@pm/shared";
-import {
-  createTestApp,
-  createTestProject,
-  createTestUser,
-  type TestApp,
-} from "../utils.js";
+import { createTestApp, createTestProject, createTestUser, type TestApp } from "../utils.js";
 import { escalations, escalationMessages, mergeRequests } from "../../src/db/index.js";
 import * as metrics from "../../src/services/escalation-metrics.service.js";
 
@@ -348,10 +343,30 @@ describe("escalation-metrics.service", () => {
     const e2 = seedEscalation(testApp, { projectId, authorId });
     const e3 = seedEscalation(testApp, { projectId, authorId });
     // 3 landed + 1 rejected, all escalation-linked.
-    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e1 });
-    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e2 });
-    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e3 });
-    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "rejected", escalationId: e1 });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "landed",
+      escalationId: e1,
+    });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "landed",
+      escalationId: e2,
+    });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "landed",
+      escalationId: e3,
+    });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "rejected",
+      escalationId: e1,
+    });
 
     const m = metrics.computeEscalationMetrics(projectId, NOW);
     expect(m.autoImplement.landed).toBe(3);
@@ -366,8 +381,18 @@ describe("escalation-metrics.service", () => {
     const e2 = seedEscalation(testApp, { projectId, authorId });
     // 2 landed, 1 of which is later reverted (the revert MR is itself
     // escalation-linked, status landed, revertOf set).
-    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e1 });
-    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e2 });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "landed",
+      escalationId: e1,
+    });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "landed",
+      escalationId: e2,
+    });
     seedMergeRequest(testApp, {
       projectId,
       submittedBy: authorId,
@@ -387,9 +412,24 @@ describe("escalation-metrics.service", () => {
     const e1 = seedEscalation(testApp, { projectId, authorId });
     const e2 = seedEscalation(testApp, { projectId, authorId });
     // 3 MRs but only 2 distinct escalations (e1 has two MRs).
-    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e1 });
-    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "rejected", escalationId: e1 });
-    seedMergeRequest(testApp, { projectId, submittedBy: authorId, status: "landed", escalationId: e2 });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "landed",
+      escalationId: e1,
+    });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "rejected",
+      escalationId: e1,
+    });
+    seedMergeRequest(testApp, {
+      projectId,
+      submittedBy: authorId,
+      status: "landed",
+      escalationId: e2,
+    });
 
     const m = metrics.computeEscalationMetrics(projectId, NOW);
     expect(m.autoImplement.autoImplementedEscalations).toBe(2);

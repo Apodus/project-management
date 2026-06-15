@@ -19,10 +19,7 @@ import { describe, expect, it } from "vitest";
 import { createLogger } from "../src/logger.js";
 import { reclaimStrandedGroups } from "../src/recovery.js";
 import type { PmClient } from "../src/pm-client.js";
-import type {
-  MergeRequestGroupView,
-  MergeIncidentView,
-} from "@pm/shared";
+import type { MergeRequestGroupView, MergeIncidentView } from "@pm/shared";
 
 const logger = createLogger("error");
 
@@ -99,10 +96,7 @@ function makeFakePm(state: FakeState): PmClient {
           (!filters?.groupId || i.groupId === filters.groupId),
       );
     },
-    async resetGroup(
-      groupId: string,
-      opts?: { reason?: string },
-    ): Promise<MergeRequestGroupView> {
+    async resetGroup(groupId: string, opts?: { reason?: string }): Promise<MergeRequestGroupView> {
       state.calls.push("resetGroup");
       state.resetCalls.push({ groupId, reason: opts?.reason });
       const g = state.groups.find((x) => x.id === groupId);
@@ -179,9 +173,7 @@ describe("reclaimStrandedGroups", () => {
     expect(result.scanned).toBe(0);
     expect(result.reclaimed).toBe(0);
     expect(state.resetCalls).toHaveLength(0);
-    expect(state.groups.find((g) => g.id === "grp-partial")?.state).toBe(
-      "partially_landed",
-    );
+    expect(state.groups.find((g) => g.id === "grp-partial")?.state).toBe("partially_landed");
   });
 
   it("(4) a DIFFERENT group's open incident does not block a stranded group's reset", async () => {
@@ -219,9 +211,6 @@ describe("reclaimStrandedGroups", () => {
     expect(result.scanned).toBe(3);
     expect(result.reclaimed).toBe(2); // a + c
     expect(result.skipped).toBe(1); // b
-    expect(state.resetCalls.map((r) => r.groupId).sort()).toEqual([
-      "grp-a",
-      "grp-c",
-    ]);
+    expect(state.resetCalls.map((r) => r.groupId).sort()).toEqual(["grp-a", "grp-c"]);
   });
 });

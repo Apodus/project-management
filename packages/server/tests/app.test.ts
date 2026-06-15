@@ -115,9 +115,7 @@ describe("App foundation", () => {
       const res = await testApp.app.request("/health", {
         headers: { Origin: "http://localhost:5173" },
       });
-      expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
-        "http://localhost:5173",
-      );
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
     });
 
     it("should expose X-Request-Id header via CORS", async () => {

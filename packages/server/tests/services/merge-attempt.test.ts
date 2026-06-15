@@ -8,12 +8,7 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import {
-  comments,
-  gitRefs,
-  mergeAttempts,
-  mergeRequests,
-} from "../../src/db/index.js";
+import { comments, gitRefs, mergeAttempts, mergeRequests } from "../../src/db/index.js";
 import * as attemptSvc from "../../src/services/merge-attempt.service.js";
 import * as requestSvc from "../../src/services/merge-request.service.js";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
@@ -77,9 +72,7 @@ describe("merge-attempt service", () => {
         projectId: project.id,
         submittedBy: submitter.id,
       });
-      expect(() =>
-        attemptSvc.startAttempt(req.id, { baseSha: "b" }, actor),
-      ).toThrowError(
+      expect(() => attemptSvc.startAttempt(req.id, { baseSha: "b" }, actor)).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
     });
@@ -92,9 +85,7 @@ describe("merge-attempt service", () => {
           { baseSha: "b" },
           { id: "u", role: "admin", type: "human" },
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 
@@ -105,11 +96,7 @@ describe("merge-attempt service", () => {
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_ATTEMPT_COMPLETED, listener);
 
-      const done = attemptSvc.completeAttempt(
-        a.id,
-        { status: "passed", treeSha: "tree1" },
-        actor,
-      );
+      const done = attemptSvc.completeAttempt(a.id, { status: "passed", treeSha: "tree1" }, actor);
 
       expect(done.status).toBe("passed");
       expect(done.treeSha).toBe("tree1");
@@ -152,11 +139,7 @@ describe("merge-attempt service", () => {
     it("passed WITHOUT steps: steps column is null (7.1-7.4 compat)", () => {
       const { req, actor } = pickUp(testApp);
       const a = attemptSvc.startAttempt(req.id, { baseSha: "b" }, actor);
-      const done = attemptSvc.completeAttempt(
-        a.id,
-        { status: "passed", treeSha: "tree1" },
-        actor,
-      );
+      const done = attemptSvc.completeAttempt(a.id, { status: "passed", treeSha: "tree1" }, actor);
       expect(done.steps).toBeNull();
     });
 
@@ -209,9 +192,7 @@ describe("merge-attempt service", () => {
       const { req, actor } = pickUp(testApp);
       const a = attemptSvc.startAttempt(req.id, { baseSha: "b" }, actor);
       attemptSvc.completeAttempt(a.id, { status: "cancelled" }, actor);
-      expect(() =>
-        attemptSvc.completeAttempt(a.id, { status: "cancelled" }, actor),
-      ).toThrowError(
+      expect(() => attemptSvc.completeAttempt(a.id, { status: "cancelled" }, actor)).toThrowError(
         expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
       );
     });
@@ -225,9 +206,7 @@ describe("merge-attempt service", () => {
           { status: "cancelled" },
           { id: "u", role: "admin", type: "human" },
         ),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
     });
   });
 
@@ -245,11 +224,7 @@ describe("merge-attempt service", () => {
       expect(cancelledAttempts[0].status).toBe("cancelled");
       expect(listener).not.toHaveBeenCalled();
 
-      const row = testApp.db
-        .select()
-        .from(mergeAttempts)
-        .where(eq(mergeAttempts.id, a.id))
-        .get();
+      const row = testApp.db.select().from(mergeAttempts).where(eq(mergeAttempts.id, a.id)).get();
       expect(row?.status).toBe("cancelled");
       expect(row?.completedAt).toBeTruthy();
     });
@@ -257,11 +232,7 @@ describe("merge-attempt service", () => {
     it("skips already-terminal attempts", () => {
       const { req, actor } = pickUp(testApp);
       const a1 = attemptSvc.startAttempt(req.id, { baseSha: "b" }, actor);
-      attemptSvc.completeAttempt(
-        a1.id,
-        { status: "passed", treeSha: "t" },
-        actor,
-      );
+      attemptSvc.completeAttempt(a1.id, { status: "passed", treeSha: "t" }, actor);
 
       const { cancelledAttempts } = attemptSvc.cancelOpenAttempts(req.id);
       expect(cancelledAttempts).toHaveLength(0);

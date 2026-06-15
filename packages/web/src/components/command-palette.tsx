@@ -61,10 +61,7 @@ function getRecentItems(): RecentItem[] {
 function addRecentItem(item: Omit<RecentItem, "visitedAt">) {
   const items = getRecentItems().filter((i) => i.id !== item.id);
   items.unshift({ ...item, visitedAt: Date.now() });
-  localStorage.setItem(
-    RECENT_STORAGE_KEY,
-    JSON.stringify(items.slice(0, MAX_RECENT)),
-  );
+  localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(items.slice(0, MAX_RECENT)));
 }
 
 // ---- Navigation items ----
@@ -159,10 +156,7 @@ export function CommandPalette({
 
   const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
 
-  const navItems = useMemo(
-    () => getNavItems(currentProjectId),
-    [currentProjectId],
-  );
+  const navItems = useMemo(() => getNavItems(currentProjectId), [currentProjectId]);
 
   // Load recent items when palette opens
   useEffect(() => {
@@ -198,9 +192,7 @@ export function CommandPalette({
         // Hits arrive rank-ordered (best first); filter preserves that order.
         setSearchResults({
           tasks: hits.filter((h) => h.entityType === "task").slice(0, 8),
-          proposals: hits
-            .filter((h) => h.entityType === "proposal")
-            .slice(0, 8),
+          proposals: hits.filter((h) => h.entityType === "proposal").slice(0, 8),
           notes: hits.filter((h) => h.entityType === "note").slice(0, 8),
         });
       } catch {
@@ -319,13 +311,9 @@ export function CommandPalette({
         onValueChange={setQuery}
       />
       <CommandList>
-        {hasQuery && !isSearching && !hasResults && (
-          <CommandEmpty>No results found.</CommandEmpty>
-        )}
+        {hasQuery && !isSearching && !hasResults && <CommandEmpty>No results found.</CommandEmpty>}
         {isSearching && (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            Searching...
-          </div>
+          <div className="text-muted-foreground py-6 text-center text-sm">Searching...</div>
         )}
 
         {/* When query is empty: show recent + navigation */}
@@ -339,15 +327,12 @@ export function CommandPalette({
                     value={`recent-${item.id}-${item.title}`}
                     onSelect={() => handleSelectRecent(item)}
                   >
-                    <Clock className="size-4 text-muted-foreground" />
+                    <Clock className="text-muted-foreground size-4" />
                     <span className="flex-1 truncate">{item.title}</span>
                     {item.status && (
                       <Badge
                         variant="secondary"
-                        className={cn(
-                          "text-[10px]",
-                          getStatusColor(item.status),
-                        )}
+                        className={cn("text-[10px]", getStatusColor(item.status))}
                       >
                         {formatStatus(item.status)}
                       </Badge>
@@ -355,10 +340,7 @@ export function CommandPalette({
                     {item.priority && (
                       <Badge
                         variant="secondary"
-                        className={cn(
-                          "text-[10px]",
-                          getPriorityColor(item.priority),
-                        )}
+                        className={cn("text-[10px]", getPriorityColor(item.priority))}
                       >
                         {formatStatus(item.priority)}
                       </Badge>
@@ -376,7 +358,7 @@ export function CommandPalette({
                   onSelect={() => handleSelectNav(item)}
                   keywords={item.keywords}
                 >
-                  <item.icon className="size-4 text-muted-foreground" />
+                  <item.icon className="text-muted-foreground size-4" />
                   <span>{item.label}</span>
                 </CommandItem>
               ))}
@@ -400,7 +382,7 @@ export function CommandPalette({
                     keywords={[debouncedQuery]}
                     onSelect={() => handleSelectHit(hit)}
                   >
-                    <ListTodo className="size-4 text-muted-foreground" />
+                    <ListTodo className="text-muted-foreground size-4" />
                     <span className="flex-1 truncate">{hit.title}</span>
                   </CommandItem>
                 ))}
@@ -416,7 +398,7 @@ export function CommandPalette({
                     keywords={[debouncedQuery]}
                     onSelect={() => handleSelectHit(hit)}
                   >
-                    <FileText className="size-4 text-muted-foreground" />
+                    <FileText className="text-muted-foreground size-4" />
                     <span className="flex-1 truncate">{hit.title}</span>
                   </CommandItem>
                 ))}
@@ -432,7 +414,7 @@ export function CommandPalette({
                     keywords={[debouncedQuery]}
                     onSelect={() => handleSelectHit(hit)}
                   >
-                    <Inbox className="size-4 text-muted-foreground" />
+                    <Inbox className="text-muted-foreground size-4" />
                     <span className="flex-1 truncate">{hit.title}</span>
                   </CommandItem>
                 ))}
@@ -448,7 +430,7 @@ export function CommandPalette({
                   onSelect={() => handleSelectNav(item)}
                   keywords={item.keywords}
                 >
-                  <item.icon className="size-4 text-muted-foreground" />
+                  <item.icon className="text-muted-foreground size-4" />
                   <span>{item.label}</span>
                 </CommandItem>
               ))}
@@ -460,21 +442,15 @@ export function CommandPalette({
 
         {/* Quick actions — always shown */}
         <CommandGroup heading="Quick Actions">
-          <CommandItem
-            value="action-create-proposal"
-            onSelect={handleCreateProposal}
-          >
-            <Plus className="size-4 text-muted-foreground" />
+          <CommandItem value="action-create-proposal" onSelect={handleCreateProposal}>
+            <Plus className="text-muted-foreground size-4" />
             <span>Create Proposal</span>
-            <Zap className="ml-auto size-3 text-muted-foreground/50" />
+            <Zap className="text-muted-foreground/50 ml-auto size-3" />
           </CommandItem>
-          <CommandItem
-            value="action-create-project"
-            onSelect={handleCreateProject}
-          >
-            <Plus className="size-4 text-muted-foreground" />
+          <CommandItem value="action-create-project" onSelect={handleCreateProject}>
+            <Plus className="text-muted-foreground size-4" />
             <span>Create Project</span>
-            <Zap className="ml-auto size-3 text-muted-foreground/50" />
+            <Zap className="text-muted-foreground/50 ml-auto size-3" />
           </CommandItem>
         </CommandGroup>
       </CommandList>

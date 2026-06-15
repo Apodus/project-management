@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
-import {
-  Calendar,
-  Milestone as MilestoneIcon,
-  Pencil,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { Calendar, Milestone as MilestoneIcon, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,9 +60,7 @@ function MilestoneDialog({
   const updateMilestone = useUpdateMilestone();
 
   const [name, setName] = useState(milestone?.name ?? "");
-  const [description, setDescription] = useState(
-    milestone?.description ?? "",
-  );
+  const [description, setDescription] = useState(milestone?.description ?? "");
   const [targetDate, setTargetDate] = useState(
     milestone?.targetDate ? milestone.targetDate.split("T")[0] : "",
   );
@@ -112,9 +104,7 @@ function MilestoneDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {isEdit ? "Edit Milestone" : "New Milestone"}
-          </DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Milestone" : "New Milestone"}</DialogTitle>
           <DialogDescription>
             {isEdit
               ? "Update milestone details."
@@ -135,10 +125,7 @@ function MilestoneDialog({
             />
           </div>
           <div className="space-y-2">
-            <label
-              className="text-sm font-medium"
-              htmlFor="milestone-description"
-            >
+            <label className="text-sm font-medium" htmlFor="milestone-description">
               Description
             </label>
             <Textarea
@@ -150,10 +137,7 @@ function MilestoneDialog({
             />
           </div>
           <div className="space-y-2">
-            <label
-              className="text-sm font-medium"
-              htmlFor="milestone-target-date"
-            >
+            <label className="text-sm font-medium" htmlFor="milestone-target-date">
               Target Date
             </label>
             <Input
@@ -164,19 +148,11 @@ function MilestoneDialog({
             />
           </div>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={!name.trim() || isPending}>
-              {isPending
-                ? "Saving..."
-                : isEdit
-                  ? "Save Changes"
-                  : "Create Milestone"}
+              {isPending ? "Saving..." : isEdit ? "Save Changes" : "Create Milestone"}
             </Button>
           </DialogFooter>
         </form>
@@ -213,19 +189,14 @@ function DeleteDialog({
         <DialogHeader>
           <DialogTitle>Delete Milestone</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete "{milestone.name}"? This action
-            cannot be undone.
+            Are you sure you want to delete "{milestone.name}"? This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={deleteMilestone.isPending}
-          >
+          <Button variant="destructive" onClick={handleDelete} disabled={deleteMilestone.isPending}>
             {deleteMilestone.isPending ? "Deleting..." : "Delete"}
           </Button>
         </DialogFooter>
@@ -236,13 +207,7 @@ function DeleteDialog({
 
 // ---- Expanded milestone row showing linked epics ----
 
-function MilestoneEpics({
-  milestoneId,
-  projectId,
-}: {
-  milestoneId: string;
-  projectId: string;
-}) {
+function MilestoneEpics({ milestoneId, projectId }: { milestoneId: string; projectId: string }) {
   const { data: epics, isLoading } = useEpics(projectId, {
     milestone: milestoneId,
   });
@@ -257,15 +222,15 @@ function MilestoneEpics({
 
   if (!epics || epics.length === 0) {
     return (
-      <div className="px-4 py-3 text-sm text-muted-foreground italic">
+      <div className="text-muted-foreground px-4 py-3 text-sm italic">
         No epics linked to this milestone.
       </div>
     );
   }
 
   return (
-    <div className="px-4 py-3 space-y-2">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+    <div className="space-y-2 px-4 py-3">
+      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
         Linked Epics
       </p>
       <div className="space-y-1.5">
@@ -275,7 +240,7 @@ function MilestoneEpics({
           return (
             <div
               key={epic.id}
-              className="flex items-center justify-between rounded border bg-muted/30 px-3 py-2 text-sm"
+              className="bg-muted/30 flex items-center justify-between rounded border px-3 py-2 text-sm"
             >
               <span className="font-medium">{epic.name}</span>
               <div className="flex items-center gap-3">
@@ -285,7 +250,7 @@ function MilestoneEpics({
                 >
                   {epic.status}
                 </Badge>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-muted-foreground text-xs">
                   {pct}% ({done}/{total})
                 </span>
               </div>
@@ -299,13 +264,7 @@ function MilestoneEpics({
 
 // ---- Milestone table row ----
 
-function MilestoneRow({
-  milestone,
-  projectId,
-}: {
-  milestone: Milestone;
-  projectId: string;
-}) {
+function MilestoneRow({ milestone, projectId }: { milestone: Milestone; projectId: string }) {
   const [expanded, setExpanded] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -321,26 +280,21 @@ function MilestoneRow({
 
   return (
     <>
-      <TableRow
-        className="cursor-pointer"
-        onClick={() => setExpanded((prev) => !prev)}
-      >
+      <TableRow className="cursor-pointer" onClick={() => setExpanded((prev) => !prev)}>
         <TableCell className="font-medium">
           <div className="flex items-center gap-2">
-            <MilestoneIcon className="size-4 text-muted-foreground shrink-0" />
+            <MilestoneIcon className="text-muted-foreground size-4 shrink-0" />
             {milestone.name}
           </div>
         </TableCell>
         <TableCell>
           {milestone.targetDate ? (
             <span className="flex items-center gap-1.5 text-sm">
-              <Calendar className="size-3.5 text-muted-foreground" />
+              <Calendar className="text-muted-foreground size-3.5" />
               {new Date(milestone.targetDate).toLocaleDateString()}
             </span>
           ) : (
-            <span className="text-sm italic text-muted-foreground/50">
-              Not set
-            </span>
+            <span className="text-muted-foreground/50 text-sm italic">Not set</span>
           )}
         </TableCell>
         <TableCell>
@@ -356,33 +310,24 @@ function MilestoneRow({
             {milestone.status === "open" ? "Open" : "Closed"}
           </Badge>
         </TableCell>
-        <TableCell className="text-sm text-muted-foreground max-w-[250px]">
+        <TableCell className="text-muted-foreground max-w-[250px] text-sm">
           <span className="line-clamp-1">
             {milestone.description || (
-              <span className="italic text-muted-foreground/50">
-                No description
-              </span>
+              <span className="text-muted-foreground/50 italic">No description</span>
             )}
           </span>
         </TableCell>
-        <TableCell className="text-xs text-muted-foreground">
+        <TableCell className="text-muted-foreground text-xs">
           {formatRelativeTime(milestone.createdAt)}
         </TableCell>
         <TableCell>
-          <div
-            className="flex items-center gap-1"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={handleToggleStatus}
               disabled={updateMilestone.isPending}
-              title={
-                milestone.status === "open"
-                  ? "Close milestone"
-                  : "Reopen milestone"
-              }
+              title={milestone.status === "open" ? "Close milestone" : "Reopen milestone"}
             >
               {milestone.status === "open" ? (
                 <span className="text-xs">Close</span>
@@ -404,7 +349,7 @@ function MilestoneRow({
               onClick={() => setDeleteOpen(true)}
               title="Delete milestone"
             >
-              <Trash2 className="size-3.5 text-destructive" />
+              <Trash2 className="text-destructive size-3.5" />
             </Button>
           </div>
         </TableCell>
@@ -414,10 +359,7 @@ function MilestoneRow({
       {expanded && (
         <TableRow>
           <TableCell colSpan={6} className="bg-muted/20 p-0">
-            <MilestoneEpics
-              milestoneId={milestone.id}
-              projectId={projectId}
-            />
+            <MilestoneEpics milestoneId={milestone.id} projectId={projectId} />
           </TableCell>
         </TableRow>
       )}
@@ -431,11 +373,7 @@ function MilestoneRow({
       />
 
       {/* Delete dialog */}
-      <DeleteDialog
-        milestone={milestone}
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-      />
+      <DeleteDialog milestone={milestone} open={deleteOpen} onOpenChange={setDeleteOpen} />
     </>
   );
 }
@@ -503,7 +441,7 @@ export function MilestonesPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <MilestoneIcon className="size-6 text-muted-foreground" />
+          <MilestoneIcon className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Milestones</h1>
           {project && (
             <Badge variant="outline" className="text-xs font-normal">
@@ -521,10 +459,8 @@ export function MilestonesPage() {
 
       {/* Error state */}
       {error && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
-          <p className="text-sm text-destructive">
-            Failed to load milestones. Please try again.
-          </p>
+        <div className="border-destructive/50 bg-destructive/10 flex flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">Failed to load milestones. Please try again.</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             Retry
           </Button>
@@ -561,29 +497,23 @@ export function MilestonesPage() {
           <TableBody>
             {isLoading && <MilestoneTableSkeleton />}
 
-            {!isLoading &&
-              (!filteredMilestones || filteredMilestones.length === 0) && (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <MilestoneIcon className="size-8 text-muted-foreground/40" />
-                      <p className="text-sm text-muted-foreground">
-                        No milestones found. Create one to start tracking
-                        progress.
-                      </p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
+            {!isLoading && (!filteredMilestones || filteredMilestones.length === 0) && (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <MilestoneIcon className="text-muted-foreground/40 size-8" />
+                    <p className="text-muted-foreground text-sm">
+                      No milestones found. Create one to start tracking progress.
+                    </p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
 
             {!isLoading &&
               filteredMilestones &&
               filteredMilestones.map((milestone) => (
-                <MilestoneRow
-                  key={milestone.id}
-                  milestone={milestone}
-                  projectId={projectId!}
-                />
+                <MilestoneRow key={milestone.id} milestone={milestone} projectId={projectId!} />
               ))}
           </TableBody>
         </Table>
@@ -591,11 +521,7 @@ export function MilestonesPage() {
 
       {/* Create dialog */}
       {projectId && (
-        <MilestoneDialog
-          projectId={projectId}
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-        />
+        <MilestoneDialog projectId={projectId} open={createOpen} onOpenChange={setCreateOpen} />
       )}
     </div>
   );

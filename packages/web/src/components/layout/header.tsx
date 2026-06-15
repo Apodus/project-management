@@ -9,11 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useThemeStore } from "@/stores/theme-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useConnectionStore } from "@/stores/connection-store";
@@ -47,7 +43,7 @@ function Breadcrumbs() {
   const segments = pathname.split("/").filter(Boolean);
 
   if (segments.length === 0) {
-    return <span className="text-sm text-muted-foreground">Home</span>;
+    return <span className="text-muted-foreground text-sm">Home</span>;
   }
 
   const breadcrumbs: { label: string; isLast: boolean }[] = [];
@@ -75,16 +71,8 @@ function Breadcrumbs() {
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm">
       {breadcrumbs.map((crumb, index) => (
         <span key={index} className="flex items-center gap-1.5">
-          {index > 0 && (
-            <span className="text-muted-foreground/50">/</span>
-          )}
-          <span
-            className={
-              crumb.isLast
-                ? "font-medium text-foreground"
-                : "text-muted-foreground"
-            }
-          >
+          {index > 0 && <span className="text-muted-foreground/50">/</span>}
+          <span className={crumb.isLast ? "text-foreground font-medium" : "text-muted-foreground"}>
             {crumb.label}
           </span>
         </span>
@@ -184,7 +172,7 @@ function NotificationBell() {
               : "No new notifications"
           }
         >
-          <Bell className="size-4 text-muted-foreground" />
+          <Bell className="text-muted-foreground size-4" />
           {unreadCount > 0 && (
             <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-semibold leading-none text-white">
               {unreadCount > 9 ? "9+" : unreadCount}
@@ -218,7 +206,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
     : null;
 
   return (
-    <header className="flex h-14 shrink-0 items-center border-b border-border bg-background px-4">
+    <header className="border-border bg-background flex h-14 shrink-0 items-center border-b px-4">
       <Breadcrumbs />
 
       <div className="ml-auto flex items-center gap-1">
@@ -229,14 +217,12 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
         <Button
           variant="ghost"
           size="sm"
-          className="gap-2 text-muted-foreground"
+          className="text-muted-foreground gap-2"
           onClick={() => onSearchClick?.()}
         >
           <Search className="size-4" />
-          <span className="hidden text-xs sm:inline">
-            Search...
-          </span>
-          <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground sm:inline-flex">
+          <span className="hidden text-xs sm:inline">Search...</span>
+          <kbd className="border-border bg-muted text-muted-foreground pointer-events-none hidden h-5 select-none items-center gap-1 rounded border px-1.5 font-mono text-[10px] font-medium sm:inline-flex">
             <span className="text-xs">&#8984;</span>K
           </kbd>
         </Button>
@@ -251,22 +237,13 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
           onClick={toggleTheme}
           aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
         >
-          {theme === "dark" ? (
-            <Sun className="size-4" />
-          ) : (
-            <Moon className="size-4" />
-          )}
+          {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="rounded-full"
-              aria-label="User menu"
-            >
-              <div className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+            <Button variant="ghost" size="icon-sm" className="rounded-full" aria-label="User menu">
+              <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-full text-xs font-medium">
                 {initials ?? <User className="size-3.5" />}
               </div>
             </Button>
@@ -275,12 +252,8 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
             {currentUser && (
               <>
                 <div className="px-2 py-1.5">
-                  <p className="text-sm font-medium">
-                    {currentUser.displayName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    @{currentUser.username}
-                  </p>
+                  <p className="text-sm font-medium">{currentUser.displayName}</p>
+                  <p className="text-muted-foreground text-xs">@{currentUser.username}</p>
                 </div>
                 <DropdownMenuSeparator />
               </>

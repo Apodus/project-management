@@ -1,11 +1,7 @@
 import { z } from "zod";
 import { ulidSchema, timestampSchema, optionalText } from "./common.js";
 
-export const workspaceSettingsSchema = z
-  .object({})
-  .passthrough()
-  .nullable()
-  .optional();
+export const workspaceSettingsSchema = z.object({}).passthrough().nullable().optional();
 
 export const selectWorkspaceSchema = z.object({
   id: ulidSchema,

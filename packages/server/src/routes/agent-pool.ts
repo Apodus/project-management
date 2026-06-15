@@ -454,9 +454,7 @@ const forceReleaseRoute = createRoute({
  * Since these routes are under /api/v1/auth/*, the auth middleware skips them.
  * We need to validate the bearer token ourselves.
  */
-async function resolveUser(
-  c: Context<{ Variables: AppVariables }>,
-): Promise<AuthUser | null> {
+async function resolveUser(c: Context<{ Variables: AppVariables }>): Promise<AuthUser | null> {
   // Check if middleware already resolved the user
   const existing = c.get("currentUser");
   if (existing) return existing;
@@ -483,10 +481,7 @@ async function resolveUser(
   return null;
 }
 
-function requireAuth(
-  user: AuthUser | null,
-  c: Context<{ Variables: AppVariables }>,
-) {
+function requireAuth(user: AuthUser | null, c: Context<{ Variables: AppVariables }>) {
   if (!user) {
     return c.json(
       { error: { code: "UNAUTHORIZED", message: "Valid authentication required" } },
@@ -496,15 +491,9 @@ function requireAuth(
   return null;
 }
 
-function requireAdminRole(
-  user: AuthUser,
-  c: Context<{ Variables: AppVariables }>,
-) {
+function requireAdminRole(user: AuthUser, c: Context<{ Variables: AppVariables }>) {
   if (user.role !== "admin") {
-    return c.json(
-      { error: { code: "FORBIDDEN", message: "Admin role required" } },
-      403,
-    );
+    return c.json({ error: { code: "FORBIDDEN", message: "Admin role required" } }, 403);
   }
   return null;
 }
@@ -552,10 +541,7 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
     const { id } = c.req.valid("param");
     const pool = agentPoolService.getPool(id);
     if (!pool) {
-      return c.json(
-        { error: { code: "POOL_NOT_FOUND", message: "Pool not found" } },
-        404,
-      );
+      return c.json({ error: { code: "POOL_NOT_FOUND", message: "Pool not found" } }, 404);
     }
 
     const agents = agentPoolService.getPoolStatus(id);

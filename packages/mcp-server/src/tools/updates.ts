@@ -12,10 +12,7 @@ export function registerUpdateTools(server: McpServer): void {
         .describe(
           "ISO 8601 timestamp. Use the timestamp from when you last checked (or when you started working).",
         ),
-      project_id: z
-        .string()
-        .optional()
-        .describe("Scope to a specific project."),
+      project_id: z.string().optional().describe("Scope to a specific project."),
     },
     async ({ since, project_id }) => {
       let result;

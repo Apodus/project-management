@@ -72,11 +72,7 @@ describe("Templates API", () => {
         },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/templates?template_type=task",
-      );
+      const res = await authRequest(testApp.app, "GET", "/api/v1/templates?template_type=task");
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -217,26 +213,18 @@ describe("Templates API", () => {
 
   describe("PATCH /api/v1/templates/:id", () => {
     it("should update template name", async () => {
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/templates",
-        {
-          body: {
-            name: "Original Name",
-            template_type: "task",
-            template_data: { type: "bug" },
-          },
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/templates", {
+        body: {
+          name: "Original Name",
+          template_type: "task",
+          template_data: { type: "bug" },
         },
-      );
+      });
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/templates/${created.data.id}`,
-        { body: { name: "Updated Name" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/templates/${created.data.id}`, {
+        body: { name: "Updated Name" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -244,26 +232,18 @@ describe("Templates API", () => {
     });
 
     it("should update template_data", async () => {
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/templates",
-        {
-          body: {
-            name: "Test Template",
-            template_type: "task",
-            template_data: { type: "bug", priority: "low" },
-          },
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/templates", {
+        body: {
+          name: "Test Template",
+          template_type: "task",
+          template_data: { type: "bug", priority: "low" },
         },
-      );
+      });
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/templates/${created.data.id}`,
-        { body: { template_data: { type: "feature", priority: "high" } } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/templates/${created.data.id}`, {
+        body: { template_data: { type: "feature", priority: "high" } },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -273,56 +253,36 @@ describe("Templates API", () => {
 
     it("should return 404 for non-existent template", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/templates/${fakeId}`,
-        { body: { name: "Nope" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/templates/${fakeId}`, {
+        body: { name: "Nope" },
+      });
       expect(res.status).toBe(404);
     });
   });
 
   describe("DELETE /api/v1/templates/:id", () => {
     it("should delete a template", async () => {
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/templates",
-        {
-          body: {
-            name: "To Delete",
-            template_type: "task",
-            template_data: { type: "chore" },
-          },
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/templates", {
+        body: {
+          name: "To Delete",
+          template_type: "task",
+          template_data: { type: "chore" },
         },
-      );
+      });
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/templates/${created.data.id}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/templates/${created.data.id}`);
       expect(res.status).toBe(200);
 
       // Verify it's gone
-      const listRes = await authRequest(
-        testApp.app,
-        "GET",
-        "/api/v1/templates",
-      );
+      const listRes = await authRequest(testApp.app, "GET", "/api/v1/templates");
       const listBody = await listRes.json();
       expect(listBody.data).toHaveLength(0);
     });
 
     it("should return 404 for non-existent template", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/templates/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/templates/${fakeId}`);
       expect(res.status).toBe(404);
     });
   });
@@ -334,23 +294,18 @@ describe("Templates API", () => {
       const project = createTestProject(testApp.db);
 
       // Create a task template
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/templates",
-        {
-          body: {
-            name: "Bug Fix Template",
-            template_type: "task",
-            template_data: {
-              description: "## Bug description",
-              type: "bug",
-              priority: "high",
-              estimated_effort: "m",
-            },
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/templates", {
+        body: {
+          name: "Bug Fix Template",
+          template_type: "task",
+          template_data: {
+            description: "## Bug description",
+            type: "bug",
+            priority: "high",
+            estimated_effort: "m",
           },
         },
-      );
+      });
       const template = await createRes.json();
 
       // Instantiate
@@ -379,26 +334,21 @@ describe("Templates API", () => {
     it("should create task with subtasks from template", async () => {
       const project = createTestProject(testApp.db);
 
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/templates",
-        {
-          body: {
-            name: "Bug Fix Template with Subtasks",
-            template_type: "task",
-            template_data: {
-              type: "bug",
-              priority: "high",
-              subtasks: [
-                { title: "Investigate root cause", type: "research", effort: "s" },
-                { title: "Implement fix", type: "feature", effort: "m" },
-                { title: "Write tests", type: "chore", effort: "s" },
-              ],
-            },
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/templates", {
+        body: {
+          name: "Bug Fix Template with Subtasks",
+          template_type: "task",
+          template_data: {
+            type: "bug",
+            priority: "high",
+            subtasks: [
+              { title: "Investigate root cause", type: "research", effort: "s" },
+              { title: "Implement fix", type: "feature", effort: "m" },
+              { title: "Write tests", type: "chore", effort: "s" },
+            ],
           },
         },
-      );
+      });
       const template = await createRes.json();
 
       const res = await authRequest(
@@ -427,18 +377,13 @@ describe("Templates API", () => {
     });
 
     it("should reject instantiation without project_id for task template", async () => {
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/templates",
-        {
-          body: {
-            name: "Task Template",
-            template_type: "task",
-            template_data: { type: "feature" },
-          },
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/templates", {
+        body: {
+          name: "Task Template",
+          template_type: "task",
+          template_data: { type: "feature" },
         },
-      );
+      });
       const template = await createRes.json();
 
       const res = await authRequest(
@@ -456,18 +401,13 @@ describe("Templates API", () => {
     it("should reject using a project template as task template", async () => {
       const project = createTestProject(testApp.db);
 
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/templates",
-        {
-          body: {
-            name: "Project Template",
-            template_type: "project",
-            template_data: { description: "test" },
-          },
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/templates", {
+        body: {
+          name: "Project Template",
+          template_type: "project",
+          template_data: { description: "test" },
         },
-      );
+      });
       const template = await createRes.json();
 
       const res = await authRequest(
@@ -494,38 +434,33 @@ describe("Templates API", () => {
       const workspaceId = project.workspaceId;
 
       // Create a project template
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/templates",
-        {
-          body: {
-            name: "Web Feature Template",
-            template_type: "project",
-            template_data: {
-              description: "A standard web feature project",
-              epics: [
-                {
-                  name: "Design",
-                  tasks: [{ title: "Create design doc", type: "design" }],
-                },
-                {
-                  name: "Implementation",
-                  tasks: [
-                    { title: "Core implementation", type: "feature" },
-                    { title: "API endpoints", type: "feature" },
-                  ],
-                },
-              ],
-              labels: [
-                { name: "frontend", color: "#3b82f6" },
-                { name: "backend", color: "#10b981" },
-              ],
-            },
-            created_by: testApp.testUser.id,
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/templates", {
+        body: {
+          name: "Web Feature Template",
+          template_type: "project",
+          template_data: {
+            description: "A standard web feature project",
+            epics: [
+              {
+                name: "Design",
+                tasks: [{ title: "Create design doc", type: "design" }],
+              },
+              {
+                name: "Implementation",
+                tasks: [
+                  { title: "Core implementation", type: "feature" },
+                  { title: "API endpoints", type: "feature" },
+                ],
+              },
+            ],
+            labels: [
+              { name: "frontend", color: "#3b82f6" },
+              { name: "backend", color: "#10b981" },
+            ],
           },
+          created_by: testApp.testUser.id,
         },
-      );
+      });
       const template = await createRes.json();
 
       // Instantiate
@@ -545,9 +480,7 @@ describe("Templates API", () => {
       const body = await res.json();
       expect(body.data.project).toBeDefined();
       expect(body.data.project.name).toBe("User Dashboard Feature");
-      expect(body.data.project.description).toBe(
-        "A standard web feature project",
-      );
+      expect(body.data.project.description).toBe("A standard web feature project");
 
       // Verify labels
       expect(body.data.labels).toHaveLength(2);
@@ -565,18 +498,13 @@ describe("Templates API", () => {
     });
 
     it("should reject instantiation without workspace_id for project template", async () => {
-      const createRes = await authRequest(
-        testApp.app,
-        "POST",
-        "/api/v1/templates",
-        {
-          body: {
-            name: "Project Template",
-            template_type: "project",
-            template_data: { description: "test" },
-          },
+      const createRes = await authRequest(testApp.app, "POST", "/api/v1/templates", {
+        body: {
+          name: "Project Template",
+          template_type: "project",
+          template_data: { description: "test" },
         },
-      );
+      });
       const template = await createRes.json();
 
       const res = await authRequest(

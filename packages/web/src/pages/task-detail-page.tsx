@@ -78,14 +78,7 @@ const TASK_STATUSES = [
 
 const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 
-const TASK_TYPES = [
-  "feature",
-  "bug",
-  "chore",
-  "spike",
-  "design",
-  "research",
-] as const;
+const TASK_TYPES = ["feature", "bug", "chore", "spike", "design", "research"] as const;
 
 const EFFORTS = ["xs", "s", "m", "l", "xl"] as const;
 
@@ -116,13 +109,7 @@ function CommentTypeIcon({ type }: { type: string }) {
 
 // ---- Inline editable title ----
 
-function EditableTitle({
-  value,
-  onSave,
-}: {
-  value: string;
-  onSave: (newTitle: string) => void;
-}) {
+function EditableTitle({ value, onSave }: { value: string; onSave: (newTitle: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -172,23 +159,17 @@ function EditableTitle({
       className="group flex items-center gap-2 text-left"
     >
       <h1 className="text-2xl font-bold tracking-tight">{value}</h1>
-      <Pencil className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      <Pencil className="text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100" />
     </button>
   );
 }
 
 // ---- Metadata field ----
 
-function MetadataField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function MetadataField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <span className="text-sm text-muted-foreground shrink-0">{label}</span>
+      <span className="text-muted-foreground shrink-0 text-sm">{label}</span>
       <div className="flex items-center">{children}</div>
     </div>
   );
@@ -224,70 +205,56 @@ function TaskCommentItem({
           <div
             className={cn(
               "flex size-6 items-center justify-center rounded-full text-xs font-medium",
-              isAI
-                ? "bg-blue-600 text-white"
-                : "bg-primary text-primary-foreground",
+              isAI ? "bg-blue-600 text-white" : "bg-primary text-primary-foreground",
             )}
           >
             {isAI ? "AI" : "H"}
           </div>
-          <span className="text-sm font-medium">
-            {author?.displayName ?? "Unknown User"}
-          </span>
+          <span className="text-sm font-medium">{author?.displayName ?? "Unknown User"}</span>
           {comment.commentType && comment.commentType !== "comment" && (
-            <Badge
-              variant="outline"
-              className="flex items-center gap-1 text-[10px]"
-            >
+            <Badge variant="outline" className="flex items-center gap-1 text-[10px]">
               <CommentTypeIcon type={comment.commentType} />
               {formatStatus(comment.commentType)}
             </Badge>
           )}
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-muted-foreground text-xs">
           {formatRelativeTime(comment.createdAt)}
         </span>
       </div>
-      <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-        {comment.body}
-      </div>
+      <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{comment.body}</div>
 
       {/* Handoff structured content */}
       {isHandoff && metadata && (
-        <div className="mt-3 space-y-2 rounded border bg-background/50 p-3 text-sm">
+        <div className="bg-background/50 mt-3 space-y-2 rounded border p-3 text-sm">
           {metadata.summary != null && (
             <div>
               <span className="font-medium">Summary: </span>
               <span>{String(metadata.summary)}</span>
             </div>
           )}
-          {Array.isArray(metadata.files_changed) &&
-            metadata.files_changed.length > 0 && (
-              <div>
-                <span className="font-medium">Files changed: </span>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {metadata.files_changed.map((f: unknown, i: number) => (
-                    <code
-                      key={i}
-                      className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
-                    >
-                      {String(f)}
-                    </code>
-                  ))}
-                </div>
+          {Array.isArray(metadata.files_changed) && metadata.files_changed.length > 0 && (
+            <div>
+              <span className="font-medium">Files changed: </span>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {metadata.files_changed.map((f: unknown, i: number) => (
+                  <code key={i} className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
+                    {String(f)}
+                  </code>
+                ))}
               </div>
-            )}
-          {Array.isArray(metadata.open_questions) &&
-            metadata.open_questions.length > 0 && (
-              <div>
-                <span className="font-medium">Open questions: </span>
-                <ul className="mt-1 list-inside list-disc">
-                  {metadata.open_questions.map((q: unknown, i: number) => (
-                    <li key={i}>{String(q)}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            </div>
+          )}
+          {Array.isArray(metadata.open_questions) && metadata.open_questions.length > 0 && (
+            <div>
+              <span className="font-medium">Open questions: </span>
+              <ul className="mt-1 list-inside list-disc">
+                {metadata.open_questions.map((q: unknown, i: number) => (
+                  <li key={i}>{String(q)}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {metadata.test_results != null && (
             <div>
               <span className="font-medium">Test results: </span>
@@ -336,14 +303,8 @@ function TaskCommentComposer({ taskId }: { taskId: string }) {
         }}
       />
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          Press Ctrl+Enter to send
-        </span>
-        <Button
-          type="submit"
-          size="sm"
-          disabled={!body.trim() || addComment.isPending}
-        >
+        <span className="text-muted-foreground text-xs">Press Ctrl+Enter to send</span>
+        <Button type="submit" size="sm" disabled={!body.trim() || addComment.isPending}>
           <Send className="size-4" />
           {addComment.isPending ? "Sending..." : "Add Comment"}
         </Button>
@@ -374,21 +335,20 @@ function SubtasksSection({ taskId }: { taskId: string }) {
   if (!subtasks || subtasks.length === 0) return null;
 
   const doneCount = subtasks.filter((t) => t.status === "done").length;
-  const progressPct =
-    subtasks.length > 0 ? Math.round((doneCount / subtasks.length) * 100) : 0;
+  const progressPct = subtasks.length > 0 ? Math.round((doneCount / subtasks.length) * 100) : 0;
 
   return (
     <div className="space-y-3">
       <h3 className="flex items-center gap-2 text-sm font-medium">
         <ListChecks className="size-4" />
         Subtasks
-        <span className="text-xs text-muted-foreground">
+        <span className="text-muted-foreground text-xs">
           {doneCount} of {subtasks.length} completed
         </span>
       </h3>
 
       {/* Progress bar */}
-      <div className="h-2 w-full rounded-full bg-muted">
+      <div className="bg-muted h-2 w-full rounded-full">
         <div
           className="h-2 rounded-full bg-green-500 transition-all"
           style={{ width: `${progressPct}%` }}
@@ -410,7 +370,7 @@ function SubtasksSection({ taskId }: { taskId: string }) {
           >
             <CardContent className="flex items-center justify-between py-0">
               <div className="flex items-center gap-2">
-                <FileText className="size-4 text-muted-foreground" />
+                <FileText className="text-muted-foreground size-4" />
                 <span className="text-sm font-medium">{subtask.title}</span>
               </div>
               <Badge
@@ -474,16 +434,13 @@ function TagInput({
           <Badge
             key={i}
             variant="secondary"
-            className={cn(
-              "flex items-center gap-1 pr-1",
-              mono && "font-mono text-xs",
-            )}
+            className={cn("flex items-center gap-1 pr-1", mono && "font-mono text-xs")}
           >
             {val}
             <button
               type="button"
               onClick={() => removeTag(i)}
-              className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+              className="hover:bg-muted-foreground/20 ml-0.5 rounded-full p-0.5"
             >
               <X className="size-3" />
             </button>
@@ -550,17 +507,17 @@ function OrderedListEditor({
     <div className="space-y-2">
       <ol className="space-y-1.5">
         {values.map((item, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm group">
-            <span className="mt-0.5 shrink-0 text-xs text-muted-foreground font-medium w-5 text-right">
+          <li key={i} className="group flex items-start gap-2 text-sm">
+            <span className="text-muted-foreground mt-0.5 w-5 shrink-0 text-right text-xs font-medium">
               {i + 1}.
             </span>
             <span className="flex-1">{item}</span>
             <button
               type="button"
               onClick={() => removeItem(i)}
-              className="mt-0.5 shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity"
+              className="hover:bg-muted mt-0.5 shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
             >
-              <X className="size-3 text-muted-foreground" />
+              <X className="text-muted-foreground size-3" />
             </button>
           </li>
         ))}
@@ -666,18 +623,14 @@ function ContextSection({
             <Code2 className="size-4" />
             Context
           </h3>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => setEditing(true)}
-          >
+          <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
             <Plus className="size-3" />
             Add context
           </Button>
         </div>
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-6">
-          <Code2 className="mb-2 size-6 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">
+          <Code2 className="text-muted-foreground/40 mb-2 size-6" />
+          <p className="text-muted-foreground text-sm">
             No context information. Click "Add context" to define files, criteria, and notes.
           </p>
         </div>
@@ -720,14 +673,12 @@ function ContextSection({
 
         {/* Relevant files - tag input */}
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Relevant files
           </p>
           <TagInput
             values={draft.relevant_files ?? []}
-            onChange={(values) =>
-              setDraft((d) => ({ ...d, relevant_files: values }))
-            }
+            onChange={(values) => setDraft((d) => ({ ...d, relevant_files: values }))}
             placeholder="Add a file path..."
             mono
           />
@@ -735,21 +686,19 @@ function ContextSection({
 
         {/* Acceptance criteria - ordered list */}
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Acceptance criteria
           </p>
           <OrderedListEditor
             values={draft.acceptance_criteria ?? []}
-            onChange={(values) =>
-              setDraft((d) => ({ ...d, acceptance_criteria: values }))
-            }
+            onChange={(values) => setDraft((d) => ({ ...d, acceptance_criteria: values }))}
             placeholder="Add a criterion..."
           />
         </div>
 
         {/* Implementation hints - text area */}
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Implementation hints
           </p>
           <Textarea
@@ -768,28 +717,24 @@ function ContextSection({
 
         {/* Design references - tag input */}
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Design references
           </p>
           <TagInput
             values={draft.design_references ?? []}
-            onChange={(values) =>
-              setDraft((d) => ({ ...d, design_references: values }))
-            }
+            onChange={(values) => setDraft((d) => ({ ...d, design_references: values }))}
             placeholder="Add a reference URL or path..."
           />
         </div>
 
         {/* Notes - text area */}
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Notes
           </p>
           <Textarea
             value={draft.notes ?? ""}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, notes: e.target.value }))
-            }
+            onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
             rows={3}
             placeholder="Add notes..."
             className="text-sm"
@@ -807,11 +752,7 @@ function ContextSection({
           <Code2 className="size-4" />
           Context
         </h3>
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={() => setEditing(true)}
-        >
+        <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
           <Pencil className="size-3" />
           Edit
         </Button>
@@ -820,15 +761,12 @@ function ContextSection({
       {/* Relevant files */}
       {context.relevant_files && context.relevant_files.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Relevant files
           </p>
           <div className="flex flex-wrap gap-1.5">
             {context.relevant_files.map((file, i) => (
-              <code
-                key={i}
-                className="rounded bg-muted px-2 py-0.5 font-mono text-xs"
-              >
+              <code key={i} className="bg-muted rounded px-2 py-0.5 font-mono text-xs">
                 {file}
               </code>
             ))}
@@ -839,13 +777,13 @@ function ContextSection({
       {/* Acceptance criteria */}
       {context.acceptance_criteria && context.acceptance_criteria.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Acceptance criteria
           </p>
           <ul className="space-y-1">
             {context.acceptance_criteria.map((criterion, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
-                <span className="mt-1 block size-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
+                <span className="bg-muted-foreground/50 mt-1 block size-1.5 shrink-0 rounded-full" />
                 {criterion}
               </li>
             ))}
@@ -856,19 +794,17 @@ function ContextSection({
       {/* Implementation hints */}
       {context.implementation_hints && (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Implementation hints
           </p>
-          <p className="whitespace-pre-wrap text-sm">
-            {context.implementation_hints}
-          </p>
+          <p className="whitespace-pre-wrap text-sm">{context.implementation_hints}</p>
         </div>
       )}
 
       {/* Design references */}
       {context.design_references && context.design_references.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Design references
           </p>
           <div className="flex flex-col gap-1">
@@ -888,7 +824,7 @@ function ContextSection({
       {/* Notes */}
       {context.notes && (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
             Notes
           </p>
           <p className="whitespace-pre-wrap text-sm">{context.notes}</p>
@@ -961,8 +897,7 @@ function SaveAsTemplateDialog({
           <DialogHeader>
             <DialogTitle>Save as Template</DialogTitle>
             <DialogDescription>
-              Create a reusable task template from this task, including its
-              subtasks.
+              Create a reusable task template from this task, including its subtasks.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
@@ -977,9 +912,7 @@ function SaveAsTemplateDialog({
                 }}
                 autoFocus
               />
-              {errors.name && (
-                <p className="text-xs text-destructive">{errors.name}</p>
-              )}
+              {errors.name && <p className="text-destructive text-xs">{errors.name}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="tpl-from-desc">Description (optional)</Label>
@@ -992,7 +925,7 @@ function SaveAsTemplateDialog({
               />
             </div>
             {createFromTask.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {createFromTask.error instanceof ApiError
                   ? createFromTask.error.message
                   : "Failed to create template from task."}
@@ -1000,11 +933,7 @@ function SaveAsTemplateDialog({
             )}
           </div>
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={createFromTask.isPending}>
@@ -1032,8 +961,7 @@ function SaveAsTemplateDialog({
 export function TaskDetailPage() {
   const { taskId } = useParams({ strict: false });
   const { data: task, isLoading, error, refetch } = useTask(taskId);
-  const { data: comments, isLoading: commentsLoading } =
-    useTaskComments(taskId);
+  const { data: comments, isLoading: commentsLoading } = useTaskComments(taskId);
   const { data: users } = useUsers();
   const updateTask = useUpdateTask();
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
@@ -1074,7 +1002,7 @@ export function TaskDetailPage() {
           <Link
             to="/projects/$projectId/tasks"
             params={{ projectId: currentProjectId! }}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="size-4" />
             Back to tasks
@@ -1082,14 +1010,14 @@ export function TaskDetailPage() {
         ) : (
           <Link
             to="/projects"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="size-4" />
             Back to projects
           </Link>
         )}
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
-          <p className="text-sm text-destructive">
+        <div className="border-destructive/50 bg-destructive/10 flex flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">
             {error ? "Failed to load task." : "Task not found."}
           </p>
           {error && (
@@ -1131,7 +1059,7 @@ export function TaskDetailPage() {
         <Link
           to="/projects/$projectId/tasks"
           params={{ projectId: currentProjectId! }}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
         >
           <ArrowLeft className="size-4" />
           Back to tasks
@@ -1139,7 +1067,7 @@ export function TaskDetailPage() {
       ) : (
         <Link
           to="/projects"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
         >
           <ArrowLeft className="size-4" />
           Back to projects
@@ -1149,9 +1077,9 @@ export function TaskDetailPage() {
       {/* Header */}
       <div className="space-y-2">
         <EditableTitle value={task.title} onSave={handleTitleSave} />
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="text-muted-foreground flex items-center gap-2 text-xs">
           {/* Claim liveness badge (Campaign C3) — renders nothing when unclaimed. */}
-          <ClaimStateBadge state={task.claimState} className="text-[10px] px-1.5 py-0" />
+          <ClaimStateBadge state={task.claimState} className="px-1.5 py-0 text-[10px]" />
           <span>Created {formatRelativeTime(task.createdAt)}</span>
           {task.gitBranch && (
             <>
@@ -1179,9 +1107,7 @@ export function TaskDetailPage() {
           {/* Description */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-muted-foreground">
-                Description
-              </h2>
+              <h2 className="text-muted-foreground text-sm font-medium">Description</h2>
               {!editingDescription && (
                 <Button
                   variant="ghost"
@@ -1206,30 +1132,20 @@ export function TaskDetailPage() {
                   autoFocus
                 />
                 <div className="flex justify-end gap-2">
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => setEditingDescription(false)}
-                  >
+                  <Button size="xs" variant="outline" onClick={() => setEditingDescription(false)}>
                     Cancel
                   </Button>
-                  <Button
-                    size="xs"
-                    onClick={handleDescriptionSave}
-                    disabled={updateTask.isPending}
-                  >
+                  <Button size="xs" onClick={handleDescriptionSave} disabled={updateTask.isPending}>
                     Save
                   </Button>
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="bg-muted/30 rounded-lg border p-4">
                 {task.description ? (
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {task.description}
-                  </p>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{task.description}</p>
                 ) : (
-                  <p className="text-sm italic text-muted-foreground/50">
+                  <p className="text-muted-foreground/50 text-sm italic">
                     No description provided. Click Edit to add one.
                   </p>
                 )}
@@ -1257,7 +1173,7 @@ export function TaskDetailPage() {
 
           {/* Comments */}
           <section className="space-y-4">
-            <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <h2 className="text-muted-foreground flex items-center gap-2 text-sm font-medium">
               <MessageSquare className="size-4" />
               Comments
               {comments && (
@@ -1277,24 +1193,19 @@ export function TaskDetailPage() {
             {!commentsLoading && comments && comments.length > 0 && (
               <div className="space-y-3">
                 {comments.map((comment) => (
-                  <TaskCommentItem
-                    key={comment.id}
-                    comment={comment}
-                    userMap={userMap}
-                  />
+                  <TaskCommentItem key={comment.id} comment={comment} userMap={userMap} />
                 ))}
               </div>
             )}
 
-            {!commentsLoading &&
-              (!comments || comments.length === 0) && (
-                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8">
-                  <MessageSquare className="mb-2 size-8 text-muted-foreground/40" />
-                  <p className="text-sm text-muted-foreground">
-                    No comments yet. Start the discussion below.
-                  </p>
-                </div>
-              )}
+            {!commentsLoading && (!comments || comments.length === 0) && (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8">
+                <MessageSquare className="text-muted-foreground/40 mb-2 size-8" />
+                <p className="text-muted-foreground text-sm">
+                  No comments yet. Start the discussion below.
+                </p>
+              </div>
+            )}
 
             <div className="pt-2">
               <TaskCommentComposer taskId={taskId!} />
@@ -1303,7 +1214,7 @@ export function TaskDetailPage() {
         </div>
 
         {/* Metadata panel (right sidebar) */}
-        <div className="space-y-1 rounded-lg border bg-card p-4">
+        <div className="bg-card space-y-1 rounded-lg border p-4">
           <h3 className="mb-3 text-sm font-medium">Details</h3>
 
           {/* Status */}
@@ -1322,7 +1233,9 @@ export function TaskDetailPage() {
                       <span
                         className={cn(
                           "inline-block size-2 rounded-full",
-                          getStatusColor(s).replace(/text-\S+/g, "").trim(),
+                          getStatusColor(s)
+                            .replace(/text-\S+/g, "")
+                            .trim(),
                         )}
                       />
                       {formatStatus(s)}
@@ -1345,10 +1258,7 @@ export function TaskDetailPage() {
               <SelectContent>
                 {PRIORITIES.map((p) => (
                   <SelectItem key={p} value={p}>
-                    <Badge
-                      variant="secondary"
-                      className={cn("text-[10px]", getPriorityColor(p))}
-                    >
+                    <Badge variant="secondary" className={cn("text-[10px]", getPriorityColor(p))}>
                       {formatStatus(p)}
                     </Badge>
                   </SelectItem>
@@ -1359,20 +1269,14 @@ export function TaskDetailPage() {
 
           {/* Type */}
           <MetadataField label="Type">
-            <Select
-              value={task.type}
-              onValueChange={(value) => handleFieldChange("type", value)}
-            >
+            <Select value={task.type} onValueChange={(value) => handleFieldChange("type", value)}>
               <SelectTrigger size="sm" className="h-7 w-[130px] text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {TASK_TYPES.map((t) => (
                   <SelectItem key={t} value={t}>
-                    <Badge
-                      variant="secondary"
-                      className={cn("text-[10px]", getTypeColor(t))}
-                    >
+                    <Badge variant="secondary" className={cn("text-[10px]", getTypeColor(t))}>
                       {formatStatus(t)}
                     </Badge>
                   </SelectItem>
@@ -1386,10 +1290,7 @@ export function TaskDetailPage() {
             <Select
               value={task.estimatedEffort ?? "__none__"}
               onValueChange={(value) =>
-                handleFieldChange(
-                  "estimatedEffort",
-                  value === "__none__" ? null : value,
-                )
+                handleFieldChange("estimatedEffort", value === "__none__" ? null : value)
               }
             >
               <SelectTrigger size="sm" className="h-7 w-[130px] text-xs">
@@ -1412,11 +1313,9 @@ export function TaskDetailPage() {
           <MetadataField label="Assignee">
             <span className="text-sm">
               {task.assigneeId ? (
-                userMap.get(task.assigneeId)?.displayName ?? "Unknown User"
+                (userMap.get(task.assigneeId)?.displayName ?? "Unknown User")
               ) : (
-                <span className="italic text-muted-foreground/60">
-                  Unassigned
-                </span>
+                <span className="text-muted-foreground/60 italic">Unassigned</span>
               )}
             </span>
           </MetadataField>
@@ -1425,11 +1324,9 @@ export function TaskDetailPage() {
           <MetadataField label="Epic">
             <span className="text-sm">
               {task.epicId ? (
-                <span className="font-mono text-xs">
-                  {task.epicId.slice(0, 8)}...
-                </span>
+                <span className="font-mono text-xs">{task.epicId.slice(0, 8)}...</span>
               ) : (
-                <span className="italic text-muted-foreground/60">None</span>
+                <span className="text-muted-foreground/60 italic">None</span>
               )}
             </span>
           </MetadataField>
@@ -1440,9 +1337,7 @@ export function TaskDetailPage() {
               {task.dueDate ? (
                 new Date(task.dueDate).toLocaleDateString()
               ) : (
-                <span className="italic text-muted-foreground/60">
-                  Not set
-                </span>
+                <span className="text-muted-foreground/60 italic">Not set</span>
               )}
             </span>
           </MetadataField>
@@ -1450,14 +1345,14 @@ export function TaskDetailPage() {
           {/* Timestamps */}
           {task.startedAt && (
             <MetadataField label="Started">
-              <span className="text-xs text-muted-foreground">
+              <span className="text-muted-foreground text-xs">
                 {formatRelativeTime(task.startedAt)}
               </span>
             </MetadataField>
           )}
           {task.completedAt && (
             <MetadataField label="Completed">
-              <span className="text-xs text-muted-foreground">
+              <span className="text-muted-foreground text-xs">
                 {formatRelativeTime(task.completedAt)}
               </span>
             </MetadataField>

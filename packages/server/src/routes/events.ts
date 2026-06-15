@@ -179,22 +179,26 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           ...(originWorkerKey ? { origin_worker_key: originWorkerKey } : {}),
         };
 
-        stream.writeSSE({
-          event,
-          data: JSON.stringify(ssePayload),
-        }).catch(() => {
-          // Stream already closed — cleanup will happen via onAbort
-        });
+        stream
+          .writeSSE({
+            event,
+            data: JSON.stringify(ssePayload),
+          })
+          .catch(() => {
+            // Stream already closed — cleanup will happen via onAbort
+          });
       });
 
       // Heartbeat interval — keep the connection alive
       const heartbeatInterval = setInterval(() => {
-        stream.writeSSE({
-          event: "heartbeat",
-          data: "{}",
-        }).catch(() => {
-          // Stream closed — will be cleaned up
-        });
+        stream
+          .writeSSE({
+            event: "heartbeat",
+            data: "{}",
+          })
+          .catch(() => {
+            // Stream closed — will be cleaned up
+          });
       }, 30_000);
 
       // Clean up on disconnect

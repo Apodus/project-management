@@ -25,11 +25,7 @@ describe("Labels API", () => {
     it("should return empty list when no labels exist", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/labels`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/labels`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -40,24 +36,14 @@ describe("Labels API", () => {
     it("should return labels for a project", async () => {
       const project = createTestProject(testApp.db);
 
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        { body: { name: "bug", color: "#ff0000" } },
-      );
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        { body: { name: "feature", color: "#00ff00" } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { name: "bug", color: "#ff0000" },
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { name: "feature", color: "#00ff00" },
+      });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/labels`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/labels`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -71,18 +57,13 @@ describe("Labels API", () => {
     it("should create a label with valid data", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        {
-          body: {
-            name: "bug",
-            color: "#ff0000",
-            description: "Bug reports",
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: {
+          name: "bug",
+          color: "#ff0000",
+          description: "Bug reports",
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -96,14 +77,9 @@ describe("Labels API", () => {
     it("should create a label without color", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        {
-          body: { name: "enhancement" },
-        },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { name: "enhancement" },
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -114,12 +90,9 @@ describe("Labels API", () => {
     it("should reject missing name", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        { body: { color: "#ff0000" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { color: "#ff0000" },
+      });
       expect(res.status).toBe(400);
     });
 
@@ -127,21 +100,15 @@ describe("Labels API", () => {
       const project = createTestProject(testApp.db);
 
       // First creation should succeed
-      const res1 = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        { body: { name: "bug" } },
-      );
+      const res1 = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { name: "bug" },
+      });
       expect(res1.status).toBe(201);
 
       // Second with same name should fail
-      const res2 = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        { body: { name: "bug" } },
-      );
+      const res2 = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { name: "bug" },
+      });
       expect(res2.status).toBe(409);
 
       const body = await res2.json();
@@ -172,36 +139,27 @@ describe("Labels API", () => {
     it("should reject invalid hex color", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        { body: { name: "bug", color: "red" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { name: "bug", color: "red" },
+      });
       expect(res.status).toBe(400);
     });
 
     it("should reject 3-digit hex color", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        { body: { name: "bug", color: "#f00" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { name: "bug", color: "#f00" },
+      });
       expect(res.status).toBe(400);
     });
 
     it("should accept valid 6-digit hex color", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        { body: { name: "bug", color: "#aaBBcc" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { name: "bug", color: "#aaBBcc" },
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -222,12 +180,9 @@ describe("Labels API", () => {
       );
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/labels/${created.data.id}`,
-        { body: { name: "defect" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/labels/${created.data.id}`, {
+        body: { name: "defect" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -245,12 +200,9 @@ describe("Labels API", () => {
       );
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/labels/${created.data.id}`,
-        { body: { color: "#00ff00" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/labels/${created.data.id}`, {
+        body: { color: "#00ff00" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -259,24 +211,18 @@ describe("Labels API", () => {
 
     it("should return 404 for non-existent label", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/labels/${fakeId}`,
-        { body: { name: "nope" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/labels/${fakeId}`, {
+        body: { name: "nope" },
+      });
       expect(res.status).toBe(404);
     });
 
     it("should reject renaming to a name that already exists in the project", async () => {
       const project = createTestProject(testApp.db);
 
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/labels`,
-        { body: { name: "bug" } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/labels`, {
+        body: { name: "bug" },
+      });
 
       const createRes = await authRequest(
         testApp.app,
@@ -286,12 +232,9 @@ describe("Labels API", () => {
       );
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/labels/${created.data.id}`,
-        { body: { name: "bug" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/labels/${created.data.id}`, {
+        body: { name: "bug" },
+      });
       expect(res.status).toBe(409);
     });
   });
@@ -309,11 +252,7 @@ describe("Labels API", () => {
       );
       const created = await createRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/labels/${created.data.id}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/labels/${created.data.id}`);
       expect(res.status).toBe(200);
 
       // Verify it's gone
@@ -328,11 +267,7 @@ describe("Labels API", () => {
 
     it("should return 404 for non-existent label", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/labels/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/labels/${fakeId}`);
       expect(res.status).toBe(404);
     });
 
@@ -353,12 +288,9 @@ describe("Labels API", () => {
       );
       const created = await createRes.json();
 
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/labels`,
-        { body: { labelId: created.data.id } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/labels`, {
+        body: { labelId: created.data.id },
+      });
 
       // Delete the label
       const deleteRes = await authRequest(
@@ -396,12 +328,9 @@ describe("Labels API", () => {
       );
       const label = await labelRes.json();
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/labels`,
-        { body: { labelId: label.data.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/labels`, {
+        body: { labelId: label.data.id },
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -431,12 +360,9 @@ describe("Labels API", () => {
       });
 
       // Second attach should fail
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/labels`,
-        { body: { labelId: label.data.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/labels`, {
+        body: { labelId: label.data.id },
+      });
       expect(res.status).toBe(409);
     });
   });

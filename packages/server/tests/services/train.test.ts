@@ -140,11 +140,7 @@ describe("train service", () => {
 
       const view = svc.resume(project.id, "main", adminActor(testApp), "ready");
       expect(view.state).toBe("running");
-      const rows = testApp.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.action, "resume"))
-        .all();
+      const rows = testApp.db.select().from(auditLog).where(eq(auditLog.action, "resume")).all();
       expect(rows).toHaveLength(1);
       expect(rows[0].metadataBefore).toEqual({ state: "paused" });
       expect(rows[0].metadataAfter).toEqual({ state: "running" });
@@ -210,9 +206,7 @@ describe("train service", () => {
       const lock = testApp.db
         .select()
         .from(mergeLocks)
-        .where(
-          and(eq(mergeLocks.projectId, project.id), eq(mergeLocks.resource, "main")),
-        )
+        .where(and(eq(mergeLocks.projectId, project.id), eq(mergeLocks.resource, "main")))
         .get();
       expect(lock!.holderId).toBeNull();
       expect(lock!.acquiredAt).toBeNull();
@@ -255,9 +249,7 @@ describe("train service", () => {
       const lock = testApp.db
         .select()
         .from(mergeLocks)
-        .where(
-          and(eq(mergeLocks.projectId, project.id), eq(mergeLocks.resource, "main")),
-        )
+        .where(and(eq(mergeLocks.projectId, project.id), eq(mergeLocks.resource, "main")))
         .get();
       // Holder cleared, NOT replaced by the waiter.
       expect(lock!.holderId).toBeNull();
@@ -315,11 +307,7 @@ describe("train service", () => {
       expect(view.resolvedAt).toBeTruthy();
 
       // git_ref attached on the task.
-      const refs = testApp.db
-        .select()
-        .from(gitRefs)
-        .where(eq(gitRefs.taskId, taskId!))
-        .all();
+      const refs = testApp.db.select().from(gitRefs).where(eq(gitRefs.taskId, taskId!)).all();
       expect(refs).toHaveLength(1);
       expect(refs[0].refType).toBe("landed_sha");
       expect(refs[0].refValue).toBe("ff00ba5");
@@ -361,15 +349,11 @@ describe("train service", () => {
       });
       const admin = adminActor(testApp);
       // The public, ai_agent-gated land() rejects the human admin...
-      expect(() =>
-        requestSvc.land(requestId, { landedSha: "ff00ba5" }, admin),
-      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
-      // ...but forceLand lands it.
-      const view = svc.forceLand(
-        requestId,
-        { landedSha: "ff00ba5", reason: "bypass" },
-        admin,
+      expect(() => requestSvc.land(requestId, { landedSha: "ff00ba5" }, admin)).toThrowError(
+        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
       );
+      // ...but forceLand lands it.
+      const view = svc.forceLand(requestId, { landedSha: "ff00ba5", reason: "bypass" }, admin);
       expect(view.status).toBe("landed");
     });
 
@@ -445,9 +429,7 @@ describe("train service", () => {
         .run();
       expect(() =>
         svc.forceLand(reqId, { landedSha: "x", reason: "y" }, adminActor(testApp)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }));
     });
 
     it("non-admin → 403", () => {
@@ -463,9 +445,7 @@ describe("train service", () => {
       const { requestId } = integratingRequest(testApp, project);
       expect(() =>
         svc.forceLand(requestId, { landedSha: "x", reason: "  " }, adminActor(testApp)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }));
       const req = testApp.db
         .select()
         .from(mergeRequests)
@@ -480,9 +460,7 @@ describe("train service", () => {
       const r = requestSvc.submit({ projectId: project.id, submittedBy: submitter.id });
       expect(() =>
         svc.forceLand(r.id, { landedSha: "x", reason: "y" }, adminActor(testApp)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("already landed → idempotent 200 no-op, NO new audit", () => {
@@ -614,9 +592,7 @@ describe("train service", () => {
       });
       expect(() =>
         svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }));
     });
 
     it("group integrating → 409 GROUPED_MEMBER (live group, land via the group)", () => {
@@ -627,9 +603,7 @@ describe("train service", () => {
       });
       expect(() =>
         svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "GROUPED_MEMBER" }));
     });
 
     it("group rejected + member rejected → force-lands; ONE audit, before status-derived, after carries groupId/groupState/resolvedIncidentIds", () => {
@@ -694,9 +668,7 @@ describe("train service", () => {
         .where(eq(auditLog.action, "force_land"))
         .all();
       expect(audits).toHaveLength(1);
-      expect(
-        (audits[0].metadataAfter as Record<string, unknown>).resolvedIncidentIds,
-      ).toEqual([]);
+      expect((audits[0].metadataAfter as Record<string, unknown>).resolvedIncidentIds).toEqual([]);
     });
 
     it("partially_landed + LAST stuck → lands + incident human_resolved + follow-up comment + ONE audit + both events", () => {
@@ -764,10 +736,7 @@ describe("train service", () => {
       const project = createTestProject(testApp.db);
       const { memberIds, incidentId } = groupedFixture(project, {
         groupState: "partially_landed",
-        members: [
-          { status: "rejected" },
-          { status: "landed", landedSha: "inner1" },
-        ],
+        members: [{ status: "rejected" }, { status: "landed", landedSha: "inner1" }],
         incident: { state: "human_resolved" },
       });
       const resolved = vi.fn();
@@ -789,9 +758,7 @@ describe("train service", () => {
         .where(eq(auditLog.action, "force_land"))
         .all();
       expect(audits).toHaveLength(1);
-      expect(
-        (audits[0].metadataAfter as Record<string, unknown>).resolvedIncidentIds,
-      ).toEqual([]);
+      expect((audits[0].metadataAfter as Record<string, unknown>).resolvedIncidentIds).toEqual([]);
     });
 
     it("orphaned member of a partially_landed group → 409 INVALID_TRANSITION (recovery owns it, not force-land)", () => {
@@ -802,9 +769,7 @@ describe("train service", () => {
       });
       expect(() =>
         svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("queued member of a rejected group → 409 INVALID_TRANSITION", () => {
@@ -815,9 +780,7 @@ describe("train service", () => {
       });
       expect(() =>
         svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
 
     it("abandoned member of a rejected group → 409 INVALID_TRANSITION", () => {
@@ -828,9 +791,7 @@ describe("train service", () => {
       });
       expect(() =>
         svc.forceLand(memberIds[0], { landedSha: "x", reason: "y" }, adminActor(testApp)),
-      ).toThrowError(
-        expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }),
-      );
+      ).toThrowError(expect.objectContaining({ statusCode: 409, code: "INVALID_TRANSITION" }));
     });
   });
 
@@ -865,11 +826,7 @@ describe("train service", () => {
       expect(att[0].status).toBe("failed");
       expect(att[0].failureCategory).toBe("policy");
 
-      const cmts = testApp.db
-        .select()
-        .from(comments)
-        .where(eq(comments.taskId, taskId!))
-        .all();
+      const cmts = testApp.db.select().from(comments).where(eq(comments.taskId, taskId!)).all();
       const rejComment = cmts.find((c) => c.commentType === "merge_rejection");
       expect(rejComment).toBeDefined();
 
@@ -903,12 +860,10 @@ describe("train service", () => {
     it("non-admin → 403; empty reason → 400", () => {
       const project = createTestProject(testApp.db);
       const { requestId } = integratingRequest(testApp, project);
-      expect(() =>
-        svc.forceReject(requestId, { reason: "x" }, memberActor(testApp)),
-      ).toThrowError(expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }));
-      expect(() =>
-        svc.forceReject(requestId, { reason: "" }, adminActor(testApp)),
-      ).toThrowError(
+      expect(() => svc.forceReject(requestId, { reason: "x" }, memberActor(testApp))).toThrowError(
+        expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
+      );
+      expect(() => svc.forceReject(requestId, { reason: "" }, adminActor(testApp))).toThrowError(
         expect.objectContaining({ statusCode: 400, code: "VALIDATION_ERROR" }),
       );
     });

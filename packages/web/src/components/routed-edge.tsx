@@ -56,10 +56,6 @@ export function RoutedEdge({
   const points = (data?.points as RoutePoint[] | undefined) ?? [];
   // Drop the stored source/target center-anchors; use RF's real endpoints.
   const interior = points.slice(1, -1);
-  const d = buildRoutedPath(
-    interior,
-    { x: sourceX, y: sourceY },
-    { x: targetX, y: targetY },
-  );
+  const d = buildRoutedPath(interior, { x: sourceX, y: sourceY }, { x: targetX, y: targetY });
   return <BaseEdge path={d} style={style} markerEnd={markerEnd} />;
 }

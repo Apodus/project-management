@@ -15,9 +15,7 @@ test.describe("Project Workflow", () => {
     await page.getByRole("button", { name: "New Project" }).click();
 
     // Dialog should appear
-    await expect(
-      page.getByRole("heading", { name: "Create Project" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create Project" })).toBeVisible();
 
     await page.getByLabel("Name").fill("Test Project");
     await page.getByLabel("Description").fill("A project for E2E testing");
@@ -25,9 +23,7 @@ test.describe("Project Workflow", () => {
 
     // Should redirect to the project's proposals page
     await page.waitForURL("**/proposals");
-    await expect(
-      page.getByRole("heading", { name: "Proposals" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Proposals" })).toBeVisible();
 
     // Capture the project ID from the URL for subsequent tests
     const url = page.url();
@@ -36,9 +32,7 @@ test.describe("Project Workflow", () => {
     projectId = match![1];
   });
 
-  test("create proposal via API, view detail, accept via UI", async ({
-    page,
-  }) => {
+  test("create proposal via API, view detail, accept via UI", async ({ page }) => {
     await login(page, ADMIN_USER, ADMIN_PASS);
 
     // Get the current user's ID for the createdBy field
@@ -51,16 +45,13 @@ test.describe("Project Workflow", () => {
     const proposalDescription =
       "Add a notification system so users get alerted when tasks are assigned to them.";
 
-    const proposalResponse = await page.request.post(
-      `/api/v1/projects/${projectId}/proposals`,
-      {
-        data: {
-          title: proposalTitle,
-          description: proposalDescription,
-          createdBy: userId,
-        },
+    const proposalResponse = await page.request.post(`/api/v1/projects/${projectId}/proposals`, {
+      data: {
+        title: proposalTitle,
+        description: proposalDescription,
+        createdBy: userId,
       },
-    );
+    });
     expect(proposalResponse.ok(), await proposalResponse.text()).toBeTruthy();
     const proposalJson = await proposalResponse.json();
     const proposalId = proposalJson.data.id;
@@ -74,15 +65,12 @@ test.describe("Project Workflow", () => {
 
     // --- Add a comment via API (authorId FK constraint) ---
     const commentText = "This looks great! Let's move forward with this.";
-    const commentResponse = await page.request.post(
-      `/api/v1/proposals/${proposalId}/comments`,
-      {
-        data: {
-          authorId: userId,
-          body: commentText,
-        },
+    const commentResponse = await page.request.post(`/api/v1/proposals/${proposalId}/comments`, {
+      data: {
+        authorId: userId,
+        body: commentText,
       },
-    );
+    });
     expect(commentResponse.ok(), await commentResponse.text()).toBeTruthy();
 
     // Reload to see the comment
@@ -92,15 +80,12 @@ test.describe("Project Workflow", () => {
     // --- Accept the proposal via API ---
     // The comment above already auto-advanced the proposal open -> discussing
     // (any author; proposal.service addComment), so this transition is discussing -> accepted.
-    const acceptResponse = await page.request.post(
-      `/api/v1/proposals/${proposalId}/transitions`,
-      {
-        data: {
-          toStatus: "accepted",
-          actorId: userId,
-        },
+    const acceptResponse = await page.request.post(`/api/v1/proposals/${proposalId}/transitions`, {
+      data: {
+        toStatus: "accepted",
+        actorId: userId,
       },
-    );
+    });
     expect(acceptResponse.ok(), await acceptResponse.text()).toBeTruthy();
 
     // Reload and verify the status badge changed to "Accepted"

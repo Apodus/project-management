@@ -7,14 +7,7 @@ import type {
   MergeLockReleaseResult,
   MergeLockView,
 } from "@pm/shared";
-import {
-  getDb,
-  mergeLocks,
-  mergeLockQueue,
-  projects,
-  tasks,
-  users,
-} from "../db/index.js";
+import { getDb, mergeLocks, mergeLockQueue, projects, tasks, users } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
 
@@ -71,9 +64,7 @@ interface QueueRow {
  * Project-shared fields of a landing intent. Excludes worktreePath
  * because that's per-machine and undefined for non-holders.
  */
-function landingFieldsFrom(
-  intent: LandingIntent | null | undefined,
-): {
+function landingFieldsFrom(intent: LandingIntent | null | undefined): {
   taskId: string | null;
   branch: string | null;
   commitSha: string | null;
@@ -89,10 +80,7 @@ function landingFieldsFrom(
   };
 }
 
-function validateIntent(
-  projectId: string,
-  intent: LandingIntent | undefined,
-): void {
+function validateIntent(projectId: string, intent: LandingIntent | undefined): void {
   if (!intent?.taskId) return;
   const db = getDb();
   const task = db
@@ -101,11 +89,7 @@ function validateIntent(
     .where(eq(tasks.id, intent.taskId))
     .get();
   if (!task) {
-    throw new AppError(
-      404,
-      "NOT_FOUND",
-      `Task not found: ${intent.taskId}`,
-    );
+    throw new AppError(404, "NOT_FOUND", `Task not found: ${intent.taskId}`);
   }
   if (task.projectId !== projectId) {
     throw new AppError(
@@ -118,11 +102,7 @@ function validateIntent(
 
 function ensureProjectExists(projectId: string): void {
   const db = getDb();
-  const project = db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .get();
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
   if (!project) {
     throw new AppError(404, "NOT_FOUND", `Project not found: ${projectId}`);
   }
@@ -137,9 +117,7 @@ function getOrCreateLock(projectId: string, resource: string): MergeLockRow {
   const existing = db
     .select()
     .from(mergeLocks)
-    .where(
-      and(eq(mergeLocks.projectId, projectId), eq(mergeLocks.resource, resource)),
-    )
+    .where(and(eq(mergeLocks.projectId, projectId), eq(mergeLocks.resource, resource)))
     .get();
   if (existing) return existing as MergeLockRow;
 
@@ -174,20 +152,14 @@ function getOrCreateLock(projectId: string, resource: string): MergeLockRow {
   const fresh = db
     .select()
     .from(mergeLocks)
-    .where(
-      and(eq(mergeLocks.projectId, projectId), eq(mergeLocks.resource, resource)),
-    )
+    .where(and(eq(mergeLocks.projectId, projectId), eq(mergeLocks.resource, resource)))
     .get();
   return fresh as MergeLockRow;
 }
 
 function readLock(lockId: string): MergeLockRow {
   const db = getDb();
-  const row = db
-    .select()
-    .from(mergeLocks)
-    .where(eq(mergeLocks.id, lockId))
-    .get();
+  const row = db.select().from(mergeLocks).where(eq(mergeLocks.id, lockId)).get();
   return row as MergeLockRow;
 }
 
@@ -217,25 +189,23 @@ function positionForUser(lockId: string, userId: string): number | null {
   const mine = db
     .select()
     .from(mergeLockQueue)
-    .where(
-      and(eq(mergeLockQueue.lockId, lockId), eq(mergeLockQueue.userId, userId)),
-    )
+    .where(and(eq(mergeLockQueue.lockId, lockId), eq(mergeLockQueue.userId, userId)))
     .get();
   if (!mine) return null;
   const ahead = db
     .select({ c: sql<number>`count(*)` })
     .from(mergeLockQueue)
-    .where(
-      and(
-        eq(mergeLockQueue.lockId, lockId),
-        lt(mergeLockQueue.enqueuedAt, mine.enqueuedAt),
-      ),
-    )
+    .where(and(eq(mergeLockQueue.lockId, lockId), lt(mergeLockQueue.enqueuedAt, mine.enqueuedAt)))
     .get();
   return Number(ahead?.c ?? 0) + 1;
 }
 
-function emit(event: string, lock: MergeLockRow, actorId: string | null, extra?: Record<string, unknown>): void {
+function emit(
+  event: string,
+  lock: MergeLockRow,
+  actorId: string | null,
+  extra?: Record<string, unknown>,
+): void {
   getEventBus().emit(event as never, {
     entity: { ...lock, ...(extra ?? {}) },
     entityType: "merge_lock",
@@ -316,11 +286,7 @@ function sweepExpired(lockId: string): boolean {
 
 function toView(lock: MergeLockRow, callerId: string | null): MergeLockView {
   const callerHolds = callerId !== null && lock.holderId === callerId;
-  const holder = !lock.holderId
-    ? "none"
-    : callerHolds
-      ? "you"
-      : "someone_else";
+  const holder = !lock.holderId ? "none" : callerHolds ? "you" : "someone_else";
   return {
     id: lock.id,
     projectId: lock.projectId,
@@ -384,10 +350,7 @@ export function acquire(
       if (intent.worktreePath !== undefined) {
         merged.worktreePath = intent.worktreePath;
       }
-      db.update(mergeLocks)
-        .set(merged)
-        .where(eq(mergeLocks.id, lock.id))
-        .run();
+      db.update(mergeLocks).set(merged).where(eq(mergeLocks.id, lock.id)).run();
     }
     return { ok: true, status: "already_held", expiresAt: fresh.expiresAt };
   }
@@ -429,12 +392,7 @@ export function acquire(
   const existing = db
     .select()
     .from(mergeLockQueue)
-    .where(
-      and(
-        eq(mergeLockQueue.lockId, lock.id),
-        eq(mergeLockQueue.userId, actor.id),
-      ),
-    )
+    .where(and(eq(mergeLockQueue.lockId, lock.id), eq(mergeLockQueue.userId, actor.id)))
     .get();
   if (!existing) {
     db.insert(mergeLockQueue)
@@ -463,10 +421,7 @@ export function acquire(
       merged.worktreePath = intent.worktreePath;
     }
     if (Object.keys(merged).length > 0) {
-      db.update(mergeLockQueue)
-        .set(merged)
-        .where(eq(mergeLockQueue.id, existing.id))
-        .run();
+      db.update(mergeLockQueue).set(merged).where(eq(mergeLockQueue.id, existing.id)).run();
     }
   }
   return {
@@ -553,10 +508,7 @@ export function release(
     updates.landedSha = landedSha;
     updates.landedAt = nowIso;
   }
-  db.update(mergeLocks)
-    .set(updates)
-    .where(eq(mergeLocks.id, lock.id))
-    .run();
+  db.update(mergeLocks).set(updates).where(eq(mergeLocks.id, lock.id)).run();
 
   const released = readLock(lock.id);
   emit(EVENT_NAMES.MERGE_LOCK_RELEASED, released, actor.id, {
@@ -601,11 +553,7 @@ export function release(
  * Get the lock view as seen by `actor`. Holder identity is masked to
  * "you" / "someone_else" / "none" so we don't leak other agents' IDs.
  */
-export function getLock(
-  projectId: string,
-  resource: string,
-  actor: Actor | null,
-): MergeLockView {
+export function getLock(projectId: string, resource: string, actor: Actor | null): MergeLockView {
   ensureProjectExists(projectId);
   const lock = getOrCreateLock(projectId, resource);
   sweepExpired(lock.id);
@@ -616,10 +564,7 @@ export function getLock(
 /**
  * List all known locks for a project (one row per (project, resource)).
  */
-export function listLocks(
-  projectId: string,
-  actor: Actor | null,
-): MergeLockView[] {
+export function listLocks(projectId: string, actor: Actor | null): MergeLockView[] {
   ensureProjectExists(projectId);
   const db = getDb();
   const rows = db

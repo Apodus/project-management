@@ -218,9 +218,7 @@ function computeAutoImplement(projectId: string): AutoImplementMetric {
       revertOf: mergeRequests.revertOf,
     })
     .from(mergeRequests)
-    .where(
-      and(eq(mergeRequests.projectId, projectId), isNotNull(mergeRequests.escalationId)),
-    )
+    .where(and(eq(mergeRequests.projectId, projectId), isNotNull(mergeRequests.escalationId)))
     .all();
 
   const escalationIds = new Set<string>();
@@ -257,10 +255,7 @@ function computeAutoImplement(projectId: string): AutoImplementMetric {
  * (only the columns needed: escalationId, authorId, messageType, createdAt),
  * then aggregate in memory.
  */
-export function computeEscalationMetrics(
-  projectId: string,
-  now?: string,
-): EscalationMetricsBundle {
+export function computeEscalationMetrics(projectId: string, now?: string): EscalationMetricsBundle {
   ensureProjectExists(projectId);
 
   const db = getDb();

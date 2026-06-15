@@ -50,9 +50,7 @@ beforeEach(() => {
     isError: false,
     error: null,
   });
-  mocks.useProject.mockReturnValue(
-    projectWithSettings({ epic_categories: SEED_CATEGORIES }),
-  );
+  mocks.useProject.mockReturnValue(projectWithSettings({ epic_categories: SEED_CATEGORIES }));
 });
 
 describe("CategoriesPage — seeding", () => {
@@ -65,9 +63,7 @@ describe("CategoriesPage — seeding", () => {
   it("renders the empty state when there are no categories", () => {
     mocks.useProject.mockReturnValue(projectWithSettings({}));
     render(<CategoriesPage />);
-    expect(
-      screen.getByText("No categories yet. Add one to get started."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("No categories yet. Add one to get started.")).toBeInTheDocument();
   });
 });
 
@@ -82,9 +78,7 @@ describe("CategoriesPage — editing", () => {
     render(<CategoriesPage />);
     fireEvent.click(screen.getAllByRole("button", { name: "Remove category" })[0]);
     expect(screen.getByLabelText("Name for category 1")).toHaveValue("Backend");
-    expect(
-      screen.queryByLabelText("Name for category 2"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Name for category 2")).not.toBeInTheDocument();
   });
 
   it("up/down reorders rows", () => {
@@ -160,12 +154,7 @@ describe("CategoriesPage — save payload (no-clobber)", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
     await waitFor(() => expect(mocks.mutateAsync).toHaveBeenCalled());
-    const settings = mocks.mutateAsync.mock.calls[0][0].data.settings as Record<
-      string,
-      unknown
-    >;
-    expect(settings.epic_categories).toEqual([
-      { name: "Design", color: "#3b82f6", sort_order: 0 },
-    ]);
+    const settings = mocks.mutateAsync.mock.calls[0][0].data.settings as Record<string, unknown>;
+    expect(settings.epic_categories).toEqual([{ name: "Design", color: "#3b82f6", sort_order: 0 }]);
   });
 });

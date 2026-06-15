@@ -28,11 +28,7 @@ describe("Epics API", () => {
     it("should return empty list when no epics exist", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/epics`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/epics`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -53,11 +49,7 @@ describe("Epics API", () => {
         createdBy: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/epics`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/epics`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -88,11 +80,7 @@ describe("Epics API", () => {
         status: "done",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/epics`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/epics`);
       const body = await res.json();
 
       expect(body.data[0].taskSummary).toBeDefined();
@@ -148,11 +136,7 @@ describe("Epics API", () => {
         createdBy: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project1.id}/epics`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/projects/${project1.id}/epics`);
       const body = await res.json();
       expect(body.data).toHaveLength(1);
     });
@@ -163,12 +147,9 @@ describe("Epics API", () => {
     it("should create an epic with valid data", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        { body: { name: "My New Epic" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        body: { name: "My New Epic" },
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -189,21 +170,16 @@ describe("Epics API", () => {
     it("should create an epic with all fields", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        {
-          body: {
-            name: "Full Epic",
-            description: "A complete epic",
-            status: "active",
-            priority: "high",
-            targetDate: "2026-12-31",
-            sortOrder: 5,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        body: {
+          name: "Full Epic",
+          description: "A complete epic",
+          status: "active",
+          priority: "high",
+          targetDate: "2026-12-31",
+          sortOrder: 5,
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -218,12 +194,9 @@ describe("Epics API", () => {
     it("should echo a category on create", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        { body: { name: "Categorized Epic", category: "Backend" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        body: { name: "Categorized Epic", category: "Backend" },
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -233,12 +206,9 @@ describe("Epics API", () => {
     it("should default category to null when omitted", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        { body: { name: "Uncategorized Epic" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        body: { name: "Uncategorized Epic" },
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -248,24 +218,18 @@ describe("Epics API", () => {
     it("should reject missing name", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        { body: {} },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        body: {},
+      });
       expect(res.status).toBe(400);
     });
 
     it("should reject empty name", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        { body: { name: "" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        body: { name: "" },
+      });
       expect(res.status).toBe(400);
     });
 
@@ -278,12 +242,9 @@ describe("Epics API", () => {
           status,
         });
 
-        const res = await authRequest(
-          testApp.app,
-          "POST",
-          `/api/v1/projects/${project.id}/epics`,
-          { body: { name: `Epic for ${status}`, proposalId: proposal.id } },
-        );
+        const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+          body: { name: `Epic for ${status}`, proposalId: proposal.id },
+        });
         expect(res.status).toBe(201);
         const body = await res.json();
         expect(body.data.proposalId).toBe(proposal.id);
@@ -293,12 +254,9 @@ describe("Epics API", () => {
     it("should 404 when linking to a non-existent proposal", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        { body: { name: "Orphan", proposalId: createId() } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        body: { name: "Orphan", proposalId: createId() },
+      });
       expect(res.status).toBe(404);
     });
 
@@ -318,15 +276,10 @@ describe("Epics API", () => {
       });
 
       // Agent B tries to add an epic
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        {
-          token: agentB.token,
-          body: { name: "Stealing work", proposalId: proposal.id },
-        },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        token: agentB.token,
+        body: { name: "Stealing work", proposalId: proposal.id },
+      });
       expect(res.status).toBe(409);
       expect((await res.json()).error.code).toBe("CLAIM_DENIED");
     });
@@ -344,15 +297,10 @@ describe("Epics API", () => {
         token: agent.token,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        {
-          token: agent.token,
-          body: { name: "Legit work", proposalId: proposal.id },
-        },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        token: agent.token,
+        body: { name: "Legit work", proposalId: proposal.id },
+      });
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.data.createdBy).toBe(agent.user.id);
@@ -361,12 +309,9 @@ describe("Epics API", () => {
     it("should derive createdBy from authenticated caller", async () => {
       const project = createTestProject(testApp.db);
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/projects/${project.id}/epics`,
-        { body: { name: "Self-attributed" } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/epics`, {
+        body: { name: "Self-attributed" },
+      });
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.data.createdBy).toBe(testApp.testUser.id);
@@ -405,11 +350,7 @@ describe("Epics API", () => {
         status: "done",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -430,22 +371,14 @@ describe("Epics API", () => {
         category: "Infra",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`);
       expect(res.status).toBe(200);
       expect((await res.json()).data.category).toBe("Infra");
     });
 
     it("should return 404 for non-existent epic", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/epics/${fakeId}`);
       expect(res.status).toBe(404);
 
       const body = await res.json();
@@ -464,12 +397,9 @@ describe("Epics API", () => {
         name: "Original",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${epic.id}`,
-        { body: { name: "Updated Name" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/epics/${epic.id}`, {
+        body: { name: "Updated Name" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -485,12 +415,9 @@ describe("Epics API", () => {
         status: "draft",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${epic.id}`,
-        { body: { status: "active" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/epics/${epic.id}`, {
+        body: { status: "active" },
+      });
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -505,21 +432,14 @@ describe("Epics API", () => {
         createdBy: user.id,
       });
 
-      const before = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const before = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`);
       const beforeBody = await before.json();
 
       await new Promise((r) => setTimeout(r, 10));
 
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${epic.id}`,
-        { body: { description: "trigger update" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/epics/${epic.id}`, {
+        body: { description: "trigger update" },
+      });
       const afterBody = await res.json();
 
       expect(afterBody.data.updatedAt).not.toBe(beforeBody.data.updatedAt);
@@ -533,33 +453,24 @@ describe("Epics API", () => {
         createdBy: user.id,
       });
 
-      const setRes = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${epic.id}`,
-        { body: { category: "Frontend" } },
-      );
+      const setRes = await authRequest(testApp.app, "PATCH", `/api/v1/epics/${epic.id}`, {
+        body: { category: "Frontend" },
+      });
       expect(setRes.status).toBe(200);
       expect((await setRes.json()).data.category).toBe("Frontend");
 
-      const clearRes = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${epic.id}`,
-        { body: { category: null } },
-      );
+      const clearRes = await authRequest(testApp.app, "PATCH", `/api/v1/epics/${epic.id}`, {
+        body: { category: null },
+      });
       expect(clearRes.status).toBe(200);
       expect((await clearRes.json()).data.category).toBeNull();
     });
 
     it("should return 404 for non-existent epic", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "PATCH",
-        `/api/v1/epics/${fakeId}`,
-        { body: { name: "Nope" } },
-      );
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/epics/${fakeId}`, {
+        body: { name: "Nope" },
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -575,11 +486,7 @@ describe("Epics API", () => {
         status: "active",
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/epics/${epic.id}`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -589,11 +496,7 @@ describe("Epics API", () => {
 
     it("should return 404 for non-existent epic", async () => {
       const fakeId = createId();
-      const res = await authRequest(
-        testApp.app,
-        "DELETE",
-        `/api/v1/epics/${fakeId}`,
-      );
+      const res = await authRequest(testApp.app, "DELETE", `/api/v1/epics/${fakeId}`);
       expect(res.status).toBe(404);
     });
 
@@ -608,11 +511,7 @@ describe("Epics API", () => {
 
       await authRequest(testApp.app, "DELETE", `/api/v1/epics/${epic.id}`);
 
-      const res = await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/epics/${epic.id}`,
-      );
+      const res = await authRequest(testApp.app, "GET", `/api/v1/epics/${epic.id}`);
       const body = await res.json();
       expect(body.data.status).toBe("cancelled");
     });

@@ -77,9 +77,7 @@ export interface PipelineResult {
  * it lives on `step.verify.logPath` (git-ops VerifyResult.logPath, a string that
  * may be ""), mapped to `|| undefined` to satisfy the optional schema field.
  */
-export function toVerifyStepResults(
-  steps: PipelineStepResult[],
-): VerifyStepResult[] {
+export function toVerifyStepResults(steps: PipelineStepResult[]): VerifyStepResult[] {
   return steps.map((step) => ({
     stepId: step.stepId,
     outcome: step.outcome,
@@ -111,10 +109,7 @@ export function toVerifyStepResults(
 export interface PipelineCacheCtx {
   enabled: boolean;
   mode: CacheMode;
-  pmClient: Pick<
-    PmClient,
-    "lookupVerifyCache" | "recordVerifyCache" | "emitVerifyCacheMismatch"
-  >;
+  pmClient: Pick<PmClient, "lookupVerifyCache" | "recordVerifyCache" | "emitVerifyCacheMismatch">;
   projectId: string;
   resource: string;
   treeSha: string;
@@ -222,12 +217,8 @@ function logExcerptOf(v: VerifyResult): string {
  * Run the verify DAG. Assumes `steps` is NON-EMPTY (the caller always supplies
  * at least the synthetic single step). Returns a `PipelineResult`.
  */
-export async function runPipeline(
-  steps: VerifyStep[],
-  ctx: PipelineCtx,
-): Promise<PipelineResult> {
-  const isSyntheticSingle =
-    steps.length === 1 && steps[0].id === SYNTHETIC_STEP_ID;
+export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promise<PipelineResult> {
+  const isSyntheticSingle = steps.length === 1 && steps[0].id === SYNTHETIC_STEP_ID;
 
   const byId = new Map<string, VerifyStep>();
   for (const s of steps) byId.set(s.id, s);
@@ -324,12 +315,7 @@ export async function runPipeline(
     const timeoutMs = (step.timeout_sec ?? ctx.verifyTimeoutSec) * 1000;
     const scSha = stepConfigSha(step);
     const tSha = cache?.treeSha ?? "";
-    const logPath = logPathForStep(
-      ctx.logsDir,
-      ctx.attemptId,
-      step.id,
-      isSyntheticSingle,
-    );
+    const logPath = logPathForStep(ctx.logsDir, ctx.attemptId, step.id, isSyntheticSingle);
 
     const runReal = (): Promise<VerifyResult> =>
       ctx.gitOps.runVerify(step.command, timeoutMs, {
@@ -390,10 +376,7 @@ export async function runPipeline(
     }
 
     // ── shadow → ALWAYS run, compare, use the REAL verdict, then record (§4.4).
-    const [hit, v] = await Promise.all([
-      cacheLookup(step.id, scSha),
-      runReal(),
-    ]);
+    const [hit, v] = await Promise.all([cacheLookup(step.id, scSha), runReal()]);
     const real: "pass" | "fail" = PASS(v) ? "pass" : "fail";
     // Emit ONLY on hit && disagreement (a MISS in shadow is NOT a mismatch).
     if (hit && hit.result !== real) {

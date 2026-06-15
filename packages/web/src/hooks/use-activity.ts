@@ -1,22 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  getProjectActivity,
-  getTaskActivity,
-  type ActivityFilters,
-} from "@/lib/api";
+import { getProjectActivity, getTaskActivity, type ActivityFilters } from "@/lib/api";
 
 export const activityKeys = {
   all: ["activity"] as const,
   project: (projectId: string, filters?: ActivityFilters) =>
     [...activityKeys.all, "project", { projectId, ...filters }] as const,
-  task: (taskId: string) =>
-    [...activityKeys.all, "task", taskId] as const,
+  task: (taskId: string) => [...activityKeys.all, "task", taskId] as const,
 };
 
-export function useProjectActivity(
-  projectId: string | undefined,
-  filters?: ActivityFilters,
-) {
+export function useProjectActivity(projectId: string | undefined, filters?: ActivityFilters) {
   return useQuery({
     queryKey: activityKeys.project(projectId!, filters),
     queryFn: () => getProjectActivity(projectId!, filters),

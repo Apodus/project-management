@@ -9,12 +9,7 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import {
-  integratorHealth,
-  mergeRequests,
-  users,
-  verifyCache,
-} from "../../src/db/index.js";
+import { integratorHealth, mergeRequests, users, verifyCache } from "../../src/db/index.js";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -109,10 +104,9 @@ describe("Train metrics + in-flight routes", () => {
 
   it("GET /train/metrics requires authentication (401 without token)", async () => {
     const project = createTestProject(testApp.db);
-    const res = await testApp.app.request(
-      `/api/v1/projects/${project.id}/train/metrics`,
-      { method: "GET" },
-    );
+    const res = await testApp.app.request(`/api/v1/projects/${project.id}/train/metrics`, {
+      method: "GET",
+    });
     expect(res.status).toBe(401);
   });
 
@@ -164,11 +158,7 @@ describe("Train metrics + in-flight routes", () => {
     expect(calls).toHaveLength(1);
 
     // A second metrics read does NOT re-fire (latched).
-    await authRequest(
-      testApp.app,
-      "GET",
-      `/api/v1/projects/${project.id}/train/metrics`,
-    );
+    await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/train/metrics`);
     expect(calls).toHaveLength(1);
   });
 

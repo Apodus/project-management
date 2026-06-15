@@ -1,25 +1,11 @@
 import { eq } from "drizzle-orm";
-import type {
-  AuditLogView,
-  ClaimState,
-  ClaimStatus,
-  LeaseEntityType,
-  UserType,
-} from "@pm/shared";
+import type { AuditLogView, ClaimState, ClaimStatus, LeaseEntityType, UserType } from "@pm/shared";
 import { AppError } from "../types.js";
 import { getDb } from "../db/index.js";
 import { getEventBus, EVENT_NAMES, type EventName } from "../events/event-bus.js";
-import {
-  record as recordAudit,
-  emitAuditRecorded,
-} from "./audit.service.js";
+import { record as recordAudit, emitAuditRecorded } from "./audit.service.js";
 import { getById as getUserById } from "./user.service.js";
-import {
-  acquireLease,
-  deriveLiveness,
-  readLease,
-  renewLease,
-} from "./claim-lease.service.js";
+import { acquireLease, deriveLiveness, readLease, renewLease } from "./claim-lease.service.js";
 
 // Re-export so callers don't need an additional import for the event name set.
 export { EVENT_NAMES };
@@ -203,11 +189,7 @@ function performClaimTransfer(
   const { targetId: target, reason, projectId, auditAction } = opts;
 
   // Terminal entities cannot be transferred.
-  const row = getDb()
-    .select()
-    .from(cfg.table)
-    .where(eq(cfg.table.id, id))
-    .get() as EntityRow;
+  const row = getDb().select().from(cfg.table).where(eq(cfg.table.id, id)).get() as EntityRow;
   if (cfg.terminalStatuses.has(row.status)) {
     throw new AppError(
       409,
@@ -223,11 +205,7 @@ function performClaimTransfer(
 
   const db = getDb();
   db.transaction((tx) => {
-    const fresh = tx
-      .select()
-      .from(cfg.table)
-      .where(eq(cfg.table.id, id))
-      .get() as EntityRow;
+    const fresh = tx.select().from(cfg.table).where(eq(cfg.table.id, id)).get() as EntityRow;
     oldHolder = (fresh[cfg.holderKey] as string | null | undefined) ?? null;
 
     // FOLDED-FIX 2: computed-key via a Record (house pattern — NOT a computed
@@ -266,11 +244,7 @@ function performClaimTransfer(
   });
 
   // After commit: emit the domain event + audit.recorded.
-  const updated = getDb()
-    .select()
-    .from(cfg.table)
-    .where(eq(cfg.table.id, id))
-    .get() as EntityRow;
+  const updated = getDb().select().from(cfg.table).where(eq(cfg.table.id, id)).get() as EntityRow;
   getEventBus().emit(cfg.eventName, {
     entity: updated,
     entityType: cfg.entityType,
@@ -301,19 +275,13 @@ export function forceClaim(
 ): ForceClaimResult {
   // 1. reason required (mirrors forceLand — route enforces z.min(1) too).
   if (!opts.reason || opts.reason.trim() === "") {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "force-claim requires a non-empty reason.",
-    );
+    throw new AppError(400, "VALIDATION_ERROR", "force-claim requires a non-empty reason.");
   }
 
   // 2. load the row.
-  const row = getDb()
-    .select()
-    .from(cfg.table)
-    .where(eq(cfg.table.id, id))
-    .get() as EntityRow | undefined;
+  const row = getDb().select().from(cfg.table).where(eq(cfg.table.id, id)).get() as
+    | EntityRow
+    | undefined;
   if (!row) {
     throw new AppError(404, "NOT_FOUND", `${cfg.entityType} not found: ${id}`);
   }
@@ -420,26 +388,16 @@ export function releaseTo(
 ): ReleaseToResult {
   // reason required (route enforces z.min(1) too).
   if (!opts.reason || opts.reason.trim() === "") {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "release-to requires a non-empty reason.",
-    );
+    throw new AppError(400, "VALIDATION_ERROR", "release-to requires a non-empty reason.");
   }
   // target required.
   if (!opts.targetId || opts.targetId.trim() === "") {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "release-to requires a target worker id.",
-    );
+    throw new AppError(400, "VALIDATION_ERROR", "release-to requires a target worker id.");
   }
 
-  const row = getDb()
-    .select()
-    .from(cfg.table)
-    .where(eq(cfg.table.id, id))
-    .get() as EntityRow | undefined;
+  const row = getDb().select().from(cfg.table).where(eq(cfg.table.id, id)).get() as
+    | EntityRow
+    | undefined;
   if (!row) {
     throw new AppError(404, "NOT_FOUND", `${cfg.entityType} not found: ${id}`);
   }
@@ -456,8 +414,7 @@ export function releaseTo(
   const projectId = row.projectId;
 
   // authz: a human may always; an AI agent may ONLY if it holds the claim.
-  const currentHolder =
-    (row[cfg.holderKey] as string | null | undefined) ?? null;
+  const currentHolder = (row[cfg.holderKey] as string | null | undefined) ?? null;
   if (actor.type !== "human" && currentHolder !== actor.id) {
     throw new AppError(
       403,
@@ -532,18 +489,12 @@ export function requestTakeover(
   cfg: ForceClaimConfig,
 ): RequestTakeoverResult {
   if (!opts.reason || opts.reason.trim() === "") {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      "request-takeover requires a non-empty reason.",
-    );
+    throw new AppError(400, "VALIDATION_ERROR", "request-takeover requires a non-empty reason.");
   }
 
-  const row = getDb()
-    .select()
-    .from(cfg.table)
-    .where(eq(cfg.table.id, id))
-    .get() as EntityRow | undefined;
+  const row = getDb().select().from(cfg.table).where(eq(cfg.table.id, id)).get() as
+    | EntityRow
+    | undefined;
   if (!row) {
     throw new AppError(404, "NOT_FOUND", `${cfg.entityType} not found: ${id}`);
   }

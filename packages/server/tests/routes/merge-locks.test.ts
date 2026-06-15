@@ -208,9 +208,7 @@ describe("Merge Locks API", () => {
       );
 
       const grantedEvents: unknown[] = [];
-      getEventBus().on(EVENT_NAMES.MERGE_LOCK_GRANTED, (p) =>
-        grantedEvents.push(p),
-      );
+      getEventBus().on(EVENT_NAMES.MERGE_LOCK_GRANTED, (p) => grantedEvents.push(p));
 
       const res = await authRequest(
         testApp.app,
@@ -247,9 +245,7 @@ describe("Merge Locks API", () => {
       );
 
       const released: Array<{ entity: { landedSha?: string } }> = [];
-      getEventBus().on(EVENT_NAMES.MERGE_LOCK_RELEASED, (p) =>
-        released.push(p as never),
-      );
+      getEventBus().on(EVENT_NAMES.MERGE_LOCK_RELEASED, (p) => released.push(p as never));
 
       const res = await authRequest(
         testApp.app,
@@ -275,12 +271,9 @@ describe("Merge Locks API", () => {
       const project = createTestProject(testApp.db);
       const a = createTestAiAgent(testApp.db);
       // Touch the lock so the row exists, then release without acquire.
-      await authRequest(
-        testApp.app,
-        "GET",
-        `/api/v1/projects/${project.id}/merge-locks/main`,
-        { token: a.token },
-      );
+      await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}/merge-locks/main`, {
+        token: a.token,
+      });
       const res = await authRequest(
         testApp.app,
         "POST",
@@ -662,9 +655,7 @@ describe("Merge Locks API", () => {
       const released: Array<{
         entity: { abandonReason?: string | null; landedSha?: string | null };
       }> = [];
-      getEventBus().on(EVENT_NAMES.MERGE_LOCK_RELEASED, (p) =>
-        released.push(p as never),
-      );
+      getEventBus().on(EVENT_NAMES.MERGE_LOCK_RELEASED, (p) => released.push(p as never));
 
       const res = await authRequest(
         testApp.app,

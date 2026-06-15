@@ -11,13 +11,7 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import {
-  activityLog,
-  getRawDb,
-  notes,
-  proposals,
-  tasks,
-} from "../../src/db/index.js";
+import { activityLog, getRawDb, notes, proposals, tasks } from "../../src/db/index.js";
 import { AppError } from "../../src/types.js";
 import * as noteService from "../../src/services/note.service.js";
 
@@ -40,11 +34,7 @@ describe("note service", () => {
   });
 
   function activityRows(entityId: string) {
-    return testApp.db
-      .select()
-      .from(activityLog)
-      .where(eq(activityLog.entityId, entityId))
-      .all();
+    return testApp.db.select().from(activityLog).where(eq(activityLog.entityId, entityId)).all();
   }
 
   // ── create ──────────────────────────────────────────────────────
@@ -76,11 +66,7 @@ describe("note service", () => {
     it("throws 404 when the project does not exist", () => {
       const author = createTestUser(testApp.db);
       try {
-        noteService.create(
-          createId(),
-          { kind: "idea", title: "nope" },
-          author.id,
-        );
+        noteService.create(createId(), { kind: "idea", title: "nope" }, author.id);
         expect.unreachable("should have thrown");
       } catch (err) {
         expect(err).toBeInstanceOf(AppError);
@@ -317,11 +303,7 @@ describe("note service", () => {
       const author = createTestUser(testApp.db);
       // A real task so the promoted_task_id FK is satisfied.
       const task = createTestTask(testApp.db, { projectId: project.id, reporterId: author.id });
-      const created = noteService.create(
-        project.id,
-        { kind: "bug", title: "real bug" },
-        author.id,
-      );
+      const created = noteService.create(project.id, { kind: "bug", title: "real bug" }, author.id);
 
       const triaged = noteService.applyTriage(created.id, {
         outcome: "promoted",
@@ -342,11 +324,7 @@ describe("note service", () => {
     it("defaults the optional pointers/reason to null", () => {
       const project = createTestProject(testApp.db);
       const author = createTestUser(testApp.db);
-      const created = noteService.create(
-        project.id,
-        { kind: "idea", title: "meh" },
-        author.id,
-      );
+      const created = noteService.create(project.id, { kind: "idea", title: "meh" }, author.id);
 
       const triaged = noteService.applyTriage(created.id, {
         outcome: "dismissed",
@@ -446,11 +424,7 @@ describe("note service", () => {
         author.id,
       );
 
-      const dismissed = noteService.dismiss(
-        created.id,
-        { id: human.id, type: "human" },
-        "wontfix",
-      );
+      const dismissed = noteService.dismiss(created.id, { id: human.id, type: "human" }, "wontfix");
 
       expect(dismissed.status).toBe("triaged");
       expect(dismissed.triageOutcome).toBe("dismissed");
@@ -1056,10 +1030,7 @@ describe("note service", () => {
         author.id,
       );
 
-      const hits = noteService.findSimilarOpenNotes(
-        project.id,
-        "alpha bravo charlie delta echo",
-      );
+      const hits = noteService.findSimilarOpenNotes(project.id, "alpha bravo charlie delta echo");
       const ids = hits.map((h) => h.id);
       expect(ids).toContain(full.id);
       expect(ids).not.toContain(partialA.id);
@@ -1077,10 +1048,7 @@ describe("note service", () => {
         author.id,
       );
 
-      const hits = noteService.findSimilarOpenNotes(
-        project.id,
-        "alpha bravo charlie delta echo",
-      );
+      const hits = noteService.findSimilarOpenNotes(project.id, "alpha bravo charlie delta echo");
       expect(hits.some((h) => h.id === partial.id)).toBe(true);
     });
 
@@ -1098,10 +1066,7 @@ describe("note service", () => {
         );
       }
 
-      const hits = noteService.findSimilarOpenNotes(
-        project.id,
-        "alpha bravo charlie delta echo",
-      );
+      const hits = noteService.findSimilarOpenNotes(project.id, "alpha bravo charlie delta echo");
       expect(hits.length).toBeLessThanOrEqual(3);
     });
 
@@ -1122,10 +1087,7 @@ describe("note service", () => {
         })
         .run();
 
-      const hits = noteService.findSimilarOpenNotes(
-        project.id,
-        "alpha bravo charlie delta echo",
-      );
+      const hits = noteService.findSimilarOpenNotes(project.id, "alpha bravo charlie delta echo");
       expect(hits).toHaveLength(0);
     });
 
@@ -1139,10 +1101,7 @@ describe("note service", () => {
         author.id,
       );
 
-      const hits = noteService.findSimilarOpenNotes(
-        projectA.id,
-        "alpha bravo charlie delta echo",
-      );
+      const hits = noteService.findSimilarOpenNotes(projectA.id, "alpha bravo charlie delta echo");
       expect(hits).toHaveLength(0);
     });
 
@@ -1157,15 +1116,8 @@ describe("note service", () => {
 
       // 20 distinct tokens; only the first few overlap the partial note,
       // none combine into an AND hit.
-      const floodTokens = [
-        "alpha",
-        "bravo",
-        ...Array.from({ length: 18 }, (_, i) => `tok${i}`),
-      ];
-      const hits = noteService.findSimilarOpenNotes(
-        project.id,
-        floodTokens.join(" "),
-      );
+      const floodTokens = ["alpha", "bravo", ...Array.from({ length: 18 }, (_, i) => `tok${i}`)];
+      const hits = noteService.findSimilarOpenNotes(project.id, floodTokens.join(" "));
       expect(hits.length).toBeLessThanOrEqual(3);
       // sanity: the OR fallback still surfaces the partial overlap.
       expect(hits.some((h) => h.id === partial.id)).toBe(true);
@@ -1275,7 +1227,11 @@ describe("note service", () => {
     it("an unanchored, unpromoted note reads anchor:null and promotedTarget:null", () => {
       const project = createTestProject(testApp.db);
       const author = createTestUser(testApp.db);
-      const note = noteService.create(project.id, { kind: "observation", title: "free" }, author.id);
+      const note = noteService.create(
+        project.id,
+        { kind: "observation", title: "free" },
+        author.id,
+      );
 
       const fetched = noteService.getById(note.id);
       expect(fetched.anchor).toBeNull();

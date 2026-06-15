@@ -84,19 +84,11 @@ function withClaimStatus<T extends { assigneeId?: string | null }>(
   return {
     ...row,
     claimStatus: deriveClaimStatus(row.assigneeId ?? null, caller),
-    claimState: deriveClaimState(
-      row.assigneeId ?? null,
-      lease ?? null,
-      now ?? new Date(),
-      caller,
-    ),
+    claimState: deriveClaimState(row.assigneeId ?? null, lease ?? null, now ?? new Date(), caller),
   };
 }
 
-function assertEpicClaimOk(
-  epic: { id: string; assigneeId?: string | null },
-  actor: Actor,
-): void {
+function assertEpicClaimOk(epic: { id: string; assigneeId?: string | null }, actor: Actor): void {
   assertClaimOkRaw(epic.assigneeId ?? null, actor, "epic", "epic", epic.id);
 }
 
@@ -162,10 +154,7 @@ export function list(
       conditions.push(eq(epics.assigneeId, caller.id));
     } else {
       // available
-      const availClause = or(
-        isNull(epics.assigneeId),
-        eq(epics.assigneeId, caller.id),
-      );
+      const availClause = or(isNull(epics.assigneeId), eq(epics.assigneeId, caller.id));
       if (availClause) conditions.push(availClause);
     }
   }
@@ -237,24 +226,13 @@ function getRawById(id: string) {
  * must hold the claim — adding work to a claimed proposal is a write that
  * goes through the same gate as comments/transitions.
  */
-export function create(
-  data: CreateEpicInput,
-  actor?: Actor,
-) {
+export function create(data: CreateEpicInput, actor?: Actor) {
   const db = getDb();
 
   if (data.proposalId) {
-    const proposal = db
-      .select()
-      .from(proposals)
-      .where(eq(proposals.id, data.proposalId))
-      .get();
+    const proposal = db.select().from(proposals).where(eq(proposals.id, data.proposalId)).get();
     if (!proposal) {
-      throw new AppError(
-        404,
-        "NOT_FOUND",
-        `Proposal not found: ${data.proposalId}`,
-      );
+      throw new AppError(404, "NOT_FOUND", `Proposal not found: ${data.proposalId}`);
     }
     if (actor) {
       assertProposalClaimOk(proposal, actor);
@@ -302,11 +280,7 @@ export function create(
  * doesn't hold the claim. If the new status is terminal (completed/cancelled),
  * the claim is auto-cleared.
  */
-export function update(
-  id: string,
-  data: UpdateEpicInput,
-  actor?: Actor,
-) {
+export function update(id: string, data: UpdateEpicInput, actor?: Actor) {
   const existing = getRawById(id);
   if (actor) assertEpicClaimOk(existing, actor);
 
@@ -327,8 +301,7 @@ export function update(
   if (data.category !== undefined) values.category = data.category;
   if (data.sortOrder !== undefined) values.sortOrder = data.sortOrder;
 
-  const goesTerminal =
-    data.status !== undefined && TERMINAL_STATUSES.has(data.status);
+  const goesTerminal = data.status !== undefined && TERMINAL_STATUSES.has(data.status);
   if (goesTerminal) {
     values.assigneeId = null;
   }
@@ -436,10 +409,7 @@ export function release(id: string, actor: Actor): ClaimResult {
 
   const now = new Date().toISOString();
   const previousClaimant = epic.assigneeId;
-  db.update(epics)
-    .set({ assigneeId: null, updatedAt: now })
-    .where(eq(epics.id, id))
-    .run();
+  db.update(epics).set({ assigneeId: null, updatedAt: now }).where(eq(epics.id, id)).run();
 
   // The holder is gone — tear down the lease.
   deleteLease("epic", id);

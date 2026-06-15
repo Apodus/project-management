@@ -35,15 +35,21 @@ const addDependencyBody = z
   })
   .openapi("AddDependency");
 
-const taskIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const taskIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const depIdParam = z.string().min(1).openapi({
-  param: { name: "depId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const depIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "depId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 
@@ -113,11 +119,7 @@ export function createDependencyRoutes(): OpenAPIHono<{
   router.openapi(addDependencyRoute, (c) => {
     const { id } = c.req.valid("param");
     const { dependsOnTaskId, type } = c.req.valid("json");
-    const dependency = dependencyService.addDependency(
-      id,
-      dependsOnTaskId,
-      type ?? "blocks",
-    );
+    const dependency = dependencyService.addDependency(id, dependsOnTaskId, type ?? "blocks");
 
     return c.json({ data: dependency }, 201);
   });

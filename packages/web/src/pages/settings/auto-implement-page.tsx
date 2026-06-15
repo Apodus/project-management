@@ -2,13 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import { Bot, Check, Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,10 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  useProject,
-  useUpdateAutoImplementConfig,
-} from "@/hooks/use-projects";
+import { useProject, useUpdateAutoImplementConfig } from "@/hooks/use-projects";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { ApiError, type AutoImplementConfig, type Project } from "@/lib/api";
 import { useProjectStore } from "@/stores/project-store";
@@ -31,9 +22,7 @@ type AutoImplementMode = AutoImplementConfig["mode"];
 
 // Read-through the persisted `settings.autoImplement` block tolerantly: a project
 // with no block (or no per-field) falls back to the safe defaults (off / shadow).
-function autoImplementConfigFromProject(
-  project: Project | undefined,
-): AutoImplementConfig {
+function autoImplementConfigFromProject(project: Project | undefined): AutoImplementConfig {
   const block = (project?.settings as { autoImplement?: AutoImplementConfig } | null | undefined)
     ?.autoImplement;
   return {
@@ -53,9 +42,7 @@ export function AutoImplementPage() {
   const params = useParams({ strict: false });
   const { currentProjectId } = useProjectStore();
   const projectId =
-    (params as Record<string, string | undefined>).projectId ??
-    currentProjectId ??
-    undefined;
+    (params as Record<string, string | undefined>).projectId ?? currentProjectId ?? undefined;
 
   const { data: user } = useCurrentUser();
   const isAdmin = user?.role === "admin";
@@ -95,9 +82,9 @@ export function AutoImplementPage() {
         <PageHeader />
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <Bot className="mb-4 size-12 text-muted-foreground/50" />
+            <Bot className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">No Project Selected</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Select a project to configure auto-implement.
             </p>
           </CardContent>
@@ -113,9 +100,9 @@ export function AutoImplementPage() {
         <PageHeader />
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <ShieldAlert className="mb-4 size-12 text-muted-foreground/50" />
+            <ShieldAlert className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">Admin access required</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Only project administrators can configure auto-implement.
             </p>
           </CardContent>
@@ -131,7 +118,7 @@ export function AutoImplementPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
+            <p className="text-destructive text-sm">
               Failed to load project settings. Please try again.
             </p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -159,8 +146,8 @@ export function AutoImplementPage() {
           <CardHeader>
             <CardTitle className="text-base">Auto-implement</CardTitle>
             <CardDescription>
-              Let the responder turn escalations into landed changes for this
-              project (off by default).
+              Let the responder turn escalations into landed changes for this project (off by
+              default).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -168,7 +155,7 @@ export function AutoImplementPage() {
             <div className="flex items-center justify-between rounded-md border px-4 py-3">
               <div className="space-y-0.5">
                 <Label htmlFor="auto-implement-enabled">Enabled</Label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Turn auto-implement on for this project. Off by default.
                 </p>
               </div>
@@ -192,11 +179,7 @@ export function AutoImplementPage() {
                   if (saved) setSaved(false);
                 }}
               >
-                <SelectTrigger
-                  id="auto-implement-mode"
-                  aria-label="Mode"
-                  className="w-40"
-                >
+                <SelectTrigger id="auto-implement-mode" aria-label="Mode" className="w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -205,22 +188,21 @@ export function AutoImplementPage() {
                   <SelectItem value="on">on</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">{MODE_HELP[mode]}</p>
+              <p className="text-muted-foreground text-xs">{MODE_HELP[mode]}</p>
             </div>
 
             {/* Deployment knobs that stay daemon-level (env) */}
-            <p className="text-xs text-muted-foreground">
-              Deployment knobs stay daemon-level (environment, not in the UI):
-              the git clone URL (PM_RESPONDER_GIT_REPO_URL), token/cost budget
-              caps, the path allowlist, and the verify command. Also: the
-              daemon's PM_AUTO_IMPLEMENT_ENABLED env is a master kill-switch — if
-              set to false it forces auto-implement off for every project
-              regardless of this toggle. Set PM_RESPONDER_GIT_REPO_URL on any
-              responder where a project enables auto-implement.
+            <p className="text-muted-foreground text-xs">
+              Deployment knobs stay daemon-level (environment, not in the UI): the git clone URL
+              (PM_RESPONDER_GIT_REPO_URL), token/cost budget caps, the path allowlist, and the
+              verify command. Also: the daemon's PM_AUTO_IMPLEMENT_ENABLED env is a master
+              kill-switch — if set to false it forces auto-implement off for every project
+              regardless of this toggle. Set PM_RESPONDER_GIT_REPO_URL on any responder where a
+              project enables auto-implement.
             </p>
 
             {updateMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {updateMutation.error instanceof ApiError
                   ? updateMutation.error.message
                   : "Failed to save auto-implement settings. Please try again."}
@@ -228,10 +210,7 @@ export function AutoImplementPage() {
             )}
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                onClick={handleSave}
-                disabled={updateMutation.isPending}
-              >
+              <Button onClick={handleSave} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
@@ -258,7 +237,7 @@ export function AutoImplementPage() {
 function PageHeader() {
   return (
     <div className="flex items-center gap-3">
-      <Bot className="size-6 text-muted-foreground" />
+      <Bot className="text-muted-foreground size-6" />
       <h1 className="text-2xl font-bold tracking-tight">Auto-implement</h1>
     </div>
   );

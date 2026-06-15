@@ -2,13 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import { Bell, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -30,9 +24,7 @@ export function NotificationsPage() {
   const params = useParams({ strict: false });
   const { currentProjectId } = useProjectStore();
   const projectId =
-    (params as Record<string, string | undefined>).projectId ??
-    currentProjectId ??
-    undefined;
+    (params as Record<string, string | undefined>).projectId ?? currentProjectId ?? undefined;
 
   const { data: project, isLoading, error, refetch } = useProject(projectId);
   const updateMutation = useUpdateProject();
@@ -98,14 +90,14 @@ export function NotificationsPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
-          <Bell className="size-6 text-muted-foreground" />
+          <Bell className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <Bell className="mb-4 size-12 text-muted-foreground/50" />
+            <Bell className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">No Project Selected</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Select a project to configure notifications.
             </p>
           </CardContent>
@@ -118,7 +110,7 @@ export function NotificationsPage() {
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <Bell className="size-6 text-muted-foreground" />
+        <Bell className="text-muted-foreground size-6" />
         <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
       </div>
 
@@ -126,7 +118,7 @@ export function NotificationsPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
+            <p className="text-destructive text-sm">
               Failed to load project settings. Please try again.
             </p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -165,12 +157,11 @@ export function NotificationsPage() {
               Discord webhook
             </CardTitle>
             <CardDescription>
-              Merge-train alerts ({" "}
-              <code className="text-xs">train.stuck</code>,{" "}
+              Merge-train alerts ( <code className="text-xs">train.stuck</code>,{" "}
               <code className="text-xs">train.abandon_rate_high</code>,{" "}
-              <code className="text-xs">train.integrator_unhealthy</code>) are
-              POSTed to this Discord webhook, in addition to the in-app banner.
-              Leave the URL blank to receive in-app alerts only.
+              <code className="text-xs">train.integrator_unhealthy</code>) are POSTed to this
+              Discord webhook, in addition to the in-app banner. Leave the URL blank to receive
+              in-app alerts only.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -188,11 +179,11 @@ export function NotificationsPage() {
                 }}
               />
               {urlError ? (
-                <p className="text-xs text-destructive">{urlError}</p>
+                <p className="text-destructive text-xs">{urlError}</p>
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  In Discord: Server Settings → Integrations → Webhooks → New
-                  Webhook, pick a channel, and copy the URL.
+                <p className="text-muted-foreground text-xs">
+                  In Discord: Server Settings → Integrations → Webhooks → New Webhook, pick a
+                  channel, and copy the URL.
                 </p>
               )}
             </div>
@@ -200,7 +191,7 @@ export function NotificationsPage() {
             <div className="flex items-center justify-between rounded-md border px-4 py-3">
               <div className="space-y-0.5">
                 <Label htmlFor="alerts-enabled">Send alerts to Discord</Label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Turn off to silence the outbound POST without removing the URL.
                 </p>
               </div>
@@ -215,7 +206,7 @@ export function NotificationsPage() {
             </div>
 
             {updateMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {updateMutation.error instanceof ApiError
                   ? updateMutation.error.message
                   : "Failed to save notification settings. Please try again."}

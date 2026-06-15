@@ -200,8 +200,7 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
   it("runVerify non-zero exit code is surfaced", async () => {
     const ops = createGitOps(git);
     const logPath = path.join(tmpRoot, "verify-7.log");
-    const cmd =
-      process.platform === "win32" ? "exit 7" : "exit 7";
+    const cmd = process.platform === "win32" ? "exit 7" : "exit 7";
     const result = await ops.runVerify(cmd, 10_000, {
       cwd: workClone,
       logPath,
@@ -350,10 +349,7 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
     const logPath = path.join(tmpRoot, "verify-abort.log");
     // A command that sleeps ~9s; we abort after ~100ms and assert the promise
     // resolves WELL under the full sleep, reflecting an external kill.
-    const cmd =
-      process.platform === "win32"
-        ? "ping -n 10 127.0.0.1 > nul"
-        : "sleep 9";
+    const cmd = process.platform === "win32" ? "ping -n 10 127.0.0.1 > nul" : "sleep 9";
     const controller = new AbortController();
     const start = Date.now();
     setTimeout(() => controller.abort(), 100);
@@ -375,10 +371,7 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
   it("runVerify already-aborted signal kills immediately", async () => {
     const ops = createGitOps(git);
     const logPath = path.join(tmpRoot, "verify-pre-abort.log");
-    const cmd =
-      process.platform === "win32"
-        ? "ping -n 10 127.0.0.1 > nul"
-        : "sleep 9";
+    const cmd = process.platform === "win32" ? "ping -n 10 127.0.0.1 > nul" : "sleep 9";
     const controller = new AbortController();
     controller.abort(); // aborted BEFORE runVerify spawns
     const start = Date.now();
@@ -397,10 +390,7 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
     const ops = createGitOps(git);
     const logPath = path.join(tmpRoot, "verify-timeout.log");
     // A command that sleeps longer than the timeout.
-    const cmd =
-      process.platform === "win32"
-        ? "ping -n 10 127.0.0.1 > nul"
-        : "sleep 10";
+    const cmd = process.platform === "win32" ? "ping -n 10 127.0.0.1 > nul" : "sleep 10";
     const result = await ops.runVerify(cmd, 800, {
       cwd: workClone,
       logPath,

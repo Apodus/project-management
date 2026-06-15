@@ -20,10 +20,7 @@ export async function hashToken(token: string): Promise<string> {
 /**
  * Compare a raw token against a bcrypt hash.
  */
-export async function compareToken(
-  token: string,
-  hash: string,
-): Promise<boolean> {
+export async function compareToken(token: string, hash: string): Promise<boolean> {
   return bcrypt.compare(token, hash);
 }
 
@@ -58,9 +55,7 @@ export async function createApiToken(userId: string): Promise<string> {
  * Validate an API token by checking it against all active users
  * that have an api_token_hash set. Returns the matching user or null.
  */
-export async function validateApiToken(
-  token: string,
-): Promise<AuthUser | null> {
+export async function validateApiToken(token: string): Promise<AuthUser | null> {
   const db = getDb();
 
   const activeUsers = db
@@ -92,9 +87,7 @@ export async function validateApiToken(
  * Create a new session for a user.
  * Returns the raw session token and its expiry timestamp.
  */
-export async function createSession(
-  userId: string,
-): Promise<{ token: string; expiresAt: string }> {
+export async function createSession(userId: string): Promise<{ token: string; expiresAt: string }> {
   const db = getDb();
   const token = generateToken();
   const hash = await hashToken(token);
@@ -119,9 +112,7 @@ export async function createSession(
  * Finds all non-expired sessions, compares the token against each,
  * and returns the user for the matching session, or null.
  */
-export async function validateSession(
-  token: string,
-): Promise<AuthUser | null> {
+export async function validateSession(token: string): Promise<AuthUser | null> {
   const db = getDb();
   const now = new Date().toISOString();
 

@@ -3,13 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Download, FolderOpen, Plus, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -116,7 +110,7 @@ export function ProjectListPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <FolderOpen className="size-6 text-muted-foreground" />
+          <FolderOpen className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
         </div>
 
@@ -138,71 +132,61 @@ export function ProjectListPage() {
             {importing ? "Importing..." : "Import Project"}
           </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="size-4" />
-              New Project
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <form onSubmit={handleCreateProject}>
-              <DialogHeader>
-                <DialogTitle>Create Project</DialogTitle>
-                <DialogDescription>
-                  Create a new project to organize proposals and tasks.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <label
-                    htmlFor="project-name"
-                    className="text-sm font-medium leading-none"
-                  >
-                    Name
-                  </label>
-                  <Input
-                    id="project-name"
-                    placeholder="My Project"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    autoFocus
-                    required
-                  />
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="size-4" />
+                New Project
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <form onSubmit={handleCreateProject}>
+                <DialogHeader>
+                  <DialogTitle>Create Project</DialogTitle>
+                  <DialogDescription>
+                    Create a new project to organize proposals and tasks.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="mt-4 space-y-4">
+                  <div className="space-y-2">
+                    <label htmlFor="project-name" className="text-sm font-medium leading-none">
+                      Name
+                    </label>
+                    <Input
+                      id="project-name"
+                      placeholder="My Project"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="project-description"
+                      className="text-sm font-medium leading-none"
+                    >
+                      Description
+                    </label>
+                    <Textarea
+                      id="project-description"
+                      placeholder="What is this project about?"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="project-description"
-                    className="text-sm font-medium leading-none"
-                  >
-                    Description
-                  </label>
-                  <Textarea
-                    id="project-description"
-                    placeholder="What is this project about?"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-              </div>
-              <DialogFooter className="mt-6">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={!name.trim() || createProject.isPending}
-                >
-                  {createProject.isPending ? "Creating..." : "Create Project"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <DialogFooter className="mt-6">
+                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={!name.trim() || createProject.isPending}>
+                    {createProject.isPending ? "Creating..." : "Create Project"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -210,12 +194,8 @@ export function ProjectListPage() {
       {importError && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-4">
-            <p className="text-sm text-destructive">{importError}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setImportError(null)}
-            >
+            <p className="text-destructive text-sm">{importError}</p>
+            <Button variant="outline" size="sm" onClick={() => setImportError(null)}>
               Dismiss
             </Button>
           </CardContent>
@@ -226,9 +206,7 @@ export function ProjectListPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
-              Failed to load projects. Please try again.
-            </p>
+            <p className="text-destructive text-sm">Failed to load projects. Please try again.</p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               Retry
             </Button>
@@ -257,16 +235,12 @@ export function ProjectListPage() {
       {/* Empty state */}
       {!isLoading && !error && projects?.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
-          <FolderOpen className="mb-4 size-12 text-muted-foreground/50" />
+          <FolderOpen className="text-muted-foreground/50 mb-4 size-12" />
           <h3 className="text-lg font-medium">No projects yet</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-1 text-sm">
             Create your first project to get started.
           </p>
-          <Button
-            className="mt-4"
-            size="sm"
-            onClick={() => setDialogOpen(true)}
-          >
+          <Button className="mt-4" size="sm" onClick={() => setDialogOpen(true)}>
             <Plus className="size-4" />
             Create Project
           </Button>
@@ -293,29 +267,25 @@ export function ProjectListPage() {
                   </Badge>
                 </div>
                 {project.slug && (
-                  <CardDescription className="font-mono text-xs">
-                    {project.slug}
-                  </CardDescription>
+                  <CardDescription className="font-mono text-xs">{project.slug}</CardDescription>
                 )}
               </CardHeader>
               <CardContent>
                 {project.description ? (
-                  <p className="line-clamp-2 text-sm text-muted-foreground">
+                  <p className="text-muted-foreground line-clamp-2 text-sm">
                     {project.description}
                   </p>
                 ) : (
-                  <p className="text-sm italic text-muted-foreground/50">
-                    No description
-                  </p>
+                  <p className="text-muted-foreground/50 text-sm italic">No description</p>
                 )}
                 <div className="mt-3 flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground/70">
+                  <p className="text-muted-foreground/70 text-xs">
                     Created {formatRelativeTime(project.createdAt)}
                   </p>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="size-7 text-muted-foreground/50 hover:text-foreground"
+                    className="text-muted-foreground/50 hover:text-foreground size-7"
                     onClick={(e) => handleExportProject(e, project.id, project.name)}
                     title="Export project"
                   >

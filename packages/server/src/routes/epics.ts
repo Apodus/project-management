@@ -138,15 +138,21 @@ const updateEpicBody = z
   })
   .openapi("UpdateEpic");
 
-const epicIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const epicIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 const claimFilterQuery = z.enum(["available", "mine", "all"]).optional();
 
@@ -157,8 +163,7 @@ const listEpicsRoute = createRoute({
   path: "/api/v1/projects/{projectId}/epics",
   tags: ["Epics"],
   summary: "List epics",
-  description:
-    "List all epics for a project with optional status, milestone, and claim filters.",
+  description: "List all epics for a project with optional status, milestone, and claim filters.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     query: z.object({
@@ -462,8 +467,7 @@ export function createEpicRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     const user = c.get("currentUser") as AuthUser | null;
     // Derive createdBy: AI agents always self-attribute; humans may pass an
     // explicit createdBy or default to themselves.
-    const createdBy =
-      user?.type === "ai_agent" ? user.id : (body.createdBy ?? user?.id ?? null);
+    const createdBy = user?.type === "ai_agent" ? user.id : (body.createdBy ?? user?.id ?? null);
     const epic = epicService.create(
       { ...body, projectId, createdBy },
       user ? { id: user.id, type: user.type as UserType } : undefined,

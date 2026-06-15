@@ -58,10 +58,7 @@ import {
   mergeLocks,
   type AppDatabase,
 } from "../../server/src/db/index.js";
-import {
-  createTestProject,
-  createTestAiAgent,
-} from "../../server/tests/utils.js";
+import { createTestProject, createTestAiAgent } from "../../server/tests/utils.js";
 
 // ─── Gating ───────────────────────────────────────────────────────
 
@@ -77,8 +74,7 @@ const distPath = fileURLToPath(new URL("../dist/index.js", import.meta.url));
 const distExists = existsSync(distPath);
 const RUN = hasGit() && distExists;
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // ─── Module-level live-proc guard (never leak a spawned integrator) ──
 const liveProcs = new Set<ChildProcess>();
@@ -135,17 +131,12 @@ interface Harness {
   adminId: string;
   spawnIntegrator: () => Promise<ChildProcess>;
   proc: () => ChildProcess | null;
-  submit: (
-    token: string,
-    body: Record<string, unknown>,
-  ) => Promise<MergeRequest>;
+  submit: (token: string, body: Record<string, unknown>) => Promise<MergeRequest>;
   getRequest: (id: string) => Promise<MergeRequest>;
   pollTerminal: (id: string, timeoutMs?: number) => Promise<MergeRequest>;
   mainSha: () => Promise<string>;
   getHealth: () => Promise<HealthView>;
-  getMetrics: (
-    token: string,
-  ) => Promise<Record<string, unknown>>;
+  getMetrics: (token: string) => Promise<Record<string, unknown>>;
   pauseTrain: () => Promise<void>;
   resumeTrain: () => Promise<void>;
   getTrainState: () => Promise<{ state: string }>;
@@ -160,10 +151,7 @@ interface Harness {
     status: number;
     data: { ok: boolean; priorHolderId: string | null };
   }>;
-  acquireLock: (
-    token: string,
-    resource: string,
-  ) => Promise<{ ok: boolean; status: string }>;
+  acquireLock: (token: string, resource: string) => Promise<{ ok: boolean; status: string }>;
   getAudit: (query: string) => Promise<AuditRow[]>;
   teardown: () => Promise<void>;
 }
@@ -265,10 +253,7 @@ async function makeObsHarness(): Promise<Harness> {
     },
   });
   const project = { id: proj.id, slug: proj.slug };
-  db.update(projects)
-    .set({ gitRepoUrl: bareRepo })
-    .where(eq(projects.id, project.id))
-    .run();
+  db.update(projects).set({ gitRepoUrl: bareRepo }).where(eq(projects.id, project.id)).run();
 
   // ── Spawnable integrator (factored out so flows opt-in). ──
   let currentProc: ChildProcess | null = null;
@@ -335,21 +320,15 @@ async function makeObsHarness(): Promise<Harness> {
   }
 
   // ── HTTP helpers. ──
-  async function submit(
-    token: string,
-    body: Record<string, unknown>,
-  ): Promise<MergeRequest> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/merge-requests`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+  async function submit(token: string, body: Record<string, unknown>): Promise<MergeRequest> {
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/merge-requests`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(body),
+    });
     expect(res.status).toBe(201);
     return (await res.json()).data as MergeRequest;
   }
@@ -362,10 +341,7 @@ async function makeObsHarness(): Promise<Harness> {
     return (await res.json()).data as MergeRequest;
   }
 
-  async function pollTerminal(
-    id: string,
-    timeoutMs = 40_000,
-  ): Promise<MergeRequest> {
+  async function pollTerminal(id: string, timeoutMs = 40_000): Promise<MergeRequest> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const r = await getRequest(id);
@@ -388,9 +364,7 @@ async function makeObsHarness(): Promise<Harness> {
     return (await res.json()).data as HealthView;
   }
 
-  async function getMetrics(
-    token: string,
-  ): Promise<Record<string, unknown>> {
+  async function getMetrics(token: string): Promise<Record<string, unknown>> {
     const res = await fetch(
       `${baseUrl}/api/v1/projects/${project.id}/train/metrics?resource=main`,
       { headers: { Authorization: `Bearer ${token}` } },
@@ -400,40 +374,33 @@ async function makeObsHarness(): Promise<Harness> {
   }
 
   async function pauseTrain(): Promise<void> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/train/pause`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ resource: "main" }),
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/train/pause`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({ resource: "main" }),
+    });
     expect(res.status).toBe(200);
   }
 
   async function resumeTrain(): Promise<void> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/train/resume`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ resource: "main" }),
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/train/resume`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({ resource: "main" }),
+    });
     expect(res.status).toBe(200);
   }
 
   async function getTrainState(): Promise<{ state: string }> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/train/state?resource=main`,
-      { headers: { Authorization: `Bearer ${workerToken}` } },
-    );
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/train/state?resource=main`, {
+      headers: { Authorization: `Bearer ${workerToken}` },
+    });
     expect(res.status).toBe(200);
     return (await res.json()).data as { state: string };
   }
@@ -442,17 +409,14 @@ async function makeObsHarness(): Promise<Harness> {
     id: string,
     body: { landedSha: string; reason: string },
   ): Promise<{ status: number; data: MergeRequest }> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/merge-requests/${id}/force-land`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+    const res = await fetch(`${baseUrl}/api/v1/merge-requests/${id}/force-land`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(body),
+    });
     const json = (await res.json()) as { data?: MergeRequest };
     return { status: res.status, data: json.data as MergeRequest };
   }
@@ -504,10 +468,9 @@ async function makeObsHarness(): Promise<Harness> {
   }
 
   async function getAudit(query: string): Promise<AuditRow[]> {
-    const res = await fetch(
-      `${baseUrl}/api/v1/projects/${project.id}/audit-log?${query}`,
-      { headers: { Authorization: `Bearer ${adminToken}` } },
-    );
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/audit-log?${query}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
     expect(res.status).toBe(200);
     return (await res.json()).data as AuditRow[];
   }
@@ -588,13 +551,10 @@ function collectSse(baseUrl: string, projectId: string, token: string): SseColle
   let buffer = "";
   void (async () => {
     try {
-      const res = await fetch(
-        `${baseUrl}/api/v1/events?project_id=${projectId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        },
-      );
+      const res = await fetch(`${baseUrl}/api/v1/events?project_id=${projectId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
       if (!res.body) return;
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -630,10 +590,7 @@ describe.skipIf(!RUN)("observability E2E (a) — health fresh → stale → unhe
     // 1) Poll health until the boot beat lands: healthy + last_seen non-null.
     let health = await h.getHealth();
     const freshDeadline = Date.now() + 15_000;
-    while (
-      (!health.healthy || health.last_seen_at === null) &&
-      Date.now() < freshDeadline
-    ) {
+    while ((!health.healthy || health.last_seen_at === null) && Date.now() < freshDeadline) {
       await sleep(200);
       health = await h.getHealth();
     }
@@ -659,10 +616,7 @@ describe.skipIf(!RUN)("observability E2E (a) — health fresh → stale → unhe
       .update(integratorHealth)
       .set({ lastSeenAt: staleIso })
       .where(
-        and(
-          eq(integratorHealth.projectId, h.project.id),
-          eq(integratorHealth.resource, "main"),
-        ),
+        and(eq(integratorHealth.projectId, h.project.id), eq(integratorHealth.resource, "main")),
       )
       .run();
 
@@ -682,20 +636,14 @@ describe.skipIf(!RUN)("observability E2E (a) — health fresh → stale → unhe
       .select({ unhealthyNotified: integratorHealth.unhealthyNotified })
       .from(integratorHealth)
       .where(
-        and(
-          eq(integratorHealth.projectId, h.project.id),
-          eq(integratorHealth.resource, "main"),
-        ),
+        and(eq(integratorHealth.projectId, h.project.id), eq(integratorHealth.resource, "main")),
       )
       .get();
     expect(latchRow?.unhealthyNotified).toBe(true);
 
     // (ii) SOFT belt: SSE saw train.integrator_unhealthy within a grace window.
     const sseDeadline = Date.now() + 5_000;
-    while (
-      !sse.saw("train.integrator_unhealthy") &&
-      Date.now() < sseDeadline
-    ) {
+    while (!sse.saw("train.integrator_unhealthy") && Date.now() < sseDeadline) {
       await sleep(100);
     }
     expect(sse.saw("train.integrator_unhealthy")).toBe(true);
@@ -804,15 +752,11 @@ describe.skipIf(!RUN)("observability E2E (c) — force-land + audit", () => {
       .where(eq(mergeAttempts.requestId, req.id))
       .all();
     expect(attempts.length).toBeGreaterThanOrEqual(1);
-    const latest = attempts.sort(
-      (a, b) => b.attemptNumber - a.attemptNumber,
-    )[0];
+    const latest = attempts.sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
     expect(latest.failureReason ?? "").toContain("force_land override");
 
     // Exactly one force_land audit row scoped to this request, actor=admin.
-    const rows = await h.getAudit(
-      `action=force_land&targetId=${req.id}`,
-    );
+    const rows = await h.getAudit(`action=force_land&targetId=${req.id}`);
     expect(rows).toHaveLength(1);
     expect(rows[0].actorId).toBe(h.adminId);
     expect(rows[0].reason).toBe("e2e breakglass");
@@ -972,12 +916,7 @@ describe.skipIf(!RUN)("observability E2E (e) — force-release a wedged lock", (
     const lock = h.db
       .select()
       .from(mergeLocks)
-      .where(
-        and(
-          eq(mergeLocks.projectId, h.project.id),
-          eq(mergeLocks.resource, "main"),
-        ),
-      )
+      .where(and(eq(mergeLocks.projectId, h.project.id), eq(mergeLocks.resource, "main")))
       .get();
     expect(lock).toBeDefined();
     expect(lock!.holderId).toBeNull();
@@ -985,9 +924,7 @@ describe.skipIf(!RUN)("observability E2E (e) — force-release a wedged lock", (
     expect(lock!.expiresAt).toBeNull();
 
     // Exactly one force_release_lock audit row, actor=admin, reason=unwedge.
-    const rows = await h.getAudit(
-      `action=force_release_lock&targetId=main`,
-    );
+    const rows = await h.getAudit(`action=force_release_lock&targetId=main`);
     expect(rows).toHaveLength(1);
     expect(rows[0].actorId).toBe(h.adminId);
     expect(rows[0].reason).toBe("unwedge");

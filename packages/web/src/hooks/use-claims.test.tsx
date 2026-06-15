@@ -46,9 +46,7 @@ describe("useReleaseClaimTo", () => {
       reason: "handing off",
       targetId: "agent-2",
     });
-    await waitFor(() =>
-      expect(toastMock.success).toHaveBeenCalledWith("Claim transferred"),
-    );
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Claim transferred"));
     expect(apiMock.releaseClaimTo).toHaveBeenCalledWith("task", "task-1", {
       reason: "handing off",
       targetId: "agent-2",
@@ -64,9 +62,7 @@ describe("useReleaseClaimTo", () => {
       reason: "x",
       targetId: "ghost",
     });
-    await waitFor(() =>
-      expect(toastMock.error).toHaveBeenCalledWith("Target user not found."),
-    );
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Target user not found."));
     expect(toastMock.success).not.toHaveBeenCalled();
   });
 });
@@ -109,9 +105,7 @@ describe("useRequestClaimTakeover", () => {
     });
     const { result } = renderHook(() => useRequestClaimTakeover(), { wrapper });
     result.current.mutate({ entityType: "task", id: "task-1", reason: "r" });
-    await waitFor(() =>
-      expect(toastMock.info).toHaveBeenCalledWith("You already hold this claim"),
-    );
+    await waitFor(() => expect(toastMock.info).toHaveBeenCalledWith("You already hold this claim"));
 
     apiMock.requestClaimTakeover.mockResolvedValue({
       ok: true,

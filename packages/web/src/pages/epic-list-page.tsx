@@ -3,12 +3,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { Milestone, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -22,11 +17,7 @@ import { useProject } from "@/hooks/use-projects";
 import { useEpics } from "@/hooks/use-epics";
 import { useUsers } from "@/hooks/use-users";
 import { useProjectStore } from "@/stores/project-store";
-import {
-  formatStatus,
-  getStatusColor,
-  getPriorityColor,
-} from "@/lib/format";
+import { formatStatus, getStatusColor, getPriorityColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Epic } from "@/lib/api";
 
@@ -47,24 +38,18 @@ function EpicCard({
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
-    <Card
-      className="cursor-pointer gap-3 py-4 transition-shadow hover:shadow-md"
-      onClick={onClick}
-    >
+    <Card className="cursor-pointer gap-3 py-4 transition-shadow hover:shadow-md" onClick={onClick}>
       <CardHeader className="pb-0">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="line-clamp-1 text-base">{epic.name}</CardTitle>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex shrink-0 items-center gap-1.5">
             <Badge
               variant="secondary"
               className={cn("text-[10px]", getPriorityColor(epic.priority))}
             >
               {formatStatus(epic.priority)}
             </Badge>
-            <Badge
-              variant="secondary"
-              className={cn("text-[10px]", getStatusColor(epic.status))}
-            >
+            <Badge variant="secondary" className={cn("text-[10px]", getStatusColor(epic.status))}>
               {formatStatus(epic.status)}
             </Badge>
           </div>
@@ -72,38 +57,31 @@ function EpicCard({
       </CardHeader>
       <CardContent className="space-y-3">
         {epic.description ? (
-          <p className="line-clamp-2 text-sm text-muted-foreground">
-            {epic.description}
-          </p>
+          <p className="text-muted-foreground line-clamp-2 text-sm">{epic.description}</p>
         ) : (
-          <p className="text-sm italic text-muted-foreground/50">
-            No description
-          </p>
+          <p className="text-muted-foreground/50 text-sm italic">No description</p>
         )}
 
         {/* Assignee */}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
           <User className="size-3" />
           {epic.assigneeId ? (
             <span className="truncate">{assigneeName ?? epic.assigneeId}</span>
           ) : (
-            <span className="italic text-muted-foreground/60">Unclaimed</span>
+            <span className="text-muted-foreground/60 italic">Unclaimed</span>
           )}
-          <ClaimStateBadge
-            state={epic.claimState}
-            className="ml-auto text-[10px] px-1.5 py-0"
-          />
+          <ClaimStateBadge state={epic.claimState} className="ml-auto px-1.5 py-0 text-[10px]" />
         </div>
 
         {/* Progress bar */}
         <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
             <span>
               {done} of {total} task{total === 1 ? "" : "s"} done
             </span>
             <span>{progressPct}%</span>
           </div>
-          <div className="h-1.5 w-full rounded-full bg-muted">
+          <div className="bg-muted h-1.5 w-full rounded-full">
             <div
               className={cn(
                 "h-1.5 rounded-full transition-all",
@@ -152,7 +130,12 @@ export function EpicListPage() {
 
   const [statusFilter, setStatusFilter] = useState<string>("");
 
-  const { data: epics, isLoading, error, refetch } = useEpics(
+  const {
+    data: epics,
+    isLoading,
+    error,
+    refetch,
+  } = useEpics(
     projectId,
     statusFilter && statusFilter !== "all" ? { status: statusFilter } : undefined,
   );
@@ -172,7 +155,7 @@ export function EpicListPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Milestone className="size-6 text-muted-foreground" />
+          <Milestone className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Epics</h1>
           {project && (
             <Badge variant="outline" className="text-xs font-normal">
@@ -184,10 +167,8 @@ export function EpicListPage() {
 
       {/* Error state */}
       {error && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 py-8">
-          <p className="text-sm text-destructive">
-            Failed to load epics. Please try again.
-          </p>
+        <div className="border-destructive/50 bg-destructive/10 flex flex-col items-center gap-3 rounded-lg border py-8">
+          <p className="text-destructive text-sm">Failed to load epics. Please try again.</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             Retry
           </Button>
@@ -223,10 +204,9 @@ export function EpicListPage() {
       {/* Empty state */}
       {!isLoading && (!epics || epics.length === 0) && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
-          <Milestone className="mb-3 size-10 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">
-            No epics found. Epics will appear here when proposals are
-            planned.
+          <Milestone className="text-muted-foreground/40 mb-3 size-10" />
+          <p className="text-muted-foreground text-sm">
+            No epics found. Epics will appear here when proposals are planned.
           </p>
         </div>
       )}

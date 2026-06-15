@@ -21,10 +21,7 @@ describe("POST /api/v1/merge-requests/:id/reset-to-queued", () => {
     testApp.cleanup();
   });
 
-  async function submitRequest(
-    projectId: string,
-    token: string,
-  ): Promise<string> {
+  async function submitRequest(projectId: string, token: string): Promise<string> {
     const res = await authRequest(
       testApp.app,
       "POST",
@@ -151,14 +148,11 @@ describe("POST /api/v1/merge-requests/:id/reset-to-queued", () => {
     const requestId = await submitRequest(project.id, agent.token);
     forceIntegrating(requestId);
 
-    const res = await testApp.app.request(
-      `/api/v1/merge-requests/${requestId}/reset-to-queued`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: "x" }),
-      },
-    );
+    const res = await testApp.app.request(`/api/v1/merge-requests/${requestId}/reset-to-queued`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "x" }),
+    });
     expect(res.status).toBe(401);
   });
 });

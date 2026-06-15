@@ -243,15 +243,21 @@ const updateTaskBody = z
   })
   .openapi("UpdateTask");
 
-const taskIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const taskIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 
@@ -260,8 +266,7 @@ const listTasksRoute = createRoute({
   path: "/api/v1/projects/{projectId}/tasks",
   tags: ["Tasks"],
   summary: "List tasks",
-  description:
-    "List tasks for a project with rich filtering, sorting, and pagination.",
+  description: "List tasks for a project with rich filtering, sorting, and pagination.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     query: z.object({
@@ -275,9 +280,7 @@ const listTasksRoute = createRoute({
       label_name: z.string().optional(),
       claim: z.enum(["available", "mine", "all"]).optional(),
       is_blocked: z.enum(["true", "false"]).optional(),
-      sortBy: z
-        .enum(["priority", "created_at", "updated_at", "due_date", "sort_order"])
-        .optional(),
+      sortBy: z.enum(["priority", "created_at", "updated_at", "due_date", "sort_order"]).optional(),
       order: z.enum(["asc", "desc"]).optional(),
       page: z.coerce.number().int().positive().optional(),
       perPage: z.coerce.number().int().positive().max(100).optional(),
@@ -724,20 +727,19 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     // Derive reporterId from auth. AI agents always reporter-of-record themselves
     // (can't impersonate); humans may pass an explicit reporterId to create
     // on behalf of someone else.
-    const reporterId =
-      actor?.type === "ai_agent"
-        ? actor.id
-        : (body.reporterId ?? actor?.id);
+    const reporterId = actor?.type === "ai_agent" ? actor.id : (body.reporterId ?? actor?.id);
     if (!reporterId) {
       return c.json(
-        { error: { code: "MISSING_REPORTER", message: "reporterId could not be determined from auth context" } },
+        {
+          error: {
+            code: "MISSING_REPORTER",
+            message: "reporterId could not be determined from auth context",
+          },
+        },
         400,
       );
     }
-    const task = taskService.create(
-      { ...body, projectId, reporterId },
-      actor ?? undefined,
-    );
+    const task = taskService.create({ ...body, projectId, reporterId }, actor ?? undefined);
 
     return c.json({ data: task }, 201);
   });
@@ -775,21 +777,19 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const actor = c.get("currentUser") as AuthUser | null;
-    const reporterId =
-      actor?.type === "ai_agent"
-        ? actor.id
-        : (body.reporterId ?? actor?.id);
+    const reporterId = actor?.type === "ai_agent" ? actor.id : (body.reporterId ?? actor?.id);
     if (!reporterId) {
       return c.json(
-        { error: { code: "MISSING_REPORTER", message: "reporterId could not be determined from auth context" } },
+        {
+          error: {
+            code: "MISSING_REPORTER",
+            message: "reporterId could not be determined from auth context",
+          },
+        },
         400,
       );
     }
-    const subtask = taskService.createSubtask(
-      id,
-      { ...body, reporterId },
-      actor ?? undefined,
-    );
+    const subtask = taskService.createSubtask(id, { ...body, reporterId }, actor ?? undefined);
 
     return c.json({ data: subtask }, 201);
   });
@@ -798,10 +798,7 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   router.openapi(listSubtasksRoute, (c) => {
     const { id } = c.req.valid("param");
     const user = c.get("currentUser") as AuthUser | null;
-    const subtasks = taskService.listSubtasks(
-      id,
-      user ? { id: user.id } : null,
-    );
+    const subtasks = taskService.listSubtasks(id, user ? { id: user.id } : null);
 
     return c.json(
       {
@@ -815,7 +812,12 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
   // POST /api/v1/tasks/pick-next
   router.openapi(pickNextTaskRoute, (c) => {
     const actor = c.get("currentUser") as AuthUser;
-    let body: { project_id?: string; epic_id?: string; task_types?: string[]; max_effort?: string } = {};
+    let body: {
+      project_id?: string;
+      epic_id?: string;
+      task_types?: string[];
+      max_effort?: string;
+    } = {};
     try {
       body = c.req.valid("json");
     } catch {
@@ -829,10 +831,7 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     });
 
     if (!task) {
-      return c.json(
-        { error: { code: "NOT_FOUND", message: "No task available" } },
-        404,
-      );
+      return c.json({ error: { code: "NOT_FOUND", message: "No task available" } }, 404);
     }
 
     return c.json({ data: task }, 200);
@@ -843,12 +842,7 @@ export function createTaskRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const actor = c.get("currentUser") as AuthUser;
-    const task = taskService.transition(
-      id,
-      body.to_status as TaskStatus,
-      actor,
-      body.comment,
-    );
+    const task = taskService.transition(id, body.to_status as TaskStatus, actor, body.comment);
 
     return c.json({ data: task }, 200);
   });

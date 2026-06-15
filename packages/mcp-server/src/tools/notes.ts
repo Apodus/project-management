@@ -1,11 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import {
-  NOTE_KINDS,
-  NOTE_STATUSES,
-  NOTE_ANCHOR_TYPES,
-  NOTE_SEVERITIES,
-} from "@pm/shared";
+import { NOTE_KINDS, NOTE_STATUSES, NOTE_ANCHOR_TYPES, NOTE_SEVERITIES } from "@pm/shared";
 import {
   createNote,
   listNotes,
@@ -62,7 +57,9 @@ export function registerNoteTools(server: McpServer): void {
       severity: z
         .enum(NOTE_SEVERITIES)
         .optional()
-        .describe("Optional severity hint (most meaningful for bug/tech_debt): low | medium | high"),
+        .describe(
+          "Optional severity hint (most meaningful for bug/tech_debt): low | medium | high",
+        ),
     },
     async ({ project_id, kind, title, body, anchor_type, anchor_id, code_locator, severity }) => {
       const { note, similar } = await createNote(project_id, {
@@ -153,15 +150,11 @@ export function registerNoteTools(server: McpServer): void {
       const lines: string[] = [`Found ${notes.length} note(s):`, ""];
       for (const note of notes) {
         const head =
-          `**[${note.kind}]**` +
-          (note.severity ? ` (${note.severity})` : "") +
-          ` ${note.title}`;
+          `**[${note.kind}]**` + (note.severity ? ` (${note.severity})` : "") + ` ${note.title}`;
         lines.push(head);
         const meta = [`ID: ${note.id}`, `Status: ${note.status}`];
         if (note.anchorType && note.anchorId) {
-          meta.push(
-            `Anchor: ${note.anchorType} ${note.anchorId}${enrichedRefSuffix(note.anchor)}`,
-          );
+          meta.push(`Anchor: ${note.anchorType} ${note.anchorId}${enrichedRefSuffix(note.anchor)}`);
         }
         lines.push(`  ${meta.join(" | ")}`);
         lines.push("");
@@ -243,9 +236,7 @@ export function registerNoteTools(server: McpServer): void {
     "Dismiss a note you've reviewed and decided needs no action (you must be the note's author or a human). Use when a finding is a duplicate, no longer relevant, or not worth pursuing — distinct from promoting it into a proposal.",
     {
       note_id: z.string().describe("The note ID to dismiss"),
-      reason: z
-        .string()
-        .describe("Why this note needs no action (required, recorded on the note)"),
+      reason: z.string().describe("Why this note needs no action (required, recorded on the note)"),
     },
     async ({ note_id, reason }) => {
       const note = await dismissNote(note_id, reason);

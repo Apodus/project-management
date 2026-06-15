@@ -1,13 +1,7 @@
 import { useState } from "react";
 import { Database, HardDrive } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SettingsNav } from "@/components/settings-nav";
 import { backupDatabase, type BackupResult } from "@/lib/api";
 
@@ -42,10 +36,8 @@ export function BackupPage() {
       <SettingsNav />
 
       <div className="flex items-center gap-3">
-        <Database className="size-6 text-muted-foreground" />
-        <h1 className="text-2xl font-bold tracking-tight">
-          Database Backup
-        </h1>
+        <Database className="text-muted-foreground size-6" />
+        <h1 className="text-2xl font-bold tracking-tight">Database Backup</h1>
       </div>
 
       <Card>
@@ -55,8 +47,8 @@ export function BackupPage() {
             Create Backup
           </CardTitle>
           <CardDescription>
-            Create a snapshot of the SQLite database file. Backups are stored
-            in the server's data/backups directory.
+            Create a snapshot of the SQLite database file. Backups are stored in the server's
+            data/backups directory.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -65,11 +57,11 @@ export function BackupPage() {
           </Button>
 
           {result && (
-            <div className="rounded-md border bg-muted/50 p-4 text-sm">
+            <div className="bg-muted/50 rounded-md border p-4 text-sm">
               <p className="font-medium text-green-700 dark:text-green-400">
                 Backup created successfully
               </p>
-              <dl className="mt-2 space-y-1 text-muted-foreground">
+              <dl className="text-muted-foreground mt-2 space-y-1">
                 <div className="flex gap-2">
                   <dt className="font-medium">Path:</dt>
                   <dd className="font-mono text-xs">{result.path}</dd>
@@ -87,7 +79,7 @@ export function BackupPage() {
           )}
 
           {error && (
-            <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+            <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border p-4 text-sm">
               {error}
             </div>
           )}

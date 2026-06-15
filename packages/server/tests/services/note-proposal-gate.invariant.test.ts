@@ -41,11 +41,7 @@ describe("proposal gate invariant", () => {
   it("forbids an ai_agent from promoting a note to a task (403, zero side effects)", () => {
     const project = createTestProject(testApp.db);
     const agent = createTestUser(testApp.db, { type: "ai_agent" });
-    const note = noteService.create(
-      project.id,
-      { kind: "bug", title: "agent finding" },
-      agent.id,
-    );
+    const note = noteService.create(project.id, { kind: "bug", title: "agent finding" }, agent.id);
 
     const before = testApp.db.select().from(tasks).all().length;
 
@@ -90,11 +86,7 @@ describe("proposal gate invariant", () => {
   it("human promoteToTask persists task.sourceNoteId; a plain create leaves it null", () => {
     const project = createTestProject(testApp.db);
     const human = createTestUser(testApp.db, { type: "human" });
-    const note = noteService.create(
-      project.id,
-      { kind: "bug", title: "promote me" },
-      human.id,
-    );
+    const note = noteService.create(project.id, { kind: "bug", title: "promote me" }, human.id);
 
     const { note: triaged, task } = noteService.promoteToTask(note.id, {
       id: human.id,
@@ -130,12 +122,9 @@ describe("proposal gate invariant", () => {
       testApp.testUser.id,
     );
 
-    const res = await authRequest(
-      testApp.app,
-      "POST",
-      `/api/v1/projects/${project.id}/tasks`,
-      { body: { title: "forge provenance", sourceNoteId: note.id } },
-    );
+    const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/tasks`, {
+      body: { title: "forge provenance", sourceNoteId: note.id },
+    });
     expect(res.status).toBe(201);
     const body = await res.json();
 
@@ -151,20 +140,13 @@ describe("proposal gate invariant", () => {
       testApp.testUser.id,
     );
 
-    const res = await authRequest(
-      testApp.app,
-      "POST",
-      `/api/v1/projects/${project.id}/proposals`,
-      { body: { title: "forge provenance", sourceNoteId: note.id } },
-    );
+    const res = await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/proposals`, {
+      body: { title: "forge provenance", sourceNoteId: note.id },
+    });
     expect(res.status).toBe(201);
     const body = await res.json();
 
-    const reread = testApp.db
-      .select()
-      .from(proposals)
-      .where(eq(proposals.id, body.data.id))
-      .get()!;
+    const reread = testApp.db.select().from(proposals).where(eq(proposals.id, body.data.id)).get()!;
     expect(reread.sourceNoteId).toBeNull();
   });
 
@@ -180,12 +162,10 @@ describe("proposal gate invariant", () => {
 
     const before = testApp.db.select().from(tasks).all().length;
 
-    const res = await authRequest(
-      testApp.app,
-      "POST",
-      `/api/v1/notes/${note.id}/promote-to-task`,
-      { token: agent.token, body: {} },
-    );
+    const res = await authRequest(testApp.app, "POST", `/api/v1/notes/${note.id}/promote-to-task`, {
+      token: agent.token,
+      body: {},
+    });
     expect(res.status).toBe(403);
 
     expect(testApp.db.select().from(tasks).all().length).toBe(before);

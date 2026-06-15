@@ -12,10 +12,7 @@ import { AppError } from "../types.js";
 import * as escalationService from "../services/escalation.service.js";
 import * as escalationMetricsService from "../services/escalation-metrics.service.js";
 import type { EscalationMetricsBundle } from "../services/escalation-metrics.service.js";
-import {
-  checkRaiseRate,
-  raiseRateLimitHard,
-} from "../services/escalation-rate-limit.js";
+import { checkRaiseRate, raiseRateLimitHard } from "../services/escalation-rate-limit.js";
 
 // ─── Escalation routes (Campaign C1 §P3) ──────────────────────────
 // Route-local Zod-4 schemas (via @hono/zod-openapi `z`), the established
@@ -259,15 +256,21 @@ const undeliveredQuery = z.object({
   project_id: z.string().optional(),
 });
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const escalationIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const escalationIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 

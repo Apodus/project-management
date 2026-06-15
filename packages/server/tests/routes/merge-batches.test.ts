@@ -33,9 +33,7 @@ async function readSSEStream(
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let text = "";
-  const timeout = new Promise<void>((resolve) =>
-    setTimeout(() => resolve(), timeoutMs),
-  );
+  const timeout = new Promise<void>((resolve) => setTimeout(() => resolve(), timeoutMs));
   const read = async () => {
     try {
       while (true) {
@@ -95,20 +93,17 @@ describe("Merge batch relay endpoint", () => {
 
   it("returns 401 with no token", async () => {
     const project = createTestProject(testApp.db);
-    const res = await testApp.app.request(
-      `/api/v1/projects/${project.id}/merge-batches/events`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "started",
-          batchId: "batch-1",
-          resource: "main",
-          memberCount: 0,
-          memberRequestIds: [],
-        }),
-      },
-    );
+    const res = await testApp.app.request(`/api/v1/projects/${project.id}/merge-batches/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "started",
+        batchId: "batch-1",
+        resource: "main",
+        memberCount: 0,
+        memberRequestIds: [],
+      }),
+    });
     expect(res.status).toBe(401);
   });
 

@@ -84,10 +84,7 @@ function sigtermResult(logPath: string): VerifyResult {
 function makeFakeGitOps(
   behaviors: Record<string, StepBehavior>,
   calls: VerifyCall[],
-  onAbortResult: (command: string, logPath: string) => VerifyResult = (
-    _c,
-    lp,
-  ) => sigtermResult(lp),
+  onAbortResult: (command: string, logPath: string) => VerifyResult = (_c, lp) => sigtermResult(lp),
 ): GitOps {
   const runVerify = (
     command: string,
@@ -120,10 +117,7 @@ function makeFakeGitOps(
         return;
       }
       const timer = setTimeout(() => {
-        finish(
-          behavior?.result ?? okResult(opts.logPath),
-          signal?.aborted ?? false,
-        );
+        finish(behavior?.result ?? okResult(opts.logPath), signal?.aborted ?? false);
       }, durationMs);
       signal?.addEventListener(
         "abort",
@@ -158,11 +152,12 @@ function ctxFor(gitOps: GitOps, overrides: Partial<PipelineCtx> = {}): PipelineC
   };
 }
 
-const step = (
-  id: string,
-  command: string,
-  depends_on: string[] = [],
-): VerifyStep => ({ id, command, depends_on, cache_key_inputs: [] });
+const step = (id: string, command: string, depends_on: string[] = []): VerifyStep => ({
+  id,
+  command,
+  depends_on,
+  cache_key_inputs: [],
+});
 
 describe("runPipeline (Phase 7.5 Step 5)", () => {
   it("1. topo order: format → {lint,typecheck} → unit (waves; middle pair concurrent)", async () => {
@@ -183,12 +178,7 @@ describe("runPipeline (Phase 7.5 Step 5)", () => {
 
     const res = await runPipeline(steps, ctxFor(gitOps));
     expect(res.outcome).toBe("pass");
-    expect(res.steps.map((s) => s.stepId).sort()).toEqual([
-      "format",
-      "lint",
-      "typecheck",
-      "unit",
-    ]);
+    expect(res.steps.map((s) => s.stepId).sort()).toEqual(["format", "lint", "typecheck", "unit"]);
 
     const byCmd = (c: string) => calls.find((k) => k.command === c)!;
     const format = byCmd("cmd-format");
@@ -200,9 +190,7 @@ describe("runPipeline (Phase 7.5 Step 5)", () => {
     expect(format.endMs).toBeLessThanOrEqual(lint.startMs);
     expect(format.endMs).toBeLessThanOrEqual(tc.startMs);
     // lint + typecheck OVERLAP: latest-start < earliest-end.
-    expect(Math.max(lint.startMs, tc.startMs)).toBeLessThan(
-      Math.min(lint.endMs, tc.endMs),
-    );
+    expect(Math.max(lint.startMs, tc.startMs)).toBeLessThan(Math.min(lint.endMs, tc.endMs));
     // unit starts after both lint and typecheck finished.
     expect(unit.startMs).toBeGreaterThanOrEqual(lint.endMs);
     expect(unit.startMs).toBeGreaterThanOrEqual(tc.endMs);
@@ -221,9 +209,7 @@ describe("runPipeline (Phase 7.5 Step 5)", () => {
     expect(res.outcome).toBe("pass");
     const a = calls.find((k) => k.command === "cmd-a")!;
     const b = calls.find((k) => k.command === "cmd-b")!;
-    expect(Math.max(a.startMs, b.startMs)).toBeLessThan(
-      Math.min(a.endMs, b.endMs),
-    );
+    expect(Math.max(a.startMs, b.startMs)).toBeLessThan(Math.min(a.endMs, b.endMs));
   });
 
   it("3. fail-fast short-circuit: a wave-1 fail means the downstream step never runs", async () => {
@@ -234,10 +220,7 @@ describe("runPipeline (Phase 7.5 Step 5)", () => {
     };
     const gitOps = makeFakeGitOps(behaviors, calls);
     // expensive depends on cheap → cheap fails in wave 1 → expensive never starts.
-    const steps = [
-      step("cheap", "cmd-cheap"),
-      step("expensive", "cmd-expensive", ["cheap"]),
-    ];
+    const steps = [step("cheap", "cmd-cheap"), step("expensive", "cmd-expensive", ["cheap"])];
 
     const res = await runPipeline(steps, ctxFor(gitOps));
     expect(res.outcome).toBe("fail");
@@ -322,10 +305,7 @@ describe("runPipeline (Phase 7.5 Step 5)", () => {
     const calls: VerifyCall[] = [];
     const gitOps = makeFakeGitOps({}, calls);
     // a → b → a (cycle): neither has indegree 0 → wave is empty on entry.
-    const steps = [
-      step("a", "cmd-a", ["b"]),
-      step("b", "cmd-b", ["a"]),
-    ];
+    const steps = [step("a", "cmd-a", ["b"]), step("b", "cmd-b", ["a"])];
 
     const res = await runPipeline(steps, ctxFor(gitOps));
     expect(res.outcome).toBe("fail");
@@ -377,8 +357,7 @@ type MismatchBody = LookupKey & {
   attemptId?: string;
 };
 
-const keyOf = (k: LookupKey): string =>
-  [k.resource, k.treeSha, k.stepId, k.stepConfigSha].join(" ");
+const keyOf = (k: LookupKey): string => [k.resource, k.treeSha, k.stepId, k.stepConfigSha].join(" ");
 
 interface CacheCalls {
   lookups: LookupKey[];
@@ -498,10 +477,7 @@ describe("runPipeline cache-aware (Phase 7.5 Step 6)", () => {
     );
     const { client, calls: cc } = makeFakeCacheClient();
     // cache: undefined
-    const res1 = await runPipeline(
-      [step("a", "cmd-a"), step("b", "cmd-b", ["a"])],
-      ctxFor(gitOps),
-    );
+    const res1 = await runPipeline([step("a", "cmd-a"), step("b", "cmd-b", ["a"])], ctxFor(gitOps));
     expect(res1.outcome).toBe("pass");
     expect(calls.length).toBe(2);
     expect(cc.lookups.length).toBe(0);
@@ -563,9 +539,7 @@ describe("runPipeline cache-aware (Phase 7.5 Step 6)", () => {
     expect(rec.resource).toBe("main");
     expect(rec.treeSha).toBe(TREE);
     expect(rec.stepId).toBe("a");
-    expect(rec.stepConfigSha).toBe(
-      stepConfigSha({ command: "cmd-a", cache_key_inputs: [] }),
-    );
+    expect(rec.stepConfigSha).toBe(stepConfigSha({ command: "cmd-a", cache_key_inputs: [] }));
     expect(rec.result).toBe("pass");
     expect(rec.durationMs).toBe(42);
   });
@@ -573,13 +547,8 @@ describe("runPipeline cache-aware (Phase 7.5 Step 6)", () => {
   it("4. SHADOW always runs + mismatch + uses the REAL verdict (false-pass detector)", async () => {
     const calls: VerifyCall[] = [];
     // The cached row says PASS, but the REAL run FAILS.
-    const gitOps = makeFakeGitOps(
-      { "cmd-a": { result: realFailResult("") } },
-      calls,
-    );
-    const { client, calls: cc } = makeFakeCacheClient([
-      seedRow("a", "cmd-a", "pass"),
-    ]);
+    const gitOps = makeFakeGitOps({ "cmd-a": { result: realFailResult("") } }, calls);
+    const { client, calls: cc } = makeFakeCacheClient([seedRow("a", "cmd-a", "pass")]);
     const res = await runPipeline(
       [step("a", "cmd-a")],
       ctxFor(gitOps, { cache: cacheCtx(client, "shadow") }),
@@ -600,9 +569,7 @@ describe("runPipeline cache-aware (Phase 7.5 Step 6)", () => {
   it("5. shadow MATCH → uses real, NO emit, still records", async () => {
     const calls: VerifyCall[] = [];
     const gitOps = makeFakeGitOps({ "cmd-a": { result: okResult("") } }, calls);
-    const { client, calls: cc } = makeFakeCacheClient([
-      seedRow("a", "cmd-a", "pass"),
-    ]);
+    const { client, calls: cc } = makeFakeCacheClient([seedRow("a", "cmd-a", "pass")]);
     const res = await runPipeline(
       [step("a", "cmd-a")],
       ctxFor(gitOps, { cache: cacheCtx(client, "shadow") }),

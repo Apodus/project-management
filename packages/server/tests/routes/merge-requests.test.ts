@@ -229,11 +229,7 @@ describe("Merge Requests API", () => {
       const getJson = await getRes.json();
       expect(getJson.data.escalationId).toBeNull();
 
-      const row = testApp.db
-        .select()
-        .from(mergeRequests)
-        .where(eq(mergeRequests.id, id))
-        .get();
+      const row = testApp.db.select().from(mergeRequests).where(eq(mergeRequests.id, id)).get();
       expect(row?.escalationId).toBeNull();
     });
 
@@ -1161,10 +1157,15 @@ describe("Merge Requests API", () => {
       });
       forceIntegrating(requestId);
 
-      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
-        token: integrator.token,
-        body: { landedSha: "landedABC" },
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/land`,
+        {
+          token: integrator.token,
+          body: { landedSha: "landedABC" },
+        },
+      );
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.data.status).toBe("landed");
@@ -1253,21 +1254,35 @@ describe("Merge Requests API", () => {
       const escId = seedHeldEscalation(project.id, holder.user.id, origin.id);
 
       // Land with no escalationId.
-      const landReq = await submitRequest(project.id, integrator.token, { branch: "feature/plain-land" });
-      forceIntegrating(landReq);
-      const landRes = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${landReq}/land`, {
-        token: integrator.token,
-        body: { landedSha: "plainland" },
+      const landReq = await submitRequest(project.id, integrator.token, {
+        branch: "feature/plain-land",
       });
+      forceIntegrating(landReq);
+      const landRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${landReq}/land`,
+        {
+          token: integrator.token,
+          body: { landedSha: "plainland" },
+        },
+      );
       expect(landRes.status).toBe(200);
 
       // Reject with no escalationId.
-      const rejReq = await submitRequest(project.id, integrator.token, { branch: "feature/plain-rej" });
-      forceIntegrating(rejReq);
-      const rejRes = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${rejReq}/reject`, {
-        token: integrator.token,
-        body: { category: "policy", reason: "nope" },
+      const rejReq = await submitRequest(project.id, integrator.token, {
+        branch: "feature/plain-rej",
       });
+      forceIntegrating(rejReq);
+      const rejRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${rejReq}/reject`,
+        {
+          token: integrator.token,
+          body: { category: "policy", reason: "nope" },
+        },
+      );
       expect(rejRes.status).toBe(200);
 
       // The unrelated escalation is untouched + no messages were appended.
@@ -1302,10 +1317,15 @@ describe("Merge Requests API", () => {
       });
       forceIntegrating(requestId);
 
-      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
-        token: integrator.token,
-        body: { landedSha: "phaseSHA" },
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/land`,
+        {
+          token: integrator.token,
+          body: { landedSha: "phaseSHA" },
+        },
+      );
       expect(res.status).toBe(200);
 
       // The escalation STAYS acknowledged — NOT resolved by a phase land.
@@ -1335,10 +1355,15 @@ describe("Merge Requests API", () => {
       });
       forceIntegrating(requestId);
 
-      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/reject`, {
-        token: integrator.token,
-        body: { category: "build_failed", reason: "phase boom" },
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/reject`,
+        {
+          token: integrator.token,
+          body: { category: "build_failed", reason: "phase boom" },
+        },
+      );
       expect(res.status).toBe(200);
 
       // The escalation STAYS acknowledged — a phase reject does NOT drive needs_human.
@@ -1366,12 +1391,21 @@ describe("Merge Requests API", () => {
         taskId: null,
       });
       forceIntegrating(landReq);
-      const landRes = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${landReq}/land`, {
-        token: integrator.token,
-        body: { landedSha: "boundedSHA" },
-      });
+      const landRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${landReq}/land`,
+        {
+          token: integrator.token,
+          body: { landedSha: "boundedSHA" },
+        },
+      );
       expect(landRes.status).toBe(200);
-      const landEsc = testApp.db.select().from(escalations).where(eq(escalations.id, escLand)).get();
+      const landEsc = testApp.db
+        .select()
+        .from(escalations)
+        .where(eq(escalations.id, escLand))
+        .get();
       expect(landEsc?.status).toBe("resolved");
 
       // Reject (task-LESS) → needs_human.
@@ -1382,10 +1416,15 @@ describe("Merge Requests API", () => {
         taskId: null,
       });
       forceIntegrating(rejReq);
-      const rejRes = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${rejReq}/reject`, {
-        token: integrator.token,
-        body: { category: "build_failed", reason: "bounded boom" },
-      });
+      const rejRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${rejReq}/reject`,
+        {
+          token: integrator.token,
+          body: { category: "build_failed", reason: "bounded boom" },
+        },
+      );
       expect(rejRes.status).toBe(200);
       const rejEsc = testApp.db.select().from(escalations).where(eq(escalations.id, escRej)).get();
       expect(rejEsc?.status).toBe("needs_human");
@@ -1420,10 +1459,15 @@ describe("Merge Requests API", () => {
       });
       forceIntegrating(requestId);
 
-      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
-        token: integrator.token,
-        body: { landedSha: "landedNH" },
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/land`,
+        {
+          token: integrator.token,
+          body: { landedSha: "landedNH" },
+        },
+      );
       expect(res.status).toBe(200);
       expect((await res.json()).data.status).toBe("landed");
 
@@ -1449,10 +1493,15 @@ describe("Merge Requests API", () => {
       });
       forceIntegrating(requestId);
 
-      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
-        token: integrator.token,
-        body: { landedSha: "landedThrow" },
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/land`,
+        {
+          token: integrator.token,
+          body: { landedSha: "landedThrow" },
+        },
+      );
       // Land still succeeds — the post-back throw is swallowed.
       expect(res.status).toBe(200);
       expect((await res.json()).data.status).toBe("landed");
@@ -1469,7 +1518,12 @@ describe("Merge Requests API", () => {
       const integrator = createTestAiAgent(testApp.db);
       const holder = createTestAiAgent(testApp.db); // the responder
       const origin = createTestUser(testApp.db); // a DIFFERENT user
-      const escId = seedHeldEscalation(project.id, holder.user.id, origin.id, "origin-worker-resub");
+      const escId = seedHeldEscalation(
+        project.id,
+        holder.user.id,
+        origin.id,
+        "origin-worker-resub",
+      );
 
       // The origin responder MR (escalationId-linked) — the resolver's input.
       const originReqId = await submitRequest(project.id, integrator.token, {
@@ -1518,7 +1572,10 @@ describe("Merge Requests API", () => {
       expect(landedMsg).toBeTruthy();
 
       // The origin auto-notices via C2 (holder-authored message surfaces).
-      const undelivered = escalationService.listUndeliveredForWorker("origin-worker-resub", project.id);
+      const undelivered = escalationService.listUndeliveredForWorker(
+        "origin-worker-resub",
+        project.id,
+      );
       const entry = undelivered.find((u) => u.escalation.id === escId);
       expect(entry).toBeTruthy();
       expect(entry!.unreadMessages.some((m) => m.body.includes("resubLANDED"))).toBe(true);
@@ -1563,7 +1620,11 @@ describe("Merge Requests API", () => {
   // revertOf list filter narrows to revert MRs; a landed/rejected revert fires
   // the A2 post-back exactly like any escalationId-linked task-less MR.
   describe("revert (A4 P2)", () => {
-    function seedHeldEscalation(projectId: string, holderId: string, originAuthorId: string): string {
+    function seedHeldEscalation(
+      projectId: string,
+      holderId: string,
+      originAuthorId: string,
+    ): string {
       const id = createId();
       const ts = new Date().toISOString();
       testApp.db
@@ -1727,10 +1788,15 @@ describe("Merge Requests API", () => {
       const requestId = (await revertRes.json()).data.id;
       forceIntegrating(requestId);
 
-      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/land`, {
-        token: integrator.token,
-        body: { landedSha: "revertLandedSha" },
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/land`,
+        {
+          token: integrator.token,
+          body: { landedSha: "revertLandedSha" },
+        },
+      );
       expect(res.status).toBe(200);
 
       const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();
@@ -1754,10 +1820,15 @@ describe("Merge Requests API", () => {
       const requestId = (await revertRes.json()).data.id;
       forceIntegrating(requestId);
 
-      const res = await authRequest(testApp.app, "POST", `/api/v1/merge-requests/${requestId}/reject`, {
-        token: integrator.token,
-        body: { category: "test_failed", reason: "revert broke a test" },
-      });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-requests/${requestId}/reject`,
+        {
+          token: integrator.token,
+          body: { category: "test_failed", reason: "revert broke a test" },
+        },
+      );
       expect(res.status).toBe(200);
 
       const escRow = testApp.db.select().from(escalations).where(eq(escalations.id, escId)).get();

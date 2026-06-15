@@ -12,8 +12,7 @@ export const useProjectStore = create<ProjectState>()(
     (set) => ({
       currentProjectId: null,
       currentProjectName: null,
-      setCurrentProject: (id, name) =>
-        set({ currentProjectId: id, currentProjectName: name }),
+      setCurrentProject: (id, name) => set({ currentProjectId: id, currentProjectName: name }),
     }),
     {
       name: "pm-current-project",

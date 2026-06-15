@@ -42,9 +42,7 @@ test.describe("Notes Inbox", () => {
     await expect(page.getByText("E2E finding: broken thing")).toBeVisible();
   });
 
-  test("promote-to-proposal records provenance and triages the note", async ({
-    page,
-  }) => {
+  test("promote-to-proposal records provenance and triages the note", async ({ page }) => {
     await login(page, ADMIN_USER, ADMIN_PASS);
 
     const note = await createNoteViaAPI(page, projectId, {
@@ -53,10 +51,9 @@ test.describe("Notes Inbox", () => {
       body: "This should become a proposal.",
     });
 
-    const resp = await page.request.post(
-      `/api/v1/notes/${note.id}/promote-to-proposal`,
-      { data: { title: "E2E promoted proposal" } },
-    );
+    const resp = await page.request.post(`/api/v1/notes/${note.id}/promote-to-proposal`, {
+      data: { title: "E2E promoted proposal" },
+    });
     expect(resp.ok()).toBeTruthy();
 
     const { data: promotedNote, proposal } = await resp.json();
@@ -67,9 +64,7 @@ test.describe("Notes Inbox", () => {
     expect(promotedNote.status).toBe("triaged");
 
     // The created proposal is fetchable.
-    const proposalResp = await page.request.get(
-      `/api/v1/proposals/${proposal.id}`,
-    );
+    const proposalResp = await page.request.get(`/api/v1/proposals/${proposal.id}`);
     expect(proposalResp.ok()).toBeTruthy();
   });
 });

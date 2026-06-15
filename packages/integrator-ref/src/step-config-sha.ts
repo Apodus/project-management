@@ -19,10 +19,7 @@
  */
 import { createHash } from "node:crypto";
 
-export function stepConfigSha(step: {
-  command: string;
-  cache_key_inputs?: string[];
-}): string {
+export function stepConfigSha(step: { command: string; cache_key_inputs?: string[] }): string {
   return createHash("sha256")
     .update(
       JSON.stringify({

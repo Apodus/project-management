@@ -2,24 +2,14 @@ import { useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import { Check, Loader2, ShieldAlert, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  useProject,
-  useResolverDefaults,
-  useUpdateResolverConfig,
-} from "@/hooks/use-projects";
+import { useProject, useResolverDefaults, useUpdateResolverConfig } from "@/hooks/use-projects";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { resolverConfigFromProject } from "@/lib/resolver";
 import { ApiError, type ResolverConfig } from "@/lib/api";
@@ -29,9 +19,7 @@ export function ConflictResolutionPage() {
   const params = useParams({ strict: false });
   const { currentProjectId } = useProjectStore();
   const projectId =
-    (params as Record<string, string | undefined>).projectId ??
-    currentProjectId ??
-    undefined;
+    (params as Record<string, string | undefined>).projectId ?? currentProjectId ?? undefined;
 
   const { data: user } = useCurrentUser();
   const isAdmin = user?.role === "admin";
@@ -92,14 +80,11 @@ export function ConflictResolutionPage() {
   const maxConcurrentNum = Number(maxConcurrent);
   const timeBudgetNum = Number(timeBudgetSec);
   const tokenBudgetNum = Number(tokenBudget);
-  const maxConcurrentValid =
-    Number.isInteger(maxConcurrentNum) && maxConcurrentNum >= 1;
+  const maxConcurrentValid = Number.isInteger(maxConcurrentNum) && maxConcurrentNum >= 1;
   const timeBudgetValid = Number.isFinite(timeBudgetNum) && timeBudgetNum > 0;
   const tokenBudgetValid =
     tokenUnlimited ||
-    (tokenBudget.trim() !== "" &&
-      Number.isFinite(tokenBudgetNum) &&
-      tokenBudgetNum > 0);
+    (tokenBudget.trim() !== "" && Number.isFinite(tokenBudgetNum) && tokenBudgetNum > 0);
   const isValid = maxConcurrentValid && timeBudgetValid && tokenBudgetValid;
 
   async function handleSave() {
@@ -135,9 +120,9 @@ export function ConflictResolutionPage() {
         <PageHeader />
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <Wrench className="mb-4 size-12 text-muted-foreground/50" />
+            <Wrench className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">No Project Selected</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Select a project to configure conflict resolution.
             </p>
           </CardContent>
@@ -153,9 +138,9 @@ export function ConflictResolutionPage() {
         <PageHeader />
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <ShieldAlert className="mb-4 size-12 text-muted-foreground/50" />
+            <ShieldAlert className="text-muted-foreground/50 mb-4 size-12" />
             <h3 className="text-lg font-medium">Admin access required</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               Only project administrators can configure auto-resolution.
             </p>
           </CardContent>
@@ -171,7 +156,7 @@ export function ConflictResolutionPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
+            <p className="text-destructive text-sm">
               Failed to load project settings. Please try again.
             </p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -199,10 +184,9 @@ export function ConflictResolutionPage() {
           <CardHeader>
             <CardTitle className="text-base">Auto-resolve conflicts</CardTitle>
             <CardDescription>
-              When the integrator hits a textual rebase conflict, spawn a bounded
-              headless resolver off-lane to reconcile and re-submit, instead of
-              rejecting the request. The resolved tree still passes the real
-              verify gate before landing.
+              When the integrator hits a textual rebase conflict, spawn a bounded headless resolver
+              off-lane to reconcile and re-submit, instead of rejecting the request. The resolved
+              tree still passes the real verify gate before landing.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -210,7 +194,7 @@ export function ConflictResolutionPage() {
             <div className="flex items-center justify-between rounded-md border px-4 py-3">
               <div className="space-y-0.5">
                 <Label htmlFor="resolver-enabled">Enabled</Label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Turn auto-resolution on for this project.
                 </p>
               </div>
@@ -241,13 +225,11 @@ export function ConflictResolutionPage() {
                 className="max-w-xs"
               />
               {maxConcurrentValid ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Most resolvers to run in parallel (minimum 1).
                 </p>
               ) : (
-                <p className="text-xs text-destructive">
-                  Must be a whole number ≥ 1.
-                </p>
+                <p className="text-destructive text-xs">Must be a whole number ≥ 1.</p>
               )}
             </div>
 
@@ -267,13 +249,11 @@ export function ConflictResolutionPage() {
                 className="max-w-xs"
               />
               {timeBudgetValid ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Wall-clock budget per resolution attempt.
                 </p>
               ) : (
-                <p className="text-xs text-destructive">
-                  Must be greater than 0.
-                </p>
+                <p className="text-destructive text-xs">Must be greater than 0.</p>
               )}
             </div>
 
@@ -310,11 +290,11 @@ export function ConflictResolutionPage() {
                 </label>
               </div>
               {tokenBudgetValid ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Cap the resolver's token spend. Unlimited = no cap.
                 </p>
               ) : (
-                <p className="text-xs text-destructive">
+                <p className="text-destructive text-xs">
                   Enter a number greater than 0, or check Unlimited.
                 </p>
               )}
@@ -334,17 +314,16 @@ export function ConflictResolutionPage() {
                 }}
                 className="font-mono text-xs"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 The instruction handed to the resolver. Use{" "}
-                <code className="text-xs">{"{files}"}</code> for the conflicted
-                files and <code className="text-xs">{"{verify_command}"}</code>{" "}
-                for the verify command. Leave blank to use the built-in default
-                (shown as the placeholder).
+                <code className="text-xs">{"{files}"}</code> for the conflicted files and{" "}
+                <code className="text-xs">{"{verify_command}"}</code> for the verify command. Leave
+                blank to use the built-in default (shown as the placeholder).
               </p>
             </div>
 
             {updateMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {updateMutation.error instanceof ApiError
                   ? updateMutation.error.message
                   : "Failed to save resolver settings. Please try again."}
@@ -352,10 +331,7 @@ export function ConflictResolutionPage() {
             )}
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                onClick={handleSave}
-                disabled={updateMutation.isPending || !isValid}
-              >
+              <Button onClick={handleSave} disabled={updateMutation.isPending || !isValid}>
                 {updateMutation.isPending ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
@@ -389,7 +365,7 @@ export function ConflictResolutionPage() {
 function PageHeader() {
   return (
     <div className="flex items-center gap-3">
-      <Wrench className="size-6 text-muted-foreground" />
+      <Wrench className="text-muted-foreground size-6" />
       <h1 className="text-2xl font-bold tracking-tight">Conflict Resolution</h1>
     </div>
   );

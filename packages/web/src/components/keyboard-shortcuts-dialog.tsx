@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
 import { Keyboard } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const SHORTCUTS = [
   {
@@ -20,16 +15,15 @@ const SHORTCUTS = [
   },
 ] as const;
 
-const isMac =
-  typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
+const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
 
 function ShortcutKeys({ keys }: { keys: readonly string[] }) {
   return (
     <div className="flex items-center gap-1">
       {keys.map((key, i) => (
         <span key={i}>
-          {i > 0 && <span className="mx-0.5 text-muted-foreground/50">+</span>}
-          <kbd className="inline-flex h-6 min-w-[24px] items-center justify-center rounded border bg-muted px-1.5 font-mono text-xs font-medium text-muted-foreground">
+          {i > 0 && <span className="text-muted-foreground/50 mx-0.5">+</span>}
+          <kbd className="bg-muted text-muted-foreground inline-flex h-6 min-w-[24px] items-center justify-center rounded border px-1.5 font-mono text-xs font-medium">
             {key}
           </kbd>
         </span>

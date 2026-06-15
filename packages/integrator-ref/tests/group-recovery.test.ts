@@ -33,19 +33,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
 import type { MergeIncidentView } from "@pm/shared";
-import {
-  createGitOps,
-  type GitOps,
-  type PushResult,
-  type VerifyResult,
-} from "../src/git-ops.js";
+import { createGitOps, type GitOps, type PushResult, type VerifyResult } from "../src/git-ops.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { createLogger } from "../src/logger.js";
 import type { RepoLane } from "../src/group-integration.js";
-import {
-  recoverOrphanedInner,
-  type RecoverOrphanedInnerDeps,
-} from "../src/group-recovery.js";
+import { recoverOrphanedInner, type RecoverOrphanedInnerDeps } from "../src/group-recovery.js";
 
 function hasGit(): boolean {
   try {
@@ -165,9 +157,7 @@ function failingPushGitOps(
   };
 }
 
-function failingVerifyGitOps(
-  real: (p: string) => GitOps,
-): (p: string) => GitOps {
+function failingVerifyGitOps(real: (p: string) => GitOps): (p: string) => GitOps {
   return (p: string): GitOps => {
     const g = real(p);
     return {
@@ -253,12 +243,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
       `[submodule "rynx"]\n\tpath = ${GITLINK_PATH}\n\turl = ${innerUrlForGitmodules}\n`,
     );
     await og.add(["top.txt", ".gitmodules"]);
-    await og.raw([
-      "update-index",
-      "--add",
-      "--cacheinfo",
-      `160000,${innerP},${GITLINK_PATH}`,
-    ]);
+    await og.raw(["update-index", "--add", "--cacheinfo", `160000,${innerP},${GITLINK_PATH}`]);
     await og.commit("outer main with gitlink @ P");
     await og.branch(["-M", "main"]);
     await og.push(["-u", "origin", "main"]);
@@ -317,11 +302,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
   });
 
   async function readSubmoduleGitlinkOnBareMain(): Promise<string> {
-    const out = await simpleGit(outerBare).raw([
-      "ls-tree",
-      GIT_MAIN,
-      GITLINK_PATH,
-    ]);
+    const out = await simpleGit(outerBare).raw(["ls-tree", GIT_MAIN, GITLINK_PATH]);
     for (const line of out.split("\n")) {
       const parts = line.trim().split(/\s+/);
       if (parts[0] === "160000" && parts[2]) return parts[2];
@@ -340,12 +321,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     await simpleGit().clone(outerBare, bump);
     const bg = simpleGit(bump);
     await configIdentity(bg);
-    await bg.raw([
-      "update-index",
-      "--add",
-      "--cacheinfo",
-      `160000,${sha},${GITLINK_PATH}`,
-    ]);
+    await bg.raw(["update-index", "--add", "--cacheinfo", `160000,${sha},${GITLINK_PATH}`]);
     await bg.commit("intervening outer: bump gitlink to divergent C");
     await bg.push(["origin", "main"]);
   }
@@ -359,12 +335,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     await simpleGit().clone(outerBare, restore);
     const rg = simpleGit(restore);
     await configIdentity(rg);
-    await rg.raw([
-      "update-index",
-      "--add",
-      "--cacheinfo",
-      `160000,${innerP},${GITLINK_PATH}`,
-    ]);
+    await rg.raw(["update-index", "--add", "--cacheinfo", `160000,${innerP},${GITLINK_PATH}`]);
     await rg.commit("restore outer gitlink to P");
     await rg.push(["origin", "main"]);
   }
@@ -486,10 +457,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     };
     const deps = depsFor(store);
 
-    const result = await recoverOrphanedInner(
-      { projectId: "proj-1", resource: "main" },
-      deps,
-    );
+    const result = await recoverOrphanedInner({ projectId: "proj-1", resource: "main" }, deps);
 
     expect(result.outcomes).toHaveLength(1);
     const out = result.outcomes[0];
@@ -524,10 +492,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
       }),
     });
 
-    const result = await recoverOrphanedInner(
-      { projectId: "proj-1", resource: "main" },
-      deps,
-    );
+    const result = await recoverOrphanedInner({ projectId: "proj-1", resource: "main" }, deps);
 
     expect(result.outcomes).toHaveLength(1);
     const out = result.outcomes[0];
@@ -555,18 +520,11 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     };
     const deps = depsFor(store, {
       outerLane: outerLane({
-        gitOps: failingPushGitOps(
-          (p) => createGitOps(simpleGit(p)),
-          "non_fast_forward",
-          "outer",
-        ),
+        gitOps: failingPushGitOps((p) => createGitOps(simpleGit(p)), "non_fast_forward", "outer"),
       }),
     });
 
-    const result = await recoverOrphanedInner(
-      { projectId: "proj-1", resource: "main" },
-      deps,
-    );
+    const result = await recoverOrphanedInner({ projectId: "proj-1", resource: "main" }, deps);
 
     expect(result.outcomes).toHaveLength(1);
     const out = result.outcomes[0];
@@ -597,10 +555,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     };
     const deps = depsFor(store);
 
-    const result = await recoverOrphanedInner(
-      { projectId: "proj-1", resource: "main" },
-      deps,
-    );
+    const result = await recoverOrphanedInner({ projectId: "proj-1", resource: "main" }, deps);
 
     expect(result.outcomes).toHaveLength(0);
     expect(store.resolves).toHaveLength(0);

@@ -34,11 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/hooks/use-projects";
 import { useNotesHealth } from "@/hooks/use-notes";
@@ -133,13 +129,7 @@ function getNavItems(projectId: string | null): NavItem[] {
   ];
 }
 
-function NavLink({
-  item,
-  collapsed,
-}: {
-  item: NavItem;
-  collapsed: boolean;
-}) {
+function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.fullPath ?? "";
   const isActive = item.exactMatch
@@ -214,29 +204,29 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "flex h-full flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200",
+        "border-sidebar-border bg-sidebar flex h-full flex-col border-r transition-[width] duration-200",
         collapsed ? "w-14" : "w-60",
       )}
     >
       {/* Workspace name */}
       <div
         className={cn(
-          "flex h-14 shrink-0 items-center border-b border-sidebar-border px-3",
+          "border-sidebar-border flex h-14 shrink-0 items-center border-b px-3",
           collapsed ? "justify-center" : "gap-2",
         )}
       >
         {!collapsed && (
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">
+            <div className="bg-sidebar-primary text-sidebar-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-md text-xs font-bold">
               PM
             </div>
-            <span className="truncate text-sm font-semibold text-sidebar-foreground">
+            <span className="text-sidebar-foreground truncate text-sm font-semibold">
               Project Mgmt
             </span>
           </div>
         )}
         {collapsed && (
-          <div className="flex size-7 items-center justify-center rounded-md bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">
+          <div className="bg-sidebar-primary text-sidebar-primary-foreground flex size-7 items-center justify-center rounded-md text-xs font-bold">
             PM
           </div>
         )}
@@ -247,14 +237,8 @@ export function Sidebar() {
         {!collapsed ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full justify-between text-sm"
-                size="sm"
-              >
-                <span className="truncate">
-                  {currentProjectName ?? "Select project"}
-                </span>
+              <Button variant="outline" className="w-full justify-between text-sm" size="sm">
+                <span className="truncate">{currentProjectName ?? "Select project"}</span>
                 <ChevronDown className="size-3.5 shrink-0 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
@@ -267,13 +251,8 @@ export function Sidebar() {
                   {projects.map((project) => (
                     <DropdownMenuItem
                       key={project.id}
-                      onClick={() =>
-                        handleProjectSelect(project.id, project.name)
-                      }
-                      className={cn(
-                        currentProjectId === project.id &&
-                          "bg-accent font-medium",
-                      )}
+                      onClick={() => handleProjectSelect(project.id, project.name)}
+                      className={cn(currentProjectId === project.id && "bg-accent font-medium")}
                     >
                       <span className="truncate">{project.name}</span>
                     </DropdownMenuItem>
@@ -330,12 +309,7 @@ export function Sidebar() {
       <Separator className="mt-2" />
 
       {/* Settings + collapse toggle */}
-      <div
-        className={cn(
-          "space-y-1 px-3 py-3",
-          collapsed && "px-2",
-        )}
-      >
+      <div className={cn("space-y-1 px-3 py-3", collapsed && "px-2")}>
         {currentProjectId && (
           <NavLink
             item={{
@@ -433,7 +407,7 @@ export function Sidebar() {
             <button
               onClick={toggle}
               className={cn(
-                "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                "text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                 collapsed && "justify-center px-2",
               )}
             >

@@ -67,19 +67,12 @@
       "indexes": {
         "idx_activity_project": {
           "name": "idx_activity_project",
-          "columns": [
-            "project_id",
-            "created_at"
-          ],
+          "columns": ["project_id", "created_at"],
           "isUnique": false
         },
         "idx_activity_entity": {
           "name": "idx_activity_entity",
-          "columns": [
-            "entity_type",
-            "entity_id",
-            "created_at"
-          ],
+          "columns": ["entity_type", "entity_id", "created_at"],
           "isUnique": false
         }
       },
@@ -88,12 +81,8 @@
           "name": "activity_log_project_id_projects_id_fk",
           "tableFrom": "activity_log",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -101,12 +90,8 @@
           "name": "activity_log_actor_id_users_id_fk",
           "tableFrom": "activity_log",
           "tableTo": "users",
-          "columnsFrom": [
-            "actor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["actor_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -185,10 +170,7 @@
       "indexes": {
         "idx_agent_claims_worker": {
           "name": "idx_agent_claims_worker",
-          "columns": [
-            "worker_key_pool_id",
-            "worker_key"
-          ],
+          "columns": ["worker_key_pool_id", "worker_key"],
           "isUnique": true,
           "where": "worker_key IS NOT NULL"
         }
@@ -198,12 +180,8 @@
           "name": "agent_claims_user_id_users_id_fk",
           "tableFrom": "agent_claims",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -268,9 +246,7 @@
       "indexes": {
         "idx_agent_pools_name": {
           "name": "idx_agent_pools_name",
-          "columns": [
-            "name"
-          ],
+          "columns": ["name"],
           "isUnique": true
         }
       },
@@ -356,27 +332,17 @@
       "indexes": {
         "idx_audit_log_project_created": {
           "name": "idx_audit_log_project_created",
-          "columns": [
-            "project_id",
-            "created_at"
-          ],
+          "columns": ["project_id", "created_at"],
           "isUnique": false
         },
         "idx_audit_log_actor": {
           "name": "idx_audit_log_actor",
-          "columns": [
-            "actor_id",
-            "created_at"
-          ],
+          "columns": ["actor_id", "created_at"],
           "isUnique": false
         },
         "idx_audit_log_target": {
           "name": "idx_audit_log_target",
-          "columns": [
-            "target_type",
-            "target_id",
-            "created_at"
-          ],
+          "columns": ["target_type", "target_id", "created_at"],
           "isUnique": false
         }
       },
@@ -385,12 +351,8 @@
           "name": "audit_log_project_id_projects_id_fk",
           "tableFrom": "audit_log",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -398,12 +360,8 @@
           "name": "audit_log_actor_id_users_id_fk",
           "tableFrom": "audit_log",
           "tableTo": "users",
-          "columnsFrom": [
-            "actor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["actor_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -504,17 +462,12 @@
       "indexes": {
         "idx_automation_rules_project": {
           "name": "idx_automation_rules_project",
-          "columns": [
-            "project_id"
-          ],
+          "columns": ["project_id"],
           "isUnique": false
         },
         "idx_automation_rules_trigger": {
           "name": "idx_automation_rules_trigger",
-          "columns": [
-            "project_id",
-            "trigger_event"
-          ],
+          "columns": ["project_id", "trigger_event"],
           "isUnique": false
         }
       },
@@ -523,12 +476,8 @@
           "name": "automation_rules_project_id_projects_id_fk",
           "tableFrom": "automation_rules",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -536,12 +485,8 @@
           "name": "automation_rules_created_by_users_id_fk",
           "tableFrom": "automation_rules",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -634,25 +579,17 @@
       "indexes": {
         "idx_claim_leases_entity": {
           "name": "idx_claim_leases_entity",
-          "columns": [
-            "entity_type",
-            "entity_id"
-          ],
+          "columns": ["entity_type", "entity_id"],
           "isUnique": true
         },
         "idx_claim_leases_type_expires": {
           "name": "idx_claim_leases_type_expires",
-          "columns": [
-            "entity_type",
-            "expires_at"
-          ],
+          "columns": ["entity_type", "expires_at"],
           "isUnique": false
         },
         "idx_claim_leases_holder": {
           "name": "idx_claim_leases_holder",
-          "columns": [
-            "holder_id"
-          ],
+          "columns": ["holder_id"],
           "isUnique": false
         }
       },
@@ -661,12 +598,8 @@
           "name": "claim_leases_holder_id_users_id_fk",
           "tableFrom": "claim_leases",
           "tableTo": "users",
-          "columnsFrom": [
-            "holder_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["holder_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -718,9 +651,7 @@
       "indexes": {
         "idx_claims_alert_state_project": {
           "name": "idx_claims_alert_state_project",
-          "columns": [
-            "project_id"
-          ],
+          "columns": ["project_id"],
           "isUnique": true
         }
       },
@@ -729,12 +660,8 @@
           "name": "claims_alert_state_project_id_projects_id_fk",
           "tableFrom": "claims_alert_state",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -814,18 +741,12 @@
       "indexes": {
         "idx_comments_task": {
           "name": "idx_comments_task",
-          "columns": [
-            "task_id",
-            "created_at"
-          ],
+          "columns": ["task_id", "created_at"],
           "isUnique": false
         },
         "idx_comments_proposal": {
           "name": "idx_comments_proposal",
-          "columns": [
-            "proposal_id",
-            "created_at"
-          ],
+          "columns": ["proposal_id", "created_at"],
           "isUnique": false
         }
       },
@@ -834,12 +755,8 @@
           "name": "comments_task_id_tasks_id_fk",
           "tableFrom": "comments",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -847,12 +764,8 @@
           "name": "comments_proposal_id_proposals_id_fk",
           "tableFrom": "comments",
           "tableTo": "proposals",
-          "columnsFrom": [
-            "proposal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["proposal_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -860,12 +773,8 @@
           "name": "comments_author_id_users_id_fk",
           "tableFrom": "comments",
           "tableTo": "users",
-          "columnsFrom": [
-            "author_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["author_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -931,32 +840,22 @@
       "indexes": {
         "idx_epic_deps_epic": {
           "name": "idx_epic_deps_epic",
-          "columns": [
-            "epic_id"
-          ],
+          "columns": ["epic_id"],
           "isUnique": false
         },
         "idx_epic_deps_depends_on": {
           "name": "idx_epic_deps_depends_on",
-          "columns": [
-            "depends_on_epic_id"
-          ],
+          "columns": ["depends_on_epic_id"],
           "isUnique": false
         },
         "idx_epic_deps_project": {
           "name": "idx_epic_deps_project",
-          "columns": [
-            "project_id"
-          ],
+          "columns": ["project_id"],
           "isUnique": false
         },
         "idx_epic_deps_unique": {
           "name": "idx_epic_deps_unique",
-          "columns": [
-            "epic_id",
-            "depends_on_epic_id",
-            "dependency_type"
-          ],
+          "columns": ["epic_id", "depends_on_epic_id", "dependency_type"],
           "isUnique": true
         }
       },
@@ -965,12 +864,8 @@
           "name": "epic_dependencies_project_id_projects_id_fk",
           "tableFrom": "epic_dependencies",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -978,12 +873,8 @@
           "name": "epic_dependencies_epic_id_epics_id_fk",
           "tableFrom": "epic_dependencies",
           "tableTo": "epics",
-          "columnsFrom": [
-            "epic_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["epic_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -991,12 +882,8 @@
           "name": "epic_dependencies_depends_on_epic_id_epics_id_fk",
           "tableFrom": "epic_dependencies",
           "tableTo": "epics",
-          "columnsFrom": [
-            "depends_on_epic_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["depends_on_epic_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1004,12 +891,8 @@
           "name": "epic_dependencies_created_by_users_id_fk",
           "tableFrom": "epic_dependencies",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1141,12 +1024,8 @@
           "name": "epics_project_id_projects_id_fk",
           "tableFrom": "epics",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1154,12 +1033,8 @@
           "name": "epics_proposal_id_proposals_id_fk",
           "tableFrom": "epics",
           "tableTo": "proposals",
-          "columnsFrom": [
-            "proposal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["proposal_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1167,12 +1042,8 @@
           "name": "epics_milestone_id_milestones_id_fk",
           "tableFrom": "epics",
           "tableTo": "milestones",
-          "columnsFrom": [
-            "milestone_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["milestone_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1180,12 +1051,8 @@
           "name": "epics_assignee_id_users_id_fk",
           "tableFrom": "epics",
           "tableTo": "users",
-          "columnsFrom": [
-            "assignee_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["assignee_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1193,12 +1060,8 @@
           "name": "epics_created_by_users_id_fk",
           "tableFrom": "epics",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1270,10 +1133,7 @@
       "indexes": {
         "idx_escalation_messages_thread_seq": {
           "name": "idx_escalation_messages_thread_seq",
-          "columns": [
-            "escalation_id",
-            "seq"
-          ],
+          "columns": ["escalation_id", "seq"],
           "isUnique": true
         }
       },
@@ -1282,12 +1142,8 @@
           "name": "escalation_messages_escalation_id_escalations_id_fk",
           "tableFrom": "escalation_messages",
           "tableTo": "escalations",
-          "columnsFrom": [
-            "escalation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["escalation_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1295,12 +1151,8 @@
           "name": "escalation_messages_author_id_users_id_fk",
           "tableFrom": "escalation_messages",
           "tableTo": "users",
-          "columnsFrom": [
-            "author_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["author_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1443,25 +1295,17 @@
       "indexes": {
         "idx_escalations_project_status": {
           "name": "idx_escalations_project_status",
-          "columns": [
-            "project_id",
-            "status"
-          ],
+          "columns": ["project_id", "status"],
           "isUnique": false
         },
         "idx_escalations_holder": {
           "name": "idx_escalations_holder",
-          "columns": [
-            "holder_id"
-          ],
+          "columns": ["holder_id"],
           "isUnique": false
         },
         "idx_escalations_origin": {
           "name": "idx_escalations_origin",
-          "columns": [
-            "origin_repo",
-            "origin_worker_key"
-          ],
+          "columns": ["origin_repo", "origin_worker_key"],
           "isUnique": false
         }
       },
@@ -1470,12 +1314,8 @@
           "name": "escalations_project_id_projects_id_fk",
           "tableFrom": "escalations",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1483,12 +1323,8 @@
           "name": "escalations_holder_id_users_id_fk",
           "tableFrom": "escalations",
           "tableTo": "users",
-          "columnsFrom": [
-            "holder_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["holder_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1496,12 +1332,8 @@
           "name": "escalations_author_id_users_id_fk",
           "tableFrom": "escalations",
           "tableTo": "users",
-          "columnsFrom": [
-            "author_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["author_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1509,12 +1341,8 @@
           "name": "escalations_resolved_by_users_id_fk",
           "tableFrom": "escalations",
           "tableTo": "users",
-          "columnsFrom": [
-            "resolved_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["resolved_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1593,17 +1421,12 @@
       "indexes": {
         "idx_git_refs_task": {
           "name": "idx_git_refs_task",
-          "columns": [
-            "task_id"
-          ],
+          "columns": ["task_id"],
           "isUnique": false
         },
         "idx_git_refs_branch": {
           "name": "idx_git_refs_branch",
-          "columns": [
-            "ref_type",
-            "ref_value"
-          ],
+          "columns": ["ref_type", "ref_value"],
           "isUnique": false
         }
       },
@@ -1612,12 +1435,8 @@
           "name": "git_refs_task_id_tasks_id_fk",
           "tableFrom": "git_refs",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1750,10 +1569,7 @@
       "indexes": {
         "idx_integrator_health_project_resource": {
           "name": "idx_integrator_health_project_resource",
-          "columns": [
-            "project_id",
-            "resource"
-          ],
+          "columns": ["project_id", "resource"],
           "isUnique": true
         }
       },
@@ -1762,12 +1578,8 @@
           "name": "integrator_health_project_id_projects_id_fk",
           "tableFrom": "integrator_health",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1775,12 +1587,8 @@
           "name": "integrator_health_integrator_id_users_id_fk",
           "tableFrom": "integrator_health",
           "tableTo": "users",
-          "columnsFrom": [
-            "integrator_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["integrator_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1831,10 +1639,7 @@
       "indexes": {
         "idx_labels_project_name": {
           "name": "idx_labels_project_name",
-          "columns": [
-            "project_id",
-            "name"
-          ],
+          "columns": ["project_id", "name"],
           "isUnique": true
         }
       },
@@ -1843,12 +1648,8 @@
           "name": "labels_project_id_projects_id_fk",
           "tableFrom": "labels",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1976,10 +1777,7 @@
       "indexes": {
         "idx_merge_attempts_request_num": {
           "name": "idx_merge_attempts_request_num",
-          "columns": [
-            "request_id",
-            "attempt_number"
-          ],
+          "columns": ["request_id", "attempt_number"],
           "isUnique": true
         }
       },
@@ -1988,12 +1786,8 @@
           "name": "merge_attempts_request_id_merge_requests_id_fk",
           "tableFrom": "merge_attempts",
           "tableTo": "merge_requests",
-          "columnsFrom": [
-            "request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["request_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2115,27 +1909,17 @@
       "indexes": {
         "idx_merge_incidents_project_state": {
           "name": "idx_merge_incidents_project_state",
-          "columns": [
-            "project_id",
-            "state"
-          ],
+          "columns": ["project_id", "state"],
           "isUnique": false
         },
         "idx_merge_incidents_group": {
           "name": "idx_merge_incidents_group",
-          "columns": [
-            "group_id"
-          ],
+          "columns": ["group_id"],
           "isUnique": false
         },
         "idx_merge_incidents_open": {
           "name": "idx_merge_incidents_open",
-          "columns": [
-            "project_id",
-            "state",
-            "type",
-            "opened_at"
-          ],
+          "columns": ["project_id", "state", "type", "opened_at"],
           "isUnique": false
         }
       },
@@ -2144,12 +1928,8 @@
           "name": "merge_incidents_project_id_projects_id_fk",
           "tableFrom": "merge_incidents",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2157,12 +1937,8 @@
           "name": "merge_incidents_group_id_merge_request_groups_id_fk",
           "tableFrom": "merge_incidents",
           "tableTo": "merge_request_groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -2170,12 +1946,8 @@
           "name": "merge_incidents_inner_request_id_merge_requests_id_fk",
           "tableFrom": "merge_incidents",
           "tableTo": "merge_requests",
-          "columnsFrom": [
-            "inner_request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["inner_request_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -2183,12 +1955,8 @@
           "name": "merge_incidents_task_id_tasks_id_fk",
           "tableFrom": "merge_incidents",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2274,18 +2042,12 @@
       "indexes": {
         "idx_queue_lock_enqueued": {
           "name": "idx_queue_lock_enqueued",
-          "columns": [
-            "lock_id",
-            "enqueued_at"
-          ],
+          "columns": ["lock_id", "enqueued_at"],
           "isUnique": false
         },
         "idx_queue_lock_user": {
           "name": "idx_queue_lock_user",
-          "columns": [
-            "lock_id",
-            "user_id"
-          ],
+          "columns": ["lock_id", "user_id"],
           "isUnique": true
         }
       },
@@ -2294,12 +2056,8 @@
           "name": "merge_lock_queue_lock_id_merge_locks_id_fk",
           "tableFrom": "merge_lock_queue",
           "tableTo": "merge_locks",
-          "columnsFrom": [
-            "lock_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["lock_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2307,12 +2065,8 @@
           "name": "merge_lock_queue_user_id_users_id_fk",
           "tableFrom": "merge_lock_queue",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2320,12 +2074,8 @@
           "name": "merge_lock_queue_task_id_tasks_id_fk",
           "tableFrom": "merge_lock_queue",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2460,17 +2210,12 @@
       "indexes": {
         "idx_merge_locks_project_resource": {
           "name": "idx_merge_locks_project_resource",
-          "columns": [
-            "project_id",
-            "resource"
-          ],
+          "columns": ["project_id", "resource"],
           "isUnique": true
         },
         "idx_merge_locks_holder": {
           "name": "idx_merge_locks_holder",
-          "columns": [
-            "holder_id"
-          ],
+          "columns": ["holder_id"],
           "isUnique": false
         }
       },
@@ -2479,12 +2224,8 @@
           "name": "merge_locks_project_id_projects_id_fk",
           "tableFrom": "merge_locks",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2492,12 +2233,8 @@
           "name": "merge_locks_holder_id_users_id_fk",
           "tableFrom": "merge_locks",
           "tableTo": "users",
-          "columnsFrom": [
-            "holder_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["holder_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2505,12 +2242,8 @@
           "name": "merge_locks_task_id_tasks_id_fk",
           "tableFrom": "merge_locks",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2598,20 +2331,12 @@
       "indexes": {
         "idx_merge_request_groups_project_state": {
           "name": "idx_merge_request_groups_project_state",
-          "columns": [
-            "project_id",
-            "state"
-          ],
+          "columns": ["project_id", "state"],
           "isUnique": false
         },
         "idx_merge_request_groups_resource_state": {
           "name": "idx_merge_request_groups_resource_state",
-          "columns": [
-            "project_id",
-            "resource",
-            "state",
-            "created_at"
-          ],
+          "columns": ["project_id", "resource", "state", "created_at"],
           "isUnique": false
         }
       },
@@ -2620,12 +2345,8 @@
           "name": "merge_request_groups_project_id_projects_id_fk",
           "tableFrom": "merge_request_groups",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2633,12 +2354,8 @@
           "name": "merge_request_groups_submitted_by_users_id_fk",
           "tableFrom": "merge_request_groups",
           "tableTo": "users",
-          "columnsFrom": [
-            "submitted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["submitted_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2646,12 +2363,8 @@
           "name": "merge_request_groups_integrator_id_users_id_fk",
           "tableFrom": "merge_request_groups",
           "tableTo": "users",
-          "columnsFrom": [
-            "integrator_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["integrator_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2838,34 +2551,22 @@
       "indexes": {
         "idx_merge_requests_project_status": {
           "name": "idx_merge_requests_project_status",
-          "columns": [
-            "project_id",
-            "status"
-          ],
+          "columns": ["project_id", "status"],
           "isUnique": false
         },
         "idx_merge_requests_resource_status": {
           "name": "idx_merge_requests_resource_status",
-          "columns": [
-            "project_id",
-            "resource",
-            "status",
-            "enqueued_at"
-          ],
+          "columns": ["project_id", "resource", "status", "enqueued_at"],
           "isUnique": false
         },
         "idx_merge_requests_task": {
           "name": "idx_merge_requests_task",
-          "columns": [
-            "task_id"
-          ],
+          "columns": ["task_id"],
           "isUnique": false
         },
         "idx_merge_requests_group": {
           "name": "idx_merge_requests_group",
-          "columns": [
-            "group_id"
-          ],
+          "columns": ["group_id"],
           "isUnique": false
         }
       },
@@ -2874,12 +2575,8 @@
           "name": "merge_requests_project_id_projects_id_fk",
           "tableFrom": "merge_requests",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2887,12 +2584,8 @@
           "name": "merge_requests_submitted_by_users_id_fk",
           "tableFrom": "merge_requests",
           "tableTo": "users",
-          "columnsFrom": [
-            "submitted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["submitted_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2900,12 +2593,8 @@
           "name": "merge_requests_task_id_tasks_id_fk",
           "tableFrom": "merge_requests",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -2913,12 +2602,8 @@
           "name": "merge_requests_group_id_merge_request_groups_id_fk",
           "tableFrom": "merge_requests",
           "tableTo": "merge_request_groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -2926,12 +2611,8 @@
           "name": "merge_requests_resolved_from_merge_requests_id_fk",
           "tableFrom": "merge_requests",
           "tableTo": "merge_requests",
-          "columnsFrom": [
-            "resolved_from"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["resolved_from"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3040,27 +2721,17 @@
       "indexes": {
         "idx_merge_resolutions_project_state": {
           "name": "idx_merge_resolutions_project_state",
-          "columns": [
-            "project_id",
-            "state"
-          ],
+          "columns": ["project_id", "state"],
           "isUnique": false
         },
         "idx_merge_resolutions_resource_state": {
           "name": "idx_merge_resolutions_resource_state",
-          "columns": [
-            "project_id",
-            "resource",
-            "state",
-            "created_at"
-          ],
+          "columns": ["project_id", "resource", "state", "created_at"],
           "isUnique": false
         },
         "idx_merge_resolutions_origin": {
           "name": "idx_merge_resolutions_origin",
-          "columns": [
-            "origin_request_id"
-          ],
+          "columns": ["origin_request_id"],
           "isUnique": false
         }
       },
@@ -3069,12 +2740,8 @@
           "name": "merge_resolutions_project_id_projects_id_fk",
           "tableFrom": "merge_resolutions",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3082,12 +2749,8 @@
           "name": "merge_resolutions_origin_request_id_merge_requests_id_fk",
           "tableFrom": "merge_resolutions",
           "tableTo": "merge_requests",
-          "columnsFrom": [
-            "origin_request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["origin_request_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3095,12 +2758,8 @@
           "name": "merge_resolutions_resolved_request_id_merge_requests_id_fk",
           "tableFrom": "merge_resolutions",
           "tableTo": "merge_requests",
-          "columnsFrom": [
-            "resolved_request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["resolved_request_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3184,12 +2843,8 @@
           "name": "milestones_project_id_projects_id_fk",
           "tableFrom": "milestones",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3339,27 +2994,17 @@
       "indexes": {
         "idx_notes_project_status": {
           "name": "idx_notes_project_status",
-          "columns": [
-            "project_id",
-            "status"
-          ],
+          "columns": ["project_id", "status"],
           "isUnique": false
         },
         "idx_notes_anchor": {
           "name": "idx_notes_anchor",
-          "columns": [
-            "anchor_type",
-            "anchor_id"
-          ],
+          "columns": ["anchor_type", "anchor_id"],
           "isUnique": false
         },
         "idx_notes_project_kind_status": {
           "name": "idx_notes_project_kind_status",
-          "columns": [
-            "project_id",
-            "kind",
-            "status"
-          ],
+          "columns": ["project_id", "kind", "status"],
           "isUnique": false
         }
       },
@@ -3368,12 +3013,8 @@
           "name": "notes_project_id_projects_id_fk",
           "tableFrom": "notes",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3381,12 +3022,8 @@
           "name": "notes_triaged_by_users_id_fk",
           "tableFrom": "notes",
           "tableTo": "users",
-          "columnsFrom": [
-            "triaged_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["triaged_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3394,12 +3031,8 @@
           "name": "notes_promoted_proposal_id_proposals_id_fk",
           "tableFrom": "notes",
           "tableTo": "proposals",
-          "columnsFrom": [
-            "promoted_proposal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["promoted_proposal_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3407,12 +3040,8 @@
           "name": "notes_promoted_task_id_tasks_id_fk",
           "tableFrom": "notes",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "promoted_task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["promoted_task_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3420,12 +3049,8 @@
           "name": "notes_author_id_users_id_fk",
           "tableFrom": "notes",
           "tableTo": "users",
-          "columnsFrom": [
-            "author_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["author_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3477,9 +3102,7 @@
       "indexes": {
         "idx_notes_alert_state_project": {
           "name": "idx_notes_alert_state_project",
-          "columns": [
-            "project_id"
-          ],
+          "columns": ["project_id"],
           "isUnique": true
         }
       },
@@ -3488,12 +3111,8 @@
           "name": "notes_alert_state_project_id_projects_id_fk",
           "tableFrom": "notes_alert_state",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3595,10 +3214,7 @@
       "indexes": {
         "idx_projects_workspace_slug": {
           "name": "idx_projects_workspace_slug",
-          "columns": [
-            "workspace_id",
-            "slug"
-          ],
+          "columns": ["workspace_id", "slug"],
           "isUnique": true
         }
       },
@@ -3607,12 +3223,8 @@
           "name": "projects_workspace_id_workspaces_id_fk",
           "tableFrom": "projects",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3620,12 +3232,8 @@
           "name": "projects_created_by_users_id_fk",
           "tableFrom": "projects",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3726,24 +3334,17 @@
       "indexes": {
         "idx_proposals_project_status": {
           "name": "idx_proposals_project_status",
-          "columns": [
-            "project_id",
-            "status"
-          ],
+          "columns": ["project_id", "status"],
           "isUnique": false
         },
         "idx_proposals_created_by": {
           "name": "idx_proposals_created_by",
-          "columns": [
-            "created_by"
-          ],
+          "columns": ["created_by"],
           "isUnique": false
         },
         "idx_proposals_claimed_by": {
           "name": "idx_proposals_claimed_by",
-          "columns": [
-            "claimed_by"
-          ],
+          "columns": ["claimed_by"],
           "isUnique": false
         }
       },
@@ -3752,12 +3353,8 @@
           "name": "proposals_project_id_projects_id_fk",
           "tableFrom": "proposals",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3765,12 +3362,8 @@
           "name": "proposals_created_by_users_id_fk",
           "tableFrom": "proposals",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3778,12 +3371,8 @@
           "name": "proposals_claimed_by_users_id_fk",
           "tableFrom": "proposals",
           "tableTo": "users",
-          "columnsFrom": [
-            "claimed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["claimed_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3791,12 +3380,8 @@
           "name": "proposals_resolved_by_users_id_fk",
           "tableFrom": "proposals",
           "tableTo": "users",
-          "columnsFrom": [
-            "resolved_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["resolved_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3804,12 +3389,8 @@
           "name": "proposals_source_note_id_notes_id_fk",
           "tableFrom": "proposals",
           "tableTo": "notes",
-          "columnsFrom": [
-            "source_note_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_note_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3860,9 +3441,7 @@
       "indexes": {
         "idx_sessions_user": {
           "name": "idx_sessions_user",
-          "columns": [
-            "user_id"
-          ],
+          "columns": ["user_id"],
           "isUnique": false
         }
       },
@@ -3871,12 +3450,8 @@
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3928,16 +3503,12 @@
       "indexes": {
         "idx_deps_task": {
           "name": "idx_deps_task",
-          "columns": [
-            "task_id"
-          ],
+          "columns": ["task_id"],
           "isUnique": false
         },
         "idx_deps_depends_on": {
           "name": "idx_deps_depends_on",
-          "columns": [
-            "depends_on_task_id"
-          ],
+          "columns": ["depends_on_task_id"],
           "isUnique": false
         }
       },
@@ -3946,12 +3517,8 @@
           "name": "task_dependencies_task_id_tasks_id_fk",
           "tableFrom": "task_dependencies",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3959,12 +3526,8 @@
           "name": "task_dependencies_depends_on_task_id_tasks_id_fk",
           "tableFrom": "task_dependencies",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "depends_on_task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["depends_on_task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3997,12 +3560,8 @@
           "name": "task_labels_task_id_tasks_id_fk",
           "tableFrom": "task_labels",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4010,22 +3569,15 @@
           "name": "task_labels_label_id_labels_id_fk",
           "tableFrom": "task_labels",
           "tableTo": "labels",
-          "columnsFrom": [
-            "label_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["label_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "task_labels_task_id_label_id_pk": {
-          "columns": [
-            "task_id",
-            "label_id"
-          ],
+          "columns": ["task_id", "label_id"],
           "name": "task_labels_task_id_label_id_pk"
         }
       },
@@ -4197,49 +3749,32 @@
       "indexes": {
         "idx_tasks_project_status": {
           "name": "idx_tasks_project_status",
-          "columns": [
-            "project_id",
-            "status"
-          ],
+          "columns": ["project_id", "status"],
           "isUnique": false
         },
         "idx_tasks_project_epic": {
           "name": "idx_tasks_project_epic",
-          "columns": [
-            "project_id",
-            "epic_id"
-          ],
+          "columns": ["project_id", "epic_id"],
           "isUnique": false
         },
         "idx_tasks_assignee": {
           "name": "idx_tasks_assignee",
-          "columns": [
-            "assignee_id"
-          ],
+          "columns": ["assignee_id"],
           "isUnique": false
         },
         "idx_tasks_parent": {
           "name": "idx_tasks_parent",
-          "columns": [
-            "parent_task_id"
-          ],
+          "columns": ["parent_task_id"],
           "isUnique": false
         },
         "idx_tasks_priority": {
           "name": "idx_tasks_priority",
-          "columns": [
-            "project_id",
-            "priority"
-          ],
+          "columns": ["project_id", "priority"],
           "isUnique": false
         },
         "idx_tasks_status_priority": {
           "name": "idx_tasks_status_priority",
-          "columns": [
-            "project_id",
-            "status",
-            "priority"
-          ],
+          "columns": ["project_id", "status", "priority"],
           "isUnique": false
         }
       },
@@ -4248,12 +3783,8 @@
           "name": "tasks_project_id_projects_id_fk",
           "tableFrom": "tasks",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4261,12 +3792,8 @@
           "name": "tasks_proposal_id_proposals_id_fk",
           "tableFrom": "tasks",
           "tableTo": "proposals",
-          "columnsFrom": [
-            "proposal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["proposal_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4274,12 +3801,8 @@
           "name": "tasks_epic_id_epics_id_fk",
           "tableFrom": "tasks",
           "tableTo": "epics",
-          "columnsFrom": [
-            "epic_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["epic_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4287,12 +3810,8 @@
           "name": "tasks_assignee_id_users_id_fk",
           "tableFrom": "tasks",
           "tableTo": "users",
-          "columnsFrom": [
-            "assignee_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["assignee_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4300,12 +3819,8 @@
           "name": "tasks_reporter_id_users_id_fk",
           "tableFrom": "tasks",
           "tableTo": "users",
-          "columnsFrom": [
-            "reporter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["reporter_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4313,12 +3828,8 @@
           "name": "tasks_source_note_id_notes_id_fk",
           "tableFrom": "tasks",
           "tableTo": "notes",
-          "columnsFrom": [
-            "source_note_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_note_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4397,16 +3908,12 @@
       "indexes": {
         "idx_templates_project": {
           "name": "idx_templates_project",
-          "columns": [
-            "project_id"
-          ],
+          "columns": ["project_id"],
           "isUnique": false
         },
         "idx_templates_type": {
           "name": "idx_templates_type",
-          "columns": [
-            "template_type"
-          ],
+          "columns": ["template_type"],
           "isUnique": false
         }
       },
@@ -4415,12 +3922,8 @@
           "name": "templates_project_id_projects_id_fk",
           "tableFrom": "templates",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4428,12 +3931,8 @@
           "name": "templates_created_by_users_id_fk",
           "tableFrom": "templates",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4538,10 +4037,7 @@
       "indexes": {
         "idx_train_state_project_resource": {
           "name": "idx_train_state_project_resource",
-          "columns": [
-            "project_id",
-            "resource"
-          ],
+          "columns": ["project_id", "resource"],
           "isUnique": true
         }
       },
@@ -4550,12 +4046,8 @@
           "name": "train_state_project_id_projects_id_fk",
           "tableFrom": "train_state",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4563,12 +4055,8 @@
           "name": "train_state_changed_by_users_id_fk",
           "tableFrom": "train_state",
           "tableTo": "users",
-          "columnsFrom": [
-            "changed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["changed_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4678,9 +4166,7 @@
       "indexes": {
         "idx_users_username": {
           "name": "idx_users_username",
-          "columns": [
-            "username"
-          ],
+          "columns": ["username"],
           "isUnique": true
         }
       },
@@ -4689,12 +4175,8 @@
           "name": "users_pool_id_agent_pools_id_fk",
           "tableFrom": "users",
           "tableTo": "agent_pools",
-          "columnsFrom": [
-            "pool_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["pool_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4810,22 +4292,12 @@
       "indexes": {
         "idx_verify_cache_key": {
           "name": "idx_verify_cache_key",
-          "columns": [
-            "project_id",
-            "resource",
-            "tree_sha",
-            "step_id",
-            "step_config_sha"
-          ],
+          "columns": ["project_id", "resource", "tree_sha", "step_id", "step_config_sha"],
           "isUnique": true
         },
         "idx_verify_cache_project_resource_created": {
           "name": "idx_verify_cache_project_resource_created",
-          "columns": [
-            "project_id",
-            "resource",
-            "created_at"
-          ],
+          "columns": ["project_id", "resource", "created_at"],
           "isUnique": false
         }
       },
@@ -4834,12 +4306,8 @@
           "name": "verify_cache_project_id_projects_id_fk",
           "tableFrom": "verify_cache",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }

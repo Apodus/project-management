@@ -91,11 +91,7 @@ export function getById(id: string): UserRecord | null {
  */
 export function getByUsername(username: string): UserRecord | null {
   const db = getDb();
-  const row = db
-    .select()
-    .from(users)
-    .where(eq(users.username, username))
-    .get();
+  const row = db.select().from(users).where(eq(users.username, username)).get();
   return row ? toUserRecord(row) : null;
 }
 
@@ -115,11 +111,7 @@ export async function create(
   const id = createId();
 
   // Check for duplicate username
-  const existing = db
-    .select()
-    .from(users)
-    .where(eq(users.username, input.username))
-    .get();
+  const existing = db.select().from(users).where(eq(users.username, input.username)).get();
   if (existing) {
     throw new DuplicateUsernameError(input.username);
   }
@@ -170,11 +162,7 @@ export function update(id: string, input: UpdateUserInput): UserRecord | null {
 
   // If changing username, check for duplicate
   if (input.username && input.username !== existing.username) {
-    const dup = db
-      .select()
-      .from(users)
-      .where(eq(users.username, input.username))
-      .get();
+    const dup = db.select().from(users).where(eq(users.username, input.username)).get();
     if (dup) {
       throw new DuplicateUsernameError(input.username);
     }
@@ -185,8 +173,7 @@ export function update(id: string, input: UpdateUserInput): UserRecord | null {
   };
 
   if (input.username !== undefined) updates.username = input.username;
-  if (input.displayName !== undefined)
-    updates.displayName = input.displayName;
+  if (input.displayName !== undefined) updates.displayName = input.displayName;
   if (input.email !== undefined) updates.email = input.email;
   if (input.role !== undefined) updates.role = input.role;
 
@@ -197,10 +184,7 @@ export function update(id: string, input: UpdateUserInput): UserRecord | null {
 /**
  * Change a user's password. Hashes and stores the new password.
  */
-export async function changePassword(
-  id: string,
-  newPassword: string,
-): Promise<void> {
+export async function changePassword(id: string, newPassword: string): Promise<void> {
   const db = getDb();
   const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
@@ -251,11 +235,7 @@ export async function validateCredentials(
   password: string,
 ): Promise<UserRecord | null> {
   const db = getDb();
-  const row = db
-    .select()
-    .from(users)
-    .where(eq(users.username, username))
-    .get();
+  const row = db.select().from(users).where(eq(users.username, username)).get();
 
   if (!row) return null;
   if (!row.passwordHash) return null;
@@ -274,7 +254,10 @@ export async function validateCredentials(
  */
 export function count(): number {
   const db = getDb();
-  const row = db.select({ c: sql<number>`count(*)` }).from(users).get();
+  const row = db
+    .select({ c: sql<number>`count(*)` })
+    .from(users)
+    .get();
   return Number(row?.c ?? 0);
 }
 
@@ -300,7 +283,10 @@ export async function createFirstAdmin(input: {
   const id = createId();
 
   db.transaction((tx) => {
-    const row = tx.select({ c: sql<number>`count(*)` }).from(users).get();
+    const row = tx
+      .select({ c: sql<number>`count(*)` })
+      .from(users)
+      .get();
     if (Number(row?.c ?? 0) > 0) {
       throw new SetupAlreadyCompleteError();
     }

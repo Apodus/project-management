@@ -147,10 +147,7 @@ function validateCampaigns(value: unknown): DriveCampaignSpec[] | null {
  * on any escape / stat throw / not-a-file (vision_ready is never trusted on
  * uncertainty — the caller maps null to error{spawn_error}).
  */
-async function sealVisionFile(
-  worktreePath: string,
-  visionPath: string,
-): Promise<string | null> {
+async function sealVisionFile(worktreePath: string, visionPath: string): Promise<string | null> {
   const abs = path.resolve(worktreePath, visionPath);
   const rel = path.relative(worktreePath, abs);
   if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return null;

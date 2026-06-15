@@ -10,20 +10,13 @@ import { PmApiError } from "../src/api-client.js";
 import type { Escalation, EscalationMessage, EscalationWithThread } from "@pm/shared";
 import type { Logger } from "../src/logger.js";
 import type { ResponderRunner, ResponderRunResult } from "../src/responder-runner.js";
-import type {
-  InjectionSniffer,
-  InjectionSniffResult,
-} from "../src/injection-sniffer.js";
+import type { InjectionSniffer, InjectionSniffResult } from "../src/injection-sniffer.js";
 import type {
   ImplementRunner,
   ImplementRunInput,
   ImplementRunResult,
 } from "../src/implement-runner.js";
-import type {
-  DriveRunner,
-  DriveRunInput,
-  DriveRunResult,
-} from "../src/drive-runner.js";
+import type { DriveRunner, DriveRunInput, DriveRunResult } from "../src/drive-runner.js";
 import type { Worktree } from "../src/worktree.js";
 
 // ── Fakes ──────────────────────────────────────────────────────────
@@ -37,10 +30,7 @@ const silentLogger = {
 
 const SELF = "u-self";
 
-function mkEscalation(
-  id: string,
-  over: Partial<Escalation> = {},
-): Escalation {
+function mkEscalation(id: string, over: Partial<Escalation> = {}): Escalation {
   return {
     id,
     projectId: "p",
@@ -219,7 +209,10 @@ class FakeClient {
   getProject = vi.fn(
     async (
       projectId: string,
-    ): Promise<{ id: string; settings: { autoImplement?: { enabled?: boolean; mode?: "off" | "shadow" | "on" } } | null }> => {
+    ): Promise<{
+      id: string;
+      settings: { autoImplement?: { enabled?: boolean; mode?: "off" | "shadow" | "on" } } | null;
+    }> => {
       this.getProjectCalls.push(projectId);
       if (this.getProjectError) throw this.getProjectError;
       return {
@@ -236,7 +229,11 @@ class FakeClient {
   // `epicResult` is the epic + its campaign-tasks (advanceArc's getEpic).
   // `mrResults` is scripted PER CALL (shifted) — each cycle's listMergeRequests
   // returns the next phase-MR snapshot (so a test can advance the arc tick-by-tick).
-  epicResult: { id: string; name: string; tasks: { id: string; title: string; description: string | null }[] } = {
+  epicResult: {
+    id: string;
+    name: string;
+    tasks: { id: string; title: string; description: string | null }[];
+  } = {
     id: "epic1",
     name: "E",
     tasks: [],
@@ -246,7 +243,11 @@ class FakeClient {
     async (
       projectId: string,
       epicId: string,
-    ): Promise<{ id: string; name: string; tasks: { id: string; title: string; description: string | null }[] }> => {
+    ): Promise<{
+      id: string;
+      name: string;
+      tasks: { id: string; title: string; description: string | null }[];
+    }> => {
       this.getEpicCalls.push({ projectId, epicId });
       return this.epicResult;
     },
@@ -514,9 +515,9 @@ describe("responderTick", () => {
     expect(client.acks).toEqual(["e2"]);
 
     // Recovery: a fresh tick where "a" now returns work.
-    client.listOpenEscalations = vi.fn(async (): Promise<Escalation[]> => [
-      mkEscalation("e1", { projectId: "a" }),
-    ]);
+    client.listOpenEscalations = vi.fn(
+      async (): Promise<Escalation[]> => [mkEscalation("e1", { projectId: "a" })],
+    );
     await responderTick(baseDeps(client, { projectIds: ["a"], maxConcurrent: 10 }), state);
     expect(client.acks).toEqual(["e2", "e1"]);
   });
@@ -633,7 +634,10 @@ describe("responderTick", () => {
     const c1 = new FakeClient();
     c1.listResults = [[mkEscalation("e1")]];
     await responderTick(
-      baseDeps(c1, { mode: "on", runner: onRunner({ kind: "error", reason: "timeout", durationMs: 1 }) }),
+      baseDeps(c1, {
+        mode: "on",
+        runner: onRunner({ kind: "error", reason: "timeout", durationMs: 1 }),
+      }),
       createResponderState(),
     );
     expect(c1.escalateCalls).toHaveLength(1);
@@ -772,7 +776,10 @@ describe("responderTick", () => {
     runner.result = { kind: "give_up", reason: "noop", durationMs: 0 };
     runner.gate = new Promise<void>((r) => (release = r));
     const state = createResponderState();
-    const tick = responderTick(baseDeps(client, { mode: "shadow", maxConcurrent: 1, runner }), state);
+    const tick = responderTick(
+      baseDeps(client, { mode: "shadow", maxConcurrent: 1, runner }),
+      state,
+    );
     // The first claim + spawn is in flight (blocked on the gate); the 2nd is
     // gated by the semaphore and never spawns this tick. Flush enough microtasks
     // to clear the awaited acknowledge + getEscalation before runner.run.
@@ -810,7 +817,13 @@ describe("responderTick", () => {
     // No open candidates; one stale acknowledged held by SELF.
     client.listResults = [[]];
     client.ackResults = [
-      [mkEscalation("r1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" })],
+      [
+        mkEscalation("r1", {
+          status: "acknowledged",
+          holderId: SELF,
+          updatedAt: "2026-06-13T00:00:00.000Z",
+        }),
+      ],
     ];
     const runner = onRunner({ kind: "needs_human", reason: "still stuck", durationMs: 1 });
     await responderTick(
@@ -841,7 +854,13 @@ describe("responderTick", () => {
     const client = new FakeClient();
     client.listResults = [[]];
     client.ackResults = [
-      [mkEscalation("r1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" })],
+      [
+        mkEscalation("r1", {
+          status: "acknowledged",
+          holderId: SELF,
+          updatedAt: "2026-06-13T00:00:00.000Z",
+        }),
+      ],
     ];
     const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
     const state = createResponderState();
@@ -864,7 +883,11 @@ describe("responderTick", () => {
       throw new PmApiError(500, "INTERNAL", "boom"); // keeps it acknowledged
     });
     const strandedRow = () =>
-      mkEscalation("p1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" });
+      mkEscalation("p1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
     client.ackResults = [[strandedRow()], [strandedRow()]];
     client.listResults = [[], []];
     const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
@@ -880,9 +903,7 @@ describe("responderTick", () => {
     expect(runner.run).toHaveBeenCalledTimes(1);
     await responderTick(deps, state); // cap reached → escalateToHuman, no spawn
     expect(runner.run).toHaveBeenCalledTimes(1);
-    const exhausted = client.escalateCalls.filter((c) =>
-      c.reason.startsWith("Reclaim exhausted"),
-    );
+    const exhausted = client.escalateCalls.filter((c) => c.reason.startsWith("Reclaim exhausted"));
     expect(exhausted).toHaveLength(1);
     expect(exhausted[0].id).toBe("p1");
   });
@@ -893,7 +914,13 @@ describe("responderTick", () => {
       throw new PmApiError(500, "INTERNAL", "boom");
     });
     client.ackResults = [
-      [mkEscalation("p1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" })],
+      [
+        mkEscalation("p1", {
+          status: "acknowledged",
+          holderId: SELF,
+          updatedAt: "2026-06-13T00:00:00.000Z",
+        }),
+      ],
     ];
     client.listResults = [[]];
     const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
@@ -925,7 +952,13 @@ describe("responderTick", () => {
     const state = createResponderState();
     const spawnBudget = { maxSpawns: 1, windowSec: 100 };
     let now = 1_000_000;
-    const deps = baseDeps(client, { mode: "on", maxConcurrent: 10, runner, spawnBudget, now: () => now });
+    const deps = baseDeps(client, {
+      mode: "on",
+      maxConcurrent: 10,
+      runner,
+      spawnBudget,
+      now: () => now,
+    });
 
     await responderTick(deps, state); // tick 1: e1 spawns, e2 deferred (budget spent)
     expect(runner.run).toHaveBeenCalledTimes(1);
@@ -947,8 +980,7 @@ describe("responderTick", () => {
     const client = new FakeClient();
     // maxSpawns=1. e1 throws 403 on ack → its budget reservation is refunded, so
     // a later tick's e2 still spawns within the SAME window (no budget burned).
-    client.ackError = (id) =>
-      id === "e1" ? new PmApiError(403, "FORBIDDEN", "held") : undefined;
+    client.ackError = (id) => (id === "e1" ? new PmApiError(403, "FORBIDDEN", "held") : undefined);
     const e1 = mkEscalation("e1", { createdAt: "2026-06-13T01:00:00.000Z" });
     const e2 = mkEscalation("e2", { createdAt: "2026-06-13T02:00:00.000Z" });
     // e1 alone first (it 403s + refunds), then e2 alone next tick.
@@ -1830,7 +1862,12 @@ describe("responderTick", () => {
         durationMs: 1,
       });
       const impl = new FakeImplementRunner();
-      impl.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-1", commitSha: "c1", durationMs: 1 };
+      impl.result = {
+        kind: "branch_ready",
+        branch: "pm/escalation-e1-task-1",
+        commitSha: "c1",
+        durationMs: 1,
+      };
       const state = createResponderState();
       await responderTick(
         baseDeps(client, {
@@ -1872,13 +1909,22 @@ describe("responderTick", () => {
       const STALE_B = Date.parse("2026-06-14T00:00:00.000Z");
       const clientB = new FakeClient();
       clientB.listResults = [[]];
-      const rowB = mkEscalation("e1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" });
+      const rowB = mkEscalation("e1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
       clientB.ackResults = [[rowB], [rowB]]; // probe + reclaim
       clientB.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => arcThread);
       clientB.epicResult = { id: "epic1", name: "E", tasks: epicTasks };
       clientB.mrResults = [[]]; // no phase MRs yet → implement phase 1.
       const implB = new FakeImplementRunner();
-      implB.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-1", commitSha: "c1", durationMs: 1 };
+      implB.result = {
+        kind: "branch_ready",
+        branch: "pm/escalation-e1-task-1",
+        commitSha: "c1",
+        durationMs: 1,
+      };
       const wtB = new FakeWorktree();
       await responderTick(
         baseDeps(clientB, {
@@ -1917,20 +1963,35 @@ describe("responderTick", () => {
             authorId: SELF,
             body: "shadow proposal phase 1",
             messageType: "diagnosis",
-            metadata: { shadowProposal: true, phaseTaskId: "task-1", epicId: "epic1", branch: "pm/escalation-e1-task-1", commitSha: "c1" },
+            metadata: {
+              shadowProposal: true,
+              phaseTaskId: "task-1",
+              epicId: "epic1",
+              branch: "pm/escalation-e1-task-1",
+              commitSha: "c1",
+            },
             createdAt: "2026-06-13T00:00:00.000Z",
           },
         ],
       };
       const clientC = new FakeClient();
       clientC.listResults = [[]];
-      const rowC = mkEscalation("e1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" });
+      const rowC = mkEscalation("e1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
       clientC.ackResults = [[rowC], [rowC]];
       clientC.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => arcThreadC);
       clientC.epicResult = { id: "epic1", name: "E", tasks: epicTasks };
       clientC.mrResults = [[]]; // still no MR (shadow never submits).
       const implC = new FakeImplementRunner();
-      implC.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-1", commitSha: "c1", durationMs: 1 };
+      implC.result = {
+        kind: "branch_ready",
+        branch: "pm/escalation-e1-task-1",
+        commitSha: "c1",
+        durationMs: 1,
+      };
       const wtC = new FakeWorktree();
       await responderTick(
         baseDeps(clientC, {
@@ -2011,26 +2072,32 @@ describe("responderTick", () => {
     it("reclaim SKIPS a shadowProposal-marked escalation (no re-spawn, not escalated)", async () => {
       const client = new FakeClient();
       client.listResults = [[]];
-      const stale = mkEscalation("r1", { status: "acknowledged", holderId: SELF, updatedAt: "2026-06-13T00:00:00.000Z" });
+      const stale = mkEscalation("r1", {
+        status: "acknowledged",
+        holderId: SELF,
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      });
       // autoImplementEnabled ⇒ the in-flight-arc probe also lists holders; but the
       // probe only counts pendingDrive/pendingArc (shadowProposal is neither), so it
       // does not over-count. Provide one row for the probe + one for the reclaim pass.
       client.ackResults = [[stale], [stale]];
-      client.getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => ({
-        ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
-        messages: [
-          {
-            id: `${id}-m1`,
-            escalationId: id,
-            seq: 1,
-            authorId: SELF,
-            body: "shadow proposal",
-            messageType: "diagnosis",
-            metadata: { shadowProposal: true, branch: "pm/escalation-r1", commitSha: "abc" },
-            createdAt: "2026-06-13T00:00:00.000Z",
-          },
-        ],
-      }));
+      client.getEscalation = vi.fn(
+        async (id: string): Promise<EscalationWithThread> => ({
+          ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+          messages: [
+            {
+              id: `${id}-m1`,
+              escalationId: id,
+              seq: 1,
+              authorId: SELF,
+              body: "shadow proposal",
+              messageType: "diagnosis",
+              metadata: { shadowProposal: true, branch: "pm/escalation-r1", commitSha: "abc" },
+              createdAt: "2026-06-13T00:00:00.000Z",
+            },
+          ],
+        }),
+      );
       const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
       await responderTick(
         baseDeps(client, {
@@ -2081,21 +2148,23 @@ describe("responderTick", () => {
     });
     client.ackResults = [[stale]];
     // getEscalation returns a thread WITH the pending-land marker.
-    client.getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => ({
-      ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
-      messages: [
-        {
-          id: `${id}-m1`,
-          escalationId: id,
-          seq: 1,
-          authorId: SELF,
-          body: "Implemented a fix on branch ...",
-          messageType: "diagnosis",
-          metadata: { pendingLand: true, branch: "pm/escalation-r1", commitSha: "abc" },
-          createdAt: "2026-06-13T00:00:00.000Z",
-        },
-      ],
-    }));
+    client.getEscalation = vi.fn(
+      async (id: string): Promise<EscalationWithThread> => ({
+        ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+        messages: [
+          {
+            id: `${id}-m1`,
+            escalationId: id,
+            seq: 1,
+            authorId: SELF,
+            body: "Implemented a fix on branch ...",
+            messageType: "diagnosis",
+            metadata: { pendingLand: true, branch: "pm/escalation-r1", commitSha: "abc" },
+            createdAt: "2026-06-13T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
     const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
     await responderTick(
       baseDeps(client, { mode: "on", maxConcurrent: 10, runner, now: () => STALE_NOW }),
@@ -2120,25 +2189,36 @@ describe("responderTick", () => {
     // Twice: the A4 P1 in-flight-arc probe + the reclaim pass each shift one entry
     // (autoImplementEnabled ⇒ the probe runs).
     client.ackResults = [[stale], [stale]];
-    client.getEscalation = vi.fn(async (id: string): Promise<EscalationWithThread> => ({
-      ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
-      messages: [
-        {
-          id: `${id}-m1`,
-          escalationId: id,
-          seq: 1,
-          authorId: SELF,
-          body: "Produced a vision ... and created PM epic ...",
-          messageType: "diagnosis",
-          metadata: { pendingDrive: true, visionPath: "roadmaps/v.md", epicId: "epic1" },
-          createdAt: "2026-06-13T00:00:00.000Z",
-        },
-      ],
-    }));
-    client.epicResult = { id: "epic1", name: "E", tasks: [{ id: "task-1", title: "P1", description: "d1" }] };
+    client.getEscalation = vi.fn(
+      async (id: string): Promise<EscalationWithThread> => ({
+        ...mkEscalation(id, { status: "acknowledged", holderId: SELF }),
+        messages: [
+          {
+            id: `${id}-m1`,
+            escalationId: id,
+            seq: 1,
+            authorId: SELF,
+            body: "Produced a vision ... and created PM epic ...",
+            messageType: "diagnosis",
+            metadata: { pendingDrive: true, visionPath: "roadmaps/v.md", epicId: "epic1" },
+            createdAt: "2026-06-13T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    client.epicResult = {
+      id: "epic1",
+      name: "E",
+      tasks: [{ id: "task-1", title: "P1", description: "d1" }],
+    };
     client.mrResults = [[]]; // no phase MRs yet → implement phase 1.
     const impl = new FakeImplementRunner();
-    impl.result = { kind: "branch_ready", branch: "pm/escalation-r1-task-1", commitSha: "c1", durationMs: 1 };
+    impl.result = {
+      kind: "branch_ready",
+      branch: "pm/escalation-r1-task-1",
+      commitSha: "c1",
+      durationMs: 1,
+    };
     const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
     await responderTick(
       baseDeps(client, {
@@ -2289,7 +2369,17 @@ describe("responderTick", () => {
         ],
       };
       client.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "integrating", landedSha: null, branch: "b1", commitSha: "c1" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "integrating",
+            landedSha: null,
+            branch: "b1",
+            commitSha: "c1",
+          },
+        ],
       ];
       const impl = new FakeImplementRunner();
       await responderTick(arcDeps(client, impl), createResponderState());
@@ -2310,7 +2400,17 @@ describe("responderTick", () => {
         ],
       };
       client.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+        ],
       ];
       const impl = new FakeImplementRunner();
       impl.result = READY("pm/escalation-e1-task-2");
@@ -2318,7 +2418,10 @@ describe("responderTick", () => {
 
       expect(impl.run).toHaveBeenCalledTimes(1);
       expect(client.submitMergeRequestCalls).toHaveLength(1);
-      expect(client.submitMergeRequestCalls[0].body).toMatchObject({ taskId: "task-2", escalationId: "e1" });
+      expect(client.submitMergeRequestCalls[0].body).toMatchObject({
+        taskId: "task-2",
+        escalationId: "e1",
+      });
     });
 
     it("arc_complete: both MRs 'landed' (not-yet-marked) → arcComplete marker appended, THEN answer+resolve as holder with a summary naming the epic + landed shas; order marker→answer→resolve", async () => {
@@ -2333,8 +2436,24 @@ describe("responderTick", () => {
       };
       client.mrResults = [
         [
-          { id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" },
-          { id: "mr2", taskId: "task-2", escalationId: "e1", status: "landed", landedSha: "s2", branch: "b2", commitSha: "c2" },
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+          {
+            id: "mr2",
+            taskId: "task-2",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s2",
+            branch: "b2",
+            commitSha: "c2",
+          },
         ],
       ];
       const impl = new FakeImplementRunner();
@@ -2374,7 +2493,17 @@ describe("responderTick", () => {
         tasks: [{ id: "task-1", title: "Phase 1", description: "d1" }],
       };
       client.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+        ],
       ];
       const impl = new FakeImplementRunner();
       await responderTick(arcDeps(client, impl), createResponderState());
@@ -2393,7 +2522,17 @@ describe("responderTick", () => {
         tasks: [{ id: "task-1", title: "Phase 1", description: "d1" }],
       };
       client.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+        ],
       ];
       const impl = new FakeImplementRunner();
       await responderTick(arcDeps(client, impl), createResponderState());
@@ -2435,8 +2574,24 @@ describe("responderTick", () => {
       };
       client.mrResults = [
         [
-          { id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" },
-          { id: "mr2", taskId: "task-2", escalationId: "e1", status: "rejected", landedSha: null, branch: "b2", commitSha: "c2" },
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+          {
+            id: "mr2",
+            taskId: "task-2",
+            escalationId: "e1",
+            status: "rejected",
+            landedSha: null,
+            branch: "b2",
+            commitSha: "c2",
+          },
         ],
       ];
       const impl = new FakeImplementRunner();
@@ -2454,7 +2609,11 @@ describe("responderTick", () => {
 
     it("escalationId is threaded on every phase MR", async () => {
       const client = arcClient("e1", arcThread("e1"));
-      client.epicResult = { id: "epic1", name: "E", tasks: [{ id: "task-1", title: "P1", description: "d" }] };
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [{ id: "task-1", title: "P1", description: "d" }],
+      };
       client.mrResults = [[]];
       const impl = new FakeImplementRunner();
       impl.result = READY("pm/escalation-e1-task-1");
@@ -2466,7 +2625,11 @@ describe("responderTick", () => {
 
     it("no-recursion: an arc-marked escalation only routes to advanceArc (never a read-only answering session); the arc's own MRs never re-enter the seed", async () => {
       const client = arcClient("e1", arcThread("e1"));
-      client.epicResult = { id: "epic1", name: "E", tasks: [{ id: "task-1", title: "P1", description: "d" }] };
+      client.epicResult = {
+        id: "epic1",
+        name: "E",
+        tasks: [{ id: "task-1", title: "P1", description: "d" }],
+      };
       client.mrResults = [[]];
       const impl = new FakeImplementRunner();
       impl.result = READY("pm/escalation-e1-task-1");
@@ -2505,7 +2668,17 @@ describe("responderTick", () => {
       const c2 = arcClient("e1", arcThread("e1"));
       c2.epicResult = c1.epicResult;
       c2.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b", commitSha: "c" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b",
+            commitSha: "c",
+          },
+        ],
       ];
       impl.result = READY("pm/escalation-e1-task-2");
       await responderTick(arcDeps(c2, impl), state);
@@ -2517,8 +2690,24 @@ describe("responderTick", () => {
       c3.epicResult = c1.epicResult;
       c3.mrResults = [
         [
-          { id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b", commitSha: "c" },
-          { id: "mr2", taskId: "task-2", escalationId: "e1", status: "landed", landedSha: "s2", branch: "b", commitSha: "c" },
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b",
+            commitSha: "c",
+          },
+          {
+            id: "mr2",
+            taskId: "task-2",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s2",
+            branch: "b",
+            commitSha: "c",
+          },
         ],
       ];
       impl.result = READY("pm/escalation-e1-task-3");
@@ -2569,11 +2758,7 @@ describe("responderTick", () => {
       };
     }
 
-    function msg(
-      id: string,
-      seq: number,
-      metadata: Record<string, unknown>,
-    ): EscalationMessage {
+    function msg(id: string, seq: number, metadata: Record<string, unknown>): EscalationMessage {
       return {
         id: `${id}-m${seq}`,
         escalationId: id,
@@ -2625,7 +2810,9 @@ describe("responderTick", () => {
     it("restart mid-arc resumes from the next un-landed phase (task-2), not phase 1", async () => {
       const client = arcClient(
         "e1",
-        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+        thread("e1", [
+          msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" }),
+        ]),
       );
       client.epicResult = {
         id: "epic1",
@@ -2636,7 +2823,17 @@ describe("responderTick", () => {
         ],
       };
       client.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+        ],
       ];
       const impl = new FakeImplementRunner();
       impl.result = READY("pm/escalation-e1-task-2");
@@ -2645,11 +2842,12 @@ describe("responderTick", () => {
 
       expect(impl.run).toHaveBeenCalledTimes(1);
       expect(client.submitMergeRequestCalls).toHaveLength(1);
-      expect(client.submitMergeRequestCalls[0].body).toMatchObject({ taskId: "task-2", escalationId: "e1" });
+      expect(client.submitMergeRequestCalls[0].body).toMatchObject({
+        taskId: "task-2",
+        escalationId: "e1",
+      });
       // No submit for the already-landed task-1.
-      expect(
-        client.submitMergeRequestCalls.some((c) => c.body.taskId === "task-1"),
-      ).toBe(false);
+      expect(client.submitMergeRequestCalls.some((c) => c.body.taskId === "task-1")).toBe(false);
     });
 
     // Gap 1 (the core): an acknowledged self-held escalation whose thread carries ONLY
@@ -2695,7 +2893,12 @@ describe("responderTick", () => {
     it("a normal vision_ready drive writes the intent marker BEFORE createEpic, then the epicId marker after", async () => {
       const client = new FakeClient();
       client.listResults = [[mkEscalation("e1")]];
-      const runner = onRunner({ kind: "implement", size: "systemic", rationale: "r", durationMs: 1 });
+      const runner = onRunner({
+        kind: "implement",
+        size: "systemic",
+        rationale: "r",
+        durationMs: 1,
+      });
       const sniffer = snifferOf({ kind: "clean" });
       const drive = new FakeDriveRunner();
       drive.result = {
@@ -2763,8 +2966,24 @@ describe("responderTick", () => {
       };
       client.mrResults = [
         [
-          { id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" },
-          { id: "mr2", taskId: "task-2", escalationId: "e1", status: "landed", landedSha: "s2", branch: "b2", commitSha: "c2" },
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+          {
+            id: "mr2",
+            taskId: "task-2",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s2",
+            branch: "b2",
+            commitSha: "c2",
+          },
         ],
       ];
       const impl = new FakeImplementRunner();
@@ -2786,7 +3005,9 @@ describe("responderTick", () => {
       // Tick 1: no MRs → implement phase 1.
       const c1 = arcClient(
         "e1",
-        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+        thread("e1", [
+          msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" }),
+        ]),
       );
       c1.epicResult = {
         id: "epic1",
@@ -2805,11 +3026,23 @@ describe("responderTick", () => {
       // Tick 2 (shared state): phase-1 MR now queued → re-park, NO new submit.
       const c2 = arcClient(
         "e1",
-        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+        thread("e1", [
+          msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" }),
+        ]),
       );
       c2.epicResult = c1.epicResult;
       c2.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "queued", landedSha: null, branch: "b1", commitSha: "c1" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "queued",
+            landedSha: null,
+            branch: "b1",
+            commitSha: "c1",
+          },
+        ],
       ];
       await responderTick(arcDeps(c2, impl), state);
       // Exactly ONE submit across both ticks (tick 2 re-parked).
@@ -2827,7 +3060,9 @@ describe("responderTick", () => {
       // Cycle 1: fresh state, no MRs → implement phase 1 + append pendingArc.
       const c1 = arcClient(
         "e1",
-        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+        thread("e1", [
+          msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" }),
+        ]),
       );
       c1.epicResult = {
         id: "epic1",
@@ -2848,16 +3083,31 @@ describe("responderTick", () => {
       // Cycle 2: BRAND-NEW state (restart) + phase-1 landed snapshot → resume at phase-2.
       const c2 = arcClient(
         "e1",
-        thread("e1", [msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" })]),
+        thread("e1", [
+          msg("e1", 1, { pendingArc: true, epicId: "epic1", visionPath: "roadmaps/v.md" }),
+        ]),
       );
       c2.epicResult = c1.epicResult;
       c2.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+        ],
       ];
       impl.result = READY("pm/escalation-e1-task-2");
       await responderTick(arcDeps(c2, impl), createResponderState());
       expect(c2.submitMergeRequestCalls).toHaveLength(1);
-      expect(c2.submitMergeRequestCalls[0].body).toMatchObject({ taskId: "task-2", escalationId: "e1" });
+      expect(c2.submitMergeRequestCalls[0].body).toMatchObject({
+        taskId: "task-2",
+        escalationId: "e1",
+      });
     });
 
     // Byte-identical guard: with autoImplementEnabled:false and no arc markers, the
@@ -2982,10 +3232,25 @@ describe("responderTick", () => {
       };
       // Phase 1 landed, phase 2 has no MR yet (would normally implement next).
       client.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "sha-1", branch: "b1", commitSha: "c1" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "sha-1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+        ],
       ];
       const impl = new FakeImplementRunner();
-      impl.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-2", commitSha: "c", durationMs: 1 };
+      impl.result = {
+        kind: "branch_ready",
+        branch: "pm/escalation-e1-task-2",
+        commitSha: "c",
+        durationMs: 1,
+      };
       const deps = baseDeps(client, {
         mode: "on",
         now: () => STALE,
@@ -3030,8 +3295,24 @@ describe("responderTick", () => {
       // BOTH phases landed (no arcComplete marker yet).
       client.mrResults = [
         [
-          { id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" },
-          { id: "mr2", taskId: "task-2", escalationId: "e1", status: "landed", landedSha: "s2", branch: "b2", commitSha: "c2" },
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+          {
+            id: "mr2",
+            taskId: "task-2",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s2",
+            branch: "b2",
+            commitSha: "c2",
+          },
         ],
       ];
       const impl = new FakeImplementRunner();
@@ -3050,7 +3331,9 @@ describe("responderTick", () => {
       expect(completeMarker).toBeDefined();
       expect(client.resolve).toHaveBeenCalledTimes(1);
       // No duration-cap escalate.
-      expect(client.escalateCalls.find((e) => e.reason.includes("exceeded max duration"))).toBeUndefined();
+      expect(
+        client.escalateCalls.find((e) => e.reason.includes("exceeded max duration")),
+      ).toBeUndefined();
     });
 
     // ── Case 3a: generous/off default ⇒ A1-A3 byte-identical (cycle-1 implements) ──
@@ -3082,7 +3365,9 @@ describe("responderTick", () => {
       // The drive ran + the epic was created — no budget hold.
       expect(drive.run).toHaveBeenCalledTimes(1);
       expect(client.createEpic).toHaveBeenCalledTimes(1);
-      expect(client.escalateCalls.find((e) => e.reason.includes("auto-drive budget"))).toBeUndefined();
+      expect(
+        client.escalateCalls.find((e) => e.reason.includes("auto-drive budget")),
+      ).toBeUndefined();
     });
 
     // ── Case 5: a normal arc under the caps is NOT falsely held/capped (advances) ──
@@ -3106,10 +3391,25 @@ describe("responderTick", () => {
         ],
       };
       client.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "s1", branch: "b1", commitSha: "c1" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "s1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+        ],
       ];
       const impl = new FakeImplementRunner();
-      impl.result = { kind: "branch_ready", branch: "pm/escalation-e1-task-2", commitSha: "c", durationMs: 1 };
+      impl.result = {
+        kind: "branch_ready",
+        branch: "pm/escalation-e1-task-2",
+        commitSha: "c",
+        durationMs: 1,
+      };
       const deps = baseDeps(client, {
         mode: "on",
         now: () => STALE,
@@ -3154,7 +3454,9 @@ describe("responderTick", () => {
       expect(runner.run).not.toHaveBeenCalled();
       expect(impl.run).not.toHaveBeenCalled();
       // NO arc-budget escalate (the arc caps did not interfere).
-      expect(client.escalateCalls.find((e) => e.reason.includes("auto-drive budget"))).toBeUndefined();
+      expect(
+        client.escalateCalls.find((e) => e.reason.includes("auto-drive budget")),
+      ).toBeUndefined();
     });
 
     // ── Case 7: answer-mode byte-identical when auto_implement off (Refinement 2 seal) ──
@@ -3258,8 +3560,25 @@ describe("responderTick", () => {
       // Phase 1 landed; phase 2 integrating with a STALE enqueuedAt (the wedge).
       client.mrResults = [
         [
-          { id: "mr1", taskId: "task-1", escalationId: "e1", status: "landed", landedSha: "sha-1", branch: "b1", commitSha: "c1" },
-          { id: "mr2", taskId: "task-2", escalationId: "e1", status: "integrating", landedSha: null, branch: "b2", commitSha: "c2", enqueuedAt: STALE_ENQUEUED },
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "landed",
+            landedSha: "sha-1",
+            branch: "b1",
+            commitSha: "c1",
+          },
+          {
+            id: "mr2",
+            taskId: "task-2",
+            escalationId: "e1",
+            status: "integrating",
+            landedSha: null,
+            branch: "b2",
+            commitSha: "c2",
+            enqueuedAt: STALE_ENQUEUED,
+          },
         ],
       ];
       const impl = new FakeImplementRunner();
@@ -3303,7 +3622,18 @@ describe("responderTick", () => {
       };
       // Phase 1 integrating with a RECENT enqueuedAt (within the window).
       client.mrResults = [
-        [{ id: "mr1", taskId: "task-1", escalationId: "e1", status: "integrating", landedSha: null, branch: "b1", commitSha: "c1", enqueuedAt: "2026-06-13T23:59:00.000Z" }],
+        [
+          {
+            id: "mr1",
+            taskId: "task-1",
+            escalationId: "e1",
+            status: "integrating",
+            landedSha: null,
+            branch: "b1",
+            commitSha: "c1",
+            enqueuedAt: "2026-06-13T23:59:00.000Z",
+          },
+        ],
       ];
       const impl = new FakeImplementRunner();
       const deps = baseDeps(client, {
@@ -3331,10 +3661,23 @@ describe("responderTick", () => {
         updatedAt: "2026-06-13T00:00:00.000Z",
       });
       client.ackResults = [[stale], [stale]]; // probe + reclaim.
-      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      client.getEscalation = vi.fn(
+        async (): Promise<EscalationWithThread> => pendingLandThread("r1"),
+      );
       // The bounded MR is queued with a STALE enqueuedAt.
       client.mrResults = [
-        [{ id: "mrB", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1", commitSha: "abc", enqueuedAt: STALE_ENQUEUED }],
+        [
+          {
+            id: "mrB",
+            taskId: null,
+            escalationId: "r1",
+            status: "queued",
+            landedSha: null,
+            branch: "pm/escalation-r1",
+            commitSha: "abc",
+            enqueuedAt: STALE_ENQUEUED,
+          },
+        ],
       ];
       const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
       const deps = baseDeps(client, {
@@ -3365,9 +3708,22 @@ describe("responderTick", () => {
         updatedAt: "2026-06-13T00:00:00.000Z",
       });
       client.ackResults = [[stale], [stale]];
-      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      client.getEscalation = vi.fn(
+        async (): Promise<EscalationWithThread> => pendingLandThread("r1"),
+      );
       client.mrResults = [
-        [{ id: "mrB", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1", commitSha: "abc", enqueuedAt: "2026-06-13T23:59:00.000Z" }],
+        [
+          {
+            id: "mrB",
+            taskId: null,
+            escalationId: "r1",
+            status: "queued",
+            landedSha: null,
+            branch: "pm/escalation-r1",
+            commitSha: "abc",
+            enqueuedAt: "2026-06-13T23:59:00.000Z",
+          },
+        ],
       ];
       const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
       const deps = baseDeps(client, {
@@ -3394,13 +3750,32 @@ describe("responderTick", () => {
         updatedAt: "2026-06-13T00:00:00.000Z",
       });
       client.ackResults = [[stale], [stale]];
-      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      client.getEscalation = vi.fn(
+        async (): Promise<EscalationWithThread> => pendingLandThread("r1"),
+      );
       // A landed MR exists for the escalation (landed out-of-band) — even though a
       // sibling queued MR is stale, reconcile-first wins → no escalate.
       client.mrResults = [
         [
-          { id: "mrLanded", taskId: null, escalationId: "r1", status: "landed", landedSha: "sha-X", branch: "pm/escalation-r1", commitSha: "abc" },
-          { id: "mrStale", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1b", commitSha: "def", enqueuedAt: STALE_ENQUEUED },
+          {
+            id: "mrLanded",
+            taskId: null,
+            escalationId: "r1",
+            status: "landed",
+            landedSha: "sha-X",
+            branch: "pm/escalation-r1",
+            commitSha: "abc",
+          },
+          {
+            id: "mrStale",
+            taskId: null,
+            escalationId: "r1",
+            status: "queued",
+            landedSha: null,
+            branch: "pm/escalation-r1b",
+            commitSha: "def",
+            enqueuedAt: STALE_ENQUEUED,
+          },
         ],
       ];
       const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
@@ -3428,10 +3803,24 @@ describe("responderTick", () => {
         updatedAt: "2026-06-13T00:00:00.000Z",
       });
       client.ackResults = [[stale], [stale]];
-      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      client.getEscalation = vi.fn(
+        async (): Promise<EscalationWithThread> => pendingLandThread("r1"),
+      );
       // Garbage enqueuedAt AND createdAt ⇒ submitClockMs → +Infinity ⇒ never stalls.
       client.mrResults = [
-        [{ id: "mrB", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1", commitSha: "abc", enqueuedAt: "not-a-date", createdAt: "also-garbage" }],
+        [
+          {
+            id: "mrB",
+            taskId: null,
+            escalationId: "r1",
+            status: "queued",
+            landedSha: null,
+            branch: "pm/escalation-r1",
+            commitSha: "abc",
+            enqueuedAt: "not-a-date",
+            createdAt: "also-garbage",
+          },
+        ],
       ];
       const runner = onRunner({ kind: "needs_human", reason: "x", durationMs: 1 });
       const deps = baseDeps(client, {
@@ -3458,9 +3847,22 @@ describe("responderTick", () => {
         updatedAt: "2026-06-13T00:00:00.000Z",
       });
       client.ackResults = [[stale], [stale]];
-      client.getEscalation = vi.fn(async (): Promise<EscalationWithThread> => pendingLandThread("r1"));
+      client.getEscalation = vi.fn(
+        async (): Promise<EscalationWithThread> => pendingLandThread("r1"),
+      );
       client.mrResults = [
-        [{ id: "mrB", taskId: null, escalationId: "r1", status: "queued", landedSha: null, branch: "pm/escalation-r1", commitSha: "abc", enqueuedAt: STALE_ENQUEUED }],
+        [
+          {
+            id: "mrB",
+            taskId: null,
+            escalationId: "r1",
+            status: "queued",
+            landedSha: null,
+            branch: "pm/escalation-r1",
+            commitSha: "abc",
+            enqueuedAt: STALE_ENQUEUED,
+          },
+        ],
       ];
       const deps = baseDeps(client, {
         // A5 P1: the reclaim stall off-silence keys off autoImplementMode.
@@ -3508,9 +3910,9 @@ describe("resolveAutoImplement (P2 composition)", () => {
   });
 
   it("effectiveMode falls back to the env mode when the DB omits mode", () => {
-    expect(
-      resolveAutoImplement(true, "shadow", { autoImplement: { enabled: true } }).mode,
-    ).toBe("shadow");
+    expect(resolveAutoImplement(true, "shadow", { autoImplement: { enabled: true } }).mode).toBe(
+      "shadow",
+    );
   });
 
   it("a new project (no autoImplement block) → OFF, env-fallback mode", () => {
@@ -3541,7 +3943,12 @@ describe("responderTick per-project auto-implement resolution (P2)", () => {
     const runner = implementRunner("bounded");
     const sniffer = snifferOf({ kind: "clean" });
     const impl = new FakeImplementRunner();
-    impl.result = { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "abc", durationMs: 1 };
+    impl.result = {
+      kind: "branch_ready",
+      branch: "pm/escalation-e1",
+      commitSha: "abc",
+      durationMs: 1,
+    };
     const wt = new FakeWorktree();
     await responderTick(
       baseDeps(client, {
@@ -3660,7 +4067,12 @@ describe("responderTick per-project auto-implement resolution (P2)", () => {
     const runner = implementRunner("bounded");
     const sniffer = snifferOf({ kind: "clean" });
     const impl = new FakeImplementRunner();
-    impl.result = { kind: "branch_ready", branch: "pm/escalation-e1", commitSha: "abc", durationMs: 1 };
+    impl.result = {
+      kind: "branch_ready",
+      branch: "pm/escalation-e1",
+      commitSha: "abc",
+      durationMs: 1,
+    };
     const wt = new FakeWorktree();
     await responderTick(
       baseDeps(client, {

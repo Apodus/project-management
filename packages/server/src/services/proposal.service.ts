@@ -95,12 +95,7 @@ export function withClaimStatus<T extends { claimedBy?: string | null }>(
   return {
     ...row,
     claimStatus: deriveClaimStatus(row.claimedBy ?? null, caller),
-    claimState: deriveClaimState(
-      row.claimedBy ?? null,
-      lease ?? null,
-      now ?? new Date(),
-      caller,
-    ),
+    claimState: deriveClaimState(row.claimedBy ?? null, lease ?? null, now ?? new Date(), caller),
   };
 }
 
@@ -113,13 +108,7 @@ export function assertClaimOk(
   proposal: { id: string; claimedBy?: string | null },
   actor: Actor,
 ): void {
-  assertClaimOkRaw(
-    proposal.claimedBy ?? null,
-    actor,
-    "proposal",
-    "proposal",
-    proposal.id,
-  );
+  assertClaimOkRaw(proposal.claimedBy ?? null, actor, "proposal", "proposal", proposal.id);
 }
 
 // ─── Service functions ────────────────────────────────────────────
@@ -165,9 +154,7 @@ export function list(
   );
   const now = new Date();
 
-  return rows.map((row) =>
-    withClaimStatus(row, caller, leases.get(row.id) ?? null, now),
-  );
+  return rows.map((row) => withClaimStatus(row, caller, leases.get(row.id) ?? null, now));
 }
 
 /**

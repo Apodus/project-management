@@ -13,13 +13,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -66,14 +60,7 @@ import { SettingsNav } from "@/components/settings-nav";
 
 // ---- Constants ----
 
-const TASK_TYPES = [
-  "feature",
-  "bug",
-  "chore",
-  "spike",
-  "design",
-  "research",
-] as const;
+const TASK_TYPES = ["feature", "bug", "chore", "spike", "design", "research"] as const;
 
 const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 
@@ -120,10 +107,7 @@ function SubtaskListEditor({
 
   function addSubtask() {
     if (!newTitle.trim()) return;
-    onChange([
-      ...subtasks,
-      { title: newTitle.trim(), type: newType, effort: newEffort },
-    ]);
+    onChange([...subtasks, { title: newTitle.trim(), type: newType, effort: newEffort }]);
     setNewTitle("");
   }
 
@@ -137,10 +121,7 @@ function SubtaskListEditor({
       {subtasks.length > 0 && (
         <div className="space-y-1.5">
           {subtasks.map((sub, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm"
-            >
+            <div key={i} className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
               <span className="flex-1 truncate">{sub.title}</span>
               <Badge variant="secondary" className="text-[10px]">
                 {sub.type}
@@ -151,9 +132,9 @@ function SubtaskListEditor({
               <button
                 type="button"
                 onClick={() => removeSubtask(i)}
-                className="rounded p-0.5 hover:bg-muted"
+                className="hover:bg-muted rounded p-0.5"
               >
-                <X className="size-3 text-muted-foreground" />
+                <X className="text-muted-foreground size-3" />
               </button>
             </div>
           ))}
@@ -236,18 +217,14 @@ function EpicListEditor({
 
   function addTaskToEpic(epicIndex: number, title: string, type: string) {
     const updated = epics.map((epic, i) =>
-      i === epicIndex
-        ? { ...epic, tasks: [...epic.tasks, { title, type }] }
-        : epic,
+      i === epicIndex ? { ...epic, tasks: [...epic.tasks, { title, type }] } : epic,
     );
     onChange(updated);
   }
 
   function removeTaskFromEpic(epicIndex: number, taskIndex: number) {
     const updated = epics.map((epic, i) =>
-      i === epicIndex
-        ? { ...epic, tasks: epic.tasks.filter((_, j) => j !== taskIndex) }
-        : epic,
+      i === epicIndex ? { ...epic, tasks: epic.tasks.filter((_, j) => j !== taskIndex) } : epic,
     );
     onChange(updated);
   }
@@ -256,24 +233,21 @@ function EpicListEditor({
     <div className="space-y-3">
       <Label>Epics</Label>
       {epics.map((epic, ei) => (
-        <div key={ei} className="rounded-md border p-3 space-y-2">
+        <div key={ei} className="space-y-2 rounded-md border p-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">{epic.name}</span>
             <button
               type="button"
               onClick={() => removeEpic(ei)}
-              className="rounded p-0.5 hover:bg-muted"
+              className="hover:bg-muted rounded p-0.5"
             >
-              <X className="size-3 text-muted-foreground" />
+              <X className="text-muted-foreground size-3" />
             </button>
           </div>
           {epic.tasks.length > 0 && (
             <div className="ml-4 space-y-1">
               {epic.tasks.map((task, ti) => (
-                <div
-                  key={ti}
-                  className="flex items-center gap-2 text-sm text-muted-foreground"
-                >
+                <div key={ti} className="text-muted-foreground flex items-center gap-2 text-sm">
                   <FileText className="size-3" />
                   <span className="flex-1 truncate">{task.title}</span>
                   <Badge variant="secondary" className="text-[10px]">
@@ -282,7 +256,7 @@ function EpicListEditor({
                   <button
                     type="button"
                     onClick={() => removeTaskFromEpic(ei, ti)}
-                    className="rounded p-0.5 hover:bg-muted"
+                    className="hover:bg-muted rounded p-0.5"
                   >
                     <X className="size-3" />
                   </button>
@@ -290,9 +264,7 @@ function EpicListEditor({
               ))}
             </div>
           )}
-          <EpicTaskAdder
-            onAdd={(title, type) => addTaskToEpic(ei, title, type)}
-          />
+          <EpicTaskAdder onAdd={(title, type) => addTaskToEpic(ei, title, type)} />
         </div>
       ))}
       <div className="flex items-center gap-2">
@@ -324,11 +296,7 @@ function EpicListEditor({
   );
 }
 
-function EpicTaskAdder({
-  onAdd,
-}: {
-  onAdd: (title: string, type: string) => void;
-}) {
+function EpicTaskAdder({ onAdd }: { onAdd: (title: string, type: string) => void }) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState("feature");
 
@@ -406,20 +374,13 @@ function LabelListEditor({
       {labels.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {labels.map((label, i) => (
-            <Badge
-              key={i}
-              variant="outline"
-              className="flex items-center gap-1 pr-1"
-            >
-              <span
-                className="size-2.5 rounded-full"
-                style={{ backgroundColor: label.color }}
-              />
+            <Badge key={i} variant="outline" className="flex items-center gap-1 pr-1">
+              <span className="size-2.5 rounded-full" style={{ backgroundColor: label.color }} />
               {label.name}
               <button
                 type="button"
                 onClick={() => removeLabel(i)}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                className="hover:bg-muted-foreground/20 ml-0.5 rounded-full p-0.5"
               >
                 <X className="size-3" />
               </button>
@@ -478,32 +439,19 @@ function TemplateFormDialog({
   const updateMutation = useUpdateTemplate();
   const isEditing = !!editTemplate;
 
-  const existingData = (editTemplate?.templateData ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const existingData = (editTemplate?.templateData ?? {}) as Record<string, unknown>;
 
   const [name, setName] = useState(editTemplate?.name ?? "");
-  const [description, setDescription] = useState(
-    editTemplate?.description ?? "",
-  );
+  const [description, setDescription] = useState(editTemplate?.description ?? "");
   const [templateType, setTemplateType] = useState<"task" | "project">(
     (editTemplate?.templateType as "task" | "project") ?? defaultType ?? "task",
   );
 
   // Task template fields
-  const [titlePrefix, setTitlePrefix] = useState(
-    (existingData.title_prefix as string) ?? "",
-  );
-  const [taskType, setTaskType] = useState(
-    (existingData.type as string) ?? "feature",
-  );
-  const [priority, setPriority] = useState(
-    (existingData.priority as string) ?? "medium",
-  );
-  const [effort, setEffort] = useState(
-    (existingData.estimated_effort as string) ?? "m",
-  );
+  const [titlePrefix, setTitlePrefix] = useState((existingData.title_prefix as string) ?? "");
+  const [taskType, setTaskType] = useState((existingData.type as string) ?? "feature");
+  const [priority, setPriority] = useState((existingData.priority as string) ?? "medium");
+  const [effort, setEffort] = useState((existingData.estimated_effort as string) ?? "m");
   const [taskDescription, setTaskDescription] = useState(
     (existingData.description as string) ?? "",
   );
@@ -515,12 +463,8 @@ function TemplateFormDialog({
   const [projectDescription, setProjectDescription] = useState(
     (existingData.description as string) ?? "",
   );
-  const [epics, setEpics] = useState<EpicDraft[]>(
-    (existingData.epics as EpicDraft[]) ?? [],
-  );
-  const [labels, setLabels] = useState<LabelDraft[]>(
-    (existingData.labels as LabelDraft[]) ?? [],
-  );
+  const [epics, setEpics] = useState<EpicDraft[]>((existingData.epics as EpicDraft[]) ?? []);
+  const [labels, setLabels] = useState<LabelDraft[]>((existingData.labels as LabelDraft[]) ?? []);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -562,8 +506,7 @@ function TemplateFormDialog({
     }
     // project
     const data: Record<string, unknown> = {};
-    if (projectDescription.trim())
-      data.description = projectDescription.trim();
+    if (projectDescription.trim()) data.description = projectDescription.trim();
     if (epics.length > 0) data.epics = epics;
     if (labels.length > 0) data.labels = labels;
     return data;
@@ -614,9 +557,7 @@ function TemplateFormDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>
-              {isEditing ? "Edit Template" : "New Template"}
-            </DialogTitle>
+            <DialogTitle>{isEditing ? "Edit Template" : "New Template"}</DialogTitle>
             <DialogDescription>
               {isEditing
                 ? "Update the template configuration."
@@ -637,9 +578,7 @@ function TemplateFormDialog({
                 }}
                 autoFocus
               />
-              {errors.name && (
-                <p className="text-xs text-destructive">{errors.name}</p>
-              )}
+              {errors.name && <p className="text-destructive text-xs">{errors.name}</p>}
             </div>
 
             {/* Description */}
@@ -660,9 +599,7 @@ function TemplateFormDialog({
                 <Label htmlFor="tpl-type">Type</Label>
                 <Select
                   value={templateType}
-                  onValueChange={(v) =>
-                    setTemplateType(v as "task" | "project")
-                  }
+                  onValueChange={(v) => setTemplateType(v as "task" | "project")}
                 >
                   <SelectTrigger id="tpl-type" className="w-full">
                     <SelectValue />
@@ -745,10 +682,7 @@ function TemplateFormDialog({
                     className="font-mono text-sm"
                   />
                 </div>
-                <SubtaskListEditor
-                  subtasks={subtasks}
-                  onChange={setSubtasks}
-                />
+                <SubtaskListEditor subtasks={subtasks} onChange={setSubtasks} />
               </>
             )}
 
@@ -771,7 +705,7 @@ function TemplateFormDialog({
             )}
 
             {mutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {mutation.error instanceof ApiError
                   ? mutation.error.message
                   : `Failed to ${isEditing ? "update" : "create"} template.`}
@@ -779,11 +713,7 @@ function TemplateFormDialog({
             )}
           </div>
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
@@ -901,11 +831,7 @@ function UseTemplateDialog({
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.projectId && (
-                  <p className="text-xs text-destructive">
-                    {errors.projectId}
-                  </p>
-                )}
+                {errors.projectId && <p className="text-destructive text-xs">{errors.projectId}</p>}
               </div>
             )}
 
@@ -918,21 +844,18 @@ function UseTemplateDialog({
                   value={projectName}
                   onChange={(e) => {
                     setProjectName(e.target.value);
-                    if (errors.projectName)
-                      setErrors((p) => ({ ...p, projectName: "" }));
+                    if (errors.projectName) setErrors((p) => ({ ...p, projectName: "" }));
                   }}
                   autoFocus
                 />
                 {errors.projectName && (
-                  <p className="text-xs text-destructive">
-                    {errors.projectName}
-                  </p>
+                  <p className="text-destructive text-xs">{errors.projectName}</p>
                 )}
               </div>
             )}
 
             {instantiateMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
                 {instantiateMutation.error instanceof ApiError
                   ? instantiateMutation.error.message
                   : "Failed to instantiate template."}
@@ -946,11 +869,7 @@ function UseTemplateDialog({
             )}
           </div>
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={instantiateMutation.isPending}>
@@ -962,9 +881,7 @@ function UseTemplateDialog({
               ) : (
                 <>
                   <Play className="size-4" />
-                  {template.templateType === "task"
-                    ? "Create Task"
-                    : "Create Project"}
+                  {template.templateType === "task" ? "Create Task" : "Create Project"}
                 </>
               )}
             </Button>
@@ -1003,12 +920,11 @@ function DeleteTemplateDialog({
         <DialogHeader>
           <DialogTitle>Delete Template</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete "{template.name}"? This action
-            cannot be undone.
+            Are you sure you want to delete "{template.name}"? This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
         {deleteMutation.isError && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
             {deleteMutation.error instanceof ApiError
               ? deleteMutation.error.message
               : "Failed to delete template."}
@@ -1018,11 +934,7 @@ function DeleteTemplateDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-          >
+          <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
             {deleteMutation.isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
@@ -1047,13 +959,9 @@ function TemplateCard({ template }: { template: Template }) {
 
   const data = (template.templateData ?? {}) as Record<string, unknown>;
   const subtaskCount =
-    template.templateType === "task" && Array.isArray(data.subtasks)
-      ? data.subtasks.length
-      : 0;
+    template.templateType === "task" && Array.isArray(data.subtasks) ? data.subtasks.length : 0;
   const epicCount =
-    template.templateType === "project" && Array.isArray(data.epics)
-      ? data.epics.length
-      : 0;
+    template.templateType === "project" && Array.isArray(data.epics) ? data.epics.length : 0;
 
   return (
     <>
@@ -1066,14 +974,10 @@ function TemplateCard({ template }: { template: Template }) {
               ) : (
                 <FolderOpen className="size-4 shrink-0 text-purple-500" />
               )}
-              <h3 className="truncate text-sm font-medium">
-                {template.name}
-              </h3>
+              <h3 className="truncate text-sm font-medium">{template.name}</h3>
             </div>
             {template.description && (
-              <p className="line-clamp-2 text-xs text-muted-foreground">
-                {template.description}
-              </p>
+              <p className="text-muted-foreground line-clamp-2 text-xs">{template.description}</p>
             )}
             <div className="flex items-center gap-2 pt-1">
               <Badge
@@ -1088,12 +992,12 @@ function TemplateCard({ template }: { template: Template }) {
                 {template.templateType === "task" ? "Task" : "Project"}
               </Badge>
               {subtaskCount > 0 && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-muted-foreground text-[10px]">
                   {subtaskCount} subtask{subtaskCount !== 1 ? "s" : ""}
                 </span>
               )}
               {epicCount > 0 && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-muted-foreground text-[10px]">
                   {epicCount} epic{epicCount !== 1 ? "s" : ""}
                 </span>
               )}
@@ -1113,9 +1017,7 @@ function TemplateCard({ template }: { template: Template }) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-sm">
                   <MoreHorizontal className="size-4" />
-                  <span className="sr-only">
-                    Actions for {template.name}
-                  </span>
+                  <span className="sr-only">Actions for {template.name}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -1137,21 +1039,9 @@ function TemplateCard({ template }: { template: Template }) {
         </CardContent>
       </Card>
 
-      <TemplateFormDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        editTemplate={template}
-      />
-      <UseTemplateDialog
-        open={useOpen}
-        onOpenChange={setUseOpen}
-        template={template}
-      />
-      <DeleteTemplateDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        template={template}
-      />
+      <TemplateFormDialog open={editOpen} onOpenChange={setEditOpen} editTemplate={template} />
+      <UseTemplateDialog open={useOpen} onOpenChange={setUseOpen} template={template} />
+      <DeleteTemplateDialog open={deleteOpen} onOpenChange={setDeleteOpen} template={template} />
     </>
   );
 }
@@ -1168,14 +1058,12 @@ function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center py-12">
       {type === "task" ? (
-        <FileText className="mb-4 size-12 text-muted-foreground/50" />
+        <FileText className="text-muted-foreground/50 mb-4 size-12" />
       ) : (
-        <FolderOpen className="mb-4 size-12 text-muted-foreground/50" />
+        <FolderOpen className="text-muted-foreground/50 mb-4 size-12" />
       )}
-      <h3 className="text-lg font-medium">
-        No {type} templates
-      </h3>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <h3 className="text-lg font-medium">No {type} templates</h3>
+      <p className="text-muted-foreground mt-1 text-sm">
         Create a template to speed up repetitive work.
       </p>
       <Button className="mt-4" size="sm" onClick={onCreateClick}>
@@ -1193,10 +1081,8 @@ export function TemplatesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<"task" | "project">("task");
 
-  const taskTemplates =
-    templates?.filter((t) => t.templateType === "task") ?? [];
-  const projectTemplates =
-    templates?.filter((t) => t.templateType === "project") ?? [];
+  const taskTemplates = templates?.filter((t) => t.templateType === "task") ?? [];
+  const projectTemplates = templates?.filter((t) => t.templateType === "project") ?? [];
 
   function handleCreateForType(type: "task" | "project") {
     setCreateType(type);
@@ -1210,7 +1096,7 @@ export function TemplatesPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Copy className="size-6 text-muted-foreground" />
+          <Copy className="text-muted-foreground size-6" />
           <h1 className="text-2xl font-bold tracking-tight">Templates</h1>
         </div>
         <Button size="sm" onClick={() => handleCreateForType("task")}>
@@ -1223,9 +1109,7 @@ export function TemplatesPage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="flex flex-col items-center gap-3 py-8">
-            <p className="text-sm text-destructive">
-              Failed to load templates. Please try again.
-            </p>
+            <p className="text-destructive text-sm">Failed to load templates. Please try again.</p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               Retry
             </Button>
@@ -1280,19 +1164,13 @@ export function TemplatesPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-base">
-                      Task Templates
-                    </CardTitle>
+                    <CardTitle className="text-base">Task Templates</CardTitle>
                     <CardDescription>
                       Reusable task configurations with subtasks and metadata.
                     </CardDescription>
                   </div>
                   {taskTemplates.length > 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleCreateForType("task")}
-                    >
+                    <Button size="sm" variant="outline" onClick={() => handleCreateForType("task")}>
                       <Plus className="size-4" />
                       New
                     </Button>
@@ -1301,10 +1179,7 @@ export function TemplatesPage() {
               </CardHeader>
               <CardContent>
                 {taskTemplates.length === 0 ? (
-                  <EmptyState
-                    type="task"
-                    onCreateClick={() => handleCreateForType("task")}
-                  />
+                  <EmptyState type="task" onCreateClick={() => handleCreateForType("task")} />
                 ) : (
                   <div className="space-y-2">
                     {taskTemplates.map((template) => (
@@ -1321,9 +1196,7 @@ export function TemplatesPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-base">
-                      Project Templates
-                    </CardTitle>
+                    <CardTitle className="text-base">Project Templates</CardTitle>
                     <CardDescription>
                       Full project scaffolds with epics, tasks, and labels.
                     </CardDescription>
@@ -1342,10 +1215,7 @@ export function TemplatesPage() {
               </CardHeader>
               <CardContent>
                 {projectTemplates.length === 0 ? (
-                  <EmptyState
-                    type="project"
-                    onCreateClick={() => handleCreateForType("project")}
-                  />
+                  <EmptyState type="project" onCreateClick={() => handleCreateForType("project")} />
                 ) : (
                   <div className="space-y-2">
                     {projectTemplates.map((template) => (
@@ -1360,11 +1230,7 @@ export function TemplatesPage() {
       )}
 
       {/* Create Template Dialog */}
-      <TemplateFormDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        defaultType={createType}
-      />
+      <TemplateFormDialog open={createOpen} onOpenChange={setCreateOpen} defaultType={createType} />
     </div>
   );
 }

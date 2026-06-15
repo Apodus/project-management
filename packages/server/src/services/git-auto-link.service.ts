@@ -32,10 +32,7 @@ const ULID_RE = new RegExp(`^${ULID_PATTERN}$`, "i");
  *
  * Returns null if the branch name does not match the pattern.
  */
-export function parseBranchName(
-  branchName: string,
-  branchPrefix?: string,
-): ParsedBranch | null {
+export function parseBranchName(branchName: string, branchPrefix?: string): ParsedBranch | null {
   // Branch must contain a "/"
   const slashIdx = branchName.indexOf("/");
   if (slashIdx === -1) return null;

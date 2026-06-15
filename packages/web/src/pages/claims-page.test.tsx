@@ -154,9 +154,7 @@ describe("ClaimsPage", () => {
     // only on rows the caller does NOT already hold.
     expect(screen.getAllByRole("button", { name: "Release" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Release to…" })).toHaveLength(2);
-    expect(
-      screen.getAllByRole("button", { name: "Request takeover" }),
-    ).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Request takeover" })).toHaveLength(1);
   });
 
   it("releases a claim outright via the plain Release action", async () => {

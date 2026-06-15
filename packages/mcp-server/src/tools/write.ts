@@ -72,17 +72,9 @@ export function registerWriteTools(server: McpServer): void {
       proposal_id: z
         .string()
         .optional()
-        .describe(
-          "Link this epic to a proposal. You must hold the claim on that proposal.",
-        ),
-      milestone_id: z
-        .string()
-        .optional()
-        .describe("Link this epic to a milestone"),
-      target_date: z
-        .string()
-        .optional()
-        .describe("Target completion date (ISO 8601)"),
+        .describe("Link this epic to a proposal. You must hold the claim on that proposal."),
+      milestone_id: z.string().optional().describe("Link this epic to a milestone"),
+      target_date: z.string().optional().describe("Target completion date (ISO 8601)"),
       category: z
         .string()
         .optional()
@@ -128,7 +120,9 @@ export function registerWriteTools(server: McpServer): void {
       } catch (err) {
         if (err instanceof ApiError && err.code === "CLAIM_DENIED") {
           return {
-            content: [{ type: "text" as const, text: claimDeniedText("proposal", "pm_claim_proposal") }],
+            content: [
+              { type: "text" as const, text: claimDeniedText("proposal", "pm_claim_proposal") },
+            ],
           };
         }
         throw err;
@@ -169,10 +163,7 @@ export function registerWriteTools(server: McpServer): void {
         })
         .optional()
         .describe("AI context for the task"),
-      depends_on: z
-        .array(z.string())
-        .optional()
-        .describe("Array of task IDs this task depends on"),
+      depends_on: z.array(z.string()).optional().describe("Array of task IDs this task depends on"),
     },
     async ({
       project_id,
@@ -243,10 +234,7 @@ export function registerWriteTools(server: McpServer): void {
       task_id: z.string().describe("The task ID to update"),
       title: z.string().optional().describe("New task title"),
       description: z.string().optional().describe("New task description (markdown)"),
-      priority: z
-        .enum(["critical", "high", "medium", "low"])
-        .optional()
-        .describe("New priority"),
+      priority: z.enum(["critical", "high", "medium", "low"]).optional().describe("New priority"),
       type: z
         .enum(["feature", "bug", "chore", "spike", "design", "research"])
         .optional()
@@ -267,7 +255,16 @@ export function registerWriteTools(server: McpServer): void {
         .describe("Context to merge with existing task context"),
       due_date: z.string().optional().describe("Due date (ISO 8601 format)"),
     },
-    async ({ task_id, title, description, priority, type, estimated_effort, context, due_date }) => {
+    async ({
+      task_id,
+      title,
+      description,
+      priority,
+      type,
+      estimated_effort,
+      context,
+      due_date,
+    }) => {
       // If context is provided, merge with existing
       let mergedContext: Record<string, unknown> | undefined;
       if (context) {
@@ -375,11 +372,7 @@ export function registerWriteTools(server: McpServer): void {
         .describe("Other options that were considered"),
     },
     async ({ task_id, decision, rationale, alternatives_considered }) => {
-      const body = [
-        `**Decision:** ${decision}`,
-        "",
-        `**Rationale:** ${rationale}`,
-      ];
+      const body = [`**Decision:** ${decision}`, "", `**Rationale:** ${rationale}`];
 
       if (alternatives_considered && alternatives_considered.length > 0) {
         body.push("", "**Alternatives considered:**");
@@ -438,14 +431,8 @@ export function registerWriteTools(server: McpServer): void {
         .max(100)
         .optional()
         .describe("Completion percentage (0-100)"),
-      files_changed: z
-        .array(z.string())
-        .optional()
-        .describe("List of files that were modified"),
-      blockers: z
-        .array(z.string())
-        .optional()
-        .describe("Current blockers or issues"),
+      files_changed: z.array(z.string()).optional().describe("List of files that were modified"),
+      blockers: z.array(z.string()).optional().describe("Current blockers or issues"),
     },
     async ({ task_id, summary, completion_pct, files_changed, blockers }) => {
       const bodyParts: string[] = [summary];
@@ -526,31 +513,34 @@ export function registerWriteTools(server: McpServer): void {
     "Update AI context on a task. Merges with existing context fields.",
     {
       task_id: z.string().describe("The task ID to set context on"),
-      relevant_files: z
-        .array(z.string())
-        .optional()
-        .describe("Files relevant to this task"),
+      relevant_files: z.array(z.string()).optional().describe("Files relevant to this task"),
       acceptance_criteria: z
         .array(z.string())
         .optional()
         .describe("Acceptance criteria for the task"),
       notes: z.string().optional().describe("Additional notes"),
-      implementation_hints: z
-        .string()
-        .optional()
-        .describe("Hints for implementation approach"),
+      implementation_hints: z.string().optional().describe("Hints for implementation approach"),
       design_references: z
         .array(z.string())
         .optional()
         .describe("References to design documents or proposals"),
     },
-    async ({ task_id, relevant_files, acceptance_criteria, notes, implementation_hints, design_references }) => {
+    async ({
+      task_id,
+      relevant_files,
+      acceptance_criteria,
+      notes,
+      implementation_hints,
+      design_references,
+    }) => {
       // Build context update from provided fields
       const contextUpdate: Record<string, unknown> = {};
       if (relevant_files !== undefined) contextUpdate.relevant_files = relevant_files;
-      if (acceptance_criteria !== undefined) contextUpdate.acceptance_criteria = acceptance_criteria;
+      if (acceptance_criteria !== undefined)
+        contextUpdate.acceptance_criteria = acceptance_criteria;
       if (notes !== undefined) contextUpdate.notes = notes;
-      if (implementation_hints !== undefined) contextUpdate.implementation_hints = implementation_hints;
+      if (implementation_hints !== undefined)
+        contextUpdate.implementation_hints = implementation_hints;
       if (design_references !== undefined) contextUpdate.design_references = design_references;
 
       // Merge with existing context
@@ -592,12 +582,8 @@ export function registerWriteTools(server: McpServer): void {
     "Link a git branch, commit, or pull request to a task.",
     {
       task_id: z.string().describe("The task ID to link the git ref to"),
-      ref_type: z
-        .enum(["branch", "commit", "pull_request"])
-        .describe("Type of git reference"),
-      ref_value: z
-        .string()
-        .describe("The reference value (branch name, commit SHA, or PR number)"),
+      ref_type: z.enum(["branch", "commit", "pull_request"]).describe("Type of git reference"),
+      ref_value: z.string().describe("The reference value (branch name, commit SHA, or PR number)"),
       url: z.string().optional().describe("URL to the git reference"),
       title: z.string().optional().describe("Display title for the reference"),
     },
@@ -637,9 +623,7 @@ export function registerWriteTools(server: McpServer): void {
     {
       project_id: z.string().describe("The project both epics belong to"),
       epic_id: z.string().describe("The dependent epic (the one that depends)"),
-      depends_on_epic_id: z
-        .string()
-        .describe("The prerequisite epic (the one depended on)"),
+      depends_on_epic_id: z.string().describe("The prerequisite epic (the one depended on)"),
       dependency_type: z
         .enum(DEPENDENCY_TYPES)
         .optional()

@@ -87,20 +87,29 @@ const errorEnvelope = z.object({
   }),
 });
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "projectId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "projectId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const epicIdParam = z.string().min(1).openapi({
-  param: { name: "epicId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const epicIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "epicId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
-const depIdParam = z.string().min(1).openapi({
-  param: { name: "depId", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const depIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "depId", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definition ─────────────────────────────────────────────
 
@@ -198,10 +207,7 @@ export function createEpicGraphRoutes(): OpenAPIHono<{
   router.openapi(getEpicGraphRoute, (c) => {
     const { projectId } = c.req.valid("param");
     const user = c.get("currentUser");
-    const graph = epicGraphService.getGraph(
-      projectId,
-      user ? { id: user.id } : null,
-    );
+    const graph = epicGraphService.getGraph(projectId, user ? { id: user.id } : null);
 
     return c.json({ data: graph }, 200);
   });

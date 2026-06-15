@@ -42,10 +42,13 @@ const backupResponseEnvelope = z.object({
 
 // ─── Request schemas ──────────────────────────────────────────────
 
-const projectIdParam = z.string().min(1).openapi({
-  param: { name: "id", in: "path" },
-  example: "01HXYZ1234567890ABCDEFGHIJ",
-});
+const projectIdParam = z
+  .string()
+  .min(1)
+  .openapi({
+    param: { name: "id", in: "path" },
+    example: "01HXYZ1234567890ABCDEFGHIJ",
+  });
 
 // ─── Route definitions ────────────────────────────────────────────
 
@@ -97,8 +100,7 @@ const importProjectRoute = createRoute({
   path: "/api/v1/projects/import",
   tags: ["Export/Import"],
   summary: "Import project",
-  description:
-    "Import a project from previously exported JSON. Creates new IDs for all entities.",
+  description: "Import a project from previously exported JSON. Creates new IDs for all entities.",
   request: {
     body: {
       content: {
@@ -169,10 +171,7 @@ export function createExportRoutes(): OpenAPIHono<{
     const exportData = exportService.exportProject(id, { includeActivity });
 
     // Set Content-Disposition header for download
-    c.header(
-      "Content-Disposition",
-      `attachment; filename="project-${id}-export.json"`,
-    );
+    c.header("Content-Disposition", `attachment; filename="project-${id}-export.json"`);
 
     return c.json(exportData, 200);
   });
@@ -187,10 +186,7 @@ export function createExportRoutes(): OpenAPIHono<{
     const db = getDb();
     const ws = db.select().from(workspaces).all();
     if (ws.length === 0) {
-      return c.json(
-        { error: { code: "NO_WORKSPACE", message: "No workspace exists" } },
-        400,
-      );
+      return c.json({ error: { code: "NO_WORKSPACE", message: "No workspace exists" } }, 400);
     }
 
     const project = exportService.importProject(body, ws[0].id, createdBy);

@@ -79,19 +79,19 @@ beforeEach(() => {
 describe("ConflictResolutionPage — seeding", () => {
   it("renders all fields seeded from the project", () => {
     render(<ConflictResolutionPage />);
-    expect(
-      screen.getByRole("switch", { name: /Enabled/i }),
-    ).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: /Enabled/i })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(screen.getByLabelText("Max concurrent")).toHaveValue(2);
     expect(screen.getByLabelText("Time budget (seconds)")).toHaveValue(900);
     expect(screen.getByLabelText("Token budget")).toHaveValue(50000);
-    expect(screen.getByLabelText("Reconcile prompt")).toHaveValue(
-      "Custom prompt",
-    );
+    expect(screen.getByLabelText("Reconcile prompt")).toHaveValue("Custom prompt");
     // Unlimited unchecked because a numeric token_budget was present.
-    expect(
-      screen.getByRole("checkbox", { name: "Unlimited token budget" }),
-    ).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("checkbox", { name: "Unlimited token budget" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
   });
 
   it("seeds Unlimited when token_budget is absent", () => {
@@ -99,9 +99,10 @@ describe("ConflictResolutionPage — seeding", () => {
       projectWith({ enabled: false, max_concurrent: 1, time_budget_sec: 600 }),
     );
     render(<ConflictResolutionPage />);
-    expect(
-      screen.getByRole("checkbox", { name: "Unlimited token budget" }),
-    ).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("checkbox", { name: "Unlimited token budget" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(screen.getByLabelText("Token budget")).toBeDisabled();
   });
 });
@@ -146,24 +147,27 @@ describe("ConflictResolutionPage — revert to defaults", () => {
   it("resets the config fields to defaults but keeps enabled unchanged", () => {
     render(<ConflictResolutionPage />);
     // enabled starts true (from the project).
-    expect(
-      screen.getByRole("switch", { name: /Enabled/i }),
-    ).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: /Enabled/i })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Revert to defaults" }));
 
     expect(screen.getByLabelText("Max concurrent")).toHaveValue(1);
     expect(screen.getByLabelText("Time budget (seconds)")).toHaveValue(600);
     // token_budget default is null → Unlimited checked.
-    expect(
-      screen.getByRole("checkbox", { name: "Unlimited token budget" }),
-    ).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("checkbox", { name: "Unlimited token budget" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     // prompt cleared (empty = built-in default).
     expect(screen.getByLabelText("Reconcile prompt")).toHaveValue("");
     // enabled NOT touched.
-    expect(
-      screen.getByRole("switch", { name: /Enabled/i }),
-    ).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: /Enabled/i })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 });
 
@@ -215,8 +219,6 @@ describe("ConflictResolutionPage — admin gating", () => {
     mocks.useCurrentUser.mockReturnValue({ data: { role: "user" } });
     render(<ConflictResolutionPage />);
     expect(screen.getByText("Admin access required")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Save Changes" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Changes" })).not.toBeInTheDocument();
   });
 });

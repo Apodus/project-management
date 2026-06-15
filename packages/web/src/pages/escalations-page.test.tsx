@@ -18,9 +18,7 @@ vi.mock("@/components/ui/select", () => ({
     children?: ReactNode;
   }) => <SelectCtx.Provider value={onValueChange}>{children}</SelectCtx.Provider>,
   SelectTrigger: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  SelectValue: ({ placeholder }: { placeholder?: string }) => (
-    <span>{placeholder}</span>
-  ),
+  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
   SelectContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   SelectItem: ({ value, children }: { value: string; children?: ReactNode }) => {
     const onSelect = useContext(SelectCtx);

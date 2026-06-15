@@ -37,17 +37,12 @@ describe("Dependencies API", () => {
       });
 
       // A depends on B (B blocks A)
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${taskA.id}/dependencies`,
-        {
-          body: {
-            dependsOnTaskId: taskB.id,
-            type: "blocks",
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${taskA.id}/dependencies`, {
+        body: {
+          dependsOnTaskId: taskB.id,
+          type: "blocks",
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -70,17 +65,12 @@ describe("Dependencies API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${taskA.id}/dependencies`,
-        {
-          body: {
-            dependsOnTaskId: taskB.id,
-            type: "relates_to",
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${taskA.id}/dependencies`, {
+        body: {
+          dependsOnTaskId: taskB.id,
+          type: "relates_to",
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -99,16 +89,11 @@ describe("Dependencies API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${taskA.id}/dependencies`,
-        {
-          body: {
-            dependsOnTaskId: taskB.id,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${taskA.id}/dependencies`, {
+        body: {
+          dependsOnTaskId: taskB.id,
         },
-      );
+      });
       expect(res.status).toBe(201);
 
       const body = await res.json();
@@ -123,16 +108,11 @@ describe("Dependencies API", () => {
         reporterId: user.id,
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/dependencies`,
-        {
-          body: {
-            dependsOnTaskId: task.id,
-          },
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/dependencies`, {
+        body: {
+          dependsOnTaskId: task.id,
         },
-      );
+      });
       expect(res.status).toBe(400);
 
       const body = await res.json();
@@ -271,12 +251,9 @@ describe("Dependencies API", () => {
       });
 
       // E depends on A — should fail (cycle: A->B->C->D->E->A)
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${taskE.id}/dependencies`,
-        { body: { dependsOnTaskId: taskA.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${taskE.id}/dependencies`, {
+        body: { dependsOnTaskId: taskA.id },
+      });
       expect(res.status).toBe(400);
 
       const body = await res.json();
@@ -346,12 +323,9 @@ describe("Dependencies API", () => {
         body: { dependsOnTaskId: taskB.id },
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${taskA.id}/dependencies`,
-        { body: { dependsOnTaskId: taskB.id } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${taskA.id}/dependencies`, {
+        body: { dependsOnTaskId: taskB.id },
+      });
       expect(res.status).toBe(409);
     });
 
@@ -364,12 +338,9 @@ describe("Dependencies API", () => {
       });
       const fakeId = createId();
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${task.id}/dependencies`,
-        { body: { dependsOnTaskId: fakeId } },
-      );
+      const res = await authRequest(testApp.app, "POST", `/api/v1/tasks/${task.id}/dependencies`, {
+        body: { dependsOnTaskId: fakeId },
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -444,12 +415,9 @@ describe("Dependencies API", () => {
       });
 
       // blockedTask depends on blockerTask
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${blockedTask.id}/dependencies`,
-        { body: { dependsOnTaskId: blockerTask.id } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${blockedTask.id}/dependencies`, {
+        body: { dependsOnTaskId: blockerTask.id },
+      });
 
       // Filter for blocked tasks
       const res = await authRequest(
@@ -479,12 +447,9 @@ describe("Dependencies API", () => {
       });
 
       // blockedTask depends on blockerTask (which is done)
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${blockedTask.id}/dependencies`,
-        { body: { dependsOnTaskId: blockerTask.id } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${blockedTask.id}/dependencies`, {
+        body: { dependsOnTaskId: blockerTask.id },
+      });
 
       // Filter for blocked tasks — should be empty since blocker is done
       const resBlocked = await authRequest(
@@ -542,12 +507,9 @@ describe("Dependencies API", () => {
       });
 
       // B relates_to A (not a "blocks" dependency)
-      await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/tasks/${taskB.id}/dependencies`,
-        { body: { dependsOnTaskId: taskA.id, type: "relates_to" } },
-      );
+      await authRequest(testApp.app, "POST", `/api/v1/tasks/${taskB.id}/dependencies`, {
+        body: { dependsOnTaskId: taskA.id, type: "relates_to" },
+      });
 
       // B should NOT be blocked (relates_to doesn't block)
       const res = await authRequest(

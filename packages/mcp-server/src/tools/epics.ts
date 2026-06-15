@@ -57,9 +57,7 @@ export function registerEpicTools(server: McpServer): void {
           const progress = e.taskSummary
             ? `  Tasks: ${e.taskSummary.done}/${e.taskSummary.total} done`
             : "";
-          const descLine = e.description
-            ? e.description.slice(0, 200)
-            : "(no description)";
+          const descLine = e.description ? e.description.slice(0, 200) : "(no description)";
           return [
             `- **${e.name}**`,
             `  ID: ${e.id}`,
@@ -80,9 +78,7 @@ export function registerEpicTools(server: McpServer): void {
           {
             type: "text" as const,
             text:
-              epics.length > 0
-                ? `Found ${epics.length} epic(s):\n\n${text}`
-                : "No epics found.",
+              epics.length > 0 ? `Found ${epics.length} epic(s):\n\n${text}` : "No epics found.",
           },
         ],
       };
@@ -119,10 +115,7 @@ export function registerEpicTools(server: McpServer): void {
       }
 
       if (epic.taskSummary) {
-        sections.push(
-          "",
-          `## Tasks (${epic.taskSummary.done}/${epic.taskSummary.total} done)`,
-        );
+        sections.push("", `## Tasks (${epic.taskSummary.done}/${epic.taskSummary.total} done)`);
         const statusParts = Object.entries(epic.taskSummary.byStatus)
           .map(([status, count]) => `${status}: ${count}`)
           .join(", ");
@@ -248,9 +241,7 @@ export function registerEpicTools(server: McpServer): void {
       epic_id: z.string(),
       reason: z
         .string()
-        .describe(
-          "Why you are taking over this claim (required, recorded in the audit log)",
-        ),
+        .describe("Why you are taking over this claim (required, recorded in the audit log)"),
       assignee_id: z
         .string()
         .optional()
@@ -299,12 +290,8 @@ export function registerEpicTools(server: McpServer): void {
     "Hand off your epic claim to a named worker (reason required, audited). You must currently hold the claim (a human director may hand off any claim). The claim and its liveness lease transfer to the target.",
     {
       epic_id: z.string().describe("The epic ID to hand off"),
-      reason: z
-        .string()
-        .describe("Why you are handing off (required, recorded in the audit log)"),
-      target: z
-        .string()
-        .describe("The user id of the worker to hand the claim to"),
+      reason: z.string().describe("Why you are handing off (required, recorded in the audit log)"),
+      target: z.string().describe("The user id of the worker to hand the claim to"),
     },
     async ({ epic_id, reason, target }) => {
       const result = await releaseEpicTo(epic_id, reason, target);

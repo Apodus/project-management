@@ -1,11 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { ReactNode } from "react";
-import type {
-  EscalationMessage,
-  EscalationWithThread,
-  MergeRequest,
-} from "@/lib/api";
+import type { EscalationMessage, EscalationWithThread, MergeRequest } from "@/lib/api";
 
 let timelineData: EscalationWithThread | undefined;
 let mergeRequestsData: MergeRequest[] = [];
@@ -84,9 +80,7 @@ function makeMessage(overrides: Partial<EscalationMessage>): EscalationMessage {
   };
 }
 
-function makeThread(
-  overrides: Partial<EscalationWithThread>,
-): EscalationWithThread {
+function makeThread(overrides: Partial<EscalationWithThread>): EscalationWithThread {
   return {
     id: "esc-1",
     projectId: "proj-1",
@@ -134,7 +128,13 @@ describe("EscalationTimelinePage", () => {
   it("renders the message thread in ascending seq order with author + type", () => {
     timelineData = makeThread({
       messages: [
-        makeMessage({ id: "m2", seq: 2, authorId: "human-director", body: "second", messageType: "diagnosis" }),
+        makeMessage({
+          id: "m2",
+          seq: 2,
+          authorId: "human-director",
+          body: "second",
+          messageType: "diagnosis",
+        }),
         makeMessage({ id: "m1", seq: 1, authorId: "agent-1", body: "first", messageType: "reply" }),
       ],
     });
@@ -145,9 +145,7 @@ describe("EscalationTimelinePage", () => {
     expect(first).toBeInTheDocument();
     expect(second).toBeInTheDocument();
     // seq 1 (first) must render before seq 2 (second) in document order.
-    expect(
-      first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     expect(screen.getByText("Diagnosis")).toBeInTheDocument();
     expect(screen.getByText("Reply")).toBeInTheDocument();
@@ -204,9 +202,7 @@ describe("EscalationTimelinePage", () => {
     expect(screen.getByText(/landed deadbeef12/)).toBeInTheDocument();
     expect(screen.getByText("View timeline")).toBeInTheDocument();
     // The MR id deep-links to the merge-request timeline route.
-    const mrLink = linkCalls.find(
-      (c) => c.to === "/merge-requests/$requestId/timeline",
-    );
+    const mrLink = linkCalls.find((c) => c.to === "/merge-requests/$requestId/timeline");
     expect(mrLink?.params).toEqual({ requestId: "mr-00000001" });
   });
 
