@@ -8,3 +8,8 @@ pnpm-lock.yaml
 # markdown formatter would reflow into noise. Not enforced as code style.
 docs
 roadmaps
+
+# Generated artifact — owned by `openapi:export` (exact JSON.stringify(spec,
+# null, 2), no trailing newline). The drift-guard test compares it byte-for-byte
+# to the generated spec, so prettier must NOT reformat it.
+packages/server/openapi.json
