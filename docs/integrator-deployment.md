@@ -75,6 +75,29 @@ node packages/integrator-ref/dist/index.js …
 > node tools/pm-integrator/pm-integrator.mjs --project <id> --resource main --pm-url http://localhost:3000
 > ```
 
+> **Capture BOTH stdout and stderr.** The integrator logs (pino) on **stdout**,
+> but a last-resort fatal (`unhandledRejection` / `uncaughtException`, or a
+> pre-startup throw) can land on **stderr**. A launcher that only surfaces stdout
+> — most importantly a `… | npx pino-pretty` pipe, which carries stdout ONLY —
+> makes such a death look silent ("the daemon just vanished, nothing in the
+> console"). Always redirect both streams to a durable file so the cause survives
+> the console scrollback/closing:
+>
+> ```bash
+> # bash / sh
+> node packages/integrator-ref/dist/index.js --project <id> --resource main --pm-url http://localhost:3000 >> logs/integrator.log 2>&1
+> ```
+>
+> ```bat
+> REM Windows .bat — 2>&1 MUST come after the > redirect
+> node packages\integrator-ref\dist\index.js --project <id> --resource main --pm-url http://localhost:3000 >> logs\integrator.log 2>&1
+> ```
+>
+> If you pretty-print live, merge stderr in first so it flows through too:
+> `node … 2>&1 | npx pino-pretty`. (As of the observability net added 2026-06-17,
+> uncaught errors are also re-logged through pino to stdout before exit, so they
+> appear in the pretty stream — but the file capture is the durable record.)
+
 ---
 
 ## 4. Configuration

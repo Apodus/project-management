@@ -39,6 +39,28 @@ async function main(): Promise<void> {
   const version = VERSION;
   const logger = createLogger(args.logLevel ?? process.env.PM_LOG_LEVEL ?? "info");
 
+  // ── Last-resort observability net (no auto-restart). ──────────────────────
+  // The hot loop + SSE subscriber already contain every API/connection error
+  // (retry + backoff), so a PM restart should NOT kill a healthy integrator.
+  // But an error that escapes those guards — a throw in a timer/callback, an
+  // unawaited rejection — otherwise hits Node's DEFAULT handler, which prints a
+  // bare message to STDERR and exits. pino logs to STDOUT, so when a launcher
+  // only surfaces stdout that death looks silent ("it just died, nothing in the
+  // console"). These handlers route the cause through pino (FATAL, with stack)
+  // BEFORE exiting, so the death is visible on the stream operators tail. We
+  // deliberately exit(1) and do NOT self-restart: a crash stays a crash (no loop
+  // to mask a systemic fault), just a diagnosable one.
+  const describeErr = (e: unknown) =>
+    e instanceof Error ? { message: e.message, stack: e.stack } : { message: String(e) };
+  process.on("unhandledRejection", (reason) => {
+    logger.fatal({ err: describeErr(reason) }, "unhandledRejection — exiting");
+    process.exit(1);
+  });
+  process.on("uncaughtException", (err) => {
+    logger.fatal({ err: describeErr(err) }, "uncaughtException — exiting");
+    process.exit(1);
+  });
+
   const tokenEnvVar = args.token ?? "PM_API_TOKEN";
   const token = process.env[tokenEnvVar];
   if (!token) {
