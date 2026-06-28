@@ -97,27 +97,28 @@ describe("migration log heal + boot assertion", () => {
     // simulation tracks whatever migration is CURRENTLY last).
     //
     // MAINTENANCE NOTE: the revert below must undo the last SCHEMA migration's
-    // effect. The CURRENT last migration (0034) is a DATA migration with no
-    // schema effect to revert, so this simulation unrecords the last TWO entries
-    // — the data migration 0034 AND the last schema migration 0033 — reverts
-    // 0033's column, and proves boot heals the watermark then re-applies BOTH
-    // (0033 restores the column; 0034's backfill re-runs idempotently). When you
-    // add a SCHEMA migration on top, update LAST_REVERT + LAST_COLUMN_CHECK and
-    // the delete count to cover back through it — this test fails loudly
-    // (duplicate column on re-apply, or a missing column) if they fall behind.
-    const LAST_REVERT = "ALTER TABLE merge_requests DROP COLUMN revert_of;"; // 0033
+    // effect. The CURRENT last migration (0035) IS a schema migration
+    // (proposals.proposal_kind), so this simulation unrecords just the last
+    // entry, reverts its column, and proves boot heals the watermark then
+    // re-applies it. When the last migration is instead a DATA migration with no
+    // schema effect to revert, unrecord back through the last SCHEMA migration
+    // (update LAST_REVERT + LAST_COLUMN_CHECK and the delete count to cover it)
+    // — this test fails loudly (duplicate column on re-apply, or a missing
+    // column) if they fall behind.
+    const LAST_REVERT = "ALTER TABLE proposals DROP COLUMN proposal_kind;"; // 0035
     const LAST_COLUMN_CHECK = {
-      table: "merge_requests",
-      column: "revert_of",
+      table: "proposals",
+      column: "proposal_kind",
     };
     const raw = new Database(dbPath);
-    // The genuinely-last two recorded migrations (0034 data + 0033 schema).
-    const lastTwo = raw
-      .prepare("SELECT rowid, hash FROM __drizzle_migrations ORDER BY rowid DESC LIMIT 2")
+    // The genuinely-last recorded migration(s) — back through the last schema
+    // migration (here just 0035, itself a schema migration).
+    const unrecorded = raw
+      .prepare("SELECT rowid, hash FROM __drizzle_migrations ORDER BY rowid DESC LIMIT 1")
       .all() as { rowid: number; hash: string }[];
-    const last = lastTwo[0]!; // 0034 — the genuinely-last entry
+    const last = unrecorded[0]!; // 0035 — the genuinely-last entry
     const delStmt = raw.prepare("DELETE FROM __drizzle_migrations WHERE rowid = ?");
-    for (const r of lastTwo) delStmt.run(r.rowid);
+    for (const r of unrecorded) delStmt.run(r.rowid);
     raw.exec(LAST_REVERT);
     const future = Date.parse("2026-06-21T00:00:00Z");
     raw.prepare("UPDATE __drizzle_migrations SET created_at = ? + rowid").run(future);

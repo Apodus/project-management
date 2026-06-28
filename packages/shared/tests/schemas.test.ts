@@ -833,6 +833,7 @@ describe("selectProposalSchema", () => {
     title: "Add user auth",
     description: "We need authentication",
     status: "open" as const,
+    proposal_kind: "standard" as const,
     created_by: VALID_ULID,
     claimed_by: null,
     claim_status: "unclaimed" as const,
@@ -881,6 +882,22 @@ describe("selectProposalSchema", () => {
   it("rejects empty title", () => {
     expect(() => selectProposalSchema.parse({ ...validProposal, title: "" })).toThrow();
   });
+
+  it("defaults proposal_kind to standard when omitted", () => {
+    const { proposal_kind: _, ...p } = validProposal;
+    expect(selectProposalSchema.parse(p).proposal_kind).toBe("standard");
+  });
+
+  it("accepts fast_track proposal_kind", () => {
+    const p = { ...validProposal, proposal_kind: "fast_track" as const };
+    expect(selectProposalSchema.parse(p).proposal_kind).toBe("fast_track");
+  });
+
+  it("rejects an invalid proposal_kind", () => {
+    expect(() =>
+      selectProposalSchema.parse({ ...validProposal, proposal_kind: "expedited" }),
+    ).toThrow();
+  });
 });
 
 describe("insertProposalSchema", () => {
@@ -890,6 +907,7 @@ describe("insertProposalSchema", () => {
       title: "New feature idea",
       description: "Some description",
       status: "open" as const,
+      proposal_kind: "standard" as const,
       created_by: VALID_ULID,
       resolved_by: null,
       resolved_at: null,

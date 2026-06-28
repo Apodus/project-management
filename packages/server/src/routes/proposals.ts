@@ -4,6 +4,7 @@ import {
   CLAIM_STATUSES,
   CLAIM_STATES,
   PROPOSAL_STATUSES,
+  PROPOSAL_KINDS,
   COMMENT_TYPES,
 } from "@pm/shared";
 import type { UserType } from "@pm/shared";
@@ -19,6 +20,7 @@ const proposalSchema = z
     title: z.string(),
     description: z.string().nullable(),
     status: z.string(),
+    proposalKind: z.enum(PROPOSAL_KINDS),
     createdBy: z.string(),
     claimedBy: z.string().nullable(),
     claimStatus: z.enum(CLAIM_STATUSES),
@@ -192,6 +194,7 @@ const createProposalBody = z
     title: z.string().min(1, "Title is required"),
     description: z.string().nullable().optional(),
     createdBy: z.string().min(1).optional(),
+    proposalKind: z.enum(PROPOSAL_KINDS).optional(),
   })
   .openapi("CreateProposal");
 

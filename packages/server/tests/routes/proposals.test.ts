@@ -234,6 +234,43 @@ describe("Proposals API", () => {
       const body = await res.json();
       expect(body.data.createdBy).toBe(aiAgent.user.id);
     });
+
+    it("should persist proposalKind=fast_track when provided (T1·P2)", async () => {
+      const project = createTestProject(testApp.db);
+      const user = createTestUser(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/proposals`,
+        {
+          body: { title: "Fast one", createdBy: user.id, proposalKind: "fast_track" },
+        },
+      );
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.proposalKind).toBe("fast_track");
+
+      // Re-read to confirm it was persisted, not just echoed.
+      const getRes = await authRequest(testApp.app, "GET", `/api/v1/proposals/${body.data.id}`);
+      expect((await getRes.json()).data.proposalKind).toBe("fast_track");
+    });
+
+    it("should default proposalKind to standard when omitted (T1·P2)", async () => {
+      const project = createTestProject(testApp.db);
+      const user = createTestUser(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/proposals`,
+        {
+          body: { title: "Plain one", createdBy: user.id },
+        },
+      );
+      expect(res.status).toBe(201);
+      expect((await res.json()).data.proposalKind).toBe("standard");
+    });
   });
 
   // ── GET /api/v1/proposals/:id ────────────────────────────────────
@@ -949,6 +986,42 @@ describe("Proposals API", () => {
 
       const body = await res.json();
       expect(body.data.status).toBe("in_progress");
+    });
+
+    it("should be lifecycle-identical for a fast_track proposal (T1·P2 — flavor is advisory)", async () => {
+      const aiAgent = createTestAiAgent(testApp.db);
+      // Create a fast_track proposal in `open` (not accepted) via the public API.
+      const createRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${createTestProject(testApp.db).id}/proposals`,
+        {
+          token: aiAgent.token,
+          body: { title: "Fast lifecycle", proposalKind: "fast_track" },
+        },
+      );
+      const proposal = (await createRes.json()).data;
+      expect(proposal.proposalKind).toBe("fast_track");
+
+      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/claim`, {
+        token: aiAgent.token,
+      });
+
+      // /implement from `open` succeeds and breaks down — flavor changes nothing.
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/proposals/${proposal.id}/implement`,
+        {
+          token: aiAgent.token,
+          body: { epics: [{ name: "E1" }], tasks: [{ title: "T1", epicIndex: 0 }] },
+        },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.status).toBe("in_progress");
+      // The flavor survives the lifecycle unchanged.
+      expect(body.data.proposalKind).toBe("fast_track");
     });
 
     it("should create epics with proposalId set", async () => {

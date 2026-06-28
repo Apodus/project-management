@@ -924,6 +924,13 @@
           "status": {
             "type": "string"
           },
+          "proposalKind": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "fast_track"
+            ]
+          },
           "createdBy": {
             "type": "string"
           },
@@ -969,6 +976,7 @@
           "title",
           "description",
           "status",
+          "proposalKind",
           "createdBy",
           "claimedBy",
           "claimStatus",
@@ -993,6 +1001,13 @@
           "createdBy": {
             "type": "string",
             "minLength": 1
+          },
+          "proposalKind": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "fast_track"
+            ]
           }
         },
         "required": [
@@ -1792,6 +1807,13 @@
           "status": {
             "type": "string"
           },
+          "proposalKind": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "fast_track"
+            ]
+          },
           "createdBy": {
             "type": "string"
           },
@@ -1812,6 +1834,7 @@
           "title",
           "description",
           "status",
+          "proposalKind",
           "createdBy",
           "sourceNoteId",
           "createdAt",
@@ -1827,6 +1850,13 @@
           },
           "description": {
             "type": "string"
+          },
+          "proposalKind": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "fast_track"
+            ]
           }
         }
       },

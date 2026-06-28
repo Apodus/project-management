@@ -1,0 +1,1 @@
+ALTER TABLE `proposals` ADD `proposal_kind` text DEFAULT 'standard' NOT NULL;

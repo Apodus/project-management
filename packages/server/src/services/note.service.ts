@@ -13,6 +13,7 @@ import type {
   NoteStatus,
   NoteTriageOutcome,
   PatchNote,
+  ProposalKind,
   UserType,
 } from "@pm/shared";
 import { getDb, getRawDb, notes, projects, tasks, epics, proposals } from "../db/index.js";
@@ -483,7 +484,11 @@ export function dismiss(id: string, actor: { id: string; type: UserType }, reaso
 export function promoteToProposal(
   id: string,
   actor: { id: string; type: UserType },
-  { title, description }: { title?: string; description?: string } = {},
+  {
+    title,
+    description,
+    proposalKind,
+  }: { title?: string; description?: string; proposalKind?: ProposalKind } = {},
 ) {
   const db = getDb();
   const note = db.select().from(notes).where(eq(notes.id, id)).get();
@@ -516,6 +521,7 @@ export function promoteToProposal(
     description: finalDescription,
     createdBy: actor.id,
     sourceNoteId: note.id,
+    proposalKind,
   });
 
   const updatedNote = applyTriage(id, {

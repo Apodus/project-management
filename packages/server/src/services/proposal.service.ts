@@ -5,6 +5,7 @@ import {
   type ClaimState,
   type ClaimStatus,
   type ClaimResult,
+  type ProposalKind,
   type ProposalStatus,
   type UserType,
 } from "@pm/shared";
@@ -43,6 +44,7 @@ export interface CreateProposalInput {
   description?: string | null;
   createdBy: string;
   sourceNoteId?: string | null;
+  proposalKind?: ProposalKind;
 }
 
 export interface UpdateProposalInput {
@@ -207,6 +209,7 @@ export function create(projectId: string, data: CreateProposalInput) {
       title: data.title,
       description: data.description ?? null,
       status: "open",
+      proposalKind: data.proposalKind ?? "standard",
       createdBy: data.createdBy,
       sourceNoteId: data.sourceNoteId ?? null,
       createdAt: now,

@@ -435,6 +435,42 @@ describe("Notes API", () => {
       );
       expect(res.status).toBe(409);
     });
+
+    it("threads proposalKind=fast_track to the spawned proposal (T1·P2)", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "fast promote" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/promote-to-proposal`,
+        { body: { proposalKind: "fast_track" } },
+      );
+      expect(res.status).toBe(200);
+      expect((await res.json()).proposal.proposalKind).toBe("fast_track");
+    });
+
+    it("defaults the spawned proposal to standard when proposalKind omitted (T1·P2)", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "plain promote" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/promote-to-proposal`,
+        { body: {} },
+      );
+      expect(res.status).toBe(200);
+      expect((await res.json()).proposal.proposalKind).toBe("standard");
+    });
   });
 
   // ── POST /api/v1/notes/:id/promote-to-task (C2 §P4, HUMAN-ONLY) ──

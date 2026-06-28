@@ -114,6 +114,12 @@ export type VerifyResultValue = (typeof VERIFY_RESULTS)[number];
 export const AUTO_IMPLEMENT_MODES = ["off", "shadow", "on"] as const;
 export type AutoImplementMode = (typeof AUTO_IMPLEMENT_MODES)[number];
 
+// T1·P2 — proposal flavor. An ADVISORY routing label, NOT an authz seal: a
+// fast_track proposal is byte-identical in lifecycle to a standard one (same
+// transition map, same claim/implement gates). It only signals intent/routing.
+export const PROPOSAL_KINDS = ["standard", "fast_track"] as const;
+export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
+
 // The lease TTL: a holder must heartbeat within this window or the lease
 // lapses and becomes reclaimable. 30 minutes.
 export const LEASE_TTL_MS_DEFAULT = 30 * 60 * 1000;

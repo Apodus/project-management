@@ -17,6 +17,7 @@ import type {
   NoteSeverity,
   NoteStatus,
   NoteTriageOutcome,
+  ProposalKind,
   VerifyStepResult,
 } from "@pm/shared";
 
@@ -113,6 +114,9 @@ export const proposals = sqliteTable(
     title: text("title").notNull(),
     description: text("description"),
     status: text("status").notNull().default("open"),
+    // T1·P2 — advisory routing label, NOT an authz seal (fast_track is
+    // byte-identical in lifecycle to standard).
+    proposalKind: text("proposal_kind").notNull().default("standard").$type<ProposalKind>(),
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id),

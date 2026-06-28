@@ -5,6 +5,7 @@ import {
   NOTE_ANCHOR_TYPES,
   NOTE_SEVERITIES,
   NOTE_TRIAGE_OUTCOMES,
+  PROPOSAL_KINDS,
 } from "@pm/shared";
 import type { UserType } from "@pm/shared";
 import type { AppVariables } from "../types.js";
@@ -137,6 +138,7 @@ const promoteToProposalBody = z
   .object({
     title: z.string().min(1).optional(),
     description: z.string().optional(),
+    proposalKind: z.enum(PROPOSAL_KINDS).optional(),
   })
   .openapi("PromoteNoteToProposal");
 
@@ -150,6 +152,7 @@ const promotedProposalSchema = z
     title: z.string(),
     description: z.string().nullable(),
     status: z.string(),
+    proposalKind: z.enum(PROPOSAL_KINDS),
     createdBy: z.string(),
     sourceNoteId: z.string().nullable(),
     createdAt: z.string(),

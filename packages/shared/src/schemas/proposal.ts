@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { CLAIM_STATUSES, CLAIM_STATES, PROPOSAL_STATUSES } from "../constants/enums.js";
+import {
+  CLAIM_STATUSES,
+  CLAIM_STATES,
+  PROPOSAL_STATUSES,
+  PROPOSAL_KINDS,
+} from "../constants/enums.js";
 import { ulidSchema, timestampSchema, optionalText } from "./common.js";
 
 export const selectProposalSchema = z.object({
@@ -8,6 +13,7 @@ export const selectProposalSchema = z.object({
   title: z.string().min(1),
   description: optionalText,
   status: z.enum(PROPOSAL_STATUSES),
+  proposal_kind: z.enum(PROPOSAL_KINDS).default("standard"),
   created_by: ulidSchema,
   claimed_by: ulidSchema.nullable().optional(),
   claim_status: z.enum(CLAIM_STATUSES),
