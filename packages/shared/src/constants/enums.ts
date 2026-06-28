@@ -164,6 +164,18 @@ export const NOTES_BACKLOG_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 // latched on escalation_alert_state). 1 hour — an unanswered escalation is far
 // more time-sensitive than an untriaged note.
 export const ESCALATION_SLA_BREACH_THRESHOLD_MS = 60 * 60 * 1000;
+// T3·P4 (notes triage autonomy) — the "triage not draining" threshold. When
+// on-mode triage is enabled but the OLDEST open note has aged past this AND the
+// triage agent has recorded NO decision within this same window, the
+// edge-triggered triage.stalled alert fires (latched on
+// notes_alert_state.triage_stalled_notified). Same on-read constant idiom as
+// NOTES_BACKLOG_THRESHOLD_MS / ESCALATION_SLA_BREACH_THRESHOLD_MS. 6 hours —
+// tunable; set well beyond the daemon poll interval + per-note assessment
+// time-budget + brief outages, so it is operator-actionable (a genuine "triage
+// is not draining" signal) and never a flap. This is HONEST about what it
+// observes — a stalled drain, NOT a daemon-down proof (a quiet-but-alive daemon
+// records nothing; see triage-metrics.service heartbeat).
+export const TRIAGE_STALL_THRESHOLD_MS = 6 * 60 * 60 * 1000;
 // A stricter-than-sweep margin (60s) ADDED to the grace when pick-next decides
 // whether to reclaim-then-claim a stale-claimed task (C3.P3, mode `on` only).
 // A pick is a hostile takeover of another holder's work, so it demands a lease

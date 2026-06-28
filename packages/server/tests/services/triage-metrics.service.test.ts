@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createId } from "@pm/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createId, NOTES_BACKLOG_THRESHOLD_MS } from "@pm/shared";
 import { createTestApp, createTestProject, createTestUser, type TestApp } from "../utils.js";
 import { notes, triageDecisions } from "../../src/db/index.js";
+import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
 import * as metrics from "../../src/services/triage-metrics.service.js";
 
 // A fixed reference "now" so freshness / windowing is deterministic.
@@ -311,5 +312,32 @@ describe("triage-metrics.service", () => {
     expect(m.heartbeat.lastDecisionAt).toBe(ago(30 * MIN));
     // lane counts are NOT windowed — the open note is still counted.
     expect(m.laneCounts.open).toBe(1);
+  });
+
+  // ── R3: the alert side effect can never 500 the metrics read ──────
+
+  it("a throw in the backlog side-effect does NOT 500 the metrics read (R3 guard)", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // An open note past the 7-day backlog threshold makes computeNotesHealth EMIT
+    // NOTE_BACKLOG_ALERT (which it emits UNGUARDED) — a throwing listener thus
+    // throws inside computeNotesHealth. The triage-metrics alert block must
+    // swallow it (R3) and still return the metrics bundle.
+    seedNote(testApp, {
+      projectId,
+      authorId: agentId,
+      status: "open",
+      createdAt: ago(NOTES_BACKLOG_THRESHOLD_MS + HOUR),
+    });
+    getEventBus().on(EVENT_NAMES.NOTE_BACKLOG_ALERT, () => {
+      throw new Error("boom");
+    });
+
+    const m = metrics.computeTriageMetrics(projectId, { now: NOW });
+    // The read still returns a well-formed bundle despite the side-effect throw.
+    expect(m.laneCounts.open).toBe(1);
+    expect(m.computedAt).toBe(NOW);
+    expect(warnSpy).toHaveBeenCalled();
+
+    warnSpy.mockRestore();
   });
 });

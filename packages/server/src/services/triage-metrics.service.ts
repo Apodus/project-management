@@ -1,8 +1,15 @@
 import { and, count, eq, gte, inArray } from "drizzle-orm";
-import { TRIAGE_DECISION_KINDS } from "@pm/shared";
+import { resolveNotesTriage, TRIAGE_DECISION_KINDS, TRIAGE_STALL_THRESHOLD_MS } from "@pm/shared";
 import type { TriageDecisionKind } from "@pm/shared";
 import { getDb, notes, projects, triageDecisions } from "../db/index.js";
 import { AppError } from "../types.js";
+import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
+import {
+  computeNotesHealth,
+  readNotesAlertLatch,
+  setNotesTriageStallLatch,
+  type NotesHealth,
+} from "./notes-health.service.js";
 
 // ─── Triage metrics service (T3·P3) ───────────────────────────────
 // The on-read metric bundle for the notes-triage side-log — the triage-side
@@ -21,7 +28,15 @@ import { AppError } from "../types.js";
 // included and a by_actor breakdown surfaces who is writing. lane counts are
 // ALWAYS project-wide (a backlog fact, not an agent fact).
 //
-// PURE READ: no alert/latch side effect (unlike escalation-metrics' SLA latch).
+// ALERT SIDE EFFECT (T3·P4 — no longer a pure read, mirroring
+// computeEscalationMetrics' SLA latch): computeTriageMetrics now ALSO drives two
+// edge-triggered alerts as guarded side effects of the read —
+//   (1) the EXISTING notes backlog-age alert (computeNotesHealth), now fired
+//       from the triage read path too (reuse, not a second mechanism), and
+//   (2) the NEW triage.stalled ("triage not draining") alert.
+// Both are best-effort + fully try/catch-guarded so the metrics GET (the
+// dashboard polls it ~every 30s) can NEVER 500 on the alert path. The RETURNED
+// metric SHAPE is unchanged (side-effect only ⇒ zero openapi/web regen).
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -108,25 +123,113 @@ function zeroMatrix(): TriageDecisionMatrix {
   return m;
 }
 
+/** The per-project notes-triage settings block (shape resolveNotesTriage reads). */
+type NotesTriageSettings = { enabled?: boolean; mode?: string; triageAgentId?: string } | null;
+
 /**
- * Read the designated triage agent id off the project's settings JSON
- * (settings.notesTriage.triageAgentId). Read DIRECTLY (not via
- * resolveNotesTriage) so scope is independent of enabled/mode — metrics work
- * while triage is off/shadow. A null/empty value ⇒ no designated agent.
+ * Read the project's settings.notesTriage block off the settings JSON. Returned
+ * RAW (not run through resolveNotesTriage) so callers can use it two ways:
+ *   - SCOPE (triageAgentId) uses it directly — scope must be independent of
+ *     enabled/mode so metrics work while triage is off/shadow.
+ *   - the T3·P4 alert FIRE-GATE folds it through resolveNotesTriage (with the
+ *     env-master) so a stalled-drain alert only fires on resolved enabled+on.
+ * Read ONCE per computeTriageMetrics call.
  */
-function readTriageAgentId(projectId: string): string | null {
+function readNotesTriageSettings(projectId: string): NotesTriageSettings {
   const db = getDb();
   const project = db
     .select({ settings: projects.settings })
     .from(projects)
     .where(eq(projects.id, projectId))
     .get();
-  const settings = project?.settings as
-    | { notesTriage?: { triageAgentId?: string | null } | null }
-    | null
-    | undefined;
-  const agentId = settings?.notesTriage?.triageAgentId;
-  return agentId ? agentId : null;
+  const settings = project?.settings as { notesTriage?: NotesTriageSettings } | null | undefined;
+  return settings?.notesTriage ?? null;
+}
+
+// ─── Alert side effects (T3·P4) ───────────────────────────────────
+//
+// Two edge-triggered alerts driven as a guarded side effect of the on-read
+// metrics, mirroring computeEscalationMetrics' SLA latch. NEITHER may throw out
+// of the metrics read (the dashboard polls it ~every 30s), so each is wrapped in
+// its own try/catch — a backlog-health throw can't 500 the GET, and a
+// latch/emit failure can't break the read either.
+
+/**
+ * Fire the (1) reused backlog-age alert + (2) new triage.stalled alert as
+ * guarded side effects.
+ *
+ *   (1) computeNotesHealth fires the EXISTING latched NOTE_BACKLOG_ALERT from
+ *       this triage read path AND returns the aggregate {openCount,
+ *       oldestUntriagedAgeMs} the stall rule reuses (R3: guarded so a throw here
+ *       can't 500 the metrics GET).
+ *   (2) triage.stalled — fires ONCE per stall episode (latched on
+ *       notes_alert_state.triage_stalled_notified, re-arms on clear) when ALL
+ *       hold:
+ *         a. resolved.enabled && resolved.mode === "on" (R1 — folds the
+ *            env-master force-off via resolveNotesTriage, so
+ *            PM_NOTES_TRIAGE_ENABLED=false + DB-on does NOT false-fire);
+ *         b. an OPEN note has aged past TRIAGE_STALL_THRESHOLD_MS;
+ *         c. NO scoped decision was recorded within that window (the heartbeat
+ *            this fn already computed — null/stale ⇒ stalled).
+ *       Identity-masked emit (aggregate counts + ages, NO note id).
+ */
+function fireTriageAlerts(
+  projectId: string,
+  notesTriageSettings: NotesTriageSettings,
+  heartbeat: TriageHeartbeat,
+  nowIso: string,
+  nowMs: number,
+): void {
+  // (1) Reuse the backlog alert from the triage path — guarded (R3).
+  let health: NotesHealth | null = null;
+  try {
+    health = computeNotesHealth(projectId, new Date(nowMs));
+  } catch (err) {
+    console.warn(`[triage-metrics] backlog health side-effect failed: ${err}`);
+  }
+  if (health === null) return;
+
+  // (2) The triage.stalled edge — whole block guarded (escalation-metrics
+  // precedent) so the read never throws on the latch/emit path.
+  try {
+    // R1 — gate on resolveNotesTriage (env-master ⊗ DB), NOT raw DB enabled/mode.
+    const resolved = resolveNotesTriage(process.env.PM_NOTES_TRIAGE_ENABLED, {
+      notesTriage: notesTriageSettings ?? undefined,
+    });
+    const onMode = resolved.enabled && resolved.mode === "on";
+    const agingBacklog =
+      health.openCount > 0 &&
+      health.oldestUntriagedAgeMs != null &&
+      health.oldestUntriagedAgeMs > TRIAGE_STALL_THRESHOLD_MS;
+    const noRecentDecision =
+      heartbeat.lastDecisionAt === null ||
+      heartbeat.ageMs == null ||
+      heartbeat.ageMs > TRIAGE_STALL_THRESHOLD_MS;
+    const fire = onMode && agingBacklog && noRecentDecision;
+
+    const latch = readNotesAlertLatch(projectId);
+    if (fire && !latch.triageStalledNotified) {
+      setNotesTriageStallLatch(latch.id, true, nowIso);
+      getEventBus().emit(EVENT_NAMES.TRIAGE_STALLED, {
+        // Identity-masked — aggregate counts + ages only, NO note id.
+        entity: {
+          projectId,
+          openCount: health.openCount,
+          oldestUntriagedAgeMs: health.oldestUntriagedAgeMs,
+          lastDecisionAgeMs: heartbeat.ageMs,
+        },
+        entityType: "project",
+        entityId: projectId,
+        projectId,
+        actorId: null,
+        timestamp: nowIso,
+      });
+    } else if (!fire && latch.triageStalledNotified) {
+      setNotesTriageStallLatch(latch.id, false, nowIso);
+    }
+  } catch (err) {
+    console.warn(`[triage-metrics] triage-stalled alert side-effect failed: ${err}`);
+  }
 }
 
 // ─── Public API ───────────────────────────────────────────────────
@@ -153,7 +256,11 @@ export function computeTriageMetrics(
   const since = opts?.since ?? null;
 
   // ── (1) Resolve scope ──────────────────────────────────────────
-  const triageAgentId = readTriageAgentId(projectId);
+  // Read settings.notesTriage ONCE: scope uses triageAgentId RAW (independent of
+  // enabled/mode), the T3·P4 alert fire-gate folds the same block through
+  // resolveNotesTriage below.
+  const notesTriageSettings = readNotesTriageSettings(projectId);
+  const triageAgentId = notesTriageSettings?.triageAgentId ?? null;
   const filtered = triageAgentId !== null;
 
   // ── (2) ONE scoped triage_decisions fetch ──────────────────────
@@ -276,6 +383,9 @@ export function computeTriageMetrics(
     : [...byActorMap.entries()]
         .map(([actorId, c]) => ({ actorId, count: c }))
         .sort((a, b) => b.count - a.count);
+
+  // ── (8) Alert side effects (T3·P4) — guarded, best-effort ────────
+  fireTriageAlerts(projectId, notesTriageSettings, heartbeat, nowIso, nowMs);
 
   return {
     decisionMix,

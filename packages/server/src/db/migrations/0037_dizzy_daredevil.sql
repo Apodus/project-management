@@ -1,0 +1,1 @@
+ALTER TABLE `notes_alert_state` ADD `triage_stalled_notified` integer DEFAULT false NOT NULL;

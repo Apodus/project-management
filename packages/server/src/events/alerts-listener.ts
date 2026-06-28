@@ -100,6 +100,23 @@ function formatAlert(event: EventName, payload: EventPayload): string {
         ageMs == null ? "" : ` (oldest ${Math.max(1, Math.round(ageMs / 3_600_000))}h)`;
       return `:warning: Escalation SLA breach — ${items} past SLA${oldest}. Acknowledge or answer.`;
     }
+    case EVENT_NAMES.TRIAGE_STALLED: {
+      // Identity-masked (T3·P4): aggregate counts + ages only — never a note id.
+      // HONEST wording: "triage not draining" (a stalled drain) — NOT
+      // "daemon down" (a quiet-but-alive daemon records nothing, so we cannot
+      // prove liveness from the absence of decisions).
+      const count = Number(e.openCount ?? 0);
+      const items = count === 1 ? "1 untriaged note" : `${count} untriaged notes`;
+      const backlogMs = e.oldestUntriagedAgeMs == null ? null : Number(e.oldestUntriagedAgeMs);
+      const oldest =
+        backlogMs == null ? "" : ` (oldest ${Math.max(1, Math.round(backlogMs / 86_400_000))}d)`;
+      const decisionMs = e.lastDecisionAgeMs == null ? null : Number(e.lastDecisionAgeMs);
+      const since =
+        decisionMs == null
+          ? "no decisions recorded"
+          : `no decisions in the last ${Math.max(1, Math.round(decisionMs / 3_600_000))}h`;
+      return `:rotating_light: Triage not draining on a project — ${items}${oldest}, ${since} while on-mode triage is enabled. Check the triager daemon.`;
+    }
     case EVENT_NAMES.ESCALATION_NEEDS_HUMAN: {
       // Campaign C2 §P5 — the ONE out-of-band escalation notification: a human
       // hand-off. Reads from payload.entity (the escalation toView — there is
@@ -189,4 +206,9 @@ export function registerWebhookAlertListener(): void {
   bus.on(EVENT_NAMES.ESCALATION_SLA_BREACHED, (p) =>
     handler(EVENT_NAMES.ESCALATION_SLA_BREACHED, p),
   );
+  // T3·P4 — the triage.stalled ("triage not draining") alert rides the same
+  // outbound Discord path (explicit wiring, NOT auto). Identity-masked message;
+  // the handler's settings read + format are guarded, the fetch un-awaited
+  // (NOTE 2). SSE is automatic via onAll.
+  bus.on(EVENT_NAMES.TRIAGE_STALLED, (p) => handler(EVENT_NAMES.TRIAGE_STALLED, p));
 }

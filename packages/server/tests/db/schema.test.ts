@@ -141,6 +141,17 @@ describe("Database schema", () => {
       expect(names).toContain("promoted_task_id");
     });
 
+    it("migration 0037: notes_alert_state has the additive triage_stalled_notified column (NOT NULL, default false)", () => {
+      const db = setupDb();
+      const cols = db.all<{ name: string; notnull: number; dflt_value: string | null }>(
+        sql`PRAGMA table_info(notes_alert_state)`,
+      );
+      const flag = (cols as any[]).find((c: any) => c.name === "triage_stalled_notified");
+      expect(flag).toBeDefined();
+      expect(flag.notnull).toBe(1);
+      expect(flag.dflt_value).toBe("false");
+    });
+
     it("migration 0027: merge_requests has the additive synthetic column (NOT NULL, default false)", () => {
       const db = setupDb();
       const cols = db.all<{ name: string; notnull: number; dflt_value: string | null }>(

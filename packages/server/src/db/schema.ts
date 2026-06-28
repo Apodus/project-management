@@ -1165,6 +1165,12 @@ export const notes = sqliteTable(
 // false when the backlog clears, so the alert fires exactly ONCE per backlog
 // episode and re-arms on resolution. Lazy-created on first read/write; the
 // unique (project_id) index makes the upsert race-safe. PM-owned, durable.
+//
+// T3·P4 adds a SECOND independent edge-trigger flag (triage_stalled_notified)
+// on this same row — the "triage not draining" latch (mirroring train_state's
+// multi-flag pattern: distinct alert episodes, each debounced by its own
+// boolean). Each flag is set/reset by its own single-column UPDATE so the two
+// alerts never clobber each other.
 export const notesAlertState = sqliteTable(
   "notes_alert_state",
   {
@@ -1173,6 +1179,13 @@ export const notesAlertState = sqliteTable(
       .notNull()
       .references(() => projects.id),
     backlogNotified: integer("backlog_notified", { mode: "boolean" }).notNull().default(false),
+    // T3·P4 — the edge-trigger debounce flag for the triage.stalled alert.
+    // Independent of backlogNotified (a different alert episode). Set true on the
+    // rising edge (on-mode triage enabled + aging open backlog + no recent
+    // decision), reset to false when the condition clears.
+    triageStalledNotified: integer("triage_stalled_notified", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

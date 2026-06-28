@@ -97,26 +97,26 @@ describe("migration log heal + boot assertion", () => {
     // simulation tracks whatever migration is CURRENTLY last).
     //
     // MAINTENANCE NOTE: the revert below must undo the last SCHEMA migration's
-    // effect. The CURRENT last migration (0036) IS a schema migration
-    // (CREATE TABLE triage_decisions), so this simulation unrecords just the last
-    // entry, reverts it (DROP TABLE), and proves boot heals the watermark then
-    // re-applies it. When the last migration is instead a DATA migration with no
-    // schema effect to revert, unrecord back through the last SCHEMA migration
-    // (update LAST_REVERT + LAST_COLUMN_CHECK and the delete count to cover it)
-    // — this test fails loudly (duplicate table/column on re-apply, or a missing
-    // column) if they fall behind.
-    const LAST_REVERT = "DROP TABLE triage_decisions;"; // 0036
+    // effect. The CURRENT last migration (0037) IS a schema migration
+    // (ALTER TABLE notes_alert_state ADD COLUMN triage_stalled_notified), so this
+    // simulation unrecords just the last entry, reverts it (DROP COLUMN), and
+    // proves boot heals the watermark then re-applies it. When the last migration
+    // is instead a DATA migration with no schema effect to revert, unrecord back
+    // through the last SCHEMA migration (update LAST_REVERT + LAST_COLUMN_CHECK and
+    // the delete count to cover it) — this test fails loudly (duplicate
+    // table/column on re-apply, or a missing column) if they fall behind.
+    const LAST_REVERT = "ALTER TABLE notes_alert_state DROP COLUMN triage_stalled_notified;"; // 0037
     const LAST_COLUMN_CHECK = {
-      table: "triage_decisions",
-      column: "decision",
+      table: "notes_alert_state",
+      column: "triage_stalled_notified",
     };
     const raw = new Database(dbPath);
     // The genuinely-last recorded migration(s) — back through the last schema
-    // migration (here just 0036, itself a schema migration).
+    // migration (here just 0037, itself a schema migration).
     const unrecorded = raw
       .prepare("SELECT rowid, hash FROM __drizzle_migrations ORDER BY rowid DESC LIMIT 1")
       .all() as { rowid: number; hash: string }[];
-    const last = unrecorded[0]!; // 0036 — the genuinely-last entry
+    const last = unrecorded[0]!; // 0037 — the genuinely-last entry
     const delStmt = raw.prepare("DELETE FROM __drizzle_migrations WHERE rowid = ?");
     for (const r of unrecorded) delStmt.run(r.rowid);
     raw.exec(LAST_REVERT);

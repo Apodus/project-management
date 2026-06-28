@@ -40,6 +40,17 @@ export const EVENT_NAMES = {
   // it. onAll auto-forwards it to the SSE stream; action maps to
   // "triage_decision_recorded" (see events/listeners.ts).
   TRIAGE_DECISION_RECORDED: "triage_decision.recorded",
+  // Triage-stalled ("triage not draining") alert (T3·P4 — emitted as a side
+  // effect of computeTriageMetrics when on-mode triage is enabled but the oldest
+  // open note has aged past TRIAGE_STALL_THRESHOLD_MS AND no scoped decision was
+  // recorded within that window). On-read, edge-triggered (once per stall
+  // episode, latched on notes_alert_state.triage_stalled_notified), re-arms when
+  // the condition clears. HONEST: it reports a stalled DRAIN, not a daemon-down
+  // proof. Identity-masked: the payload carries NO note id — only aggregate
+  // counts + ages. onAll auto-forwards it to the SSE stream (entityType
+  // "project" → default frame) AND it drives the outbound Discord listener
+  // (events/alerts-listener.ts). Mirrors NOTE_BACKLOG_ALERT / ESCALATION_SLA_BREACHED.
+  TRIAGE_STALLED: "triage.stalled",
 
   // Escalation events (Campaign C1 — bidirectional cross-team escalation
   // channel). Emitted by escalation.service after each lifecycle transition.

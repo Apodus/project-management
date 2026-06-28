@@ -27,6 +27,10 @@ export interface NotesHealth {
 export interface NotesAlertLatchRow {
   id: string;
   backlogNotified: boolean;
+  // T3·P4 — the SECOND, independent edge-trigger flag on this same row: the
+  // "triage not draining" latch. Read alongside backlogNotified so a single
+  // latch read serves both alerts; each is written by its own single-column set.
+  triageStalledNotified: boolean;
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────
@@ -55,7 +59,11 @@ function ensureProjectExists(projectId: string): void {
 function readNotesAlertStateRow(projectId: string): NotesAlertLatchRow | undefined {
   const db = getDb();
   const row = db
-    .select({ id: notesAlertState.id, backlogNotified: notesAlertState.backlogNotified })
+    .select({
+      id: notesAlertState.id,
+      backlogNotified: notesAlertState.backlogNotified,
+      triageStalledNotified: notesAlertState.triageStalledNotified,
+    })
     .from(notesAlertState)
     .where(eq(notesAlertState.projectId, projectId))
     .get();
@@ -99,6 +107,20 @@ export function setNotesAlertLatch(rowId: string, value: boolean, now: string): 
   getDb()
     .update(notesAlertState)
     .set({ backlogNotified: value, updatedAt: now })
+    .where(eq(notesAlertState.id, rowId))
+    .run();
+}
+
+/**
+ * Single-COLUMN autocommit UPDATE of the triage-stall latch by row id (T3·P4).
+ * Touches ONLY the triage_stalled_notified boolean + updatedAt — independent of
+ * the backlog latch, so the two alerts never clobber each other. Mirrors
+ * setNotesAlertLatch.
+ */
+export function setNotesTriageStallLatch(rowId: string, value: boolean, now: string): void {
+  getDb()
+    .update(notesAlertState)
+    .set({ triageStalledNotified: value, updatedAt: now })
     .where(eq(notesAlertState.id, rowId))
     .run();
 }

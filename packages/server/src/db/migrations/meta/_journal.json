@@ -260,6 +260,13 @@
       "when": 1782645491722,
       "tag": "0036_safe_diamondback",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1782657612702,
+      "tag": "0037_dizzy_daredevil",
+      "breakpoints": true
     }
   ]
 }

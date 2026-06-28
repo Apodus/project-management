@@ -5,6 +5,7 @@ import { createTestApp, createTestProject, createTestUser, type TestApp } from "
 import { notes, notesAlertState } from "../../src/db/index.js";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
 import * as notesHealth from "../../src/services/notes-health.service.js";
+import * as triageMetrics from "../../src/services/triage-metrics.service.js";
 
 // Fixed reference "now" so ages are deterministic.
 const NOW = new Date("2026-06-09T12:00:00.000Z");
@@ -191,6 +192,31 @@ describe("notes on-read backlog-age alert (Campaign C2 §P5)", () => {
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toContain(noteId);
     expect(Object.values(payload)).not.toContain(noteId);
+  });
+
+  // ── Reuse: the backlog alert ALSO fires from the triage-metrics read ──
+
+  it("note.backlog_alert fires from the triage-metrics read path too (computeTriageMetrics → computeNotesHealth)", () => {
+    const project = createTestProject(testApp.db);
+    const author = createTestUser(testApp.db);
+    seedNote(testApp, {
+      projectId: project.id,
+      authorId: author.id,
+      createdAt: ago(THRESHOLD + 2 * HOUR),
+    });
+
+    const calls: unknown[] = [];
+    getEventBus().on(EVENT_NAMES.NOTE_BACKLOG_ALERT, (p) => calls.push(p.entity));
+
+    // Driving the TRIAGE metrics read (not computeNotesHealth directly) must
+    // still fire the latched backlog alert + set the backlog latch.
+    triageMetrics.computeTriageMetrics(project.id, { now: NOW.toISOString() });
+    expect(calls).toHaveLength(1);
+    expect(readLatch(testApp, project.id)?.backlogNotified).toBe(true);
+
+    // Latched — a second triage read does NOT re-fire.
+    triageMetrics.computeTriageMetrics(project.id, { now: NOW.toISOString() });
+    expect(calls).toHaveLength(1);
   });
 
   // ── Webhook-failure resilience (mirror the claims test) ────────────
