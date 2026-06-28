@@ -204,6 +204,40 @@ describe("Triage decisions API", () => {
       expect((await combined.json()).data.length).toBe(1);
     });
 
+    it("filters by noteId (returns only that note's rows)", async () => {
+      const project = createTestProject(testApp.db);
+      const noteA = noteService.create(
+        project.id,
+        { kind: "bug", title: "a" },
+        testApp.testUser.id,
+      );
+      const noteB = noteService.create(
+        project.id,
+        { kind: "bug", title: "b" },
+        testApp.testUser.id,
+      );
+
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/triage-decisions`, {
+        body: { noteId: noteA.id, mode: "shadow", decision: "dismiss" },
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/triage-decisions`, {
+        body: { noteId: noteA.id, mode: "on", decision: "promote_standard" },
+      });
+      await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/triage-decisions`, {
+        body: { noteId: noteB.id, mode: "on", decision: "needs_human" },
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/triage-decisions?noteId=${noteA.id}`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.length).toBe(2);
+      expect(body.data.every((d: { noteId: string }) => d.noteId === noteA.id)).toBe(true);
+    });
+
     it("an ai_agent caller may also record (no extra gate — append-only audit)", async () => {
       const project = createTestProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);

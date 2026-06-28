@@ -61,6 +61,7 @@ const createTriageDecisionBody = z
   .openapi("CreateTriageDecision");
 
 const listTriageDecisionsQuery = z.object({
+  noteId: z.string().optional(),
   mode: z.enum(NOTES_TRIAGE_MODES).optional(),
   decision: z.enum(TRIAGE_DECISION_KINDS).optional(),
   since: z.string().optional(),
@@ -112,7 +113,7 @@ const listTriageDecisionsRoute = createRoute({
   tags: ["Triage decisions"],
   summary: "List triage decisions",
   description:
-    "List a project's triage decisions, newest first, with optional filters (mode / decision / since).",
+    "List a project's triage decisions, newest first, with optional filters (noteId / mode / decision / since).",
   request: {
     params: z.object({ projectId: projectIdParam }),
     query: listTriageDecisionsQuery,

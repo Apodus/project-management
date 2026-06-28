@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { getInvalidationKeys, maybeShowToast } from "./use-sse";
 import { trainKeys } from "./use-train";
 import { noteKeys } from "./use-notes";
+import { triageDecisionKeys } from "./use-triage-decisions";
 import { claimKeys } from "./use-claims";
 import { escalationKeys } from "./use-escalations";
 
@@ -68,6 +69,21 @@ describe("getInvalidationKeys — merge-train wiring", () => {
   // An unknown note subtype still maps via the "note" prefix → noteKeys.all.
   it("maps an unknown note subtype via prefix to noteKeys.all", () => {
     expect(getInvalidationKeys("note.xyz")).toEqual([noteKeys.all]);
+  });
+
+  // T3 — note state-machine events (flag→needs_human + human-only reopen) share
+  // the "note" prefix, so they map to noteKeys.all (inbox list + open detail +
+  // health refresh together).
+  it("maps note.needs_human and note.reopened via prefix to noteKeys.all", () => {
+    expect(getInvalidationKeys("note.needs_human")).toEqual([noteKeys.all]);
+    expect(getInvalidationKeys("note.reopened")).toEqual([noteKeys.all]);
+  });
+
+  // T3 — the triage_decision.* side-log maps to triageDecisionKeys.all (the
+  // ["triage-decisions"] prefix of lists()/byNote()), refreshing any open
+  // per-note audit feed.
+  it("invalidates triageDecisionKeys on triage_decision.recorded", () => {
+    expect(getInvalidationKeys("triage_decision.recorded")).toEqual([triageDecisionKeys.all]);
   });
 
   // Campaign C3 (claims surface) — task/epic/proposal lifecycle events also

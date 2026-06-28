@@ -1694,10 +1694,48 @@ describe("note service", () => {
       });
 
       const fetched = noteService.getById(note.id);
-      expect(fetched.promotedTarget).toEqual({ exists: true, title: proposal.title });
+      expect(fetched.promotedTarget).toEqual({
+        exists: true,
+        title: proposal.title,
+        proposalKind: "standard",
+      });
 
       const listed = noteService.list(project.id, {}).find((n) => n.id === note.id)!;
-      expect(listed.promotedTarget).toEqual({ exists: true, title: proposal.title });
+      expect(listed.promotedTarget).toEqual({
+        exists: true,
+        title: proposal.title,
+        proposalKind: "standard",
+      });
+    });
+
+    it("promotedTarget.proposalKind reflects the promoted proposal's kind (fast_track)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const note = noteService.create(project.id, { kind: "idea", title: "fast me" }, author.id);
+
+      noteService.promoteToProposal(
+        note.id,
+        { id: author.id, type: "human" },
+        { proposalKind: "fast_track" },
+      );
+
+      const fetched = noteService.getById(note.id);
+      expect(fetched.promotedTarget?.proposalKind).toBe("fast_track");
+    });
+
+    it("a task/epic anchor ref carries NO proposalKind key (undefined)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const epic = createTestEpic(testApp.db, { projectId: project.id });
+      const note = noteService.create(
+        project.id,
+        { kind: "observation", title: "anchored", anchorType: "epic", anchorId: epic.id },
+        author.id,
+      );
+
+      const fetched = noteService.getById(note.id);
+      expect(fetched.anchor).toEqual({ exists: true, title: epic.name });
+      expect("proposalKind" in (fetched.anchor as object)).toBe(false);
     });
 
     it("a promoted-to-task note carries promotedTarget {exists:true, title}", () => {

@@ -31,6 +31,10 @@ const anchorRefSchema = z
   .object({
     exists: z.boolean(),
     title: z.string().nullable(),
+    proposalKind: z.enum(PROPOSAL_KINDS).nullable().optional().openapi({
+      description:
+        "Promoted-target proposal kind (T3·P1) — present only on a promotedTarget ref whose entity is a proposal (drives the fast-track badge). Absent on anchor refs and task/epic targets.",
+    }),
   })
   .openapi("NoteAnchorRef");
 

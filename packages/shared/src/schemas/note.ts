@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PROPOSAL_KINDS } from "../constants/enums.js";
 
 // ─── Notes inbox (Campaign C1) ────────────────────────────────────
 // Foundation for the notes inbox: a lightweight capture surface for bugs,
@@ -84,6 +85,10 @@ export type CodeLocator = z.infer<typeof codeLocatorSchema>;
 export const noteAnchorRefSchema = z.object({
   exists: z.boolean(),
   title: z.string().nullable(),
+  // Promoted-target proposal kind (T3·P1) — populated ONLY on a promotedTarget
+  // ref whose promoted entity is a PROPOSAL (drives the fast-track badge).
+  // Absent (undefined) on anchor refs and task/epic targets.
+  proposalKind: z.enum(PROPOSAL_KINDS).nullable().optional(),
 });
 export type NoteAnchorRef = z.infer<typeof noteAnchorRefSchema>;
 

@@ -159,13 +159,17 @@ export function enrichNotes<
     for (const e of found) epicTitles.set(e.id, e.title);
   }
   const proposalTitles = new Map<string, string>();
+  const proposalKinds = new Map<string, string>();
   if (proposalIds.size > 0) {
     const found = db
-      .select({ id: proposals.id, title: proposals.title })
+      .select({ id: proposals.id, title: proposals.title, proposalKind: proposals.proposalKind })
       .from(proposals)
       .where(inArray(proposals.id, [...proposalIds]))
       .all();
-    for (const p of found) proposalTitles.set(p.id, p.title);
+    for (const p of found) {
+      proposalTitles.set(p.id, p.title);
+      proposalKinds.set(p.id, p.proposalKind);
+    }
   }
 
   const titlesFor = (type: string): Map<string, string> =>
@@ -185,9 +189,15 @@ export function enrichNotes<
         title: taskTitles.get(r.promotedTaskId) ?? null,
       };
     } else if (r.promotedProposalId) {
+      // proposalKind populated ONLY here (promoted-to-proposal target) — it
+      // drives the fast-track badge. Anchor refs + task targets leave it
+      // undefined (NOT null), so their assertions (toEqual ignores undefined
+      // keys) stay green. A dangling proposal (not found) also omits it.
+      const kind = proposalKinds.get(r.promotedProposalId) as ProposalKind | undefined;
       promotedTarget = {
         exists: proposalTitles.has(r.promotedProposalId),
         title: proposalTitles.get(r.promotedProposalId) ?? null,
+        ...(kind !== undefined ? { proposalKind: kind } : {}),
       };
     }
     return { ...r, anchor, promotedTarget };

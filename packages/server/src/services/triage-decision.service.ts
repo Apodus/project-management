@@ -95,11 +95,17 @@ export function record(
  */
 export function list(
   projectId: string,
-  filters: { mode?: NotesTriageMode; decision?: TriageDecisionKind; since?: string },
+  filters: {
+    noteId?: string;
+    mode?: NotesTriageMode;
+    decision?: TriageDecisionKind;
+    since?: string;
+  },
 ) {
   const db = getDb();
   const conditions = [eq(triageDecisions.projectId, projectId)];
 
+  if (filters.noteId) conditions.push(eq(triageDecisions.noteId, filters.noteId));
   if (filters.mode) conditions.push(eq(triageDecisions.mode, filters.mode));
   if (filters.decision) conditions.push(eq(triageDecisions.decision, filters.decision));
   if (filters.since) conditions.push(gte(triageDecisions.createdAt, filters.since));

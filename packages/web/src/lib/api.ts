@@ -37,6 +37,7 @@ export type MergeRequestTimelineEvent = components["schemas"]["MergeRequestTimel
 export type ResolverDefaults = components["schemas"]["ResolverDefaults"];
 export type Note = components["schemas"]["Note"];
 export type NotesHealth = components["schemas"]["NotesHealth"];
+export type TriageDecision = components["schemas"]["TriageDecision"];
 export type CreateNote = components["schemas"]["CreateNote"];
 export type PatchNote = components["schemas"]["PatchNote"];
 export type PromotedProposal = components["schemas"]["PromotedProposal"];
@@ -427,6 +428,12 @@ export async function dismissNote(id: string, reason: string): Promise<Note> {
   });
 }
 
+export async function reopenNote(id: string): Promise<Note> {
+  return apiFetch<Note>(`/notes/${id}/reopen`, {
+    method: "POST",
+  });
+}
+
 export async function promoteNoteToProposal(
   id: string,
   body?: { title?: string; description?: string },
@@ -447,6 +454,37 @@ export async function promoteNoteToTask(
     body: JSON.stringify(body ?? {}),
     rawResponse: true,
   });
+}
+
+// ---- Triage decisions API (T3 — per-note auto-decision audit feed) ----
+
+// Inline server shape ({data, pagination}) — typed locally, mirrors getNotes.
+export interface TriageDecisionListResult {
+  data: TriageDecision[];
+  pagination: { total: number };
+}
+
+export interface TriageDecisionFilters {
+  mode?: TriageDecision["mode"];
+  decision?: TriageDecision["decision"];
+  since?: string;
+  noteId?: string;
+}
+
+export async function getTriageDecisions(
+  projectId: string,
+  filters?: TriageDecisionFilters,
+): Promise<TriageDecisionListResult> {
+  const params = new URLSearchParams();
+  if (filters?.noteId) params.set("noteId", filters.noteId);
+  if (filters?.mode) params.set("mode", filters.mode);
+  if (filters?.decision) params.set("decision", filters.decision);
+  if (filters?.since) params.set("since", filters.since);
+  const query = params.toString();
+  return apiFetch<TriageDecisionListResult>(
+    `/projects/${projectId}/triage-decisions${query ? `?${query}` : ""}`,
+    { rawResponse: true },
+  );
 }
 
 // ---- Escalations API (Campaign C4 — agent escalation channel, read-only web) ----

@@ -1628,6 +1628,16 @@
               "title": {
                 "type": "string",
                 "nullable": true
+              },
+              "proposalKind": {
+                "type": "string",
+                "nullable": true,
+                "enum": [
+                  "standard",
+                  "fast_track",
+                  null
+                ],
+                "description": "Promoted-target proposal kind (T3·P1) — present only on a promotedTarget ref whose entity is a proposal (drives the fast-track badge). Absent on anchor refs and task/epic targets."
               }
             },
             "required": [
@@ -1646,6 +1656,16 @@
               "title": {
                 "type": "string",
                 "nullable": true
+              },
+              "proposalKind": {
+                "type": "string",
+                "nullable": true,
+                "enum": [
+                  "standard",
+                  "fast_track",
+                  null
+                ],
+                "description": "Promoted-target proposal kind (T3·P1) — present only on a promotedTarget ref whose entity is a proposal (drives the fast-track badge). Absent on anchor refs and task/epic targets."
               }
             },
             "required": [
@@ -14928,7 +14948,7 @@
           "Triage decisions"
         ],
         "summary": "List triage decisions",
-        "description": "List a project's triage decisions, newest first, with optional filters (mode / decision / since).",
+        "description": "List a project's triage decisions, newest first, with optional filters (noteId / mode / decision / since).",
         "parameters": [
           {
             "schema": {
@@ -14939,6 +14959,14 @@
             "required": true,
             "name": "projectId",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "noteId",
+            "in": "query"
           },
           {
             "schema": {

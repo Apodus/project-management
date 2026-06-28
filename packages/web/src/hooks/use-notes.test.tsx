@@ -15,12 +15,18 @@ const apiMock = vi.hoisted(() => ({
   createNote: vi.fn(),
   updateNote: vi.fn(),
   dismissNote: vi.fn(),
+  reopenNote: vi.fn(),
   promoteNoteToProposal: vi.fn(),
   promoteNoteToTask: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMock);
 
-import { usePromoteNoteToProposal, usePromoteNoteToTask } from "./use-notes";
+import {
+  usePromoteNoteToProposal,
+  usePromoteNoteToTask,
+  useReopenNote,
+  noteKeys,
+} from "./use-notes";
 import { taskKeys } from "./use-tasks";
 import { proposalKeys } from "./use-proposals";
 
@@ -85,5 +91,39 @@ describe("use-notes promote mutations — project-scoped invalidation", () => {
     );
     expect(client.getQueryState(proposalKeys.list("proj-1", "open"))?.isInvalidated).toBe(true);
     expect(client.getQueryState(proposalKeys.list("proj-2"))?.isInvalidated).toBe(false);
+  });
+});
+
+// ── T3 — useReopenNote invalidation ────────────────────────────────
+describe("useReopenNote", () => {
+  let client: QueryClient;
+
+  function wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  it("invalidates the note lists, the note detail, and notes health", async () => {
+    apiMock.reopenNote.mockResolvedValue({ id: "n1", status: "open" });
+
+    client.setQueryData(noteKeys.list("proj-1"), { data: [] });
+    client.setQueryData(noteKeys.detail("n1"), { id: "n1" });
+    client.setQueryData(noteKeys.health("proj-1"), { open_count: 0 });
+
+    const { result } = renderHook(() => useReopenNote(), { wrapper });
+    result.current.mutate({ id: "n1", projectId: "proj-1" });
+
+    await waitFor(() =>
+      expect(client.getQueryState(noteKeys.list("proj-1"))?.isInvalidated).toBe(true),
+    );
+    expect(client.getQueryState(noteKeys.detail("n1"))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(noteKeys.health("proj-1"))?.isInvalidated).toBe(true);
+    expect(apiMock.reopenNote).toHaveBeenCalledWith("n1");
   });
 });

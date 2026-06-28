@@ -127,6 +127,7 @@ function mutation() {
 const dismissMutation = mutation();
 const promoteProposalMutation = mutation();
 const promoteTaskMutation = mutation();
+const reopenMutation = mutation();
 
 vi.mock("@/hooks/use-notes", () => ({
   useNotes: (_projectId: string | undefined, filters: NoteFilters) => {
@@ -139,8 +140,27 @@ vi.mock("@/hooks/use-notes", () => ({
     };
   },
   useDismissNote: () => dismissMutation,
+  useReopenNote: () => reopenMutation,
   usePromoteNoteToProposal: () => promoteProposalMutation,
   usePromoteNoteToTask: () => promoteTaskMutation,
+}));
+
+// ── Triage-decision audit feed mock (T3) ───────────────────────────
+// The detail dialog's TriageAuditFeed reads this. Tests seed `triageRows`.
+let triageRows: Array<Record<string, unknown>> = [];
+const useTriageDecisionsSpy = vi.fn();
+vi.mock("@/hooks/use-triage-decisions", () => ({
+  useTriageDecisions: (
+    projectId: string | undefined,
+    filters: unknown,
+    options?: { enabled?: boolean },
+  ) => {
+    useTriageDecisionsSpy(projectId, filters, options);
+    return {
+      data: { data: triageRows, pagination: { total: triageRows.length } },
+      isLoading: false,
+    };
+  },
 }));
 
 // Default: a human (promote-to-task visible). Override per test via mockReturnValue.
@@ -170,6 +190,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   notesData = [];
   ftsHits = [];
+  triageRows = [];
   // clearAllMocks wipes the implementation — restore the human default.
   useCurrentUserMock.mockReturnValue({ data: { type: "human" } });
 });
@@ -631,4 +652,145 @@ describe("NotesPage", () => {
     expect(screen.queryByRole("button", { name: "Promote to proposal" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Promote to task" })).not.toBeInTheDocument();
   });
+
+  // ── T3 — needs_human queue + fast-track + reopen + audit feed ────
+
+  it("the status filter offers a needs_human option that sets f.status when picked", () => {
+    notesData = [];
+    render(<NotesPage />);
+    const option = screen.getByRole("button", { name: formatStatusLabel("needs_human") });
+    expect(option).toBeInTheDocument();
+    fireEvent.click(option);
+    const filters = useNotesSpy.mock.calls.at(-1)?.[0] as NoteFilters;
+    expect(filters.status).toBe("needs_human");
+  });
+
+  it("renders the needs_human badge on a needs_human note", () => {
+    notesData = [makeNote({ id: "n1", title: "Punted note", status: "needs_human" })];
+    render(<NotesPage />);
+    // "Needs Human" appears both as a filter option (a button) and as the card
+    // badge (a non-button span) — assert the badge specifically.
+    const badge = screen
+      .getAllByText(formatStatusLabel("needs_human"))
+      .find((el) => !el.closest("button"));
+    expect(badge).toBeTruthy();
+  });
+
+  it("a needs_human note shows Dismiss + Promote-to-proposal + Reopen (mutable + reopenable)", () => {
+    notesData = [makeNote({ id: "n1", title: "Punted note", status: "needs_human" })];
+    render(<NotesPage />);
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Promote to proposal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reopen" })).toBeInTheDocument();
+  });
+
+  it("renders the Fast-track badge when promotedTarget.proposalKind is fast_track, absent for standard", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        title: "Fast-tracked note",
+        status: "triaged",
+        triageOutcome: "promoted",
+        promotedProposalId: "prop-fast",
+        promotedTarget: { exists: true, title: "Fast proposal", proposalKind: "fast_track" },
+      }),
+      makeNote({
+        id: "n2",
+        title: "Standard note",
+        status: "triaged",
+        triageOutcome: "promoted",
+        promotedProposalId: "prop-std",
+        promotedTarget: { exists: true, title: "Std proposal", proposalKind: "standard" },
+      }),
+    ];
+    render(<NotesPage />);
+    // Exactly one Fast-track badge (the fast_track note only).
+    expect(screen.getAllByText("Fast-track")).toHaveLength(1);
+  });
+
+  it("Reopen is shown for a human on a triaged note, hidden for an ai_agent", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        title: "Triaged note",
+        status: "triaged",
+        triageOutcome: "dismissed",
+      }),
+    ];
+
+    // ai_agent → no Reopen.
+    useCurrentUserMock.mockReturnValue({ data: { type: "ai_agent" } });
+    const { unmount } = render(<NotesPage />);
+    expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeInTheDocument();
+    unmount();
+
+    // human → Reopen shown.
+    useCurrentUserMock.mockReturnValue({ data: { type: "human" } });
+    render(<NotesPage />);
+    expect(screen.getByRole("button", { name: "Reopen" })).toBeInTheDocument();
+  });
+
+  it("clicking Reopen calls reopenMutation.mutateAsync with {id, projectId}", async () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        projectId: "proj-1",
+        title: "Triaged note",
+        status: "triaged",
+        triageOutcome: "dismissed",
+      }),
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
+    await waitFor(() =>
+      expect(reopenMutation.mutateAsync).toHaveBeenCalledWith({ id: "n1", projectId: "proj-1" }),
+    );
+  });
+
+  it("the detail dialog renders the per-note triage audit feed rows", () => {
+    notesData = [
+      makeNote({
+        id: "n1",
+        title: "Audited note",
+        status: "triaged",
+        triageOutcome: "dismissed",
+        triagedBy: "agent-7",
+      }),
+    ];
+    triageRows = [
+      {
+        id: "d1",
+        projectId: "proj-1",
+        noteId: "n1",
+        mode: "on",
+        decision: "dismiss",
+        rationale: "out of scope noise",
+        confidence: 0.82,
+        resultingProposalId: null,
+        resultingTaskId: null,
+        actorId: "agent-7",
+        createdAt: "2026-06-20T00:00:00.000Z",
+      },
+    ];
+    render(<NotesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Audited note" }));
+
+    const content = document.querySelector("[data-slot='dialog-content']") as HTMLElement;
+    expect(content.textContent).toContain("Triage history");
+    expect(content.textContent).toContain("out of scope noise");
+    expect(content.textContent).toContain("agent-7");
+    // Gated on the dialog's open prop (enabled true once open).
+    const lastCall = useTriageDecisionsSpy.mock.calls.at(-1);
+    expect(lastCall?.[1]).toEqual({ noteId: "n1" });
+    expect(lastCall?.[2]).toEqual({ enabled: true });
+  });
 });
+
+// formatStatus (Title Cases + replaces "_") — mirror it locally for label
+// lookups so the test asserts on the same rendered string.
+function formatStatusLabel(s: string): string {
+  return s
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}

@@ -3977,6 +3977,121 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{projectId}/triage-decisions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List triage decisions
+     * @description List a project's triage decisions, newest first, with optional filters (noteId / mode / decision / since).
+     */
+    get: {
+      parameters: {
+        query?: {
+          noteId?: string;
+          mode?: "off" | "shadow" | "on";
+          decision?:
+            | "promote_standard"
+            | "promote_fast_track"
+            | "dismiss"
+            | "needs_human"
+            | "give_up";
+          since?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description List of triage decisions */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TriageDecision"][];
+              pagination: {
+                total: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Record triage decision
+     * @description Record a triage decision in the append-only side-log. NEVER mutates the referenced note — it only attributes a decision (promote/dismiss/needs_human/give_up) to the caller, under a rollout mode (off/shadow/on). Both shadow- and on-mode triage write here.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateTriageDecision"];
+        };
+      };
+      responses: {
+        /** @description Triage decision recorded */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TriageDecision"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project or note not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{projectId}/escalations": {
     parameters: {
       query?: never;
@@ -14786,11 +14901,21 @@ export interface components {
       anchor?: {
         exists: boolean;
         title: string | null;
+        /**
+         * @description Promoted-target proposal kind (T3·P1) — present only on a promotedTarget ref whose entity is a proposal (drives the fast-track badge). Absent on anchor refs and task/epic targets.
+         * @enum {string|null}
+         */
+        proposalKind?: "standard" | "fast_track" | null;
       } | null;
       /** @description Server-derived promoted-target truth (C4): { exists, title } for promotedTaskId/promotedProposalId; null when not promoted. Absent on non-enriched responses (create/patch); exists:false means the target was deleted. */
       promotedTarget?: {
         exists: boolean;
         title: string | null;
+        /**
+         * @description Promoted-target proposal kind (T3·P1) — present only on a promotedTarget ref whose entity is a proposal (drives the fast-track badge). Absent on anchor refs and task/epic targets.
+         * @enum {string|null}
+         */
+        proposalKind?: "standard" | "fast_track" | null;
       } | null;
     };
     CreateNote: {
@@ -14869,6 +14994,32 @@ export interface components {
     NotesHealth: {
       open_count: number;
       oldest_untriaged_age_ms: number | null;
+    };
+    TriageDecision: {
+      id: string;
+      projectId: string;
+      noteId: string;
+      /** @enum {string} */
+      mode: "off" | "shadow" | "on";
+      /** @enum {string} */
+      decision: "promote_standard" | "promote_fast_track" | "dismiss" | "needs_human" | "give_up";
+      rationale: string | null;
+      confidence: number | null;
+      resultingProposalId: string | null;
+      resultingTaskId: string | null;
+      actorId: string;
+      createdAt: string;
+    };
+    CreateTriageDecision: {
+      noteId: string;
+      /** @enum {string} */
+      mode: "off" | "shadow" | "on";
+      /** @enum {string} */
+      decision: "promote_standard" | "promote_fast_track" | "dismiss" | "needs_human" | "give_up";
+      rationale?: string | null;
+      confidence?: number | null;
+      resultingProposalId?: string | null;
+      resultingTaskId?: string | null;
     };
     CreateEscalationResponse: {
       data: components["schemas"]["Escalation"];

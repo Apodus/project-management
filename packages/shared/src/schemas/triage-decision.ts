@@ -44,6 +44,7 @@ export type CreateTriageDecision = z.infer<typeof createTriageDecisionSchema>;
 
 // List/filter query.
 export const listTriageDecisionsSchema = z.object({
+  noteId: z.string().optional(),
   mode: z.enum(NOTES_TRIAGE_MODES).optional(),
   decision: z.enum(TRIAGE_DECISION_KINDS).optional(),
   since: z.string().optional(),

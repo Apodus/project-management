@@ -29,9 +29,11 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import {
   useNotes,
   useDismissNote,
+  useReopenNote,
   usePromoteNoteToProposal,
   usePromoteNoteToTask,
 } from "@/hooks/use-notes";
+import { useTriageDecisions } from "@/hooks/use-triage-decisions";
 import { useEpics } from "@/hooks/use-epics";
 import { useFtsSearch } from "@/hooks/use-fts-search";
 import { useProjectStore } from "@/stores/project-store";
@@ -43,7 +45,7 @@ import type { NotesSearch } from "@/router";
 
 const NOTE_KINDS = ["bug", "question", "idea", "tech_debt", "wtf", "observation"] as const;
 
-const NOTE_STATUSES = ["open", "triaged"] as const;
+const NOTE_STATUSES = ["open", "needs_human", "triaged"] as const;
 
 const ANCHOR_TYPES = ["task", "epic", "proposal"] as const;
 
@@ -68,6 +70,29 @@ function getKindColor(kind: string): string {
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900/40 dark:text-gray-300";
   }
+}
+
+// Amber tint for the needs_human status badge (an agent triaged but punted to a
+// human). Page-local, shaped like getKindColor's tints.
+const NEEDS_HUMAN_BADGE = "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
+
+// Fast-track badge (T3) — rendered when a note was promoted into a fast_track
+// proposal (note.promotedTarget.proposalKind === "fast_track"). Mirrors the
+// green "Promoted" badge tint, with its own copy.
+function FastTrackBadge() {
+  return (
+    <Badge
+      variant="secondary"
+      className="bg-violet-100 text-[11px] text-violet-800 dark:bg-violet-900/40 dark:text-violet-300"
+    >
+      Fast-track
+    </Badge>
+  );
+}
+
+/** True when the note was promoted into a fast_track proposal (drives the badge). */
+function isFastTrackPromoted(note: Note): boolean {
+  return note.status === "triaged" && note.promotedTarget?.proposalKind === "fast_track";
 }
 
 // Debounce a value (mirrors task-list-page's local helper).
@@ -141,6 +166,116 @@ function AnchorRef({
     >
       {title}
     </Link>
+  );
+}
+
+// ─── Triage audit feed (T3) ──────────────────────────────────────
+//
+// Per-note auto-decision history from the append-only triage side-log
+// (GET /projects/:id/triage-decisions?noteId=). Rendered INSIDE the detail
+// dialog and gated on `open` so the query only fires when a note is actually
+// being inspected (never N requests across the card grid). The dialog's
+// terminal triage metadata (triagedBy/outcome/reason) renders as a header; each
+// side-log row is a discrete agent decision (mode/decision/rationale/confidence).
+function TriageAuditFeed({
+  projectId,
+  noteId,
+  note,
+  open,
+}: {
+  projectId: string;
+  noteId: string;
+  note: Note;
+  open: boolean;
+}) {
+  const { data, isLoading } = useTriageDecisions(
+    projectId,
+    { noteId },
+    { enabled: open && !!noteId },
+  );
+  const decisions = data?.data ?? [];
+  const hasTriageMeta = !!(note.triagedBy || note.triageOutcome || note.triageReason);
+
+  // Nothing to show: no terminal triage AND no side-log rows (once loaded).
+  if (!hasTriageMeta && !isLoading && decisions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2 border-t pt-3">
+      <h3 className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
+        Triage history
+      </h3>
+
+      {hasTriageMeta && (
+        <div className="text-muted-foreground space-y-0.5 text-xs">
+          {note.triageOutcome && (
+            <div>
+              <span className="text-muted-foreground/70">Outcome </span>
+              <span>{formatStatus(note.triageOutcome)}</span>
+            </div>
+          )}
+          {note.triagedBy && (
+            <div>
+              <span className="text-muted-foreground/70">Triaged by </span>
+              <span className="font-mono">{note.triagedBy}</span>
+            </div>
+          )}
+          {note.triageReason && (
+            <div>
+              <span className="text-muted-foreground/70">Reason </span>
+              <span>{note.triageReason}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      ) : decisions.length === 0 ? (
+        <p className="text-muted-foreground/50 text-xs italic">No auto-triage decisions recorded</p>
+      ) : (
+        <ul className="space-y-2">
+          {decisions.map((d) => (
+            <li key={d.id} className="rounded-md border px-2.5 py-2 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="secondary" className="text-[11px]">
+                  {formatStatus(d.mode)}
+                </Badge>
+                <Badge variant="outline" className="text-[11px]">
+                  {formatStatus(d.decision)}
+                </Badge>
+                {d.confidence != null && (
+                  <span className="text-muted-foreground/70">
+                    confidence {Math.round(d.confidence * 100)}%
+                  </span>
+                )}
+                <span className="text-muted-foreground/60 ml-auto">
+                  {formatRelativeTime(d.createdAt)}
+                </span>
+              </div>
+              {d.rationale && (
+                <p className="text-muted-foreground mt-1 whitespace-pre-wrap">{d.rationale}</p>
+              )}
+              {(d.resultingProposalId || d.resultingTaskId) && (
+                <div className="text-muted-foreground mt-1">
+                  <span className="text-muted-foreground/70">Result </span>
+                  {d.resultingProposalId ? (
+                    <AnchorRef type="proposal" id={d.resultingProposalId} anchorRef={undefined} />
+                  ) : (
+                    <AnchorRef type="task" id={d.resultingTaskId!} anchorRef={undefined} />
+                  )}
+                </div>
+              )}
+              <div className="text-muted-foreground/60 mt-1 font-mono">{d.actorId}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -433,6 +568,7 @@ function NoteDetailDialog({
   onDismiss,
   onPromoteProposal,
   onPromoteTask,
+  onReopen,
 }: {
   note: Note;
   open: boolean;
@@ -441,8 +577,13 @@ function NoteDetailDialog({
   onDismiss: () => void;
   onPromoteProposal: () => void;
   onPromoteTask: () => void;
+  onReopen: () => void;
 }) {
-  const isOpen = note.status === "open";
+  const isNeedsHuman = note.status === "needs_human";
+  // MUTABLE = open|needs_human (server assertMutable accepts both → dismiss/
+  // promote won't 409). REOPENABLE = needs_human|triaged (human-only undo).
+  const isMutable = note.status === "open" || isNeedsHuman;
+  const isReopenable = isNeedsHuman || note.status === "triaged";
   const isPromoted = note.status === "triaged" && note.triageOutcome === "promoted";
 
   // Close this dialog FIRST, then open the handed-off triage dialog — so only
@@ -473,6 +614,11 @@ function NoteDetailDialog({
                 Open
               </Badge>
             )}
+            {isNeedsHuman && (
+              <Badge variant="secondary" className={cn("text-[11px]", NEEDS_HUMAN_BADGE)}>
+                {formatStatus("needs_human")}
+              </Badge>
+            )}
             {isPromoted && (
               <Badge
                 variant="secondary"
@@ -481,6 +627,7 @@ function NoteDetailDialog({
                 Triaged · Promoted
               </Badge>
             )}
+            {isFastTrackPromoted(note) && <FastTrackBadge />}
             {note.status === "triaged" && note.triageOutcome === "dismissed" && (
               <Badge variant="secondary" className="text-muted-foreground text-[11px]">
                 Triaged · Dismissed
@@ -542,19 +689,33 @@ function NoteDetailDialog({
           </div>
         </div>
 
-        {/* Triage actions — open notes only (mirror the card's isOpen gate).
-            Each closes the detail then hands off to the card's own dialog. */}
-        {isOpen && (
+        {/* Per-note auto-decision audit feed (T3) — gated on `open` so the
+            side-log query only fires for an actually-inspected note. */}
+        <TriageAuditFeed projectId={note.projectId} noteId={note.id} note={note} open={open} />
+
+        {/* Triage actions — mutable notes (open|needs_human). Each closes the
+            detail then hands off to the card's own dialog. Reopen (human-only
+            undo) shows for needs_human|triaged notes. */}
+        {(isMutable || (isReopenable && isHuman)) && (
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => handAction(onDismiss)}>
-              Dismiss
-            </Button>
-            <Button size="sm" onClick={() => handAction(onPromoteProposal)}>
-              Promote to proposal
-            </Button>
-            {isHuman && (
-              <Button size="sm" variant="secondary" onClick={() => handAction(onPromoteTask)}>
-                Promote to task
+            {isMutable && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => handAction(onDismiss)}>
+                  Dismiss
+                </Button>
+                <Button size="sm" onClick={() => handAction(onPromoteProposal)}>
+                  Promote to proposal
+                </Button>
+                {isHuman && (
+                  <Button size="sm" variant="secondary" onClick={() => handAction(onPromoteTask)}>
+                    Promote to task
+                  </Button>
+                )}
+              </>
+            )}
+            {isReopenable && isHuman && (
+              <Button variant="outline" size="sm" onClick={() => handAction(onReopen)}>
+                Reopen
               </Button>
             )}
           </DialogFooter>
@@ -567,12 +728,23 @@ function NoteDetailDialog({
 function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
   const isPromoted = note.status === "triaged" && note.triageOutcome === "promoted";
   const isDismissed = note.status === "triaged" && note.triageOutcome === "dismissed";
-  const isOpen = note.status === "open";
+  const isNeedsHuman = note.status === "needs_human";
+  // MUTABLE = open|needs_human (dismiss/promote, server-accepted). REOPENABLE =
+  // needs_human|triaged (human-only undo).
+  const isMutable = note.status === "open" || isNeedsHuman;
+  const isReopenable = isNeedsHuman || note.status === "triaged";
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [dismissOpen, setDismissOpen] = useState(false);
   const [promoteProposalOpen, setPromoteProposalOpen] = useState(false);
   const [promoteTaskOpen, setPromoteTaskOpen] = useState(false);
+
+  const reopenMutation = useReopenNote();
+  function handleReopen() {
+    reopenMutation.mutateAsync({ id: note.id, projectId: note.projectId }).catch(() => {
+      // onError toast surfaces the backend message (403 for non-humans).
+    });
+  }
 
   return (
     <Card className="gap-3 py-4">
@@ -594,6 +766,11 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
               Open
             </Badge>
           )}
+          {isNeedsHuman && (
+            <Badge variant="secondary" className={cn("text-[11px]", NEEDS_HUMAN_BADGE)}>
+              {formatStatus("needs_human")}
+            </Badge>
+          )}
           {isPromoted && (
             <Badge
               variant="secondary"
@@ -602,6 +779,7 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
               Triaged · Promoted
             </Badge>
           )}
+          {isFastTrackPromoted(note) && <FastTrackBadge />}
           {isDismissed && (
             <Badge variant="secondary" className="text-muted-foreground text-[11px]">
               Triaged · Dismissed
@@ -664,20 +842,36 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
           onDismiss={() => setDismissOpen(true)}
           onPromoteProposal={() => setPromoteProposalOpen(true)}
           onPromoteTask={() => setPromoteTaskOpen(true)}
+          onReopen={handleReopen}
         />
 
-        {/* Triage actions — open notes only (triaged notes are terminal). */}
-        {isOpen && (
+        {/* Triage actions — mutable notes (open|needs_human) get dismiss/promote;
+            reopenable notes (needs_human|triaged) get a human-only Reopen. */}
+        {(isMutable || (isReopenable && isHuman)) && (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-            <Button variant="outline" size="sm" onClick={() => setDismissOpen(true)}>
-              Dismiss
-            </Button>
-            <Button size="sm" onClick={() => setPromoteProposalOpen(true)}>
-              Promote to proposal
-            </Button>
-            {isHuman && (
-              <Button size="sm" variant="secondary" onClick={() => setPromoteTaskOpen(true)}>
-                Promote to task
+            {isMutable && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setDismissOpen(true)}>
+                  Dismiss
+                </Button>
+                <Button size="sm" onClick={() => setPromoteProposalOpen(true)}>
+                  Promote to proposal
+                </Button>
+                {isHuman && (
+                  <Button size="sm" variant="secondary" onClick={() => setPromoteTaskOpen(true)}>
+                    Promote to task
+                  </Button>
+                )}
+              </>
+            )}
+            {isReopenable && isHuman && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReopen}
+                disabled={reopenMutation.isPending}
+              >
+                {reopenMutation.isPending ? "Reopening…" : "Reopen"}
               </Button>
             )}
 

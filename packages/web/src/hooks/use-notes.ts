@@ -7,6 +7,7 @@ import {
   createNote,
   updateNote,
   dismissNote,
+  reopenNote,
   promoteNoteToProposal,
   promoteNoteToTask,
   type CreateNote,
@@ -104,6 +105,29 @@ export function useDismissNote() {
         queryKey: noteKeys.health(variables.projectId),
       });
       toast.success("Note dismissed");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+}
+
+/**
+ * Reopen a needs_human|triaged note back to open (T3 — undo-triage). HUMAN-ONLY
+ * on the server (403 surfaces via onError toast). Clears the note's triage
+ * metadata but never deletes a prior promote's proposal/task.
+ */
+export function useReopenNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; projectId: string }) => reopenNote(id),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: noteKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: noteKeys.detail(variables.id) });
+      queryClient.invalidateQueries({
+        queryKey: noteKeys.health(variables.projectId),
+      });
+      toast.success("Note reopened");
     },
     onError: (err: Error) => {
       toast.error(err.message);

@@ -10,6 +10,7 @@ import { taskKeys } from "./use-tasks";
 import { epicKeys } from "./use-epics";
 import { trainKeys } from "./use-train";
 import { noteKeys } from "./use-notes";
+import { triageDecisionKeys } from "./use-triage-decisions";
 import { escalationKeys } from "./use-escalations";
 import { claimKeys } from "./use-claims";
 import { useConnectionStore } from "@/stores/connection-store";
@@ -59,6 +60,11 @@ export function getInvalidationKeys(eventType: string): readonly (readonly unkno
       // note detail, and notes health together (note.backlog_alert is toast-only,
       // handled in maybeShowToast — the health poll owns its refresh).
       return [noteKeys.all];
+    case "triage_decision":
+      // triage_decision.* (T3) — the append-only auto-decision side-log.
+      // triageDecisionKeys.all = ["triage-decisions"] is the prefix of
+      // lists()/byNote(): one entry refreshes any open per-note audit feed.
+      return [triageDecisionKeys.all];
     case "escalation":
       // escalation.* (Campaign C4) — escalationKeys.all = ["escalations"] is the
       // prefix of lists()/detail(): one entry refreshes the dashboard list and
@@ -305,6 +311,13 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       "note.dismissed",
       "note.promoted",
       "note.backlog_alert",
+      // Note state-machine (T1) — flag→needs_human + human-only reopen; both
+      // resolve via the "note" prefix case (noteKeys.all).
+      "note.needs_human",
+      "note.reopened",
+      // Triage side-log (T3) — auto-decision recorded; resolves via the
+      // "triage_decision" prefix case (triageDecisionKeys.all → audit feed).
+      "triage_decision.recorded",
       // Agent escalation channel (Campaign C4) — lifecycle invalidates
       // escalationKeys.all (dashboard list + any open timeline). Pure
       // invalidation in P1 (no toast).
