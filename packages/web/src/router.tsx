@@ -71,6 +71,10 @@ const TrainAuditPage = lazyRouteComponent(
   () => import("@/pages/train-audit-page"),
   "TrainAuditPage",
 );
+const TriageDashboardPage = lazyRouteComponent(
+  () => import("@/pages/triage-dashboard-page"),
+  "TriageDashboardPage",
+);
 const MergeRequestTimelinePage = lazyRouteComponent(
   () => import("@/pages/merge-request-timeline-page"),
   "MergeRequestTimelinePage",
@@ -343,6 +347,13 @@ const projectTrainRoute = createRoute({
   component: TrainDashboardPage,
 });
 
+// /projects/$projectId/triage — notes-triage observability dashboard (T3·P3)
+const projectTriageRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/triage",
+  component: TriageDashboardPage,
+});
+
 // /projects/$projectId/train/audit — break-glass controls + audit log (admin-only)
 const projectTrainAuditRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -478,6 +489,7 @@ const routeTree = rootRoute.addChildren([
       projectMilestonesRoute,
       projectTrainRoute,
       projectTrainAuditRoute,
+      projectTriageRoute,
       projectAutomationRoute,
       projectNotificationsRoute,
       projectConflictResolutionRoute,

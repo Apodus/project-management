@@ -498,6 +498,15 @@ export async function getTriageDecisions(
   );
 }
 
+// On-read triage metrics (T3·P3). Default apiFetch unwraps the {data}
+// envelope — mirrors getEscalationMetrics/getTrainMetrics (NOT rawResponse).
+export type TriageMetrics = components["schemas"]["TriageMetrics"];
+
+export async function getTriageMetrics(projectId: string, since?: string): Promise<TriageMetrics> {
+  const query = since ? `?since=${encodeURIComponent(since)}` : "";
+  return apiFetch<TriageMetrics>(`/projects/${projectId}/triage-decisions/metrics${query}`);
+}
+
 // ---- Escalations API (Campaign C4 — agent escalation channel, read-only web) ----
 
 // The list envelope is an inline server shape (not a named schema), so type it

@@ -3977,6 +3977,79 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{projectId}/triage-decisions/metrics": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the on-read triage metrics for a project
+     * @description Returns the triage dashboard metric bundle for a project: decision mix by kind × mode (shadow/on), triage latency p50/p95 (note creation → decision), project-wide lane counts (open/needs_human/triaged), and last-decision freshness. Derived live from the triage_decisions side-log (+ notes) — no new table. SCOPE: when settings.notesTriage.triageAgentId is designated, the mix/latency/heartbeat figures are scoped to that identity (read DIRECTLY off settings — works while triage is off/shadow); otherwise ALL actors are included with a by_actor breakdown. Lane counts are ALWAYS project-wide. heartbeat is LAST-DECISION freshness, NOT daemon liveness. Any authenticated user (read-only).
+     */
+    get: {
+      parameters: {
+        query?: {
+          since?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The triage metric bundle */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TriageMetrics"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{projectId}/triage-decisions": {
     parameters: {
       query?: never;
@@ -14994,6 +15067,52 @@ export interface components {
     NotesHealth: {
       open_count: number;
       oldest_untriaged_age_ms: number | null;
+    };
+    TriageMetrics: {
+      decision_mix: {
+        shadow: {
+          promote_standard: number;
+          promote_fast_track: number;
+          dismiss: number;
+          needs_human: number;
+          give_up: number;
+        };
+        on: {
+          promote_standard: number;
+          promote_fast_track: number;
+          dismiss: number;
+          needs_human: number;
+          give_up: number;
+        };
+        shadow_total: number;
+        on_total: number;
+        total: number;
+      };
+      latency: {
+        p50_ms: number | null;
+        p95_ms: number | null;
+        sample_size: number;
+      };
+      lane_counts: {
+        open: number;
+        needs_human: number;
+        triaged: number;
+      };
+      scope: {
+        triage_agent_id: string | null;
+        filtered: boolean;
+        by_actor: {
+          actor_id: string;
+          count: number;
+        }[];
+      };
+      heartbeat: {
+        last_decision_at: string | null;
+        age_ms: number | null;
+      };
+      window_since: string | null;
+      total: number;
+      computed_at: string;
     };
     TriageDecision: {
       id: string;

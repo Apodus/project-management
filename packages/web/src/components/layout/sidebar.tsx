@@ -78,6 +78,12 @@ function getNavItems(projectId: string | null): NavItem[] {
       matchPath: "/notes",
     },
     {
+      label: "Triage",
+      icon: ListChecks,
+      href: projectId ? `${base}/triage` : "/projects",
+      matchPath: "/triage",
+    },
+    {
       label: "Epics",
       icon: Milestone,
       href: projectId ? `${base}/epics` : "/projects",

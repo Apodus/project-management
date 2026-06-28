@@ -50,3 +50,51 @@ export const listTriageDecisionsSchema = z.object({
   since: z.string().optional(),
 });
 export type ListTriageDecisionsQuery = z.infer<typeof listTriageDecisionsSchema>;
+
+// ─── On-read triage metrics (T3·P3) ───────────────────────────────
+// The SNAKE_CASE wire shape of the triage dashboard metric bundle, derived live
+// from the triage_decisions side-log (+ notes) — no new table. Mirrors the
+// escalation-metrics wire schema. The per-kind decision keys are already
+// snake_case wire-stable (TRIAGE_DECISION_KINDS), so no per-kind rename. The
+// server maps its camelCase bundle to this shape at the route boundary. Zod-3,
+// no .openapi() (the route re-declares a Zod-4 mirror via @hono/zod-openapi).
+const triageDecisionMatrixSchema = z.object({
+  promote_standard: z.number(),
+  promote_fast_track: z.number(),
+  dismiss: z.number(),
+  needs_human: z.number(),
+  give_up: z.number(),
+});
+
+export const triageMetricsSchema = z.object({
+  decision_mix: z.object({
+    shadow: triageDecisionMatrixSchema,
+    on: triageDecisionMatrixSchema,
+    shadow_total: z.number(),
+    on_total: z.number(),
+    total: z.number(),
+  }),
+  latency: z.object({
+    p50_ms: z.number().nullable(),
+    p95_ms: z.number().nullable(),
+    sample_size: z.number(),
+  }),
+  lane_counts: z.object({
+    open: z.number(),
+    needs_human: z.number(),
+    triaged: z.number(),
+  }),
+  scope: z.object({
+    triage_agent_id: z.string().nullable(),
+    filtered: z.boolean(),
+    by_actor: z.array(z.object({ actor_id: z.string(), count: z.number() })),
+  }),
+  heartbeat: z.object({
+    last_decision_at: z.string().nullable(),
+    age_ms: z.number().nullable(),
+  }),
+  window_since: z.string().nullable(),
+  total: z.number(),
+  computed_at: z.string(),
+});
+export type TriageMetrics = z.infer<typeof triageMetricsSchema>;
