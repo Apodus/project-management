@@ -22,13 +22,16 @@ import { resolveNotesTriage } from "@pm/shared";
 import type { Logger } from "./logger.js";
 import type { SpawnBudget } from "./config.js";
 import type { TriagerClient } from "./api-client.js";
+import type { TriageAssessment } from "./decision.js";
 
 /**
- * The outcome of assessing one note. In P2 the ONLY variant is the inert
- * `noop` — the stub records nothing and mutates nothing. P3 replaces this with
- * the real disposition union (promote/dismiss/needs_human/give_up).
+ * The outcome of assessing one note (T2·P3). The real disposition is the
+ * structured `TriageAssessment` (promote_standard/promote_fast_track/dismiss/
+ * needs_human/give_up + rationale/confidence/optional breakdown) produced by
+ * `createTriageDecide`. The loop still IGNORES this return in P3 — execution /
+ * side-log recording / mode-gating is P4.
  */
-export type TriageDecision = { kind: "noop" };
+export type TriageDecision = TriageAssessment;
 
 /**
  * The injected assessment seam. Receives the note, its project, and the EFFECTIVE
@@ -42,9 +45,11 @@ export type DecideFn = (ctx: {
 }) => Promise<TriageDecision>;
 
 /**
- * The pure-log STUB decide (P2). Logs `would assess note <id>` with the mode +
- * project, and returns `{ kind: "noop" }`. Records NOTHING, mutates NOTHING.
- * Exercises the mode-threading (reads `resolved.mode`) even though it ignores it.
+ * The pure-log STUB decide (P2 legacy). Logs `would assess note <id>` with the
+ * mode + project, and returns an inert `give_up` assessment. Records NOTHING,
+ * mutates NOTHING. Kept past P3 because the non-destructiveness test still uses it
+ * to assert the loop never records/acts; production now wires the real
+ * `createTriageDecide` brain instead.
  */
 export function createStubDecide(deps: { logger: Logger }): DecideFn {
   return async ({ note, projectId, resolved }) => {
@@ -52,7 +57,7 @@ export function createStubDecide(deps: { logger: Logger }): DecideFn {
       { noteId: note.id, projectId, mode: resolved.mode },
       `would assess note ${note.id} (mode=${resolved.mode}, project=${projectId})`,
     );
-    return { kind: "noop" };
+    return { kind: "give_up", rationale: "stub", confidence: 0 };
   };
 }
 

@@ -4,7 +4,10 @@ import { resolveNotesTriage } from "@pm/shared";
 import { ConfigError, loadConfig, type CliArgs } from "./config.js";
 import { TriagerClient } from "./api-client.js";
 import { createLogger } from "./logger.js";
-import { createStubDecide, runTriagerLoop } from "./loop.js";
+import { runTriagerLoop } from "./loop.js";
+import { createClaudeInjectionSniffer } from "./injection-sniffer.js";
+import { createClaudeAssessmentRunner } from "./assessment-runner.js";
+import { createTriageDecide } from "./decide.js";
 import { VERSION } from "./version.js";
 
 function collect(value: string, prev: string[]): string[] {
@@ -87,9 +90,19 @@ async function main(): Promise<void> {
     return;
   }
 
-  // P2: the pure-log STUB decide seam. P3 replaces this with the sniff +
-  // assessment brain; the seam is the injected DecideFn.
-  const decide = createStubDecide({ logger });
+  // P3: the real decide seam — a cheap injection sniff GATES a bounded assessment
+  // session that PRODUCES a structured decision. The decision is RETURNED but the
+  // loop still ignores it (execution / recording / mode-gating is P4).
+  const sniffer = createClaudeInjectionSniffer({ command: cfg.command });
+  const runner = createClaudeAssessmentRunner({ command: cfg.command });
+  const decide = createTriageDecide({
+    sniffer,
+    runner,
+    logsDir: cfg.logsDir,
+    command: cfg.command,
+    budget: { timeBudgetSec: cfg.timeBudgetSec },
+    logger,
+  });
 
   logger.info(
     {

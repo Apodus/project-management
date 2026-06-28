@@ -77,7 +77,7 @@ function spyDecide(
 ): DecideFn {
   return vi.fn(async (ctx) => {
     if (impl) await impl(ctx);
-    return { kind: "noop" as const };
+    return { kind: "give_up" as const, rationale: "", confidence: 0 };
   });
 }
 
