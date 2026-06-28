@@ -12,25 +12,42 @@ escalations: one long-lived process per watched project that polls the project's
 > resolves OFF until its DB toggle is flipped — so nothing is triaged out of the
 > box.
 
-## What this phase (T2·P2) does
+## What it does
 
-This is the **scaffold**: config + api-client + the poll/seed loop wired
-end-to-end **except** the assessment brain (P3) and decision execution (P4).
+The triager polls each watched project's open notes, **assesses** each one in a
+bounded headless session, and **executes** the resulting disposition under the
+project's rollout mode:
 
 - Polls `GET /api/v1/projects/{id}/notes?status=open` per watched project, per
   tick.
-- Resolves effective enablement per project per tick
+- Resolves effective enablement + mode per project per tick
   (`resolveNotesTriage(masterEnv, project.settings)`); a disabled project is
   skipped, a `getProject` failure **fail-safes OFF**.
 - Seeds candidate notes (not self-authored, not the designated triage agent's,
-  not already in flight) **oldest-first**.
-- Calls a pure-log **STUB `decide()`** per candidate that logs
-  `would assess note <id>` and **mutates nothing** — no note edits, no triage
-  decisions recorded, no proposals/tasks created. There are no action wrappers
-  yet; the proposal-gate invariant is untouched.
+  not already in flight / triaged / shadow-seen) **oldest-first**.
+- Runs `decide()` (injection sniff → bounded assessment session) to produce a
+  structured `TriageAssessment`, then **executes** it via `executeDecision`:
+  - **off** — defensive noop (mode can be off even while the daemon is enabled);
+  - **shadow** — records a triage-decision side-log row and **leaves the note
+    open** (mutates nothing else);
+  - **on** — records the decision **and** performs the action (promote to
+    proposal / dismiss / flag needs_human), backlinking any minted proposal.
 
-P3 replaces the stub with the sniff + assessment brain; P4 adds decision
-execution (record-decision / promote / dismiss / flag).
+The **proposal-gate** is preserved: the only task-minting path is
+`implementProposal` on a fast_track proposal (note → proposal → breakdown).
+There is no direct note → task path.
+
+### Deployment: on-mode dismiss authorization
+
+The dismiss endpoint is authz-gated — only a note's **author** or a **human**
+may dismiss. So for **on**-mode dismiss to be authorized, the daemon's
+`PM_API_TOKEN` identity **MUST** be set as each watched project's
+`settings.notesTriage.triageAgentId`. If it is not, dismiss decisions fail with a
+403 and the executor **escalates the note to needs_human** (recording the
+disposition truthfully) rather than hot-looping — but the intended dismiss never
+lands. The daemon logs a warn-once-per-project on this mismatch at startup of the
+affected tick. Promote and flag-needs-human have no authz gate and work
+regardless.
 
 ## Configuration
 

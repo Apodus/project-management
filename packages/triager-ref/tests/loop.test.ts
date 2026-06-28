@@ -4,12 +4,12 @@ import {
   runTriagerLoop,
   createTriagerState,
   seedNotes,
-  createStubDecide,
   type TriagerDeps,
   type DecideFn,
 } from "../src/loop.js";
-import { TriagerClient, type TriagerProjectView } from "../src/api-client.js";
-import type { Note, ResolvedNotesTriage } from "@pm/shared";
+import { PmApiError, type TriagerProjectView } from "../src/api-client.js";
+import type { Note, ResolvedNotesTriage, TriageDecision } from "@pm/shared";
+import type { TriageAssessment } from "../src/decision.js";
 import type { Logger } from "../src/logger.js";
 
 // ── Fakes ──────────────────────────────────────────────────────────
@@ -65,19 +65,54 @@ class FakeClient {
     return this.notesByProject[projectId] ?? [];
   });
 
-  // Wired (T2·P1) but NEVER called by the P2 stub — present so tests can assert
-  // non-destructiveness.
-  recordTriageDecision = vi.fn(async (): Promise<never> => {
-    throw new Error("recordTriageDecision must NOT be called in P2");
+  // ── P4 action surface. recordTriageDecision is now a recording spy (the
+  // executor calls it under shadow + on). Each action wrapper is configurable to
+  // throw via the `*Error` hooks so the loop integration tests can exercise the
+  // transient-retry path. ──
+  recordTriageDecision = vi.fn(async () => ({ id: "td-1" }) as unknown as TriageDecision);
+
+  promoteToProposal = vi.fn(async (noteId: string) => ({
+    note: mkNote(noteId, { status: "triaged" }),
+    proposal: {
+      id: "prop-1",
+      projectId: "p",
+      title: "t",
+      description: null,
+      status: "draft",
+      proposalKind: "standard" as const,
+      createdBy: "u-self",
+      sourceNoteId: noteId,
+      createdAt: "2026-06-20T00:00:00.000Z",
+      updatedAt: "2026-06-20T00:00:00.000Z",
+    },
+  }));
+
+  dismissError: (() => unknown) | undefined;
+  dismissNote = vi.fn(async (noteId: string): Promise<Note> => {
+    const err = this.dismissError?.();
+    if (err) throw err;
+    return mkNote(noteId, { status: "triaged" });
   });
+
+  flagError: (() => unknown) | undefined;
+  flagNeedsHuman = vi.fn(async (noteId: string): Promise<Note> => {
+    const err = this.flagError?.();
+    if (err) throw err;
+    return mkNote(noteId, { status: "needs_human" });
+  });
+
+  claimProposal = vi.fn(async () => ({ ok: true, status: "claimed_by_you" }));
+
+  implementProposal = vi.fn(async (): Promise<void> => undefined);
 }
 
 function spyDecide(
   impl?: (ctx: { note: Note; projectId: string; resolved: ResolvedNotesTriage }) => Promise<void>,
+  assessment: TriageAssessment = { kind: "give_up", rationale: "", confidence: 0 },
 ): DecideFn {
   return vi.fn(async (ctx) => {
     if (impl) await impl(ctx);
-    return { kind: "give_up" as const, rationale: "", confidence: 0 };
+    return assessment;
   });
 }
 
@@ -231,27 +266,85 @@ describe("triagerTick", () => {
     expect(decide).toHaveBeenCalledTimes(1); // semaphore admits only one this tick
   });
 
-  it("the P2 stub is non-destructive: no triage-decision recorded, no action wrappers exist", async () => {
+  it("shadow tick: records mode=shadow, mutates NOTHING, marks shadowSeen (not triaged); a second tick does not re-decide", async () => {
+    const client = new FakeClient();
+    client.settingsByProject["p"] = { notesTriage: { enabled: true, mode: "shadow" } };
+    client.notesByProject["p"] = [mkNote("n1")];
+    const decide = spyDecide(async () => {});
+    const state = createTriagerState();
+    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5 }), state);
+    // Recorded under shadow.
+    expect(client.recordTriageDecision).toHaveBeenCalledTimes(1);
+    expect(client.recordTriageDecision.mock.calls[0][1]).toMatchObject({ mode: "shadow" });
+    // No action wrapper touched (note stays open).
+    expect(client.dismissNote).not.toHaveBeenCalled();
+    expect(client.promoteToProposal).not.toHaveBeenCalled();
+    expect(client.flagNeedsHuman).not.toHaveBeenCalled();
+    // Tracked as shadowSeen, NOT triaged.
+    expect(state.shadowSeen.has("n1")).toBe(true);
+    expect(state.triaged.has("n1")).toBe(false);
+    // A second tick: the shadow-seen note is suppressed from re-seed.
+    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5 }), state);
+    expect(decide).toHaveBeenCalledTimes(1);
+    expect(client.recordTriageDecision).toHaveBeenCalledTimes(1);
+  });
+
+  it("on tick: performs the action + records mode=on + marks triaged", async () => {
     const client = new FakeClient();
     client.settingsByProject["p"] = { notesTriage: { enabled: true, mode: "on" } };
-    client.notesByProject["p"] = [
-      mkNote("n1", { createdAt: "2026-06-01T00:00:00.000Z" }),
-      mkNote("n2", { createdAt: "2026-06-02T00:00:00.000Z" }),
-    ];
-    const decide = createStubDecide({ logger: silentLogger });
-    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5 }), createTriagerState());
-    // The stub recorded NOTHING.
+    client.notesByProject["p"] = [mkNote("n1")];
+    const decide = spyDecide(async () => {}, {
+      kind: "dismiss",
+      rationale: "noise",
+      confidence: 1,
+    });
+    const state = createTriagerState();
+    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5 }), state);
+    expect(client.dismissNote).toHaveBeenCalledWith("n1", "noise");
+    expect(client.recordTriageDecision.mock.calls[0][1]).toMatchObject({
+      mode: "on",
+      decision: "dismiss",
+    });
+    expect(state.triaged.has("n1")).toBe(true);
+    expect(state.shadowSeen.has("n1")).toBe(false);
+  });
+
+  it("on tick transient throw: note NOT marked (re-seedable), inFlight cleared", async () => {
+    const client = new FakeClient();
+    client.settingsByProject["p"] = { notesTriage: { enabled: true, mode: "on" } };
+    client.notesByProject["p"] = [mkNote("n1")];
+    client.dismissError = () => new PmApiError(500, "X", "boom"); // transient
+    const decide = spyDecide(async () => {}, {
+      kind: "dismiss",
+      rationale: "noise",
+      confidence: 1,
+    });
+    const state = createTriagerState();
+    await expect(
+      triagerTick(mkDeps(client, decide, { maxConcurrent: 5 }), state),
+    ).resolves.toBeUndefined();
     expect(client.recordTriageDecision).not.toHaveBeenCalled();
-    // No decision-EXECUTION wrappers exist on the client yet (deferred to P4).
-    const realClient = new TriagerClient({ baseUrl: "http://h", token: "t" }) as unknown as Record<
-      string,
-      unknown
-    >;
-    expect(typeof realClient.recordTriageDecision).toBe("function"); // wired, but unused by the stub
-    expect(realClient.promoteToProposal).toBeUndefined();
-    expect(realClient.dismiss).toBeUndefined();
-    expect(realClient.flagNeedsHuman).toBeUndefined();
-    expect(realClient.implementProposal).toBeUndefined();
+    expect(state.triaged.size).toBe(0);
+    expect(state.shadowSeen.size).toBe(0);
+    expect(state.inFlight.size).toBe(0);
+  });
+
+  it("on-mode identity mismatch warns once per project", async () => {
+    const client = new FakeClient();
+    client.settingsByProject["p"] = {
+      notesTriage: { enabled: true, mode: "on", triageAgentId: "other-agent" },
+    };
+    client.notesByProject["p"] = [mkNote("n1")];
+    const warn = vi.fn();
+    const logger = { ...silentLogger, warn } as unknown as Logger;
+    const decide = spyDecide(async () => {}, { kind: "give_up", rationale: "", confidence: 0 });
+    const state = createTriagerState();
+    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5, logger }), state);
+    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5, logger }), state);
+    const mismatchWarns = warn.mock.calls.filter((c) =>
+      String(c[1] ?? "").includes("is not project"),
+    );
+    expect(mismatchWarns).toHaveLength(1);
   });
 
   it("survives a per-project listOpenNotes throw (no throw; other projects processed)", async () => {
