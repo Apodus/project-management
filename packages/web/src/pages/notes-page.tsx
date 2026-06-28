@@ -747,7 +747,7 @@ function NoteCard({ note, isHuman }: { note: Note; isHuman: boolean }) {
   }
 
   return (
-    <Card className="gap-3 py-4">
+    <Card className="gap-3 py-4" data-testid={`note-card-${note.id}`}>
       <CardHeader className="pb-0">
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="secondary" className={cn("text-[11px]", getKindColor(note.kind))}>

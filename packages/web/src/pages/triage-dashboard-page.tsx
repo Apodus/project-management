@@ -34,14 +34,16 @@ function MetricCard({
   value,
   icon: Icon,
   sub,
+  testid,
 }: {
   label: string;
   value: string;
   icon: React.ComponentType<{ className?: string }>;
   sub?: string;
+  testid?: string;
 }) {
   return (
-    <Card className="py-4">
+    <Card className="py-4" data-testid={testid}>
       <CardContent className="flex items-center gap-3">
         <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-lg">
           <Icon className="size-5" />
@@ -128,9 +130,19 @@ function ScopeSection({ scope }: { scope: TriageMetrics["scope"] }) {
 function LaneCountsSection({ lanes }: { lanes: TriageMetrics["lane_counts"] }) {
   return (
     <div className="grid gap-4 sm:grid-cols-3">
-      <MetricCard label="Open" value={String(lanes.open)} icon={Inbox} />
-      <MetricCard label="Needs human" value={String(lanes.needs_human)} icon={Users} />
-      <MetricCard label="Triaged" value={String(lanes.triaged)} icon={CheckCircle2} />
+      <MetricCard label="Open" value={String(lanes.open)} icon={Inbox} testid="triage-lane-open" />
+      <MetricCard
+        label="Needs human"
+        value={String(lanes.needs_human)}
+        icon={Users}
+        testid="triage-lane-needs-human"
+      />
+      <MetricCard
+        label="Triaged"
+        value={String(lanes.triaged)}
+        icon={CheckCircle2}
+        testid="triage-lane-triaged"
+      />
     </div>
   );
 }
@@ -183,8 +195,18 @@ function DecisionMixSection({ mix }: { mix: TriageMetrics["decision_mix"] }) {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <MetricCard label="Shadow decisions" value={String(mix.shadow_total)} icon={ListChecks} />
-          <MetricCard label="On decisions" value={String(mix.on_total)} icon={CheckCircle2} />
+          <MetricCard
+            label="Shadow decisions"
+            value={String(mix.shadow_total)}
+            icon={ListChecks}
+            testid="triage-mix-shadow-total"
+          />
+          <MetricCard
+            label="On decisions"
+            value={String(mix.on_total)}
+            icon={CheckCircle2}
+            testid="triage-mix-on-total"
+          />
         </div>
       </CardContent>
     </Card>

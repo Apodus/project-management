@@ -177,7 +177,11 @@ export async function createNoteViaAPI(
 ): Promise<{ id: string; title: string; status: string; kind: string }> {
   const response = await page.request.post(`/api/v1/projects/${projectId}/notes`, { data });
 
-  expect(response.ok()).toBeTruthy();
+  if (!response.ok()) {
+    throw new Error(
+      `createNote failed: POST /api/v1/projects/${projectId}/notes -> ${response.status()} ${await response.text()}`,
+    );
+  }
   const json = await response.json();
   return json.data;
 }
@@ -256,6 +260,214 @@ export async function raiseEscalationViaAPI(
   expect(response.status()).toBe(201);
   const json = await response.json();
   return json.data;
+}
+
+// ─── Notes-triage seal helpers (T3·P5) ───────────────────────────────────────
+//
+// Thin wrappers over the durable notes/triage REST surface, driven on the
+// logged-in `page.request.*` context (the e2e ACTS AS the triage agent — no real
+// claude, no daemon process). Each asserts the response status + returns the
+// parsed payload, mirroring the createNoteViaAPI idiom above.
+
+/**
+ * Promote a note into a proposal (the ONLY note→proposal path). The response
+ * carries the (now-triaged) note under `data` and the minted proposal as a
+ * SIBLING key `proposal` — so this reads both off the raw envelope, not `.data`.
+ */
+export async function promoteNoteToProposalViaAPI(
+  page: Page,
+  noteId: string,
+  body: { title?: string; description?: string; proposalKind?: "standard" | "fast_track" },
+): Promise<{
+  note: {
+    id: string;
+    status: string;
+    triageOutcome: string | null;
+    promotedProposalId: string | null;
+  };
+  proposal: { id: string; proposalKind: string; sourceNoteId: string | null; status: string };
+}> {
+  const resp = await page.request.post(`/api/v1/notes/${noteId}/promote-to-proposal`, {
+    data: body,
+  });
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  return { note: json.data, proposal: json.proposal };
+}
+
+/** Atomically claim a proposal for the caller. Returns the structured outcome. */
+export async function claimProposalViaAPI(
+  page: Page,
+  proposalId: string,
+): Promise<{ ok: boolean; status: string }> {
+  const resp = await page.request.post(`/api/v1/proposals/${proposalId}/claim`);
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  return json.data;
+}
+
+/**
+ * Atomically create epics + tasks from a (claimed) proposal, moving it to
+ * in_progress. This is the proposal-gate materialization step — note tasks are
+ * only ever minted through a proposal, never directly (they set proposalId +
+ * epicId via epicIndex, NOT sourceNoteId). The response envelope carries the
+ * UPDATED PROPOSAL under `data` (not the spawned items) — to inspect the minted
+ * tasks, read them back via listTasksViaAPI.
+ */
+export async function implementProposalViaAPI(
+  page: Page,
+  proposalId: string,
+  body: {
+    epics?: { name: string; description?: string }[];
+    tasks?: { title: string; description?: string; epicIndex?: number }[];
+  },
+): Promise<{ id: string; status: string }> {
+  const resp = await page.request.post(`/api/v1/proposals/${proposalId}/implement`, { data: body });
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  return json.data;
+}
+
+/** Terminally dismiss a note (triage outcome `dismissed`). `reason` is required. */
+export async function dismissNoteViaAPI(
+  page: Page,
+  noteId: string,
+  reason: string,
+): Promise<{
+  id: string;
+  status: string;
+  triageOutcome: string | null;
+  triageReason: string | null;
+}> {
+  const resp = await page.request.post(`/api/v1/notes/${noteId}/dismiss`, { data: { reason } });
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  return json.data;
+}
+
+/** Raise an open note to the needs_human lane (no authz gate; never 403s). */
+export async function flagNeedsHumanViaAPI(
+  page: Page,
+  noteId: string,
+): Promise<{ id: string; status: string }> {
+  const resp = await page.request.post(`/api/v1/notes/${noteId}/flag-needs-human`);
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  return json.data;
+}
+
+/** Reopen a needs_human|triaged note back to `open` (human-only; clears triage meta). */
+export async function reopenNoteViaAPI(
+  page: Page,
+  noteId: string,
+): Promise<{ id: string; status: string }> {
+  const resp = await page.request.post(`/api/v1/notes/${noteId}/reopen`);
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  return json.data;
+}
+
+/** Get a single note by id (status + triage metadata read-back). */
+export async function getNoteViaAPI(
+  page: Page,
+  noteId: string,
+): Promise<{
+  id: string;
+  status: string;
+  triageOutcome: string | null;
+  triageReason: string | null;
+  triagedBy: string | null;
+}> {
+  const resp = await page.request.get(`/api/v1/notes/${noteId}`);
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  return json.data;
+}
+
+/** List a project's tasks (used to assert proposal-minted tasks carry proposalId). */
+export async function listTasksViaAPI(
+  page: Page,
+  projectId: string,
+): Promise<
+  { id: string; title: string; proposalId: string | null; sourceNoteId: string | null }[]
+> {
+  const resp = await page.request.get(`/api/v1/projects/${projectId}/tasks`);
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  return json.data;
+}
+
+/**
+ * Record a triage decision in the append-only side-log (POST → 201). The
+ * decision row NEVER mutates the referenced note — it only attributes a
+ * disposition to the caller under a rollout mode (shadow/on). actorId is always
+ * the caller (never accepted from the body).
+ */
+export async function recordTriageDecisionViaAPI(
+  page: Page,
+  projectId: string,
+  body: {
+    noteId: string;
+    mode: "off" | "shadow" | "on";
+    decision: string;
+    rationale?: string | null;
+    confidence?: number | null;
+    resultingProposalId?: string | null;
+    resultingTaskId?: string | null;
+  },
+): Promise<{ id: string; mode: string; decision: string; resultingProposalId: string | null }> {
+  const resp = await page.request.post(`/api/v1/projects/${projectId}/triage-decisions`, {
+    data: body,
+  });
+  expect(resp.status()).toBe(201);
+  const json = await resp.json();
+  return json.data;
+}
+
+/** List a project's triage decisions, optionally filtered by noteId. */
+export async function listTriageDecisionsViaAPI(
+  page: Page,
+  projectId: string,
+  filters: { noteId?: string } = {},
+): Promise<{ id: string; noteId: string; mode: string; decision: string }[]> {
+  const params = new URLSearchParams();
+  if (filters.noteId) params.set("noteId", filters.noteId);
+  const qs = params.toString();
+  const resp = await page.request.get(
+    `/api/v1/projects/${projectId}/triage-decisions${qs ? `?${qs}` : ""}`,
+  );
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  return json.data;
+}
+
+/**
+ * Set the project's notes-triage rollout config via PATCH /projects/:id.
+ *
+ * CRITICAL: the server PATCH is a WHOLESALE settings replace — the read-merge-
+ * write that preserves sibling settings blocks lives ONLY in the web client. So
+ * this helper MUST send the COMPLETE notesTriage block on every call. That is
+ * safe here because a fresh e2e project starts with settings:null (no sibling
+ * blocks to clobber) and this seal only ever touches notesTriage.
+ */
+export async function setNotesTriageModeViaAPI(
+  page: Page,
+  projectId: string,
+  config: { enabled: boolean; mode: "off" | "shadow" | "on"; triageAgentId?: string },
+): Promise<void> {
+  const notesTriage: Record<string, unknown> = {
+    enabled: config.enabled,
+    mode: config.mode,
+    ...(config.triageAgentId ? { triageAgentId: config.triageAgentId } : {}),
+  };
+  const resp = await page.request.patch(`/api/v1/projects/${projectId}`, {
+    data: { settings: { notesTriage } },
+  });
+  if (!resp.ok()) {
+    throw new Error(
+      `setNotesTriageMode failed: PATCH /api/v1/projects/${projectId} -> ${resp.status()} ${await resp.text()}`,
+    );
+  }
 }
 
 /**
