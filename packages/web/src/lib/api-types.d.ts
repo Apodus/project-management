@@ -3263,7 +3263,7 @@ export interface paths {
       parameters: {
         query?: {
           kind?: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
-          status?: "open" | "triaged";
+          status?: "open" | "needs_human" | "triaged";
           anchorType?: "task" | "epic" | "proposal";
           anchorId?: string;
           severity?: "low" | "medium" | "high";
@@ -3421,7 +3421,7 @@ export interface paths {
     head?: never;
     /**
      * Update note
-     * @description Update an OPEN note's fields. A triaged note is immutable in C1 (409). Status is not patchable.
+     * @description Update a mutable note's fields (open or needs_human). A triaged note is immutable (409). Status is not patchable (flag/reopen own the status transitions).
      */
     patch: {
       parameters: {
@@ -3463,7 +3463,7 @@ export interface paths {
             };
           };
         };
-        /** @description Note is not open and cannot be edited */
+        /** @description Note is triaged (terminal) and cannot be modified */
         409: {
           headers: {
             [name: string]: unknown;
@@ -3492,7 +3492,7 @@ export interface paths {
     put?: never;
     /**
      * Dismiss note
-     * @description Terminally dismiss an OPEN note (triage outcome `dismissed`). Anti-signal-burying: only the note's author OR a human may dismiss.
+     * @description Terminally dismiss a mutable note (open or needs_human) — triage outcome `dismissed`. Anti-signal-burying: only the note's author OR a human may dismiss.
      */
     post: {
       parameters: {
@@ -3562,7 +3562,7 @@ export interface paths {
             };
           };
         };
-        /** @description Note is not open and cannot be dismissed */
+        /** @description Note is triaged (terminal) and cannot be dismissed */
         409: {
           headers: {
             [name: string]: unknown;
@@ -3595,7 +3595,7 @@ export interface paths {
     put?: never;
     /**
      * Promote note to proposal
-     * @description Terminally promote an OPEN note to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.
+     * @description Terminally promote a mutable note (open or needs_human) to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.
      */
     post: {
       parameters: {
@@ -3638,7 +3638,7 @@ export interface paths {
             };
           };
         };
-        /** @description Note is not open and cannot be promoted */
+        /** @description Note is triaged (terminal) and cannot be promoted */
         409: {
           headers: {
             [name: string]: unknown;
@@ -3671,7 +3671,7 @@ export interface paths {
     put?: never;
     /**
      * Promote note to task
-     * @description HUMAN-ONLY escape hatch: terminally promote an OPEN note directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.
+     * @description HUMAN-ONLY escape hatch: terminally promote a mutable note (open or needs_human) directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.
      */
     post: {
       parameters: {
@@ -3728,7 +3728,163 @@ export interface paths {
             };
           };
         };
-        /** @description Note is not open and cannot be promoted */
+        /** @description Note is triaged (terminal) and cannot be promoted */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notes/{id}/flag-needs-human": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Flag note needs_human
+     * @description Raise an OPEN note's signal to needs_human — an agent that triaged the note but cannot resolve it punts it to a human. Sets no triage metadata (the note stays mutable/triageable). No authz gate (flag elevates signal). 409 if the note is not open (already needs_human or terminally triaged).
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Note flagged needs_human */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Note"];
+            };
+          };
+        };
+        /** @description Note not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Note is not open and cannot be flagged needs_human */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notes/{id}/reopen": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Reopen note
+     * @description HUMAN-ONLY: reopen a needs_human or triaged note back to open, clearing the note's triage metadata. Does NOT delete any proposal/task a prior promote spawned (it stays independently reviewable). A non-human caller gets 403. 409 if the note is already open (not reopenable).
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Note reopened */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Note"];
+            };
+          };
+        };
+        /** @description Caller is not allowed to reopen this note (human-only) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Note not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Note is already open and is not reopenable */
         409: {
           headers: {
             [name: string]: unknown;
@@ -14310,6 +14466,16 @@ export interface components {
            */
           mode: "off" | "shadow" | "on";
         };
+        notesTriage?: {
+          /** @default false */
+          enabled: boolean;
+          /**
+           * @default shadow
+           * @enum {string}
+           */
+          mode: "off" | "shadow" | "on";
+          triageAgentId?: string;
+        };
         epic_categories?: {
           name: string;
           color: string;
@@ -14416,6 +14582,16 @@ export interface components {
            */
           mode: "off" | "shadow" | "on";
         };
+        notesTriage?: {
+          /** @default false */
+          enabled: boolean;
+          /**
+           * @default shadow
+           * @enum {string}
+           */
+          mode: "off" | "shadow" | "on";
+          triageAgentId?: string;
+        };
         epic_categories?: {
           name: string;
           color: string;
@@ -14438,6 +14614,8 @@ export interface components {
       title: string;
       description: string | null;
       status: string;
+      /** @enum {string} */
+      proposalKind: "standard" | "fast_track";
       createdBy: string;
       claimedBy: string | null;
       /** @enum {string} */
@@ -14453,6 +14631,8 @@ export interface components {
       title: string;
       description?: string | null;
       createdBy?: string;
+      /** @enum {string} */
+      proposalKind?: "standard" | "fast_track";
     };
     ProposalDetail: components["schemas"]["Proposal"] & {
       comments: components["schemas"]["Comment"][];
@@ -14579,7 +14759,7 @@ export interface components {
       /** @enum {string} */
       kind: "bug" | "question" | "idea" | "tech_debt" | "wtf" | "observation";
       /** @enum {string} */
-      status: "open" | "triaged";
+      status: "open" | "needs_human" | "triaged";
       title: string;
       body: string | null;
       /** @enum {string|null} */
@@ -14654,6 +14834,8 @@ export interface components {
       title: string;
       description: string | null;
       status: string;
+      /** @enum {string} */
+      proposalKind: "standard" | "fast_track";
       createdBy: string;
       sourceNoteId: string | null;
       createdAt: string;
@@ -14662,6 +14844,8 @@ export interface components {
     PromoteNoteToProposal: {
       title?: string;
       description?: string;
+      /** @enum {string} */
+      proposalKind?: "standard" | "fast_track";
     };
     PromotedTask: {
       id: string;

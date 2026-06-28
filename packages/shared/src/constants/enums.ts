@@ -114,6 +114,13 @@ export type VerifyResultValue = (typeof VERIFY_RESULTS)[number];
 export const AUTO_IMPLEMENT_MODES = ["off", "shadow", "on"] as const;
 export type AutoImplementMode = (typeof AUTO_IMPLEMENT_MODES)[number];
 
+// T1·P3 — per-project notes-triage rollout mode. Same off/shadow/on ladder as
+// AUTO_IMPLEMENT_MODES, defined as its OWN const for semantic independence
+// (notes-triage is a distinct concern; identical by VALUE only — no coupling),
+// exactly as AUTO_IMPLEMENT_MODES is kept distinct from CACHE_MODES.
+export const NOTES_TRIAGE_MODES = ["off", "shadow", "on"] as const;
+export type NotesTriageMode = (typeof NOTES_TRIAGE_MODES)[number];
+
 // T1·P2 — proposal flavor. An ADVISORY routing label, NOT an authz seal: a
 // fast_track proposal is byte-identical in lifecycle to a standard one (same
 // transition map, same claim/implement gates). It only signals intent/routing.

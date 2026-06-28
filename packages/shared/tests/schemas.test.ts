@@ -41,6 +41,7 @@ import {
   insertMilestoneSchema,
   DEFAULT_RESOLVER_PROMPT,
   CLAIM_STATES,
+  resolveNotesTriage,
 } from "../src/index.js";
 
 // ============================================================
@@ -410,6 +411,51 @@ describe("projectSettingsSchema", () => {
     ).toThrow();
   });
 
+  // ── T1·P3 per-project notes-triage settings (default off, mode shadow) ──
+  it("reads an absent notesTriage block as undefined (tolerant off)", () => {
+    const parsed = projectSettingsSchema.parse(validSettings);
+    expect(parsed?.notesTriage).toBeUndefined();
+  });
+
+  it("fills defaults for an empty notesTriage block (off + shadow)", () => {
+    const parsed = projectSettingsSchema.parse({ ...validSettings, notesTriage: {} });
+    expect(parsed?.notesTriage).toEqual({ enabled: false, mode: "shadow" });
+  });
+
+  it("fills the mode default for a partial notesTriage block (enabled only)", () => {
+    const parsed = projectSettingsSchema.parse({
+      ...validSettings,
+      notesTriage: { enabled: true },
+    });
+    expect(parsed?.notesTriage).toEqual({ enabled: true, mode: "shadow" });
+  });
+
+  it("round-trips a full notesTriage block", () => {
+    const withNotesTriage = {
+      ...validSettings,
+      notesTriage: { enabled: true, mode: "on" as const, triageAgentId: "agent_x" },
+    };
+    expect(projectSettingsSchema.parse(withNotesTriage)).toEqual(withNotesTriage);
+  });
+
+  it("rejects an invalid notesTriage mode", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        notesTriage: { mode: "bogus" },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects an empty notesTriage triageAgentId (.min(1))", () => {
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        notesTriage: { triageAgentId: "" },
+      }),
+    ).toThrow();
+  });
+
   // ── Phase 7.5 verify_steps DAG + cache config (design §2.1/§8.1) ──
   it("accepts a valid 3-step DAG + cache config and round-trips it", () => {
     const parsed = projectSettingsSchema.parse({
@@ -710,6 +756,71 @@ describe("projectSettingsSchema", () => {
         epic_categories: [{ name: "Backend", color: "#FF0000" }],
       }),
     ).toThrow();
+  });
+});
+
+describe("resolveNotesTriage (T1·P3 env-master ⊗ DB composition)", () => {
+  it("master undefined + DB enabled:true ⇒ enabled:true (defer to DB)", () => {
+    expect(resolveNotesTriage(undefined, { notesTriage: { enabled: true } })).toEqual({
+      enabled: true,
+      mode: "shadow",
+      triageAgentId: undefined,
+    });
+  });
+
+  it("master undefined + DB enabled:false ⇒ enabled:false", () => {
+    expect(resolveNotesTriage(undefined, { notesTriage: { enabled: false } }).enabled).toBe(false);
+  });
+
+  it("master undefined + DB block absent ⇒ enabled:false", () => {
+    expect(resolveNotesTriage(undefined, {}).enabled).toBe(false);
+  });
+
+  it.each(["false", "0", "no", "off"])("master %s + DB enabled:true ⇒ force OFF", (master) => {
+    expect(resolveNotesTriage(master, { notesTriage: { enabled: true } }).enabled).toBe(false);
+  });
+
+  it.each(["true", "1", "yes", "on"])("master %s + DB enabled:true ⇒ enabled:true", (master) => {
+    expect(resolveNotesTriage(master, { notesTriage: { enabled: true } }).enabled).toBe(true);
+  });
+
+  it("parses case/whitespace in master ('TRUE', ' true ')", () => {
+    expect(resolveNotesTriage("TRUE", { notesTriage: { enabled: true } }).enabled).toBe(true);
+    expect(resolveNotesTriage(" true ", { notesTriage: { enabled: true } }).enabled).toBe(true);
+  });
+
+  it("DB mode:'on' overrides the shadow default", () => {
+    expect(resolveNotesTriage(undefined, { notesTriage: { enabled: true, mode: "on" } }).mode).toBe(
+      "on",
+    );
+  });
+
+  it("absent DB mode ⇒ 'shadow'", () => {
+    expect(resolveNotesTriage(undefined, { notesTriage: { enabled: true } }).mode).toBe("shadow");
+  });
+
+  it("settings null ⇒ {enabled:false, mode:'shadow'}", () => {
+    expect(resolveNotesTriage(undefined, null)).toEqual({
+      enabled: false,
+      mode: "shadow",
+      triageAgentId: undefined,
+    });
+  });
+
+  it("settings {} ⇒ {enabled:false, mode:'shadow'}", () => {
+    expect(resolveNotesTriage(undefined, {})).toEqual({
+      enabled: false,
+      mode: "shadow",
+      triageAgentId: undefined,
+    });
+  });
+
+  it("passes through triageAgentId", () => {
+    expect(
+      resolveNotesTriage(undefined, {
+        notesTriage: { enabled: true, mode: "on", triageAgentId: "agent_x" },
+      }).triageAgentId,
+    ).toBe("agent_x");
   });
 });
 

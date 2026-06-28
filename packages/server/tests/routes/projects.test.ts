@@ -1433,6 +1433,87 @@ describe("Projects API", () => {
     });
   });
 
+  // ── settings.notesTriage validation (the Zod-4 mirror — T1·P3 lockstep proof) ──
+  describe("settings.notesTriage validation", () => {
+    const validBaseSettings = {
+      ai_autonomy: {
+        can_self_assign: true,
+        can_create_subtasks: true,
+        can_create_tasks: false,
+        can_change_priority: false,
+        can_close_epics: false,
+        max_concurrent_tasks: 3,
+      },
+      workflow: {
+        statuses: ["backlog", "ready", "in_progress", "in_review", "done", "cancelled"],
+      },
+      git: { branch_prefix: "feat/", auto_link_branches: true },
+    };
+
+    it("round-trips a full notesTriage block through PATCH → GET (mirror does not strip it)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            notesTriage: { enabled: true, mode: "on", triageAgentId: "agent_x" },
+          },
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.settings.notesTriage).toEqual({
+        enabled: true,
+        mode: "on",
+        triageAgentId: "agent_x",
+      });
+      const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+      const getBody = await get.json();
+      expect(getBody.data.settings.notesTriage).toEqual({
+        enabled: true,
+        mode: "on",
+        triageAgentId: "agent_x",
+      });
+    });
+
+    it("fills the mode default (shadow) for a partial notesTriage block", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            notesTriage: { enabled: true },
+          },
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.settings.notesTriage).toEqual({ enabled: true, mode: "shadow" });
+    });
+
+    it("reads a project with no notesTriage block as undefined (tolerant off, byte-identical)", async () => {
+      const res = await authRequest(testApp.app, "POST", "/api/v1/projects", {
+        body: { name: "Triage-off", settings: validBaseSettings },
+      });
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.settings?.notesTriage).toBeUndefined();
+    });
+
+    it("rejects an invalid notesTriage mode with 400 (the Zod-4 mirror validates)", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            notesTriage: { mode: "bogus" },
+          },
+        },
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
   // ── settings.epic_categories validation (the Zod-4 mirror) ──
   describe("settings.epic_categories validation", () => {
     const validBaseSettings = {

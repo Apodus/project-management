@@ -4,6 +4,7 @@ import {
   TASK_STATUSES,
   CACHE_MODES,
   AUTO_IMPLEMENT_MODES,
+  NOTES_TRIAGE_MODES,
   cacheConfigWarnings,
 } from "@pm/shared";
 import type { AppVariables } from "../types.js";
@@ -207,6 +208,13 @@ const autoImplementSettingsSchema = z.object({
   mode: z.enum(AUTO_IMPLEMENT_MODES).default("shadow"),
 });
 
+// Zod-4 mirror of @pm/shared/notesTriageSettingsSchema — keep in lockstep.
+const notesTriageSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(NOTES_TRIAGE_MODES).default("shadow"),
+  triageAgentId: z.string().min(1).optional(),
+});
+
 // Zod-4 mirror of @pm/shared/epicCategorySchema. MUST stay identical to the
 // canonical shape or PATCH silently strips epic_categories.
 const epicCategorySchema = z.object({
@@ -231,6 +239,7 @@ const projectSettingsSchema = z
     integrator: integratorSettingsSchema.optional(),
     webhooks: webhooksSettingsSchema.optional(),
     autoImplement: autoImplementSettingsSchema.optional(),
+    notesTriage: notesTriageSettingsSchema.optional(),
     epic_categories: z.array(epicCategorySchema).optional(),
   })
   .nullable()

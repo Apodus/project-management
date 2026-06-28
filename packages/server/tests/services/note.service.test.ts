@@ -500,6 +500,154 @@ describe("note service", () => {
       expect(dismissed!.actorId).toBe(author.id);
       expect(dismissed!.projectId).toBe(project.id);
     });
+
+    // ── T1·P3: designated triage identity may dismiss while enabled ──
+    it("lets the designated triage identity (non-author ai_agent) dismiss when enabled", () => {
+      const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
+      const project = createTestProject(testApp.db, {
+        settings: { notesTriage: { enabled: true, mode: "on", triageAgentId: triageAgent.id } },
+      });
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "triage can dismiss" },
+        author.id,
+      );
+
+      const dismissed = noteService.dismiss(
+        created.id,
+        { id: triageAgent.id, type: "ai_agent" },
+        "triaged away",
+      );
+
+      expect(dismissed.status).toBe("triaged");
+      expect(dismissed.triageOutcome).toBe("dismissed");
+      expect(dismissed.triagedBy).toBe(triageAgent.id);
+    });
+
+    // THE INVARIANT TEST: disabled ⇒ the triage identity grants NOTHING (byte-
+    // identical to today). A triageAgentId set on a disabled project must 403.
+    it("throws 403 when notesTriage.enabled:false even if actor is the triageAgentId", () => {
+      const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
+      const project = createTestProject(testApp.db, {
+        settings: { notesTriage: { enabled: false, mode: "on", triageAgentId: triageAgent.id } },
+      });
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "disabled blocks triage" },
+        author.id,
+      );
+
+      try {
+        noteService.dismiss(created.id, { id: triageAgent.id, type: "ai_agent" }, "should fail");
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(403);
+        expect((err as AppError).code).toBe("FORBIDDEN");
+      }
+    });
+
+    it("throws 403 for an ordinary non-author ai_agent (id ≠ triageAgentId) when enabled", () => {
+      const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
+      const project = createTestProject(testApp.db, {
+        settings: { notesTriage: { enabled: true, mode: "on", triageAgentId: triageAgent.id } },
+      });
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const other = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "not the triage agent" },
+        author.id,
+      );
+
+      try {
+        noteService.dismiss(created.id, { id: other.id, type: "ai_agent" }, "sweep");
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(403);
+        expect((err as AppError).code).toBe("FORBIDDEN");
+      }
+    });
+
+    it("still lets the author ai_agent dismiss when notesTriage is enabled", () => {
+      const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
+      const project = createTestProject(testApp.db, {
+        settings: { notesTriage: { enabled: true, mode: "on", triageAgentId: triageAgent.id } },
+      });
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "author still ok" },
+        author.id,
+      );
+
+      const dismissed = noteService.dismiss(
+        created.id,
+        { id: author.id, type: "ai_agent" },
+        "mine",
+      );
+      expect(dismissed.triageOutcome).toBe("dismissed");
+    });
+
+    it("still lets a human non-author dismiss when notesTriage is enabled", () => {
+      const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
+      const project = createTestProject(testApp.db, {
+        settings: { notesTriage: { enabled: true, mode: "on", triageAgentId: triageAgent.id } },
+      });
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "human still ok" },
+        author.id,
+      );
+
+      const dismissed = noteService.dismiss(created.id, { id: human.id, type: "human" }, "wontfix");
+      expect(dismissed.triagedBy).toBe(human.id);
+    });
+
+    it("throws 403 for a non-author ai_agent when no notesTriage block exists", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const other = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "no triage config" },
+        author.id,
+      );
+
+      try {
+        noteService.dismiss(created.id, { id: other.id, type: "ai_agent" }, "sweep");
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(403);
+      }
+    });
+
+    it("throws 403 for a non-author ai_agent when enabled but triageAgentId is absent", () => {
+      const project = createTestProject(testApp.db, {
+        settings: { notesTriage: { enabled: true, mode: "on" } },
+      });
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const other = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "no triage agent id" },
+        author.id,
+      );
+
+      try {
+        noteService.dismiss(created.id, { id: other.id, type: "ai_agent" }, "sweep");
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(403);
+      }
+    });
   });
 
   // ── promoteToProposal (C2 §P3 — terminal triage + proposal + provenance) ──

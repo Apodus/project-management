@@ -4,6 +4,8 @@ import {
   TASK_STATUSES,
   CACHE_MODES,
   AUTO_IMPLEMENT_MODES,
+  NOTES_TRIAGE_MODES,
+  type NotesTriageMode,
 } from "../constants/enums.js";
 import { ulidSchema, timestampSchema, optionalText } from "./common.js";
 
@@ -323,6 +325,17 @@ export const autoImplementSettingsSchema = z.object({
   mode: z.enum(AUTO_IMPLEMENT_MODES).default("shadow"),
 });
 
+// T1·P3 — per-project notes-triage enablement (notes-triage autonomy campaign).
+// DB-backed + web-toggleable, default OFF — mirrors autoImplementSettingsSchema.
+// triageAgentId (optional) is the project's designated triage identity — the only
+// non-author ai_agent permitted to dismiss notes (and only while enabled). An
+// absent block ⇒ off (tolerant read). Keep in lockstep with the Zod-4 route mirror.
+export const notesTriageSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(NOTES_TRIAGE_MODES).default("shadow"),
+  triageAgentId: z.string().min(1).optional(),
+});
+
 // Per-project epic category — a named, colored bucket epics can be tagged with
 // (P1: data + contract only; web UI / DAG coloring land in later phases). An
 // epic's `category` field holds the `name` of one of these; an unknown value
@@ -348,6 +361,7 @@ export const projectSettingsSchema = z
     integrator: integratorSettingsSchema.optional(),
     webhooks: webhooksSettingsSchema.optional(),
     autoImplement: autoImplementSettingsSchema.optional(),
+    notesTriage: notesTriageSettingsSchema.optional(),
     epic_categories: z.array(epicCategorySchema).optional(),
   })
   .nullable()
@@ -373,3 +387,37 @@ export const insertProjectSchema = selectProjectSchema.omit({
   created_at: true,
   updated_at: true,
 });
+
+export interface ResolvedNotesTriage {
+  enabled: boolean;
+  mode: NotesTriageMode;
+  triageAgentId?: string;
+}
+/**
+ * Compose EFFECTIVE notes-triage enablement/mode for one project — the SINGLE
+ * source of the env-master (PM_NOTES_TRIAGE_ENABLED) ⊗ per-project-DB composition,
+ * imported by the T2 triage daemon (NOT re-derived per call site). Mirrors the
+ * auto-implement master (responder-ref resolveAutoImplement, config.ts:284):
+ *   masterEnv undefined      ⇒ master ALLOWS (defer to DB)
+ *   masterEnv explicit-false ⇒ force OFF for ALL projects
+ *   enabled = masterAllows && DB enabled === true
+ *   mode    = DB mode ELSE "shadow" (tolerant; missing/partial ⇒ off)
+ * Callers pass process.env.PM_NOTES_TRIAGE_ENABLED (shared stays process-free).
+ */
+export function resolveNotesTriage(
+  masterEnv: string | undefined,
+  settings:
+    | { notesTriage?: { enabled?: boolean; mode?: string; triageAgentId?: string } }
+    | null
+    | undefined,
+): ResolvedNotesTriage {
+  const v = masterEnv?.trim().toLowerCase();
+  const masterAllows =
+    masterEnv === undefined ? true : v === "1" || v === "true" || v === "yes" || v === "on";
+  const nt = settings?.notesTriage;
+  return {
+    enabled: masterAllows && nt?.enabled === true,
+    mode: (nt?.mode as NotesTriageMode | undefined) ?? "shadow",
+    triageAgentId: nt?.triageAgentId,
+  };
+}

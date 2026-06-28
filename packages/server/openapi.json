@@ -503,6 +503,28 @@
                   }
                 }
               },
+              "notesTriage": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "shadow",
+                      "on"
+                    ],
+                    "default": "shadow"
+                  },
+                  "triageAgentId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
               "epic_categories": {
                 "type": "array",
                 "items": {
@@ -844,6 +866,28 @@
                       "on"
                     ],
                     "default": "shadow"
+                  }
+                }
+              },
+              "notesTriage": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "shadow",
+                      "on"
+                    ],
+                    "default": "shadow"
+                  },
+                  "triageAgentId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 }
               },

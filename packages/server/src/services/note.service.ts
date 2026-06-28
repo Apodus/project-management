@@ -442,9 +442,13 @@ export function applyTriage(
 /**
  * Dismiss a MUTABLE note (open|needs_human) (Campaign C2 §P2) — a terminal
  * triage with outcome "dismissed". Anti-signal-burying authz: only the note's
- * author OR a human may dismiss (a non-author ai_agent gets 403). The authz
- * check runs BEFORE applyTriage's mutable-check so a forbidden actor gets 403
- * regardless of status; applyTriage handles 404-on-reselect / 409-if-terminal.
+ * author OR a human may dismiss, PLUS (T1·P3) the project's designated triage
+ * identity — a non-author ai_agent may dismiss only if it equals
+ * `settings.notesTriage.triageAgentId` AND notes-triage is enabled
+ * (`notesTriage.enabled === true`). The enabled-gate keeps the seal byte-identical
+ * to today when disabled: a triageAgentId set on a disabled project grants nothing.
+ * The authz check runs BEFORE applyTriage's mutable-check so a forbidden actor gets
+ * 403 regardless of status; applyTriage handles 404-on-reselect / 409-if-terminal.
  */
 export function dismiss(id: string, actor: { id: string; type: UserType }, reason: string) {
   const db = getDb();
@@ -452,8 +456,21 @@ export function dismiss(id: string, actor: { id: string; type: UserType }, reaso
   if (!existing) {
     throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
   }
-  // Anti-signal-burying: only the note's author OR a human may dismiss.
-  if (actor.type !== "human" && existing.authorId !== actor.id) {
+  // Anti-signal-burying: only the note's author OR a human may dismiss, plus the
+  // project's designated triage identity while notes-triage is enabled (T1·P3).
+  // Read the DB enabled/triageAgentId directly — NOT resolveNotesTriage (that
+  // folds the env master and is the daemon-scoped composition).
+  const project = db.select().from(projects).where(eq(projects.id, existing.projectId)).get();
+  const settings = (project?.settings ?? null) as {
+    notesTriage?: { enabled?: boolean; triageAgentId?: string };
+  } | null;
+  const nt = settings?.notesTriage;
+  const isTriageIdentity =
+    actor.type === "ai_agent" &&
+    nt?.enabled === true &&
+    nt.triageAgentId !== undefined &&
+    actor.id === nt.triageAgentId;
+  if (actor.type !== "human" && existing.authorId !== actor.id && !isTriageIdentity) {
     throw new AppError(403, "FORBIDDEN", `User "${actor.id}" is not allowed to dismiss note ${id}`);
   }
   const row = applyTriage(id, { outcome: "dismissed", triagedBy: actor.id, triageReason: reason });
