@@ -253,6 +253,13 @@
       "when": 1782642374284,
       "tag": "0035_rare_obadiah_stane",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1782645491722,
+      "tag": "0036_safe_diamondback",
+      "breakpoints": true
     }
   ]
 }

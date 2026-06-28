@@ -8,6 +8,7 @@ import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { createProjectRoutes } from "./routes/projects.js";
 import { createProposalRoutes } from "./routes/proposals.js";
 import { createNoteRoutes } from "./routes/notes.js";
+import { createTriageDecisionRoutes } from "./routes/triage-decisions.js";
 import { createEscalationRoutes } from "./routes/escalations.js";
 import { createEpicRoutes } from "./routes/epics.js";
 import { createEpicGraphRoutes } from "./routes/epic-graph.js";
@@ -101,6 +102,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
   app.route("/", createProjectRoutes());
   app.route("/", createProposalRoutes());
   app.route("/", createNoteRoutes());
+  app.route("/", createTriageDecisionRoutes());
   app.route("/", createEscalationRoutes());
   app.route("/", createEpicRoutes());
   app.route("/", createEpicGraphRoutes());

@@ -5,6 +5,7 @@ export * from "./project.js";
 export * from "./claim.js";
 export * from "./claim-lease.js";
 export * from "./note.js";
+export * from "./triage-decision.js";
 export * from "./escalation.js";
 export * from "./proposal.js";
 export * from "./epic.js";

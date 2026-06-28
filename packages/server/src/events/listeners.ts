@@ -78,6 +78,12 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.NOTE_REOPENED:
       return "reopened";
 
+    // Triage-decision side-log (T2·P1). Bespoke verb; onAll auto-enrolls it. The
+    // activity_log entity columns carry no FK, so the "triage_decision" entityId
+    // is safe to log.
+    case EVENT_NAMES.TRIAGE_DECISION_RECORDED:
+      return "triage_decision_recorded";
+
     // Escalation lifecycle (Campaign C1 §P5). Bespoke verbs — logActivity.action
     // is free-form (no enum); onAll auto-enrolls each. The activity_log row per
     // emitted event IS the durable escalation audit trail (the train audit_log is

@@ -35,6 +35,11 @@ export const EVENT_NAMES = {
   // Discord listener (events/alerts-listener.ts). Identity-masked: the payload
   // carries NO note id — only an aggregate count + the oldest-open age.
   NOTE_BACKLOG_ALERT: "note.backlog_alert",
+  // Triage-decision side-log (T2·P1 — emitted by triage-decision.service.record
+  // after each append-only row commits). BOTH shadow- and on-mode triage emit
+  // it. onAll auto-forwards it to the SSE stream; action maps to
+  // "triage_decision_recorded" (see events/listeners.ts).
+  TRIAGE_DECISION_RECORDED: "triage_decision.recorded",
 
   // Escalation events (Campaign C1 — bidirectional cross-team escalation
   // channel). Emitted by escalation.service after each lifecycle transition.

@@ -121,6 +121,23 @@ export type AutoImplementMode = (typeof AUTO_IMPLEMENT_MODES)[number];
 export const NOTES_TRIAGE_MODES = ["off", "shadow", "on"] as const;
 export type NotesTriageMode = (typeof NOTES_TRIAGE_MODES)[number];
 
+// T2·P1 — triage decision kinds. The disposition recorded on a uniform
+// `triage_decisions` side-log row that BOTH shadow- and on-mode triage write
+// (via a decoupled record() that NEVER mutates a note). This is the contract T3
+// reads. Plain text in the DB (no enum CHECK), validated in the app layer.
+//   promote_standard / promote_fast_track — would mint a standard/fast_track proposal
+//   dismiss     — would terminally dismiss the note
+//   needs_human — would punt the note to a human
+//   give_up     — the triage actor declined to act (no disposition)
+export const TRIAGE_DECISION_KINDS = [
+  "promote_standard",
+  "promote_fast_track",
+  "dismiss",
+  "needs_human",
+  "give_up",
+] as const;
+export type TriageDecisionKind = (typeof TRIAGE_DECISION_KINDS)[number];
+
 // T1·P2 — proposal flavor. An ADVISORY routing label, NOT an authz seal: a
 // fast_track proposal is byte-identical in lifecycle to a standard one (same
 // transition map, same claim/implement gates). It only signals intent/routing.

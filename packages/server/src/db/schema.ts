@@ -2,6 +2,7 @@ import {
   sqliteTable,
   text,
   integer,
+  real,
   index,
   uniqueIndex,
   primaryKey,
@@ -16,8 +17,10 @@ import type {
   NoteKind,
   NoteSeverity,
   NoteStatus,
+  NotesTriageMode,
   NoteTriageOutcome,
   ProposalKind,
+  TriageDecisionKind,
   VerifyStepResult,
 } from "@pm/shared";
 
@@ -1174,6 +1177,45 @@ export const notesAlertState = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [uniqueIndex("idx_notes_alert_state_project").on(table.projectId)],
+);
+
+// ─── triage_decisions ───────────────────────────────────────────────
+// T2·P1: a uniform decision side-log that BOTH shadow- and on-mode triage write
+// via a decoupled record() that NEVER mutates a note. This is the append-only
+// contract T3 reads. `mode` (off/shadow/on) records WHICH rollout rung produced
+// the decision; `decision` is the disposition (TRIAGE_DECISION_KINDS). resulting*
+// point at any target an on-mode action minted (FK set-null so a deleted target
+// leaves the audit row intact); both null for a shadow-mode or give_up row.
+// noteId cascades on note delete (the side-log follows its note). Enum-valued
+// columns are plain text validated in the app layer (claim_leases precedent).
+// All FK targets (users/projects/proposals/tasks/notes) precede this table.
+export const triageDecisions = sqliteTable(
+  "triage_decisions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    noteId: text("note_id")
+      .notNull()
+      .references(() => notes.id, { onDelete: "cascade" }),
+    mode: text("mode").notNull().$type<NotesTriageMode>(),
+    decision: text("decision").notNull().$type<TriageDecisionKind>(),
+    rationale: text("rationale"),
+    confidence: real("confidence"),
+    resultingProposalId: text("resulting_proposal_id").references(() => proposals.id, {
+      onDelete: "set null",
+    }),
+    resultingTaskId: text("resulting_task_id").references(() => tasks.id, { onDelete: "set null" }),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("idx_triage_decisions_project_created").on(table.projectId, table.createdAt),
+    index("idx_triage_decisions_note").on(table.noteId),
+  ],
 );
 
 // ─── escalation_alert_state ─────────────────────────────────────────

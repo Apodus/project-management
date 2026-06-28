@@ -1994,6 +1994,121 @@
           "oldest_untriaged_age_ms"
         ]
       },
+      "TriageDecision": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "noteId": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "shadow",
+              "on"
+            ]
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "promote_standard",
+              "promote_fast_track",
+              "dismiss",
+              "needs_human",
+              "give_up"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "nullable": true
+          },
+          "confidence": {
+            "type": "number",
+            "nullable": true
+          },
+          "resultingProposalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "resultingTaskId": {
+            "type": "string",
+            "nullable": true
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "noteId",
+          "mode",
+          "decision",
+          "rationale",
+          "confidence",
+          "resultingProposalId",
+          "resultingTaskId",
+          "actorId",
+          "createdAt"
+        ]
+      },
+      "CreateTriageDecision": {
+        "type": "object",
+        "properties": {
+          "noteId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "shadow",
+              "on"
+            ]
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "promote_standard",
+              "promote_fast_track",
+              "dismiss",
+              "needs_human",
+              "give_up"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "nullable": true
+          },
+          "confidence": {
+            "type": "number",
+            "nullable": true
+          },
+          "resultingProposalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "resultingTaskId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "noteId",
+          "mode",
+          "decision"
+        ]
+      },
       "CreateEscalationResponse": {
         "type": "object",
         "properties": {
@@ -14690,6 +14805,207 @@
                   },
                   "required": [
                     "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/triage-decisions": {
+      "post": {
+        "tags": [
+          "Triage decisions"
+        ],
+        "summary": "Record triage decision",
+        "description": "Record a triage decision in the append-only side-log. NEVER mutates the referenced note — it only attributes a decision (promote/dismiss/needs_human/give_up) to the caller, under a rollout mode (off/shadow/on). Both shadow- and on-mode triage write here.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTriageDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Triage decision recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TriageDecision"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or note not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Triage decisions"
+        ],
+        "summary": "List triage decisions",
+        "description": "List a project's triage decisions, newest first, with optional filters (mode / decision / since).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "off",
+                "shadow",
+                "on"
+              ]
+            },
+            "required": false,
+            "name": "mode",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "promote_standard",
+                "promote_fast_track",
+                "dismiss",
+                "needs_human",
+                "give_up"
+              ]
+            },
+            "required": false,
+            "name": "decision",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "since",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of triage decisions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TriageDecision"
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "total"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "pagination"
                   ]
                 }
               }
