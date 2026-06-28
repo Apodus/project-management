@@ -12,6 +12,7 @@ import {
   Hand,
   Inbox,
   LayoutDashboard,
+  ListChecks,
   ListTodo,
   Milestone,
   Network,
@@ -365,6 +366,18 @@ export function Sidebar() {
               icon: Bot,
               href: `/projects/${currentProjectId}/settings/auto-implement`,
               matchPath: "/settings/auto-implement",
+            }}
+            collapsed={collapsed}
+          />
+        )}
+
+        {currentProjectId && isAdmin && (
+          <NavLink
+            item={{
+              label: "Notes triage",
+              icon: ListChecks,
+              href: `/projects/${currentProjectId}/settings/notes-triage`,
+              matchPath: "/settings/notes-triage",
             }}
             collapsed={collapsed}
           />

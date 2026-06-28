@@ -69,6 +69,17 @@ export interface AutoImplementConfig {
   mode: "off" | "shadow" | "on";
 }
 
+/**
+ * The persisted `settings.notesTriage` shape (per-project notes-triage daemon
+ * control). `enabled` defaults off; `mode` defaults shadow. `triageAgentId` is
+ * absent on the wire when blank (server schema is `z.string().min(1).optional()`).
+ */
+export interface NotesTriageConfig {
+  enabled: boolean;
+  mode: "off" | "shadow" | "on";
+  triageAgentId?: string;
+}
+
 export interface LinkedRepo {
   name: string;
   path: string;

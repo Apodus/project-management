@@ -101,6 +101,10 @@ const AutoImplementPage = lazyRouteComponent(
   () => import("@/pages/settings/auto-implement-page"),
   "AutoImplementPage",
 );
+const NotesTriagePage = lazyRouteComponent(
+  () => import("@/pages/settings/notes-triage-page"),
+  "NotesTriagePage",
+);
 const CategoriesPage = lazyRouteComponent(
   () => import("@/pages/settings/categories-page"),
   "CategoriesPage",
@@ -430,6 +434,13 @@ const projectAutoImplementRoute = createRoute({
   component: AutoImplementPage,
 });
 
+// /projects/$projectId/settings/notes-triage — per-project notes-triage daemon control
+const projectNotesTriageRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/settings/notes-triage",
+  component: NotesTriagePage,
+});
+
 // /projects/$projectId/settings/categories — epic category palette
 const projectCategoriesRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -472,6 +483,7 @@ const routeTree = rootRoute.addChildren([
       projectConflictResolutionRoute,
       projectIntegratorRoute,
       projectAutoImplementRoute,
+      projectNotesTriageRoute,
       projectCategoriesRoute,
     ]),
     proposalDetailRoute,

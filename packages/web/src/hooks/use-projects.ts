@@ -11,6 +11,7 @@ import {
   type ResolverConfig,
   type IntegratorConfig,
   type AutoImplementConfig,
+  type NotesTriageConfig,
 } from "@/lib/api";
 import { mergeIntegratorSettings } from "@/lib/integrator";
 import { trainKeys } from "@/hooks/use-train";
@@ -181,6 +182,39 @@ export function useUpdateAutoImplementConfig(projectId: string | undefined) {
       const project = await getProject(projectId);
       const existing = (project.settings ?? {}) as Record<string, unknown>;
       const settings = { ...existing, autoImplement };
+      // settings is opaque JSON on the wire; round-tripping the server's own
+      // settings untouched, so the cast onto the structured type is safe.
+      return updateProject(projectId, { settings } as UpdateProject);
+    },
+    onSuccess: () => {
+      if (projectId) {
+        queryClient.invalidateQueries({
+          queryKey: projectKeys.detail(projectId),
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
+    },
+  });
+}
+
+/**
+ * Update only the top-level `settings.notesTriage` block (the per-project
+ * notes-triage daemon control). Fetches the current project fresh, REPLACES
+ * the `notesTriage` sub-block while preserving every sibling settings block
+ * (integrator/webhooks/epic_categories/ai_autonomy/autoImplement/…), then
+ * PATCHes. `notesTriage` is a top-level settings sibling — a wholesale block
+ * replace is correct (no deep merge). Invalidates the project + project list
+ * queries only.
+ */
+export function useUpdateNotesTriageConfig(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (notesTriage: NotesTriageConfig) => {
+      if (!projectId) throw new Error("No project selected");
+      // Fetch fresh so we merge onto the latest settings, not a stale cache.
+      const project = await getProject(projectId);
+      const existing = (project.settings ?? {}) as Record<string, unknown>;
+      const settings = { ...existing, notesTriage };
       // settings is opaque JSON on the wire; round-tripping the server's own
       // settings untouched, so the cast onto the structured type is safe.
       return updateProject(projectId, { settings } as UpdateProject);
