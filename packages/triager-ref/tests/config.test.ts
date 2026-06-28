@@ -54,7 +54,6 @@ describe("loadConfig", () => {
     expect(cfg.pollIntervalSec).toBe(15);
     expect(cfg.maxConcurrent).toBe(1);
     expect(cfg.spawnBudget).toEqual({ maxSpawns: 10, windowSec: 3600 });
-    expect(cfg.costBudget).toEqual({ maxConcurrentSessions: 1, maxSessionDurationSec: 900 });
     expect(cfg.timeBudgetSec).toBe(900);
     expect(cfg.command).toBe("claude -p");
     expect(cfg.logsDir).toBe(path.join(os.tmpdir(), "pm-triager-logs"));

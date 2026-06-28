@@ -18,6 +18,22 @@
  *
  * The sniff/assessment sentinels + logs live under `logsDir` (OUTSIDE any git
  * tree) so they never register as a working-tree change.
+ *
+ * ── Isolation — accepted residual (T2·P5) ───────────────────────────────────
+ * Both sessions are read-only-BY-PROMPT in `process.cwd()` (the PM checkout),
+ * spawned with NO worktree, NO permission-mode flag, and NO tool restriction —
+ * IDENTICAL to the shipped escalation responder's read-only sniff/answer
+ * sessions. The triager is in fact STRICTLY LESS exposed than the responder: it
+ * has NO write / worktree / commit / push path at all (simple-git was dropped in
+ * P2) — the only artifacts a session can produce are the out-of-tree status
+ * sentinel + log under `logsDir`. The defense-in-depth is: (1) the cheap
+ * injection SNIFF gates every assessment — a suspicious/error verdict
+ * short-circuits to needs_human and the assessment runner is NEVER spawned;
+ * (2) the prompts instruct read-only investigation; (3) the sentinels live under
+ * `os.tmpdir()`, outside any checkout. An operator who wants a HARD tool
+ * restriction can supply one WITHOUT a code change via `PM_TRIAGE_COMMAND` (e.g.
+ * a wrapper that passes `--allowedTools`/`--permission-mode`); the command is
+ * threaded verbatim into both the sniffer and the assessment runner.
  */
 import path from "node:path";
 import type { Note, ResolvedNotesTriage } from "@pm/shared";

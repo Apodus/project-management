@@ -4,6 +4,8 @@ import {
   runTriagerLoop,
   createTriagerState,
   seedNotes,
+  canSpawn,
+  recordSpawn,
   type TriagerDeps,
   type DecideFn,
 } from "../src/loop.js";
@@ -380,6 +382,203 @@ describe("triagerTick", () => {
     // inFlight cleared in finally — the note is re-seedable next tick.
     expect(state.inFlight.size).toBe(0);
     expect(state.triaged.size).toBe(0);
+  });
+});
+
+// ── canSpawn / recordSpawn (pure, T2·P5 Seal 3) ─────────────────────
+
+describe("canSpawn / recordSpawn (pure)", () => {
+  it("prunes timestamps outside (now-windowSec*1000, now] in place and gates strict-< maxSpawns", () => {
+    const state = createTriagerState();
+    const budget = { maxSpawns: 3, windowSec: 100 };
+    const now = 1_000_000;
+    state.spawnTimestamps.push(now - 200_000, now - 50_000, now - 10_000); // 1 stale, 2 in-window
+    expect(canSpawn(state, budget, now)).toBe(true); // 2 in-window < 3
+    expect(state.spawnTimestamps).toEqual([now - 50_000, now - 10_000]); // stale dropped IN PLACE
+  });
+
+  it("returns false at the cap, true again after a stale entry ages out", () => {
+    const state = createTriagerState();
+    const budget = { maxSpawns: 2, windowSec: 100 };
+    const now = 1_000_000;
+    state.spawnTimestamps.push(now - 90_000, now - 5_000);
+    expect(canSpawn(state, budget, now)).toBe(false); // 2 in-window, not < 2
+    const later = now + 15_000; // (now-90000) now ages past the 100s window
+    expect(canSpawn(state, budget, later)).toBe(true);
+    expect(state.spawnTimestamps).toEqual([now - 5_000]);
+  });
+
+  it("recordSpawn pushes now", () => {
+    const state = createTriagerState();
+    recordSpawn(state, 42);
+    expect(state.spawnTimestamps).toEqual([42]);
+  });
+});
+
+// ── spawn-rate budget — triagerTick (T2·P5 Seal 3) ──────────────────
+
+describe("spawn-rate budget — triagerTick", () => {
+  function mkBudgetClient(n: number): FakeClient {
+    const client = new FakeClient();
+    client.settingsByProject["p"] = { notesTriage: { enabled: true, mode: "on" } };
+    client.notesByProject["p"] = Array.from({ length: n }, (_, i) =>
+      mkNote(`n${i + 1}`, { createdAt: `2026-06-0${i + 1}T00:00:00.000Z` }),
+    );
+    return client;
+  }
+
+  it("caps real spawns at maxSpawns this tick; deferred notes are NOT marked (re-seedable)", async () => {
+    const client = mkBudgetClient(4);
+    const decide = spyDecide(async () => {});
+    const state = createTriagerState();
+    await triagerTick(
+      mkDeps(client, decide, {
+        maxConcurrent: 10,
+        spawnBudget: { maxSpawns: 2, windowSec: 3600 },
+        now: () => 1_000_000,
+      }),
+      state,
+    );
+    expect(decide).toHaveBeenCalledTimes(2);
+    expect(state.spawnTimestamps.length).toBe(2);
+    expect(state.triaged.size).toBe(2); // the 2 acted notes
+    expect(state.shadowSeen.size).toBe(0);
+  });
+
+  it("a same-now second tick defers again; advancing past the window admits the deferred", async () => {
+    const client = mkBudgetClient(3);
+    const decide = spyDecide(async () => {});
+    const state = createTriagerState();
+    let now = 1_000_000;
+    const deps = (): TriagerDeps =>
+      mkDeps(client, decide, {
+        maxConcurrent: 10,
+        spawnBudget: { maxSpawns: 1, windowSec: 100 },
+        now: () => now,
+      });
+
+    await triagerTick(deps(), state); // n1 spawns; n2/n3 deferred (budget spent)
+    expect(decide).toHaveBeenCalledTimes(1);
+    expect(state.spawnTimestamps.length).toBe(1);
+
+    await triagerTick(deps(), state); // same now, budget spent → no new spawn
+    expect(decide).toHaveBeenCalledTimes(1);
+
+    now += 50_000; // still inside the 100s window
+    await triagerTick(deps(), state);
+    expect(decide).toHaveBeenCalledTimes(1);
+
+    now += 100_000; // window elapsed → a deferred note admits
+    await triagerTick(deps(), state);
+    expect(decide).toHaveBeenCalledTimes(2);
+  });
+
+  it("a window pre-filled to the cap defers everything this tick (decide not called)", async () => {
+    const client = mkBudgetClient(2);
+    const decide = spyDecide(async () => {});
+    const state = createTriagerState();
+    const now = 1_000_000;
+    state.spawnTimestamps.push(now - 1_000, now - 2_000); // 2 in-window = cap
+    await triagerTick(
+      mkDeps(client, decide, {
+        maxConcurrent: 10,
+        spawnBudget: { maxSpawns: 2, windowSec: 100 },
+        now: () => now,
+      }),
+      state,
+    );
+    expect(decide).not.toHaveBeenCalled();
+  });
+});
+
+// ── no-recursion (T2·P5 Seal 1) ─────────────────────────────────────
+
+describe("no-recursion (T2·P5 seal)", () => {
+  it("seedNotes excludes self- and triage-agent-authored notes (nothing the daemon could re-pick)", () => {
+    const resolved: ResolvedNotesTriage = { enabled: true, mode: "on", triageAgentId: "agent-x" };
+    const out = seedNotes(
+      [
+        mkNote("self", { authorId: SELF }),
+        mkNote("agent", { authorId: "agent-x" }),
+        mkNote("ok", { authorId: "human" }),
+      ],
+      SELF,
+      resolved,
+      createTriagerState(),
+    );
+    expect(out.map((n) => n.id)).toEqual(["ok"]);
+  });
+
+  it("on-mode promote: the minted proposal id never re-enters the seed set; no note-authoring path exists", async () => {
+    const client = new FakeClient();
+    client.settingsByProject["p"] = { notesTriage: { enabled: true, mode: "on" } };
+    let listed = [mkNote("n1")];
+    client.listOpenNotes = vi.fn(async () => listed);
+    client.promoteToProposal = vi.fn(async (noteId: string) => {
+      listed = []; // server consumes the note out of the open lane on promote
+      return {
+        note: mkNote(noteId, { status: "triaged" }),
+        proposal: {
+          id: "prop-xyz",
+          projectId: "p",
+          title: "t",
+          description: null,
+          status: "draft",
+          proposalKind: "standard" as const,
+          createdBy: "u-self",
+          sourceNoteId: noteId,
+          createdAt: "2026-06-20T00:00:00.000Z",
+          updatedAt: "2026-06-20T00:00:00.000Z",
+        },
+      };
+    });
+    const seededIds: string[] = [];
+    const decide = spyDecide(
+      async ({ note }) => {
+        seededIds.push(note.id);
+      },
+      { kind: "promote_standard", rationale: "ok", confidence: 1 },
+    );
+    const state = createTriagerState();
+    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5 }), state);
+    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5 }), state);
+    expect(decide).toHaveBeenCalledTimes(1); // n1, exactly once across both ticks
+    expect(seededIds).toEqual(["n1"]);
+    expect(seededIds).not.toContain("prop-xyz"); // the minted proposal NEVER seeds
+    // The triager surface exposes NO note-authoring method (structural seal).
+    expect("createNote" in client).toBe(false);
+    expect("postNote" in client).toBe(false);
+  });
+});
+
+// ── restart-safety / dedupe (reclaim N/A — T2·P5 Seal 2) ────────────
+
+describe("restart-safety / dedupe (reclaim N/A)", () => {
+  it("a triaged note is excluded by the status filter (no double action)", () => {
+    const out = seedNotes(
+      [mkNote("done", { status: "triaged" }), mkNote("open1")],
+      SELF,
+      { enabled: true, mode: "on" },
+      createTriagerState(),
+    );
+    expect(out.map((n) => n.id)).toEqual(["open1"]);
+  });
+
+  it("a simulated restart (still-open note + fresh state) re-seeds idempotently", async () => {
+    const client = new FakeClient();
+    client.settingsByProject["p"] = { notesTriage: { enabled: true, mode: "on" } };
+    client.notesByProject["p"] = [mkNote("n1")]; // server still returns it open (crash pre-consume)
+    const decide = spyDecide(async () => {}, { kind: "needs_human", rationale: "", confidence: 0 });
+
+    const s1 = createTriagerState();
+    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5 }), s1);
+    expect(decide).toHaveBeenCalledTimes(1);
+
+    // Restart: fresh in-memory state, the note still open ⇒ re-seed (restart IS
+    // the recovery; the note's status is the dedupe once it leaves the open lane).
+    const s2 = createTriagerState();
+    await triagerTick(mkDeps(client, decide, { maxConcurrent: 5 }), s2);
+    expect(decide).toHaveBeenCalledTimes(2);
   });
 });
 

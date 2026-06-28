@@ -20,6 +20,41 @@
  *
  * The proposal-gate is preserved: the ONLY task-minting path is implementProposal
  * on a fast_track proposal — there is no direct note→task wrapper.
+ *
+ * ── T2·P5 — safety seals ────────────────────────────────────────────────────
+ *
+ * Seal 1 — NO-RECURSION (full structural seal; NO depth marker). The triager
+ * exposes NO note-CREATING action: there is no client method that authors a note
+ * (promoteToProposal/dismissNote/flagNeedsHuman/claimProposal/implementProposal
+ * never mint a note), and the daemon lists ONLY notes — never proposals or tasks.
+ * A triage disposition can therefore never produce a new note the triager would
+ * re-pick. The seed predicate is the belt-and-suspenders: `seedNotes` excludes
+ * BOTH `selfId` (this daemon's own identity) and `resolved.triageAgentId` (the
+ * project's designated triage agent), so even a note authored as a side effect of
+ * a promotion (it isn't) could not re-qualify. Recursion is STRUCTURALLY ABSENT.
+ *
+ * Seal 2 — RECLAIM SWEEP: N/A (no machinery, BY DESIGN). Unlike the responder,
+ * the triager holds NO server-side claim on a note — assessment is in-memory
+ * (`inFlight`) only. A crash mid-assessment therefore strands NOTHING: the note
+ * is still `open`, so a restart re-seeds it (`listOpenNotes` + `seedNotes` both
+ * require `status === "open"`) and re-assesses it — restart IS the recovery, and
+ * the note's own STATUS is the dedupe (a promoted/dismissed note is `triaged`, a
+ * flagged note is `needs_human` — all out of the `open` lane, so none re-seed; a
+ * double-promote-on-crash is impossible). Residuals, both benign: (a) a crash
+ * BETWEEN the durable server action and the side-log record drops one record row
+ * (the action itself is durable + deduped by note status); (b) a restart re-emits
+ * one inert shadow side-log row for a still-open shadow note (`shadowSeen` is
+ * in-memory — acceptable for an observe-only mode). No reclaim code exists or is
+ * needed.
+ *
+ * Seal 3 — SPAWN-RATE BUDGET (enforced here). A sliding window (`spawnBudget
+ * {maxSpawns, windowSec}`) caps real assessment spawns. `canSpawn` prunes the
+ * window then gates strict-`<`; `recordSpawn` reserves a slot SYNCHRONOUSLY at
+ * admission (before the async job) so concurrent admissions this tick see it.
+ * Every admitted note always sniffs ⇒ ≥1 real spawn, so there is no pre-spawn
+ * failure path needing a refund (unlike the responder's acknowledge step). The
+ * window is IN-MEMORY and self-heals as `now` advances past `windowSec` (reset on
+ * restart — harmless).
  */
 import type { Note, ResolvedNotesTriage } from "@pm/shared";
 import { resolveNotesTriage } from "@pm/shared";
@@ -175,7 +210,26 @@ export function seedNotes(
     .sort((a, b) => createdAtMs(a.createdAt) - createdAtMs(b.createdAt));
 }
 
+/**
+ * Spawn-rate budget gate (T2·P5, pure). Prunes `state.spawnTimestamps` IN PLACE
+ * to the half-open window `(now - windowSec*1000, now]`, then gates strict-`<`
+ * against `maxSpawns`. Grafted verbatim from responder-ref's `canSpawn`.
+ */
+export function canSpawn(state: TriagerState, spawnBudget: SpawnBudget, now: number): boolean {
+  const cutoff = now - spawnBudget.windowSec * 1000;
+  const kept = state.spawnTimestamps.filter((t) => t > cutoff && t <= now);
+  state.spawnTimestamps.length = 0;
+  state.spawnTimestamps.push(...kept);
+  return state.spawnTimestamps.length < spawnBudget.maxSpawns;
+}
+
+/** Record a real spawn at `now` (called synchronously at admission). */
+export function recordSpawn(state: TriagerState, now: number): void {
+  state.spawnTimestamps.push(now);
+}
+
 export async function triagerTick(deps: TriagerDeps, state: TriagerState): Promise<void> {
+  const now = (deps.now ?? Date.now)();
   // The concurrency budget is GLOBAL across all watched projects this tick.
   const slot = { available: Math.max(0, deps.maxConcurrent - state.inFlight.size) };
 
@@ -232,15 +286,36 @@ export async function triagerTick(deps: TriagerDeps, state: TriagerState): Promi
     }
 
     const candidates = seedNotes(open, deps.selfId, resolved, state);
+    deps.logger.info(
+      { projectId, open: open.length, seeded: candidates.length, mode: resolved.mode },
+      "seeded notes for triage",
+    );
 
     for (const note of candidates) {
       if (slot.available <= 0) break; // semaphore saturated.
       const noteId = note.id;
       if (state.inFlight.has(noteId)) continue; // already assessing.
 
-      // Admit. Claim a semaphore slot + the in-flight marker.
+      // Spawn-rate budget gate (Seal 3). Every admitted note spawns ≥1 session,
+      // so reserve the budget HERE, before the async job, so concurrent
+      // admissions this tick see the reservation. Exhaustion breaks the candidate
+      // loop; the window self-heals as `now` advances past windowSec.
+      if (!canSpawn(state, deps.spawnBudget, now)) {
+        deps.logger.info(
+          {
+            projectId,
+            spawned: state.spawnTimestamps.length,
+            maxSpawns: deps.spawnBudget.maxSpawns,
+          },
+          `spawn budget exhausted (${state.spawnTimestamps.length}/${deps.spawnBudget.maxSpawns} in ${deps.spawnBudget.windowSec}s); deferring`,
+        );
+        break;
+      }
+
+      // Admit. Claim a semaphore slot + the in-flight marker + a spawn slot.
       slot.available -= 1;
       state.inFlight.add(noteId);
+      recordSpawn(state, now); // synchronous reservation BEFORE the async job.
 
       const job = (async (): Promise<void> => {
         try {
@@ -253,6 +328,17 @@ export async function triagerTick(deps: TriagerDeps, state: TriagerState): Promi
             mode: resolved.mode,
             logger: deps.logger,
           });
+          deps.logger.info(
+            {
+              noteId,
+              projectId,
+              decision: assessment.kind,
+              mode: resolved.mode,
+              recorded: outcome.recorded,
+              resultingProposalId: outcome.resultingProposalId ?? null,
+            },
+            "triage decision executed",
+          );
           if (outcome.recorded) {
             // shadow leaves the note OPEN ⇒ track in shadowSeen so it is not
             // re-assessed every tick. on consumes the note out of the open lane

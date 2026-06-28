@@ -39,15 +39,9 @@ export interface SpawnBudget {
   windowSec: number;
 }
 
-/**
- * Cost/concurrency budget for the autonomous assessment sessions (shape only in
- * P2; the runner consumes it in P3/P5). Mirrors the responder's per-session
- * budget shape.
- */
-export interface CostBudget {
-  maxConcurrentSessions: number;
-  maxSessionDurationSec: number;
-}
+// Cost discipline = the `maxConcurrent` semaphore (concurrent sessions) + the
+// per-session wall-clock `timeBudgetSec` (already wired into the runner). There
+// is NO separate cost budget — the two knobs above ARE the cost envelope.
 
 export interface TriagerConfig {
   pmUrl: string;
@@ -70,10 +64,8 @@ export interface TriagerConfig {
   masterEnv: string | undefined;
   pollIntervalSec: number;
   maxConcurrent: number;
-  /** Spawn-rate cap (shape only in P2 — P5 enforces). */
+  /** Spawn-rate cap (enforced in the loop's admission gate, P5). */
   spawnBudget: SpawnBudget;
-  /** Cost/concurrency budget (shape only in P2 — consumed in P3/P5). */
-  costBudget: CostBudget;
   /** Per-session wall-clock budget (consumed by the assessment runner in P3). */
   timeBudgetSec: number;
   /** Headless assessment command (PM_TRIAGE_COMMAND || default "claude -p"). */
@@ -110,8 +102,6 @@ const DEFAULT_MAX_CONCURRENT = 1;
 const DEFAULT_MAX_SPAWNS = 10;
 const DEFAULT_SPAWN_WINDOW_SEC = 3600;
 const DEFAULT_TIME_BUDGET_SEC = 900;
-const DEFAULT_MAX_CONCURRENT_SESSIONS = 1;
-const DEFAULT_MAX_SESSION_DURATION_SEC = 900;
 
 export function loadConfig(args: CliArgs, env: ConfigEnv): TriagerConfig {
   const pmUrl = (args.pmUrl ?? env.PM_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
@@ -175,10 +165,6 @@ export function loadConfig(args: CliArgs, env: ConfigEnv): TriagerConfig {
     pollIntervalSec,
     maxConcurrent: DEFAULT_MAX_CONCURRENT,
     spawnBudget: { maxSpawns: DEFAULT_MAX_SPAWNS, windowSec: DEFAULT_SPAWN_WINDOW_SEC },
-    costBudget: {
-      maxConcurrentSessions: DEFAULT_MAX_CONCURRENT_SESSIONS,
-      maxSessionDurationSec: DEFAULT_MAX_SESSION_DURATION_SEC,
-    },
     timeBudgetSec,
     command,
     logsDir,

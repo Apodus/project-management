@@ -58,9 +58,26 @@ regardless.
 | `PM_PROJECT_ID`               | (none)                  | Single project to watch (or `--project <id>`, repeatable).    |
 | `PM_NOTES_TRIAGE_ENABLED`     | (unset ⇒ master allows) | Env master. Explicit-false ⇒ force OFF for all projects.      |
 | `PM_TRIAGE_POLL_INTERVAL_SEC` | `15`                    | Poll interval (or `--poll-interval-sec`).                     |
-| `PM_TRIAGE_COMMAND`           | `claude -p`             | Headless assessment command (consumed in P3).                 |
+| `PM_TRIAGE_COMMAND`           | `claude -p`             | Headless sniff + assessment command.                          |
 | `PM_TRIAGE_LOGS_DIR`          | `<tmp>/pm-triager-logs` | Directory for status sentinels + logs (outside any git tree). |
 | `PM_LOG_LEVEL`                | `info`                  | pino log level (or `--log-level`).                            |
+
+### Isolation
+
+The sniff + assessment sessions are **read-only by prompt** in the daemon's
+working directory (the PM checkout), spawned with no worktree and no built-in
+tool restriction — the same posture as the escalation responder's read-only
+sessions. The triager has **no write / commit / push path at all**, so the only
+artifacts a session can produce are the status sentinel + log under
+`PM_TRIAGE_LOGS_DIR` (outside any git tree). Defense-in-depth: the cheap
+injection sniff gates every assessment (a suspicious verdict short-circuits to
+needs_human and the assessment session is never spawned), the prompts instruct
+read-only investigation, and the sentinels live outside the checkout.
+
+If you want a **hard** tool restriction, supply one via `PM_TRIAGE_COMMAND`
+without any code change — e.g. point it at a wrapper that passes
+`--allowedTools` / `--permission-mode`. The command is threaded verbatim into
+both the sniffer and the assessment runner.
 
 ## Run
 
