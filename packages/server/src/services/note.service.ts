@@ -1,5 +1,10 @@
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { createId, deriveNotePromotion } from "@pm/shared";
+import {
+  createId,
+  deriveNotePromotion,
+  isMutableNoteStatus,
+  isReopenableNoteStatus,
+} from "@pm/shared";
 import type {
   CreateNote,
   ListNotesQuery,
@@ -37,12 +42,17 @@ function ensureProjectExists(projectId: string): void {
 }
 
 /**
- * Guard: only an OPEN note may be mutated or triaged. A triaged (terminal)
- * note is immutable. Shared by `update` (C1) and `applyTriage` (C2).
+ * Guard: only a note in a MUTABLE lane (open|needs_human) may be mutated or
+ * triaged. A triaged note is terminal/immutable. Shared by `update`,
+ * `applyTriage`, `promoteToProposal`, and `promoteToTask`.
  */
-function assertOpen(note: { id: string; status: NoteStatus }): void {
-  if (note.status !== "open") {
-    throw new AppError(409, "INVALID_STATUS", `Note ${note.id} is not open and cannot be edited`);
+function assertMutable(note: { id: string; status: NoteStatus }): void {
+  if (!isMutableNoteStatus(note.status)) {
+    throw new AppError(
+      409,
+      "INVALID_STATUS",
+      `Note ${note.id} is terminal (triaged) and cannot be modified`,
+    );
   }
 }
 
@@ -221,10 +231,10 @@ export function list(projectId: string, filters: ListNotesQuery) {
 }
 
 /**
- * Patch an OPEN note. A triaged (non-open) note is immutable in C1 — the
- * open→triaged transition + its metadata is deferred to C2. An explicit null
- * in the patch clears the field (covers kind/title/body/anchorType/anchorId/
- * codeLocator/severity); status is never patchable (no status field on PatchNote).
+ * Patch a MUTABLE note (open|needs_human). A triaged note is terminal/immutable
+ * (409). An explicit null in the patch clears the field (covers kind/title/body/
+ * anchorType/anchorId/codeLocator/severity); status is never patchable (no status
+ * field on PatchNote — flag/reopen own the status transitions).
  */
 export function update(id: string, patch: PatchNote, _actorId: string) {
   const db = getDb();
@@ -234,7 +244,7 @@ export function update(id: string, patch: PatchNote, _actorId: string) {
     throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
   }
 
-  assertOpen(existing);
+  assertMutable(existing);
 
   const now = new Date().toISOString();
   const values: Record<string, unknown> = { updatedAt: now };
@@ -264,10 +274,121 @@ export function update(id: string, patch: PatchNote, _actorId: string) {
 }
 
 /**
- * Apply a terminal triage to an OPEN note (Campaign C2 state-machine core).
- * Flips status open→triaged in ONE update and records the outcome + metadata.
- * Re-selects the note (404 if missing), asserts it is open (409 otherwise),
- * then sets the triage fields and returns the fresh row.
+ * Flag an OPEN note as needs_human (T1 — the needs_human lane). An agent that
+ * triaged a note but cannot resolve it punts it to a human by raising its
+ * signal: open → needs_human. Sets NO triage* fields (it is NOT a terminal
+ * triage — the note stays mutable/triageable in the needs_human lane).
+ *
+ * Source MUST be exactly "open": re-flagging a needs_human note (already
+ * flagged) or a triaged note (terminal) is a 409. No authz gate — like
+ * promoteToProposal, flag ELEVATES signal, so any authenticated caller (human
+ * or ai_agent, author or not) may flag.
+ */
+export function flagNeedsHuman(id: string, actor: { id: string; type: UserType }) {
+  const db = getDb();
+  const note = db.select().from(notes).where(eq(notes.id, id)).get();
+  if (!note) {
+    throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
+  }
+  if (note.status !== "open") {
+    throw new AppError(
+      409,
+      "INVALID_STATUS",
+      `Note ${id} is not open and cannot be flagged needs_human`,
+    );
+  }
+
+  const now = new Date().toISOString();
+  db.update(notes).set({ status: "needs_human", updatedAt: now }).where(eq(notes.id, id)).run();
+
+  const row = db.select().from(notes).where(eq(notes.id, id)).get()!;
+
+  getEventBus().emit(EVENT_NAMES.NOTE_NEEDS_HUMAN, {
+    entity: row,
+    entityType: "note",
+    entityId: id,
+    projectId: row.projectId,
+    actorId: actor.id,
+    timestamp: now,
+  });
+
+  return row;
+}
+
+/**
+ * Reopen a needs_human/triaged note back to OPEN (T1 — the human-only escape).
+ * HUMAN-ONLY (mirrors promoteToTask): the gate runs FIRST so a non-human gets
+ * 403 with zero writes. Source must be reopenable (needs_human|triaged) else
+ * 409 — an already-open note is not reopenable.
+ *
+ * Reopen clears only the NOTE's disposition: status → open and ALL SIX triage
+ * fields are nulled (triagedAt/triagedBy/triageOutcome/triageReason/
+ * promotedProposalId/promotedTaskId). It DOES NOT delete any proposal/task that
+ * a prior promote spawned — that entity stays independently reviewable, and
+ * re-promoting later mints a FRESH target. The resulting back-pointer asymmetry
+ * (the spawned proposal.sourceNoteId still points here while this note no longer
+ * points back) is INTENTIONAL: reopen never destroys proven downstream work.
+ */
+export function reopen(id: string, actor: { id: string; type: UserType }) {
+  const db = getDb();
+  const note = db.select().from(notes).where(eq(notes.id, id)).get();
+  if (!note) {
+    throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
+  }
+  // HUMAN-ONLY gate FIRST — a non-human gets 403 regardless of status, with
+  // zero writes.
+  if (actor.type !== "human") {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      `User "${actor.id}" is not allowed to reopen note ${id} (human-only)`,
+    );
+  }
+  if (!isReopenableNoteStatus(note.status)) {
+    throw new AppError(409, "INVALID_STATUS", `Note ${id} is open and is not reopenable`);
+  }
+
+  const priorStatus = note.status;
+  const priorOutcome = note.triageOutcome;
+  const now = new Date().toISOString();
+
+  db.update(notes)
+    .set({
+      status: "open",
+      triagedAt: null,
+      triagedBy: null,
+      triageOutcome: null,
+      triageReason: null,
+      promotedProposalId: null,
+      promotedTaskId: null,
+      updatedAt: now,
+    })
+    .where(eq(notes.id, id))
+    .run();
+
+  const row = db.select().from(notes).where(eq(notes.id, id)).get()!;
+
+  getEventBus().emit(EVENT_NAMES.NOTE_REOPENED, {
+    entity: row,
+    entityType: "note",
+    entityId: id,
+    projectId: row.projectId,
+    actorId: actor.id,
+    timestamp: now,
+    changes: {
+      status: { from: priorStatus, to: "open" },
+      triageOutcome: { from: priorOutcome, to: null },
+    },
+  });
+
+  return row;
+}
+
+/**
+ * Apply a terminal triage to a MUTABLE note (Campaign C2 state-machine core).
+ * Flips status (open|needs_human)→triaged in ONE update and records the outcome
+ * + metadata. Re-selects the note (404 if missing), asserts it is mutable (409
+ * if already triaged), then sets the triage fields and returns the fresh row.
  *
  * This is the shared entry point for the P2 dismiss + P3-P4 promote endpoints.
  * It emits NO event in P1 — NOTE_DISMISSED / NOTE_PROMOTED arrive with their
@@ -296,7 +417,7 @@ export function applyTriage(
     throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
   }
 
-  assertOpen(existing);
+  assertMutable(existing);
 
   const now = new Date().toISOString();
 
@@ -318,11 +439,11 @@ export function applyTriage(
 }
 
 /**
- * Dismiss an OPEN note (Campaign C2 §P2) — a terminal triage with outcome
- * "dismissed". Anti-signal-burying authz: only the note's author OR a human
- * may dismiss (a non-author ai_agent gets 403). The authz check runs BEFORE
- * applyTriage's open-check so a forbidden actor gets 403 regardless of status;
- * applyTriage handles 404-on-reselect / 409-on-not-open.
+ * Dismiss a MUTABLE note (open|needs_human) (Campaign C2 §P2) — a terminal
+ * triage with outcome "dismissed". Anti-signal-burying authz: only the note's
+ * author OR a human may dismiss (a non-author ai_agent gets 403). The authz
+ * check runs BEFORE applyTriage's mutable-check so a forbidden actor gets 403
+ * regardless of status; applyTriage handles 404-on-reselect / 409-if-terminal.
  */
 export function dismiss(id: string, actor: { id: string; type: UserType }, reason: string) {
   const db = getDb();
@@ -356,8 +477,8 @@ export function dismiss(id: string, actor: { id: string; type: UserType }, reaso
  * caller — human or ai_agent, author or not — may promote. This preserves the
  * proposal gate: a note feeds proposal creation, never auto-spawns epics/tasks.
  *
- * The open-guard runs BEFORE the proposal is created so a non-open note never
- * leaves an orphan proposal pointing at an already-triaged note.
+ * Accepts a MUTABLE note (open|needs_human). The mutable-guard runs BEFORE the
+ * proposal is created so a terminal note never leaves an orphan proposal.
  */
 export function promoteToProposal(
   id: string,
@@ -369,9 +490,9 @@ export function promoteToProposal(
   if (!note) {
     throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
   }
-  // Early open-guard BEFORE creating the proposal — prevents an orphan
-  // proposal (sourceNoteId → already-triaged note) if the note isn't open.
-  assertOpen(note);
+  // Early mutable-guard BEFORE creating the proposal — prevents an orphan
+  // proposal (sourceNoteId → terminal note) if the note isn't mutable.
+  assertMutable(note);
 
   const derived = deriveNotePromotion(note);
   const finalTitle = title ?? derived.title;
@@ -416,8 +537,8 @@ export function promoteToProposal(
 }
 
 /**
- * Promote an OPEN note to a task (Campaign C2 §P4) — the HUMAN-ONLY escape
- * hatch. This is the only path from a note to a task, and it is deliberately
+ * Promote a MUTABLE note (open|needs_human) to a task (Campaign C2 §P4) — the
+ * HUMAN-ONLY escape hatch. This is the only path from a note to a task, and it is deliberately
  * NOT exposed via MCP: NO ai-reachable path mints a task from a note (the
  * proposal gate — a note feeds proposal creation for AI, never auto-spawns a
  * task/epic). A human reviewer flips the note into a task directly.
@@ -434,7 +555,7 @@ export function promoteToTask(
   const note = db.select().from(notes).where(eq(notes.id, id)).get();
   if (!note) throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
   // HUMAN-ONLY escape hatch (the proposal gate): NO ai-reachable path mints a
-  // task from a note. Gate runs BEFORE assertOpen so a non-human gets 403
+  // task from a note. Gate runs BEFORE assertMutable so a non-human gets 403
   // regardless of status, with zero writes.
   if (actor.type !== "human") {
     throw new AppError(
@@ -443,7 +564,7 @@ export function promoteToTask(
       `User "${actor.id}" is not allowed to promote note ${id} to a task (human-only)`,
     );
   }
-  assertOpen(note);
+  assertMutable(note);
 
   const derived = deriveNotePromotion(note);
   const finalTitle = title ?? derived.title;

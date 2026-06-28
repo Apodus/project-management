@@ -70,6 +70,14 @@ function eventToAction(event: EventName): string {
     case EVENT_NAMES.NOTE_PROMOTED:
       return "promoted";
 
+    // Note state-machine transitions (T1 — needs_human lane + reopen). Bespoke
+    // verbs; onAll auto-enrolls each. reopen carries a status/triageOutcome diff
+    // in payload.changes.
+    case EVENT_NAMES.NOTE_NEEDS_HUMAN:
+      return "needs_human";
+    case EVENT_NAMES.NOTE_REOPENED:
+      return "reopened";
+
     // Escalation lifecycle (Campaign C1 §P5). Bespoke verbs — logActivity.action
     // is free-form (no enum); onAll auto-enrolls each. The activity_log row per
     // emitted event IS the durable escalation audit trail (the train audit_log is

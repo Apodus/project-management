@@ -126,7 +126,10 @@ export function registerNoteTools(server: McpServer): void {
     "List notes captured in a project (bugs/questions/ideas/tech-debt/WTFs/observations), with optional filters. Notes are ownerless — there's no claim to take.",
     {
       project_id: z.string().describe("The project ID to list notes for"),
-      status: z.enum(NOTE_STATUSES).optional().describe("Filter by status: open | triaged"),
+      status: z
+        .enum(NOTE_STATUSES)
+        .optional()
+        .describe("Filter by status: open | needs_human | triaged"),
       kind: z.enum(NOTE_KINDS).optional().describe("Filter by kind"),
       anchor_type: z.enum(NOTE_ANCHOR_TYPES).optional().describe("Filter by anchor entity type"),
       anchor_id: z.string().optional().describe("Filter by anchored entity ID"),

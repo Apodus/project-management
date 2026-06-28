@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import Database from "better-sqlite3";
 import { createId } from "@pm/shared";
 import {
@@ -917,6 +917,303 @@ describe("note service", () => {
 
       // sanity: provenance persisted on the task row.
       expect(taskById(task.id).sourceNoteId).toBe(created.id);
+    });
+  });
+
+  // ── flagNeedsHuman (T1 — needs_human lane) ──────────────────────
+  describe("flagNeedsHuman", () => {
+    it("flips open → needs_human, sets NO triage fields", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(project.id, { kind: "bug", title: "punt me" }, author.id);
+
+      const flagged = noteService.flagNeedsHuman(created.id, { id: author.id, type: "ai_agent" });
+
+      expect(flagged.status).toBe("needs_human");
+      expect(flagged.triageOutcome).toBeNull();
+      expect(flagged.triagedAt).toBeNull();
+      expect(flagged.triagedBy).toBeNull();
+      expect(flagged.triageReason).toBeNull();
+    });
+
+    it("lets a non-author ai_agent flag (no authz gate — elevates signal)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const other = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(project.id, { kind: "bug", title: "not mine" }, author.id);
+
+      const flagged = noteService.flagNeedsHuman(created.id, { id: other.id, type: "ai_agent" });
+      expect(flagged.status).toBe("needs_human");
+    });
+
+    it("throws 409 INVALID_STATUS when re-flagging a needs_human note", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(project.id, { kind: "bug", title: "twice" }, author.id);
+      noteService.flagNeedsHuman(created.id, { id: author.id, type: "human" });
+
+      try {
+        noteService.flagNeedsHuman(created.id, { id: author.id, type: "human" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(409);
+        expect((err as AppError).code).toBe("INVALID_STATUS");
+      }
+    });
+
+    it("throws 409 INVALID_STATUS when flagging a triaged note", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(project.id, { kind: "bug", title: "done" }, author.id);
+      noteService.applyTriage(created.id, { outcome: "dismissed", triagedBy: author.id });
+
+      try {
+        noteService.flagNeedsHuman(created.id, { id: author.id, type: "human" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(409);
+        expect((err as AppError).code).toBe("INVALID_STATUS");
+      }
+    });
+
+    it("throws 404 for a missing note", () => {
+      const author = createTestUser(testApp.db);
+      try {
+        noteService.flagNeedsHuman(createId(), { id: author.id, type: "human" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(404);
+      }
+    });
+
+    it("emits NOTE_NEEDS_HUMAN → a 'needs_human' activity row for the note", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "emits flag" },
+        author.id,
+      );
+
+      noteService.flagNeedsHuman(created.id, { id: author.id, type: "human" });
+
+      const rows = activityRows(created.id);
+      const flagged = rows.find((r) => r.action === "needs_human");
+      expect(flagged).toBeDefined();
+      expect(flagged!.entityType).toBe("note");
+      expect(flagged!.actorId).toBe(author.id);
+      expect(flagged!.projectId).toBe(project.id);
+    });
+  });
+
+  // ── triage transitions FROM the needs_human lane ────────────────
+  describe("triage from needs_human", () => {
+    it("dismiss accepts a needs_human note (mutable lane)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "flag then dismiss" },
+        author.id,
+      );
+      noteService.flagNeedsHuman(created.id, { id: author.id, type: "ai_agent" });
+
+      const dismissed = noteService.dismiss(
+        created.id,
+        { id: author.id, type: "ai_agent" },
+        "nope",
+      );
+      expect(dismissed.status).toBe("triaged");
+      expect(dismissed.triageOutcome).toBe("dismissed");
+    });
+
+    it("promoteToProposal accepts a needs_human note (mutable lane)", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db);
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "flag then promote" },
+        author.id,
+      );
+      noteService.flagNeedsHuman(created.id, { id: author.id, type: "human" });
+
+      const { note, proposal } = noteService.promoteToProposal(created.id, {
+        id: author.id,
+        type: "human",
+      });
+      expect(note.status).toBe("triaged");
+      expect(note.triageOutcome).toBe("promoted");
+      expect(proposal.sourceNoteId).toBe(note.id);
+    });
+  });
+
+  // ── reopen (T1 — human-only escape from needs_human/triaged) ────
+  describe("reopen", () => {
+    it("reopens a triaged note → open, clearing all six triage fields", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(project.id, { kind: "bug", title: "reopen me" }, human.id);
+      noteService.dismiss(created.id, { id: human.id, type: "human" }, "premature");
+
+      const reopened = noteService.reopen(created.id, { id: human.id, type: "human" });
+
+      expect(reopened.status).toBe("open");
+      expect(reopened.triagedAt).toBeNull();
+      expect(reopened.triagedBy).toBeNull();
+      expect(reopened.triageOutcome).toBeNull();
+      expect(reopened.triageReason).toBeNull();
+      expect(reopened.promotedProposalId).toBeNull();
+      expect(reopened.promotedTaskId).toBeNull();
+    });
+
+    it("reopens a needs_human note → open", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(project.id, { kind: "bug", title: "flagged" }, human.id);
+      noteService.flagNeedsHuman(created.id, { id: human.id, type: "human" });
+
+      const reopened = noteService.reopen(created.id, { id: human.id, type: "human" });
+      expect(reopened.status).toBe("open");
+    });
+
+    it("throws 403 FORBIDDEN for an ai_agent AND leaves the note untouched (zero writes)", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const agent = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "ai cannot reopen" },
+        human.id,
+      );
+      noteService.dismiss(created.id, { id: human.id, type: "human" }, "done");
+
+      try {
+        noteService.reopen(created.id, { id: agent.id, type: "ai_agent" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(403);
+        expect((err as AppError).code).toBe("FORBIDDEN");
+      }
+      // Zero writes: still terminally triaged.
+      expect(noteService.getById(created.id).status).toBe("triaged");
+    });
+
+    it("throws 409 INVALID_STATUS when reopening an open note (not reopenable)", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "already open" },
+        human.id,
+      );
+
+      try {
+        noteService.reopen(created.id, { id: human.id, type: "human" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(409);
+        expect((err as AppError).code).toBe("INVALID_STATUS");
+      }
+    });
+
+    it("throws 404 for a missing note", () => {
+      const human = createTestUser(testApp.db, { type: "human" });
+      try {
+        noteService.reopen(createId(), { id: human.id, type: "human" });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(404);
+      }
+    });
+
+    it("nulls the note's promotedProposalId but does NOT delete the spawned proposal", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "promote then reopen" },
+        human.id,
+      );
+      const { proposal } = noteService.promoteToProposal(created.id, {
+        id: human.id,
+        type: "human",
+      });
+
+      const reopened = noteService.reopen(created.id, { id: human.id, type: "human" });
+      expect(reopened.promotedProposalId).toBeNull();
+
+      // The spawned proposal is NOT deleted — it stays independently reviewable.
+      const stillThere = testApp.db
+        .select()
+        .from(proposals)
+        .where(eq(proposals.id, proposal.id))
+        .get();
+      expect(stillThere).toBeDefined();
+      // The back-pointer asymmetry is intentional: proposal.sourceNoteId remains.
+      expect(stillThere!.sourceNoteId).toBe(created.id);
+    });
+
+    it("emits NOTE_REOPENED → a 'reopened' activity row with a status/outcome diff", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "emits reopen" },
+        human.id,
+      );
+      noteService.dismiss(created.id, { id: human.id, type: "human" }, "x");
+
+      noteService.reopen(created.id, { id: human.id, type: "human" });
+
+      const rows = activityRows(created.id);
+      const reopened = rows.find((r) => r.action === "reopened");
+      expect(reopened).toBeDefined();
+      expect(reopened!.entityType).toBe("note");
+      expect(reopened!.actorId).toBe(human.id);
+      const changes = reopened!.changes as Record<string, { from: unknown; to: unknown }> | null;
+      expect(changes?.status).toEqual({ from: "triaged", to: "open" });
+      expect(changes?.triageOutcome).toEqual({ from: "dismissed", to: null });
+    });
+
+    // Amendment B — provenance asymmetry: re-promote after reopen is permitted
+    // and mints a FRESH proposal; the originally-spawned proposal still exists.
+    it("re-promote after reopen yields a FRESH proposal; the prior proposal row survives", () => {
+      const project = createTestProject(testApp.db);
+      const human = createTestUser(testApp.db, { type: "human" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "round trip" },
+        human.id,
+      );
+
+      const { proposal: first } = noteService.promoteToProposal(created.id, {
+        id: human.id,
+        type: "human",
+      });
+      noteService.reopen(created.id, { id: human.id, type: "human" });
+
+      const { note, proposal: second } = noteService.promoteToProposal(created.id, {
+        id: human.id,
+        type: "human",
+      });
+
+      // Fresh target — a distinct proposal id, and the note now points at it.
+      expect(second.id).not.toBe(first.id);
+      expect(note.promotedProposalId).toBe(second.id);
+
+      // The originally-spawned proposal still exists (reopen never deleted it).
+      const both = testApp.db
+        .select()
+        .from(proposals)
+        .where(inArray(proposals.id, [first.id, second.id]))
+        .all();
+      expect(both).toHaveLength(2);
     });
   });
 

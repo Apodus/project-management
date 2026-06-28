@@ -297,7 +297,7 @@ const patchNoteRoute = createRoute({
   tags: ["Notes"],
   summary: "Update note",
   description:
-    "Update an OPEN note's fields. A triaged note is immutable in C1 (409). Status is not patchable.",
+    "Update a mutable note's fields (open or needs_human). A triaged note is immutable (409). Status is not patchable (flag/reopen own the status transitions).",
   request: {
     params: z.object({ id: noteIdParam }),
     body: {
@@ -315,7 +315,7 @@ const patchNoteRoute = createRoute({
       content: { "application/json": { schema: errorEnvelope } },
     },
     409: {
-      description: "Note is not open and cannot be edited",
+      description: "Note is triaged (terminal) and cannot be modified",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -327,7 +327,7 @@ const dismissNoteRoute = createRoute({
   tags: ["Notes"],
   summary: "Dismiss note",
   description:
-    "Terminally dismiss an OPEN note (triage outcome `dismissed`). Anti-signal-burying: only the note's author OR a human may dismiss.",
+    "Terminally dismiss a mutable note (open or needs_human) — triage outcome `dismissed`. Anti-signal-burying: only the note's author OR a human may dismiss.",
   request: {
     params: z.object({ id: noteIdParam }),
     body: {
@@ -353,7 +353,7 @@ const dismissNoteRoute = createRoute({
       content: { "application/json": { schema: errorEnvelope } },
     },
     409: {
-      description: "Note is not open and cannot be dismissed",
+      description: "Note is triaged (terminal) and cannot be dismissed",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -365,7 +365,7 @@ const promoteToProposalRoute = createRoute({
   tags: ["Notes"],
   summary: "Promote note to proposal",
   description:
-    "Terminally promote an OPEN note to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.",
+    "Terminally promote a mutable note (open or needs_human) to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.",
   request: {
     params: z.object({ id: noteIdParam }),
     body: {
@@ -383,7 +383,7 @@ const promoteToProposalRoute = createRoute({
       content: { "application/json": { schema: errorEnvelope } },
     },
     409: {
-      description: "Note is not open and cannot be promoted",
+      description: "Note is triaged (terminal) and cannot be promoted",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -395,7 +395,7 @@ const promoteToTaskRoute = createRoute({
   tags: ["Notes"],
   summary: "Promote note to task",
   description:
-    "HUMAN-ONLY escape hatch: terminally promote an OPEN note directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.",
+    "HUMAN-ONLY escape hatch: terminally promote a mutable note (open or needs_human) directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.",
   request: {
     params: z.object({ id: noteIdParam }),
     body: {
@@ -417,7 +417,63 @@ const promoteToTaskRoute = createRoute({
       content: { "application/json": { schema: errorEnvelope } },
     },
     409: {
-      description: "Note is not open and cannot be promoted",
+      description: "Note is triaged (terminal) and cannot be promoted",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const flagNeedsHumanRoute = createRoute({
+  method: "post",
+  path: "/api/v1/notes/{id}/flag-needs-human",
+  tags: ["Notes"],
+  summary: "Flag note needs_human",
+  description:
+    "Raise an OPEN note's signal to needs_human — an agent that triaged the note but cannot resolve it punts it to a human. Sets no triage metadata (the note stays mutable/triageable). No authz gate (flag elevates signal). 409 if the note is not open (already needs_human or terminally triaged).",
+  request: {
+    params: z.object({ id: noteIdParam }),
+  },
+  responses: {
+    200: {
+      description: "Note flagged needs_human",
+      content: { "application/json": { schema: noteDataEnvelope } },
+    },
+    404: {
+      description: "Note not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Note is not open and cannot be flagged needs_human",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const reopenNoteRoute = createRoute({
+  method: "post",
+  path: "/api/v1/notes/{id}/reopen",
+  tags: ["Notes"],
+  summary: "Reopen note",
+  description:
+    "HUMAN-ONLY: reopen a needs_human or triaged note back to open, clearing the note's triage metadata. Does NOT delete any proposal/task a prior promote spawned (it stays independently reviewable). A non-human caller gets 403. 409 if the note is already open (not reopenable).",
+  request: {
+    params: z.object({ id: noteIdParam }),
+  },
+  responses: {
+    200: {
+      description: "Note reopened",
+      content: { "application/json": { schema: noteDataEnvelope } },
+    },
+    403: {
+      description: "Caller is not allowed to reopen this note (human-only)",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Note not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    409: {
+      description: "Note is already open and is not reopenable",
       content: { "application/json": { schema: errorEnvelope } },
     },
   },
@@ -528,6 +584,22 @@ export function createNoteRoutes(): OpenAPIHono<{
       body,
     );
     return c.json({ data: note, task }, 200);
+  });
+
+  // POST /api/v1/notes/:id/flag-needs-human (T1 — needs_human lane)
+  router.openapi(flagNeedsHumanRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("currentUser");
+    const note = noteService.flagNeedsHuman(id, { id: user!.id, type: user!.type as UserType });
+    return c.json({ data: note }, 200);
+  });
+
+  // POST /api/v1/notes/:id/reopen (T1 — human-only reopen)
+  router.openapi(reopenNoteRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("currentUser");
+    const note = noteService.reopen(id, { id: user!.id, type: user!.type as UserType });
+    return c.json({ data: note }, 200);
   });
 
   // GET /api/v1/projects/:projectId/notes/health (Campaign C2 §P5)

@@ -18,11 +18,37 @@ import { z } from "zod";
 export const NOTE_KINDS = ["bug", "question", "idea", "tech_debt", "wtf", "observation"] as const;
 export type NoteKind = (typeof NOTE_KINDS)[number];
 
-// Lifecycle status. C1 only captures (open) and acknowledges a triaged
-// terminal — the actual triage transition is C2. Stays exactly
-// ["open","triaged"]; no triage-outcome values leak in here.
-export const NOTE_STATUSES = ["open", "triaged"] as const;
+// Lifecycle status — the 3-lane note state machine:
+//   open        → captured, awaiting triage (mutable)
+//   needs_human → flagged: an agent triaged but punted to a human (mutable)
+//   triaged     → terminally dismissed/promoted (immutable, terminal)
+// `open` and `needs_human` are the MUTABLE lanes (editable + triageable +
+// flaggable into each other's transitions); `triaged` is the single TERMINAL
+// lane. needs_human is a STATUS, never a triage OUTCOME (NOTE_TRIAGE_OUTCOMES
+// stays promoted/dismissed). Plain text in the DB (no enum CHECK), so widening
+// this tuple needs no migration.
+export const NOTE_STATUSES = ["open", "needs_human", "triaged"] as const;
 export type NoteStatus = (typeof NOTE_STATUSES)[number];
+
+// ─── Status partitions + predicates ───────────────────────────────
+// Named partitions of NOTE_STATUSES so callers never re-list the literals:
+//   MUTABLE   = open|needs_human (may be edited / triaged)
+//   TERMINAL  = triaged          (immutable, terminal)
+//   REOPENABLE = needs_human|triaged (a human may flip back to open; an `open`
+//                note is already open, so it is NOT reopenable)
+export const NOTE_MUTABLE_STATUSES = ["open", "needs_human"] as const;
+export const NOTE_TERMINAL_STATUSES = ["triaged"] as const;
+export const NOTE_REOPENABLE_STATUSES = ["needs_human", "triaged"] as const;
+
+/** A note in a mutable lane (open|needs_human) may be edited or triaged. */
+export function isMutableNoteStatus(s: NoteStatus): boolean {
+  return (NOTE_MUTABLE_STATUSES as readonly NoteStatus[]).includes(s);
+}
+
+/** A note in a reopenable lane (needs_human|triaged) may be reopened to open. */
+export function isReopenableNoteStatus(s: NoteStatus): boolean {
+  return (NOTE_REOPENABLE_STATUSES as readonly NoteStatus[]).includes(s);
+}
 
 // What a note can be anchored to. NO "none" value — a null anchorType is
 // the single encoding for "no anchor".

@@ -2,6 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   NOTE_KINDS,
   NOTE_STATUSES,
+  NOTE_MUTABLE_STATUSES,
+  NOTE_TERMINAL_STATUSES,
+  NOTE_REOPENABLE_STATUSES,
+  isMutableNoteStatus,
+  isReopenableNoteStatus,
   NOTE_ANCHOR_TYPES,
   NOTE_SEVERITIES,
   NOTE_TRIAGE_OUTCOMES,
@@ -21,8 +26,35 @@ describe("note enums", () => {
     expect([...NOTE_KINDS]).toEqual(["bug", "question", "idea", "tech_debt", "wtf", "observation"]);
   });
 
-  it("NOTE_STATUSES is exactly open/triaged (C1 minimality — no triage-outcome leak)", () => {
-    expect([...NOTE_STATUSES]).toEqual(["open", "triaged"]);
+  it("NOTE_STATUSES is the 3-lane machine open/needs_human/triaged (no triage-outcome leak)", () => {
+    expect([...NOTE_STATUSES]).toEqual(["open", "needs_human", "triaged"]);
+  });
+
+  it("status partitions are coherent: mutable ∪ terminal = all, and they are disjoint", () => {
+    const mutable = [...NOTE_MUTABLE_STATUSES];
+    const terminal = [...NOTE_TERMINAL_STATUSES];
+    // Union (set-equality, order-independent) = every status.
+    expect(new Set([...mutable, ...terminal])).toEqual(new Set(NOTE_STATUSES));
+    // Disjoint — no status is both mutable and terminal.
+    expect(mutable.filter((s) => (terminal as string[]).includes(s))).toEqual([]);
+  });
+
+  it("needs_human is mutable AND reopenable", () => {
+    expect(isMutableNoteStatus("needs_human")).toBe(true);
+    expect(isReopenableNoteStatus("needs_human")).toBe(true);
+    expect(NOTE_REOPENABLE_STATUSES as readonly string[]).toContain("needs_human");
+  });
+
+  it("triaged is terminal (NOT mutable) AND reopenable", () => {
+    expect(isMutableNoteStatus("triaged")).toBe(false);
+    expect(isReopenableNoteStatus("triaged")).toBe(true);
+    expect(NOTE_TERMINAL_STATUSES as readonly string[]).toContain("triaged");
+  });
+
+  it("open is mutable but NOT reopenable (already open)", () => {
+    expect(isMutableNoteStatus("open")).toBe(true);
+    expect(isReopenableNoteStatus("open")).toBe(false);
+    expect(NOTE_REOPENABLE_STATUSES as readonly string[]).not.toContain("open");
   });
 
   it("NOTE_ANCHOR_TYPES is the canonical ordered tuple and has NO 'none' value", () => {

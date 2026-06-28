@@ -21,6 +21,12 @@ export const EVENT_NAMES = {
   NOTE_UPDATED: "note.updated",
   NOTE_DISMISSED: "note.dismissed",
   NOTE_PROMOTED: "note.promoted",
+  // Note state-machine transitions (T1 — needs_human lane + reopen). flag
+  // elevates signal (open → needs_human); reopen is the human-only escape from a
+  // needs_human/triaged note back to open. onAll maps these to activity actions
+  // "needs_human" / "reopened" (see events/listeners.ts).
+  NOTE_NEEDS_HUMAN: "note.needs_human",
+  NOTE_REOPENED: "note.reopened",
   // Backlog-age alert (Campaign C2 §P5 — emitted by notes-health.service
   // computeNotesHealth when a project has an OPEN note aging past the backlog
   // threshold). Edge-triggered (once per backlog episode, latched on

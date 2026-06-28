@@ -513,6 +513,121 @@ describe("Notes API", () => {
     });
   });
 
+  // ── POST /api/v1/notes/:id/flag-needs-human (T1) ─────────────────
+  describe("POST /api/v1/notes/:id/flag-needs-human", () => {
+    it("flags an open note → needs_human (200)", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "punt me" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/flag-needs-human`,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.status).toBe("needs_human");
+      expect(body.data.triageOutcome).toBeNull();
+    });
+
+    it("returns 404 for an unknown note id", async () => {
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${createId()}/flag-needs-human`,
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 409 when flagging a triaged note", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "already done" },
+        })
+      ).json();
+      await authRequest(testApp.app, "POST", `/api/v1/notes/${created.data.id}/dismiss`, {
+        body: { reason: "wontfix" },
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/flag-needs-human`,
+      );
+      expect(res.status).toBe(409);
+    });
+  });
+
+  // ── POST /api/v1/notes/:id/reopen (T1, HUMAN-ONLY) ───────────────
+  describe("POST /api/v1/notes/:id/reopen", () => {
+    it("reopens a triaged note → open with triage fields nulled (200, human)", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "reopen me" },
+        })
+      ).json();
+      await authRequest(testApp.app, "POST", `/api/v1/notes/${created.data.id}/dismiss`, {
+        body: { reason: "premature" },
+      });
+
+      const res = await authRequest(testApp.app, "POST", `/api/v1/notes/${created.data.id}/reopen`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.status).toBe("open");
+      expect(body.data.triageOutcome).toBeNull();
+      expect(body.data.triagedAt).toBeNull();
+      expect(body.data.triagedBy).toBeNull();
+    });
+
+    it("returns 403 for an ai_agent token (human-only)", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          token: agent.token,
+          body: { kind: "bug", title: "agent flagged" },
+        })
+      ).json();
+      // Flag it (agent may flag) so it is in a reopenable lane.
+      await authRequest(testApp.app, "POST", `/api/v1/notes/${created.data.id}/flag-needs-human`, {
+        token: agent.token,
+      });
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/reopen`,
+        {
+          token: agent.token,
+        },
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 404 for an unknown note id", async () => {
+      const res = await authRequest(testApp.app, "POST", `/api/v1/notes/${createId()}/reopen`);
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 409 when reopening an open note (not reopenable)", async () => {
+      const project = createTestProject(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          body: { kind: "bug", title: "still open" },
+        })
+      ).json();
+
+      const res = await authRequest(testApp.app, "POST", `/api/v1/notes/${created.data.id}/reopen`);
+      expect(res.status).toBe(409);
+    });
+  });
+
   // ── activity-feed enrichment ─────────────────────────────────────
   describe("activity feed enrichment", () => {
     it("surfaces the note in the project activity feed with entityType 'note' and its title", async () => {

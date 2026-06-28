@@ -1465,6 +1465,7 @@
             "type": "string",
             "enum": [
               "open",
+              "needs_human",
               "triaged"
             ]
           },
@@ -13599,6 +13600,7 @@
               "type": "string",
               "enum": [
                 "open",
+                "needs_human",
                 "triaged"
               ]
             },
@@ -13753,7 +13755,7 @@
           "Notes"
         ],
         "summary": "Update note",
-        "description": "Update an OPEN note's fields. A triaged note is immutable in C1 (409). Status is not patchable.",
+        "description": "Update a mutable note's fields (open or needs_human). A triaged note is immutable (409). Status is not patchable (flag/reopen own the status transitions).",
         "parameters": [
           {
             "schema": {
@@ -13826,7 +13828,7 @@
             }
           },
           "409": {
-            "description": "Note is not open and cannot be edited",
+            "description": "Note is triaged (terminal) and cannot be modified",
             "content": {
               "application/json": {
                 "schema": {
@@ -13864,7 +13866,7 @@
           "Notes"
         ],
         "summary": "Dismiss note",
-        "description": "Terminally dismiss an OPEN note (triage outcome `dismissed`). Anti-signal-burying: only the note's author OR a human may dismiss.",
+        "description": "Terminally dismiss a mutable note (open or needs_human) — triage outcome `dismissed`. Anti-signal-burying: only the note's author OR a human may dismiss.",
         "parameters": [
           {
             "schema": {
@@ -13997,7 +13999,7 @@
             }
           },
           "409": {
-            "description": "Note is not open and cannot be dismissed",
+            "description": "Note is triaged (terminal) and cannot be dismissed",
             "content": {
               "application/json": {
                 "schema": {
@@ -14035,7 +14037,7 @@
           "Notes"
         ],
         "summary": "Promote note to proposal",
-        "description": "Terminally promote an OPEN note to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.",
+        "description": "Terminally promote a mutable note (open or needs_human) to a new proposal (triage outcome `promoted`). Records bidirectional provenance (note.promotedProposalId ⇆ proposal.sourceNoteId). No authz gate — promote elevates signal, so any authenticated caller may.",
         "parameters": [
           {
             "schema": {
@@ -14112,7 +14114,7 @@
             }
           },
           "409": {
-            "description": "Note is not open and cannot be promoted",
+            "description": "Note is triaged (terminal) and cannot be promoted",
             "content": {
               "application/json": {
                 "schema": {
@@ -14150,7 +14152,7 @@
           "Notes"
         ],
         "summary": "Promote note to task",
-        "description": "HUMAN-ONLY escape hatch: terminally promote an OPEN note directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.",
+        "description": "HUMAN-ONLY escape hatch: terminally promote a mutable note (open or needs_human) directly to a new task (triage outcome `promoted`), recording provenance (task.sourceNoteId). Not exposed via MCP — preserves the proposal gate (no ai-reachable path mints a task from a note). A non-human caller gets 403.",
         "parameters": [
           {
             "schema": {
@@ -14257,7 +14259,239 @@
             }
           },
           "409": {
-            "description": "Note is not open and cannot be promoted",
+            "description": "Note is triaged (terminal) and cannot be promoted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notes/{id}/flag-needs-human": {
+      "post": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Flag note needs_human",
+        "description": "Raise an OPEN note's signal to needs_human — an agent that triaged the note but cannot resolve it punts it to a human. Sets no triage metadata (the note stays mutable/triageable). No authz gate (flag elevates signal). 409 if the note is not open (already needs_human or terminally triaged).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Note flagged needs_human",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Note"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Note not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Note is not open and cannot be flagged needs_human",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notes/{id}/reopen": {
+      "post": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Reopen note",
+        "description": "HUMAN-ONLY: reopen a needs_human or triaged note back to open, clearing the note's triage metadata. Does NOT delete any proposal/task a prior promote spawned (it stays independently reviewable). A non-human caller gets 403. 409 if the note is already open (not reopenable).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Note reopened",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Note"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not allowed to reopen this note (human-only)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Note not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Note is already open and is not reopenable",
             "content": {
               "application/json": {
                 "schema": {
