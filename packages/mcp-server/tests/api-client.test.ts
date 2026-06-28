@@ -11,6 +11,9 @@ import {
   getAgentIdentity,
   shouldReleaseOnShutdown,
 } from "../src/api-client.js";
+// Namespace import so the absence of a wire path can be asserted (the file
+// otherwise uses named imports, which can't reference a non-existent export).
+import * as apiClient from "../src/api-client.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -619,6 +622,10 @@ describe("promoteNoteToProposal", () => {
       status: 409,
       code: "NOTE_NOT_OPEN",
     });
+  });
+
+  it("exposes no client-side note→task wire path", () => {
+    expect((apiClient as Record<string, unknown>).promoteNoteToTask).toBeUndefined();
   });
 });
 

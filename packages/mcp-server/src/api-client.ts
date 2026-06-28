@@ -1315,6 +1315,7 @@ import type {
   ClaimState,
   Note,
   NoteKind,
+  ProposalKind,
   CreateNote,
   ListNotesQuery,
   Escalation,
@@ -1620,6 +1621,24 @@ export async function dismissNote(noteId: string, reason: string): Promise<Note>
   return apiRequest<Note>("POST", `/notes/${encodeURIComponent(noteId)}/dismiss`, { reason });
 }
 
+/**
+ * Flag an open note as needs_human — you triaged it but can't resolve it
+ * yourself. Signal-elevating (the note stays mutable/triageable), no authz gate.
+ * Returns the flagged note (status "needs_human").
+ */
+export async function flagNoteNeedsHuman(noteId: string): Promise<Note> {
+  return apiRequest<Note>("POST", `/notes/${encodeURIComponent(noteId)}/flag-needs-human`);
+}
+
+/**
+ * Reopen a needs_human or triaged note back to open, clearing its triage
+ * metadata (HUMAN-ONLY — an ai_agent caller is refused 403 server-side).
+ * Returns the reopened note (status "open").
+ */
+export async function reopenNote(noteId: string): Promise<Note> {
+  return apiRequest<Note>("POST", `/notes/${encodeURIComponent(noteId)}/reopen`);
+}
+
 export interface PromotedProposal {
   id: string;
   projectId: string | null;
@@ -1628,6 +1647,7 @@ export interface PromotedProposal {
   status: string;
   createdBy: string;
   sourceNoteId: string | null;
+  proposalKind?: ProposalKind;
   createdAt: string;
   updatedAt: string;
 }
@@ -1645,7 +1665,7 @@ export interface PromoteNoteToProposalResult {
  */
 export async function promoteNoteToProposal(
   noteId: string,
-  data: { title?: string; description?: string },
+  data: { title?: string; description?: string; proposalKind?: ProposalKind },
 ): Promise<PromoteNoteToProposalResult> {
   const url = `${getBaseUrl()}/api/v1/notes/${encodeURIComponent(noteId)}/promote-to-proposal`;
   const token = getToken();

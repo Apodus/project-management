@@ -1,12 +1,20 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { NOTE_KINDS, NOTE_STATUSES, NOTE_ANCHOR_TYPES, NOTE_SEVERITIES } from "@pm/shared";
+import {
+  NOTE_KINDS,
+  NOTE_STATUSES,
+  NOTE_ANCHOR_TYPES,
+  NOTE_SEVERITIES,
+  PROPOSAL_KINDS,
+} from "@pm/shared";
 import {
   createNote,
   listNotes,
   getNote,
   dismissNote,
   promoteNoteToProposal,
+  flagNoteNeedsHuman,
+  reopenNote,
 } from "../api-client.js";
 
 /**
@@ -279,9 +287,19 @@ export function registerNoteTools(server: McpServer): void {
         .describe(
           "Optional proposal description (defaults to the note's full content — the body, plus the original title when the title was shortened)",
         ),
+      proposal_kind: z
+        .enum(PROPOSAL_KINDS)
+        .optional()
+        .describe(
+          "Proposal flavor: 'standard' (default — full team discussion/planning) or 'fast_track' (advisory hint that this finding is small/clear and can be claimed and implemented directly). Does not bypass the proposal gate; a human/daemon still claims and implements it.",
+        ),
     },
-    async ({ note_id, title, description }) => {
-      const { note, proposal } = await promoteNoteToProposal(note_id, { title, description });
+    async ({ note_id, title, description, proposal_kind }) => {
+      const { note, proposal } = await promoteNoteToProposal(note_id, {
+        title,
+        description,
+        proposalKind: proposal_kind,
+      });
 
       const sections: string[] = [
         "Note promoted to proposal.",
@@ -294,8 +312,60 @@ export function registerNoteTools(server: McpServer): void {
         `**Proposal ID:** ${proposal.id}`,
         `**Title:** ${proposal.title}`,
         `**Status:** ${proposal.status}`,
+      ];
+
+      if (proposal.proposalKind) sections.push(`**Kind:** ${proposal.proposalKind}`);
+
+      sections.push("", "Next: call pm_get_proposal / pm_claim_proposal to plan it.");
+
+      return {
+        content: [{ type: "text" as const, text: sections.join("\n") }],
+      };
+    },
+  );
+
+  // ---- pm_flag_note_needs_human ----
+
+  server.tool(
+    "pm_flag_note_needs_human",
+    "Raise an open note to needs_human — you triaged it but cannot resolve it yourself, so punt to a human. The note stays mutable/triageable (signal-elevating flag, not a terminal triage). No authz gate. Fails (409) if the note is not open.",
+    {
+      note_id: z.string().describe("The note ID to flag for human attention"),
+    },
+    async ({ note_id }) => {
+      const note = await flagNoteNeedsHuman(note_id);
+
+      const sections: string[] = [
+        "Note flagged for human attention.",
         "",
-        "Next: call pm_get_proposal / pm_claim_proposal to plan it.",
+        `**ID:** ${note.id}`,
+        `**Title:** ${note.title}`,
+        `**Status:** ${note.status}`,
+      ];
+
+      return {
+        content: [{ type: "text" as const, text: sections.join("\n") }],
+      };
+    },
+  );
+
+  // ---- pm_reopen_note ----
+
+  server.tool(
+    "pm_reopen_note",
+    "HUMAN-ONLY: reopen a needs_human or triaged note back to open, clearing its triage metadata. Any proposal/task a prior promote created is left intact. An ai_agent caller is refused by the server (403). Fails (409) if already open.",
+    {
+      note_id: z.string().describe("The note ID to reopen"),
+    },
+    async ({ note_id }) => {
+      const note = await reopenNote(note_id);
+
+      const sections: string[] = [
+        "Note reopened.",
+        "",
+        `**ID:** ${note.id}`,
+        `**Title:** ${note.title}`,
+        `**Status:** ${note.status}`,
       ];
 
       return {

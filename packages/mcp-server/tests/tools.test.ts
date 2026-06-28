@@ -78,6 +78,8 @@ vi.mock("../src/api-client.js", () => ({
   getNote: vi.fn(),
   dismissNote: vi.fn(),
   promoteNoteToProposal: vi.fn(),
+  flagNoteNeedsHuman: vi.fn(),
+  reopenNote: vi.fn(),
   createEscalation: vi.fn(),
   listEscalations: vi.fn(),
   getEscalation: vi.fn(),
@@ -155,6 +157,8 @@ const mockListNotes = vi.mocked(apiClient.listNotes);
 const mockGetNote = vi.mocked(apiClient.getNote);
 const mockDismissNote = vi.mocked(apiClient.dismissNote);
 const mockPromoteNoteToProposal = vi.mocked(apiClient.promoteNoteToProposal);
+const mockFlagNoteNeedsHuman = vi.mocked(apiClient.flagNoteNeedsHuman);
+const mockReopenNote = vi.mocked(apiClient.reopenNote);
 const mockCreateEscalation = vi.mocked(apiClient.createEscalation);
 const mockListEscalations = vi.mocked(apiClient.listEscalations);
 const mockGetEscalation = vi.mocked(apiClient.getEscalation);
@@ -4218,6 +4222,23 @@ describe("MCP Tools", () => {
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("No notes found.");
     });
+
+    it("passes the needs_human status filter through", async () => {
+      mockListNotes.mockResolvedValue([sampleNote]);
+
+      await client.callTool({
+        name: "pm_list_notes",
+        arguments: { project_id: "proj_001", status: "needs_human" },
+      });
+
+      expect(mockListNotes).toHaveBeenCalledWith("proj_001", {
+        status: "needs_human",
+        kind: undefined,
+        anchorType: undefined,
+        anchorId: undefined,
+        severity: undefined,
+      });
+    });
   });
 
   describe("pm_get_note", () => {
@@ -4450,6 +4471,124 @@ describe("MCP Tools", () => {
       });
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("prop_900");
+    });
+
+    it("threads the proposal_kind flavor through to the client", async () => {
+      mockPromoteNoteToProposal.mockResolvedValue({
+        note: promotedNote,
+        proposal: {
+          id: "prop_900",
+          projectId: "proj_001",
+          title: "DB connection leaks on retry",
+          description: null,
+          status: "draft",
+          createdBy: "user_001",
+          sourceNoteId: "note_001",
+          proposalKind: "fast_track",
+          createdAt: "2026-06-09T01:00:00Z",
+          updatedAt: "2026-06-09T01:00:00Z",
+        },
+      });
+
+      const result = await client.callTool({
+        name: "pm_promote_note_to_proposal",
+        arguments: { note_id: "note_001", proposal_kind: "fast_track" },
+      });
+
+      expect(mockPromoteNoteToProposal).toHaveBeenCalledWith("note_001", {
+        title: undefined,
+        description: undefined,
+        proposalKind: "fast_track",
+      });
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("fast_track");
+    });
+  });
+
+  describe("pm_flag_note_needs_human", () => {
+    it("flags an open note to needs_human", async () => {
+      mockFlagNoteNeedsHuman.mockResolvedValue({ ...sampleNote, status: "needs_human" as const });
+
+      const result = await client.callTool({
+        name: "pm_flag_note_needs_human",
+        arguments: { note_id: "note_001" },
+      });
+
+      expect(mockFlagNoteNeedsHuman).toHaveBeenCalledWith("note_001");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("needs_human");
+    });
+
+    it("surfaces a 409 when the note is not open", async () => {
+      const { ApiError } = await import("../src/api-client.js");
+      mockFlagNoteNeedsHuman.mockRejectedValue(
+        new ApiError(409, "NOTE_NOT_OPEN", "Note is not open"),
+      );
+
+      const result = await client.callTool({
+        name: "pm_flag_note_needs_human",
+        arguments: { note_id: "note_001" },
+      });
+
+      expect(result.isError).toBe(true);
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("not open");
+    });
+  });
+
+  describe("pm_reopen_note", () => {
+    it("reopens a note back to open", async () => {
+      mockReopenNote.mockResolvedValue({ ...sampleNote, status: "open" as const });
+
+      const result = await client.callTool({
+        name: "pm_reopen_note",
+        arguments: { note_id: "note_001" },
+      });
+
+      expect(mockReopenNote).toHaveBeenCalledWith("note_001");
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("open");
+    });
+
+    it("does NOT pre-block an ai_agent caller — the server 403 surfaces", async () => {
+      const { ApiError } = await import("../src/api-client.js");
+      mockReopenNote.mockRejectedValue(new ApiError(403, "FORBIDDEN", "Reopen is human-only"));
+
+      const result = await client.callTool({
+        name: "pm_reopen_note",
+        arguments: { note_id: "note_001" },
+      });
+
+      expect(mockReopenNote).toHaveBeenCalledWith("note_001");
+      expect(result.isError).toBe(true);
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("human-only");
+    });
+  });
+
+  // ---- Autonomous-drive invariant: no note→task MCP surface ----
+  // T1 seals the proposal gate at the tool layer: a note can only be promoted
+  // to a PROPOSAL via MCP, never directly to a task. The human-only
+  // note→task path is intentionally absent from the agent-facing tool set.
+
+  describe("note MCP tool surface invariant", () => {
+    it("exposes no note→task tool, and exactly the seven note tools", async () => {
+      const { tools } = await client.listTools();
+      const names = tools.map((t) => t.name);
+
+      expect(names).not.toContain("pm_promote_note_to_task");
+      expect(names.filter((n) => /note/.test(n) && /task/.test(n))).toEqual([]);
+
+      const noteTools = names.filter((n) => n.includes("note")).sort();
+      expect(noteTools).toEqual([
+        "pm_dismiss_note",
+        "pm_flag_note_needs_human",
+        "pm_get_note",
+        "pm_list_notes",
+        "pm_post_note",
+        "pm_promote_note_to_proposal",
+        "pm_reopen_note",
+      ]);
     });
   });
 
