@@ -1,0 +1,18 @@
+{
+  "vision": "roadmaps/vision-20260628-notes-triage-autonomy.md",
+  "campaign": "T2",
+  "status": "COMPLETE",
+  "branch": "campaign-notes-triage-autonomy",
+  "completed_phases": [
+    { "phase": "P1", "commit": "b594552", "outcome": "triage_decisions side-log (migration 0036)." },
+    { "phase": "P2", "commit": "a43e23b", "outcome": "triager skeleton + poll/seed loop." },
+    { "phase": "P3", "commit": "59a1bba", "outcome": "sniff + assessment runner + decide." },
+    { "phase": "P4", "commit": "f3b34e2", "outcome": "executor + mode gating; dismiss-403 hot-loop killed." },
+    { "phase": "P5", "commit": "62fee91", "outcome": "spawn-budget seal + costBudget removed + reclaim-N/A & no-recursion & isolation-parity documented + e2e seal. 114 triager tests green." }
+  ],
+  "next_campaign": "T3",
+  "notes": [
+    "@pm/web turbo-parallel contention flake on full pnpm test (passes 491/491 standalone; web has no triager dep). wake-daemon EPERM flake also pre-existing.",
+    "T3 (web + server observability) builds on the triage_decisions side-log (filter by triageAgentId per T2-P1 advisory) + settings.notesTriage + the existing NOTES_BACKLOG_THRESHOLD_MS alert."
+  ]
+}

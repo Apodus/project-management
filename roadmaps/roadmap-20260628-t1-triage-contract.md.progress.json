@@ -1,0 +1,16 @@
+{
+  "vision": "roadmaps/vision-20260628-notes-triage-autonomy.md",
+  "campaign": "T1",
+  "status": "COMPLETE",
+  "branch": "campaign-notes-triage-autonomy",
+  "completed_phases": [
+    { "phase": "P1", "commit": "6e59465", "outcome": "needs_human status + reopen + assertMutable partition consts. No migration." },
+    { "phase": "P2", "commit": "0e48649", "outcome": "Advisory proposalKind flavor. Migration 0035. Lifecycle-identical." },
+    { "phase": "P3", "commit": "82bfc97", "outcome": "settings.notesTriage + resolveNotesTriage helper + dismiss-identity authz (enabled-gated)." },
+    { "phase": "P4", "commit": "1d0f5d6", "outcome": "MCP triage tools (flag_needs_human, reopen, promote w/ proposal_kind) + proposal-gate sealed at tool layer. mcp 223 / server 1775 green." }
+  ],
+  "dag_drift": [
+    { "pair": ["T2", "T3"], "reason": "Vision DAG marks T2/T3 concurrency-eligible, but they share the triage-decision side-log data model (T2 writes, T3 reads) and both touch server schema/migrations (migrations cannot be authored in parallel). Serialized T2 then T3 per the skill's serialize-conflicting-pair rule." }
+  ],
+  "next_campaign": "T2"
+}

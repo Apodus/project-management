@@ -1,0 +1,14 @@
+{
+  "vision": "roadmaps/vision-20260628-notes-triage-autonomy.md",
+  "campaign": "T3",
+  "status": "COMPLETE",
+  "branch": "campaign-notes-triage-autonomy",
+  "completed_phases": [
+    { "phase": "P1", "commit": "fee2936", "outcome": "web inbox needs_human/badges/undo/audit + SSE + noteId filter + proposalKind enrichment." },
+    { "phase": "P2", "commit": "ed7c9df", "outcome": "notes-triage settings page (off|shadow|on)." },
+    { "phase": "P3", "commit": "ab0f703", "outcome": "triage dashboard: decision-mix + latency + lane counts + heartbeat + audit chain." },
+    { "phase": "P4", "commit": "9584ac1", "outcome": "alerts: backlog reuse from triage path + honest triage.stalled. migration 0037." },
+    { "phase": "P5", "commit": "5d168bf", "outcome": "Playwright e2e seal (37/37) — 6 scenarios + shadow/on gating; ARC CLOSE. Full suite green; proposal-gate byte-identical." }
+  ],
+  "arc_status": "COMPLETE — T1+T2+T3 all shipped on branch campaign-notes-triage-autonomy; NOT merged to main; ships OFF (settings.notesTriage.enabled=false)."
+}
