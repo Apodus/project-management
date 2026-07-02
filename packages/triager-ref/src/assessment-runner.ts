@@ -2,10 +2,11 @@
  * The triage assessment runner (Campaign T2·P3).
  *
  * The triager spawns a fresh headless client turn (default `claude -p`) seeded
- * with the assessment prompt so the agent reads the note, investigates the PM repo
- * READ-ONLY, and declares a structured triage decision — bounded by a wall-clock
- * time budget. ONE attempt, no retry. The agent NEVER mutates code; the only
- * artifact is the decision sentinel.
+ * with the assessment prompt so the agent reads the note, investigates the
+ * PROJECT'S code repo READ-ONLY (the `cwd` is that project's refreshed dedicated
+ * checkout — decide.ts), and declares a structured triage decision — bounded by a
+ * wall-clock time budget. ONE attempt, no retry. The agent NEVER mutates code; the
+ * only artifact is the decision sentinel.
  *
  * MIRRORS responder-runner.ts's spawn + SIGTERM→SIGKILL(killTree) lifecycle
  * verbatim (the kill goes through `killTree`, NOT `child.kill`, because Windows

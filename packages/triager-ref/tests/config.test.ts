@@ -119,6 +119,63 @@ describe("loadConfig", () => {
     expect(cfg.logsDir).toBe("/var/log/triager");
   });
 
+  it("parses --project-repo <id>=<path> entries into projectRepos; defaults repoRef", () => {
+    const cfg = loadConfig(
+      { project: ["proj-a", "proj-b"], projectRepo: ["proj-a=/repos/a", "proj-b=/repos/b"] },
+      { ...baseEnv },
+    );
+    expect(cfg.projectRepos.get("proj-a")).toBe("/repos/a");
+    expect(cfg.projectRepos.get("proj-b")).toBe("/repos/b");
+    expect(cfg.repoRef).toBe("origin/main");
+  });
+
+  it("reads the env single PM_TRIAGE_PROJECT_REPO; CLI wins on a duplicate id", () => {
+    const cfg = loadConfig(
+      { projectRepo: ["p=/cli/path"] },
+      { ...baseEnv, PM_PROJECT_ID: "p", PM_TRIAGE_PROJECT_REPO: "p=/env/path" },
+    );
+    // CLI entry parsed after the env entry ⇒ CLI wins.
+    expect(cfg.projectRepos.get("p")).toBe("/cli/path");
+  });
+
+  it("honors --repo-ref / PM_TRIAGE_REPO_REF (CLI wins); trims blanks to the default", () => {
+    expect(
+      loadConfig(
+        { projectRepo: ["p=/r"], repoRef: "origin/release" },
+        { ...baseEnv, PM_PROJECT_ID: "p" },
+      ).repoRef,
+    ).toBe("origin/release");
+    expect(
+      loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p", PM_TRIAGE_REPO_REF: "upstream/main" })
+        .repoRef,
+    ).toBe("upstream/main");
+    // CLI precedence over env.
+    expect(
+      loadConfig(
+        { repoRef: "origin/cli" },
+        { ...baseEnv, PM_PROJECT_ID: "p", PM_TRIAGE_REPO_REF: "origin/env" },
+      ).repoRef,
+    ).toBe("origin/cli");
+    // Whitespace-only ⇒ default.
+    expect(loadConfig({ repoRef: "   " }, { ...baseEnv, PM_PROJECT_ID: "p" }).repoRef).toBe(
+      "origin/main",
+    );
+  });
+
+  it("a project with no configured repo is NOT a config error (it resolves needs_human later)", () => {
+    const cfg = loadConfig({}, { ...baseEnv, PM_PROJECT_ID: "p" });
+    expect(cfg.projectRepos.size).toBe(0);
+  });
+
+  it.each(["no-equals", "=only-path", "id=", "  =  "])(
+    "is fatal (ConfigError) on a malformed --project-repo entry: %s",
+    (entry) => {
+      expect(() =>
+        loadConfig({ projectRepo: [entry] }, { ...baseEnv, PM_PROJECT_ID: "p" }),
+      ).toThrow(ConfigError);
+    },
+  );
+
   it("strips a trailing slash from the pm url; CLI overrides env", () => {
     const cfg = loadConfig(
       { pmUrl: "http://host:3000///" },

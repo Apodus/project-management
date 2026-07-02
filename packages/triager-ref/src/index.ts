@@ -8,6 +8,7 @@ import { runTriagerLoop } from "./loop.js";
 import { createClaudeInjectionSniffer } from "./injection-sniffer.js";
 import { createClaudeAssessmentRunner } from "./assessment-runner.js";
 import { createTriageDecide } from "./decide.js";
+import { createGitRepoRefresher } from "./repo-refresh.js";
 import { VERSION } from "./version.js";
 
 function collect(value: string, prev: string[]): string[] {
@@ -23,6 +24,13 @@ async function main(): Promise<void> {
     .option("--log-level <level>", "pino log level (trace|debug|info|warn|error|fatal)")
     .option("--poll-interval-sec <sec>", "Polling interval in seconds")
     .option("--project <id>", "Project id to watch (repeatable)", collect, [] as string[])
+    .option(
+      "--project-repo <id=path>",
+      "Dedicated code checkout for a watched project, as <projectId>=<path> (repeatable)",
+      collect,
+      [] as string[],
+    )
+    .option("--repo-ref <ref>", "Git ref the checkouts are refreshed to (default origin/main)")
     .parse(process.argv);
 
   const args = program.opts() as CliArgs;
@@ -95,6 +103,7 @@ async function main(): Promise<void> {
   // loop still ignores it (execution / recording / mode-gating is P4).
   const sniffer = createClaudeInjectionSniffer({ command: cfg.command });
   const runner = createClaudeAssessmentRunner({ command: cfg.command });
+  const refresher = createGitRepoRefresher();
   const decide = createTriageDecide({
     sniffer,
     runner,
@@ -102,6 +111,9 @@ async function main(): Promise<void> {
     command: cfg.command,
     budget: { timeBudgetSec: cfg.timeBudgetSec },
     logger,
+    projectRepos: cfg.projectRepos,
+    repoRef: cfg.repoRef,
+    refresher,
   });
 
   logger.info(
@@ -109,6 +121,11 @@ async function main(): Promise<void> {
       version: VERSION,
       pmUrl: cfg.pmUrl,
       projectIds: cfg.projectIds,
+      // Which watched projects have a dedicated checkout wired (a missing one
+      // resolves needs_human until configured) + the ref they're refreshed to.
+      reposConfigured: cfg.projectIds.filter((id) => cfg.projectRepos.has(id)),
+      reposMissing: cfg.projectIds.filter((id) => !cfg.projectRepos.has(id)),
+      repoRef: cfg.repoRef,
       pollIntervalSec: cfg.pollIntervalSec,
       maxConcurrent: cfg.maxConcurrent,
       selfId,

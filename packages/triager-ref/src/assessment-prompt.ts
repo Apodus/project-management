@@ -15,7 +15,8 @@ import type { Note } from "@pm/shared";
  * The default triage instruction. The load-bearing contract:
  *   - Bias-to-reversible: DISMISS only on clear, unambiguous no-merit; ANY merit
  *     ambiguity ⇒ needs_human; merit-but-unsure-size ⇒ prefer promote_standard.
- *   - Investigate the PM repo READ-ONLY (read code/docs to assess; NEVER edit).
+ *   - Investigate the PROJECT'S code repo (the cwd) READ-ONLY to judge whether the
+ *     issue STILL EXISTS in current code (read code/docs to assess; NEVER edit).
  *   - Fast-track sizing: small / self-contained / single-task-able / NO schema
  *     migration / NO cross-cutting ⇒ promote_fast_track WITH a minimal breakdown
  *     (≤3 tasks); larger / multi-area / schema / cross-cutting ⇒ promote_standard
@@ -30,14 +31,18 @@ export const DEFAULT_ASSESSMENT_PROMPT =
   "You are a PM-side triager. A note landed in the project's notes inbox and needs a " +
   "triage decision. Assess it and decide its disposition.\n\n" +
   "Note:\n{note}\n\n" +
-  "Investigate the PM repo READ-ONLY — read code, docs, tests, and git history to judge " +
-  "whether this note has merit and how large the work would be. You MUST NOT edit, commit, " +
-  "push, or branch anything — assessment is read-only; the only artifact you produce is the " +
-  "decision sentinel below.\n\n" +
+  "Your current working directory IS a checkout of THIS PROJECT'S code (refreshed to the " +
+  "latest main). Investigate it READ-ONLY — read code, docs, tests, and git history to " +
+  "determine whether the issue described in this note STILL EXISTS in the current code, and " +
+  "to judge merit and how large the work would be. This is the crux: a note may describe " +
+  "something already fixed, never real, or since superseded — verify against the code rather " +
+  "than trusting the note's text. You MUST NOT edit, commit, push, or branch anything — " +
+  "assessment is read-only; the only artifact you produce is the decision sentinel below.\n\n" +
   "Decide ONE of these five dispositions and bias toward the REVERSIBLE choice:\n" +
-  "  - dismiss: ONLY when the note has clear, unambiguous NO MERIT (already fixed, " +
-  "nonsensical, duplicate of resolved work, out of scope). If there is ANY ambiguity about " +
-  "merit, do NOT dismiss.\n" +
+  "  - dismiss: ONLY when the note has clear, unambiguous NO MERIT — e.g. you VERIFIED against " +
+  "the current code that it is already fixed / no longer reproduces, or it is nonsensical, a " +
+  "duplicate of resolved work, or out of scope. If there is ANY ambiguity about merit, do NOT " +
+  "dismiss.\n" +
   "  - needs_human: any merit ambiguity, a judgment call, or anything you cannot confidently " +
   "decide — punt to a human rather than guess.\n" +
   "  - promote_standard: the note has merit but is larger, spans multiple areas, needs a " +

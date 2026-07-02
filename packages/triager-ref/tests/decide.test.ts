@@ -4,9 +4,12 @@ import path from "node:path";
 import { createTriageDecide } from "../src/decide.js";
 import type { InjectionSniffer, InjectionSniffResult } from "../src/injection-sniffer.js";
 import type { AssessmentRunner, AssessmentResult } from "../src/assessment-runner.js";
+import { createFakeRepoRefresher, type RepoRefresher } from "../src/repo-refresh.js";
 import type { TriageAssessment } from "../src/decision.js";
 import type { Note } from "@pm/shared";
 import type { Logger } from "../src/logger.js";
+
+const REPO_PATH = "/repos/p";
 
 const silentLogger = {
   info: () => {},
@@ -58,7 +61,11 @@ function runner(result: AssessmentResult): {
   return { runner: { run: spy }, spy };
 }
 
-function deps(s: InjectionSniffer, r: AssessmentRunner) {
+function deps(
+  s: InjectionSniffer,
+  r: AssessmentRunner,
+  over: { projectRepos?: Map<string, string>; refresher?: RepoRefresher; repoRef?: string } = {},
+) {
   return {
     sniffer: s,
     runner: r,
@@ -66,6 +73,10 @@ function deps(s: InjectionSniffer, r: AssessmentRunner) {
     command: "claude -p",
     budget: { timeBudgetSec: 60 },
     logger: silentLogger,
+    // Project "p" (the shared ctx) maps to a dedicated checkout by default.
+    projectRepos: over.projectRepos ?? new Map([["p", REPO_PATH]]),
+    repoRef: over.repoRef ?? "origin/main",
+    refresher: over.refresher ?? createFakeRepoRefresher(),
   };
 }
 
@@ -99,6 +110,78 @@ describe("createTriageDecide", () => {
     const decide = createTriageDecide(deps(s.sniffer, r.runner));
     await decide({ note: mkNote(), ...ctx });
     expect(r.spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("no repo configured for the project ⇒ needs_human; sniffer + runner NEVER called", async () => {
+    const s = sniffer({ kind: "clean" });
+    const r = runner({ kind: "dismiss", rationale: "x", confidence: 0.9 });
+    const refresher = createFakeRepoRefresher();
+    const decide = createTriageDecide(
+      deps(s.sniffer, r.runner, { projectRepos: new Map(), refresher }),
+    );
+    const out = await decide({ note: mkNote(), ...ctx });
+    expect(out.kind).toBe("needs_human");
+    expect(out.rationale).toContain("no code repo configured");
+    expect(s.spy).not.toHaveBeenCalled();
+    expect(r.spy).not.toHaveBeenCalled();
+    expect(refresher.calls).toHaveLength(0);
+  });
+
+  it("refreshes the checkout to (path, ref) after a clean sniff and BEFORE the runner", async () => {
+    const order: string[] = [];
+    const s = { sniff: vi.fn(async () => ({ kind: "clean" }) as InjectionSniffResult) };
+    const refresher = createFakeRepoRefresher(() => {
+      order.push("refresh");
+    });
+    const r = {
+      run: vi.fn(async (input: { cwd: string }) => {
+        order.push("run");
+        expect(input.cwd).toBe(REPO_PATH); // runs in the project checkout
+        return { kind: "dismiss", rationale: "gone", confidence: 0.9 } as AssessmentResult;
+      }),
+    };
+    const decide = createTriageDecide(deps(s, r, { refresher, repoRef: "origin/main" }));
+    const out = await decide({ note: mkNote(), ...ctx });
+    expect(out.kind).toBe("dismiss");
+    expect(refresher.calls).toEqual([{ repoPath: REPO_PATH, ref: "origin/main" }]);
+    expect(order).toEqual(["refresh", "run"]); // refresh strictly precedes assessment
+  });
+
+  it("refresh failure ⇒ fail-safe needs_human; runner NEVER called", async () => {
+    const s = sniffer({ kind: "clean" });
+    const r = runner({ kind: "dismiss", rationale: "x", confidence: 0.9 });
+    const refresher = createFakeRepoRefresher(() => {
+      throw new Error("fatal: not a git repository");
+    });
+    const decide = createTriageDecide(deps(s.sniffer, r.runner, { refresher }));
+    const out = await decide({ note: mkNote(), ...ctx });
+    expect(out.kind).toBe("needs_human");
+    expect(out.rationale).toContain("repo refresh failed");
+    expect(out.rationale).toContain("not a git repository");
+    expect(r.spy).not.toHaveBeenCalled();
+  });
+
+  it("serializes same-project assessments over the one dedicated checkout", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const s = { sniff: vi.fn(async () => ({ kind: "clean" }) as InjectionSniffResult) };
+    const r = {
+      run: vi.fn(async () => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((res) => setTimeout(res, 5));
+        active--;
+        return { kind: "give_up", rationale: "", confidence: 0 } as AssessmentResult;
+      }),
+    };
+    const decide = createTriageDecide(deps(s, r));
+    // Two concurrent decisions for the SAME project must not overlap.
+    await Promise.all([
+      decide({ note: mkNote({ id: "a" }), ...ctx }),
+      decide({ note: mkNote({ id: "b" }), ...ctx }),
+    ]);
+    expect(r.run).toHaveBeenCalledTimes(2);
+    expect(maxActive).toBe(1);
   });
 
   it.each([
@@ -146,6 +229,9 @@ describe("createTriageDecide", () => {
     expect(path.dirname(sniffArg.logPath)).toBe(LOGS_DIR);
     expect(path.dirname(runArg.statusPath)).toBe(LOGS_DIR);
     expect(path.dirname(runArg.logPath)).toBe(LOGS_DIR);
+    // Both sessions run in the project's dedicated checkout (its code, not the PM repo).
+    expect(sniffArg.cwd).toBe(REPO_PATH);
+    expect(runArg.cwd).toBe(REPO_PATH);
     // id sanitized into the filename (no path separators / colons leak through).
     expect(sniffArg.statusPath).not.toContain("weird/id:1");
   });

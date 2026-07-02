@@ -14,6 +14,7 @@ import { triagerTick, createTriagerState, type TriagerDeps } from "../src/loop.j
 import { createTriageDecide } from "../src/decide.js";
 import { createFakeInjectionSniffer, type InjectionSniffResult } from "../src/injection-sniffer.js";
 import { createFakeAssessmentRunner, type AssessmentResult } from "../src/assessment-runner.js";
+import { createFakeRepoRefresher } from "../src/repo-refresh.js";
 import type { TriagerProjectView } from "../src/api-client.js";
 import type { Note, ResolvedNotesTriage, TriageDecision } from "@pm/shared";
 import type { Logger } from "../src/logger.js";
@@ -161,6 +162,7 @@ function realDecide(
   sniffById: Record<string, InjectionSniffResult>,
   assessById: Record<string, AssessmentResult>,
   runnerCalls: string[],
+  over: { projectRepos?: Map<string, string> } = {},
 ) {
   const sniffer = createFakeInjectionSniffer(
     (input) => sniffById[input.note.id] ?? { kind: "clean" },
@@ -178,6 +180,10 @@ function realDecide(
     command: "claude -p",
     budget: { timeBudgetSec: 1 },
     logger: silentLogger,
+    // Project "p" has a dedicated checkout; refresh is a no-op fake.
+    projectRepos: over.projectRepos ?? new Map([["p", "/repos/p"]]),
+    repoRef: "origin/main",
+    refresher: createFakeRepoRefresher(),
   });
 }
 
@@ -262,6 +268,31 @@ describe("triager e2e seal — on-mode across all decision kinds", () => {
     await triagerTick(mkDeps(client, decide), state);
     expect(client.records.length).toBe(recordsAfterTick1);
     expect("createNote" in client).toBe(false);
+  });
+
+  it("a watched project with NO configured checkout resolves needs_human without spawning", async () => {
+    const notes = [mkNote("n1", { createdAt: "2026-06-01T00:00:00.000Z" })];
+    const client = new FakeClient({ notesTriage: { enabled: true, mode: "on" } }, notes);
+    const runnerCalls: string[] = [];
+    // Project "p" is watched but has NO dedicated checkout → cannot code-verify.
+    const decide = realDecide(
+      {},
+      { n1: { kind: "dismiss", rationale: "would-dismiss", confidence: 1 } },
+      runnerCalls,
+      { projectRepos: new Map() },
+    );
+    const state = createTriagerState();
+    await triagerTick(mkDeps(client, decide), state);
+
+    // No assessment spawned (the scripted dismiss never runs); the note is flagged
+    // needs_human and recorded as such — never blind-dismissed.
+    expect(runnerCalls).toHaveLength(0);
+    expect(client.dismissNote).not.toHaveBeenCalled();
+    expect(client.flagNeedsHuman).toHaveBeenCalledWith("n1");
+    expect(client.records.find((r) => r.noteId === "n1")).toMatchObject({
+      mode: "on",
+      decision: "needs_human",
+    });
   });
 
   it("spawn budget composes: maxSpawns=3 acts on only 3 of 5 this tick; the rest re-seed next tick", async () => {

@@ -41,6 +41,16 @@ describe("DEFAULT_ASSESSMENT_PROMPT", () => {
     }
   });
 
+  it("directs the agent to verify the issue against the project's current code", () => {
+    // The crux of repo-aware assessment: investigate THIS project's checkout and
+    // judge whether the issue STILL EXISTS — not just trust the note's text.
+    expect(DEFAULT_ASSESSMENT_PROMPT).toMatch(/THIS PROJECT'S code/);
+    expect(DEFAULT_ASSESSMENT_PROMPT).toMatch(/STILL EXISTS/);
+    expect(DEFAULT_ASSESSMENT_PROMPT).toMatch(/working directory/i);
+    // No longer points at the PM repo.
+    expect(DEFAULT_ASSESSMENT_PROMPT).not.toMatch(/the PM repo/);
+  });
+
   it("encodes the bias-to-reversible discipline", () => {
     // dismiss only on clear no-merit; ambiguity ⇒ needs_human; unsure size ⇒ standard.
     expect(DEFAULT_ASSESSMENT_PROMPT).toContain("NO MERIT");
