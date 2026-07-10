@@ -21,6 +21,7 @@ describe("AUDIT_ACTIONS", () => {
       "cancel",
       "force_claim",
       "claim_reclaimed",
+      "outer_converted",
     ]);
   });
 

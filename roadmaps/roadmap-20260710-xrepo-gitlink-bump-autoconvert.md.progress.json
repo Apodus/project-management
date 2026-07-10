@@ -1,0 +1,23 @@
+{
+  "roadmap": "roadmaps/roadmap-20260710-xrepo-gitlink-bump-autoconvert.md",
+  "branch": "campaign-xrepo-gitlink-bump-autoconvert",
+  "worktree": "D:/code/pm-wt-gitlink",
+  "completed_phases": ["P0", "P1", "P2", "P3", "P4", "P5"],
+  "current_phase": null,
+  "status": "complete-on-branch-not-merged",
+  "commits": {
+    "P0": "d2424a7",
+    "P1": "5bcda1b",
+    "P2": "768176b",
+    "P3": "8ba8dcd",
+    "P4": "bd998d6"
+  },
+  "open_issues": [],
+  "notes": [
+    "All 6 phases shipped. Direction C (assembly-time auto-convert of pure-gitlink-bump outer members). Always-on / fail-open, no toggle. On branch, NOT merged/pushed.",
+    "Final gate: typecheck 10/10, lint 10/10, build 8/8; tests green on touched surface (git-ops 8/8, group-convert 5/5, group-e2e 13/13, server 1831/1831, shared 16/16).",
+    "P5 caught+fixed a P2 omission: @pm/shared audit.test.ts canonical-order pin missed outer_converted.",
+    "Known non-blocking load flakes (pass isolated, untouched by campaign): batch.test.ts (3/51 ECONNRESET), wake-daemon worker-runner (1 timeout).",
+    "Operator: run docs/gitlink-autoconvert-p0-deployment-audit.md Probes A-C FIRST, then merge + rebuild/redistribute bundle + restart daemon + broadcast (see roadmap Ops handoff)."
+  ]
+}

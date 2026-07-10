@@ -200,3 +200,65 @@ assert byte-identity).
 6. Watch the first converted land on `/projects/{id}/train`: the outer member's timeline shows an
    `outer_converted` audit row, and the member row still reads `synthetic: false` (the conversion is
    an integration-time interpretation, never a row mutation).
+
+## Close-out (executed 2026-07-10, branch `campaign-xrepo-gitlink-bump-autoconvert`, base 923160d)
+
+All phases shipped; one logical commit per phase (+ one P5 fixup). Direction C exactly as
+Fable approved; A stayed rejected; every safety invariant sealed.
+
+- **P0 `d2424a7`** — campaign roadmap + operator-executable deployment-audit runbook
+  (`docs/gitlink-autoconvert-p0-deployment-audit.md`, Probes A–C). Baseline gate green (main
+  healthy; `batch.test.ts` flakes 3/51 with `ECONNRESET` under full-parallel turbo load — passes
+  51/51 isolated, a known load flake). Live probe: game_one train idle (0 queued/integrating/
+  incidents). Docs-only, no code.
+- **P1 `5bcda1b`** — `GitOps.isPureGitlinkBump(outerRef, gitlinkPath)`: net-diff over
+  `merge-base(HEAD, outerRef)` is exactly `[gitlinkPath]`; strict fail-open to `false` on any
+  error/ambiguity. New real-git matrix test, **8/8** (incl. the bump-to-already-landed keystone
+  proving the merge-base — not HEAD — diff base). git-ops +52.
+- **P2 `768176b`** — `assembleGroup` conversion arm: a real outer member that is a pure gitlink
+  bump SKIPS the outer rebase (via `resolveDetectRef`, which resolves a bare branch through
+  `<remote>/<ref>^{commit}` — production binds bare branches via the `--mirror` clone) and takes
+  the existing synthetic arm; `outerConverted` marker; surfacing = unconditional log line +
+  best-effort `noteOuterConverted` audit row (new `outer_converted` AUDIT_ACTION + server
+  service + `POST /api/v1/merge-requests/{id}/outer-converted` route; OpenAPI regenerated). DB
+  `synthetic` flag NOT flipped. `GroupIntegrationDeps.gitRemote` made required. group-convert
+  **5/5**, server **1831/1831**.
+- **P3 `8ba8dcd`** — e2e seals appended to `group-e2e.test.ts` (h/i/j), legacy flows (a)–(g)
+  byte-unmodified: (h) **campaign seal** reproduces the grass-stability ×7 drift (stale pure-bump
+  outer + outer main's gitlink advanced between submit and pickup) → group LANDS, zero
+  `outer_conflict`, outer `landedSha` filled, both members `synthetic===false`, `outer_converted`
+  audit row present; (i) negative — mixed bump+source still rejects `outer_conflict`, neither bare
+  main advances, no audit row; (j) happy-path equivalence — pure bump, no drift, lands with
+  gitlink === `Ri` AND the audit row proves the converted path was taken. group-e2e **13/13**.
+- **P4 `bd998d6`** — docs (deployment guide §14.10 + §14.7 edit, worker doc, CLAUDE.md 7.3 clause)
+  + ops handoff (leads with the P0 audit; broadcast = "inner-only still recommended; the train now
+  tolerates bump branches"). Accuracy read-back against the shipped code; every overclaim guardrail
+  respected. Prose-only.
+- **P5 `<this commit>`** — close-out. Final full gate caught ONE real regression the P2
+  package-scoped run missed: `@pm/shared tests/audit.test.ts` "AUDIT_ACTIONS … canonical order"
+  pinned the enum and P2 added `outer_converted` without updating it — **fixed here** (added
+  `outer_converted` in canonical position; shared **16/16**). Also observed a second gate failure,
+  `@urtela/pm-wake-daemon worker-runner.test.ts` "sleep beyond a tiny budget → timeout" — an
+  UNTOUCHED package, timing-sensitive; **4/4 isolated** ⇒ confirmed a load flake, not a regression.
+
+**Final gate:** `pnpm typecheck` 10/10, `pnpm lint` 10/10, `pnpm build` 8/8 green. Tests green on
+the touched surface (git-ops 8/8, group-convert 5/5, group-e2e 13/13, server 1831/1831, shared
+16/16 post-fix). Known non-blocking load flakes under full-parallel turbo: `batch.test.ts` (3/51,
+ECONNRESET) and `wake-daemon/worker-runner` (1, timeout) — both pass isolated, neither in this
+campaign's surface.
+
+**Footprint:** 22 files, ~+2012 lines. Core (integrator): `git-ops.ts`, `group-assembly.ts`,
+`group-integration.ts`, `batch.ts`, `pm-client.ts`. Surfacing (server): `audit.ts`,
+`merge-request.service.ts`, `routes/merge-requests.ts`, `openapi.json`. Tests:
+`git-ops-pure-gitlink-bump.test.ts` (+176), `group-convert.test.ts` (+628), `group-e2e.test.ts`
+(+265), `merge-requests-outer-converted.test.ts` (+119), + `gitRemote` fixture wiring.
+
+**Parked / out of scope (unchanged from the header):** multi-gitlink synthesis
+(`tools/rynx-treegen` — still needs a real outer member); auto-cancel of duplicate stale
+submissions; the `gitlink_mismatch` §11-assertion class; verify-failure triage
+(`c2/rotational-wind`-style rejections are real signal); 7.6 resolver interaction (group conflicts
+stay out of resolver scope); >2-repo topologies.
+
+**Status:** on branch `campaign-xrepo-gitlink-bump-autoconvert`, NOT merged, NOT pushed. Ships
+**always-on / fail-open** (no toggle) once the daemon bundle is deployed. Operator actions in the
+Ops handoff above (run P0 audit first; merge; rebuild+redistribute; restart daemon; broadcast).
