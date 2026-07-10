@@ -430,6 +430,7 @@ describe.skipIf(!GIT_AVAILABLE)("assembleGroup (real two-repo)", () => {
       innerRef: innerFeatureSha,
       outerRef: outerFeatureSha,
       gitlinkPath: GITLINK_PATH,
+      gitRemote: "origin",
     });
 
     expect(result.ok).toBe(true);
@@ -484,6 +485,7 @@ describe.skipIf(!GIT_AVAILABLE)("assembleGroup (real two-repo)", () => {
         innerRef: innerFeatureSha,
         outerRef: outerFeatureSha,
         gitlinkPath: GITLINK_PATH,
+        gitRemote: "origin",
       });
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.reason).toBe("backpressure");
@@ -512,6 +514,7 @@ describe.skipIf(!GIT_AVAILABLE)("assembleGroup (real two-repo)", () => {
         innerRef: innerFeatureSha,
         outerRef: outerFeatureSha,
         gitlinkPath: GITLINK_PATH,
+        gitRemote: "origin",
       });
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.reason).toBe("backpressure");

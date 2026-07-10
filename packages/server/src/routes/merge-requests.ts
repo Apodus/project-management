@@ -233,6 +233,10 @@ const resetToQueuedBody = z
   .object({ reason: z.string().min(1).max(500) })
   .openapi("MergeRequestResetToQueued");
 
+const outerConvertedBody = z
+  .object({ reason: z.string().min(1).max(500) })
+  .openapi("MergeRequestOuterConverted");
+
 // ─── Request body schemas ─────────────────────────────────────────
 // These mirror the shared zod schemas in @pm/shared/schemas/merge-request.ts
 // but are redeclared with the @hono/zod-openapi `z` (zod 4) because the
@@ -553,6 +557,37 @@ const resetToQueuedRoute = createRoute({
   },
 });
 
+const outerConvertedRoute = createRoute({
+  method: "post",
+  path: "/api/v1/merge-requests/{id}/outer-converted",
+  tags: ["Merge Requests"],
+  summary: "Integrator records a pure-gitlink-bump auto-conversion of an outer member",
+  description:
+    "Writes one durable `outer_converted` audit row: a REAL outer group member was recognized at assembly as a pure gitlink bump and its rebase skipped (the outer candidate synthesized on live main). NO status transition, NO attempt change; the DB `synthetic` flag is untouched. Integrator (ai_agent) only.",
+  request: {
+    params: z.object({ id: requestIdParam }),
+    body: { content: { "application/json": { schema: outerConvertedBody } }, required: true },
+  },
+  responses: {
+    200: {
+      description: "Conversion recorded",
+      content: { "application/json": { schema: mergeRequestDataEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    403: {
+      description: "Integrator only",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Request not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
 const forceCancelRoute = createRoute({
   method: "post",
   path: "/api/v1/merge-requests/{id}/force-cancel",
@@ -860,6 +895,14 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
     const user = requireUser(c.get("currentUser") as AuthUser | null);
     const { reason } = c.req.valid("json");
     const view = requestSvc.resetToQueued(id, actorOf(user), reason);
+    return c.json({ data: view }, 200);
+  });
+
+  router.openapi(outerConvertedRoute, (c) => {
+    const { id } = c.req.valid("param");
+    const user = requireUser(c.get("currentUser") as AuthUser | null);
+    const { reason } = c.req.valid("json");
+    const view = requestSvc.noteOuterConverted(id, actorOf(user), reason);
     return c.json({ data: view }, 200);
   });
 

@@ -37,6 +37,12 @@ export const AUDIT_ACTIONS = [
   // ── Claim lease (C2) ──
   // A lapsed claim lease was reclaimed by the sweep (reconcile-or-escalate).
   "claim_reclaimed",
+  // ── Cross-repo gitlink-bump auto-convert (Direction C) ──
+  // A REAL outer member was recognized at assembly as a pure gitlink bump and
+  // its rebase SKIPPED (the outer candidate synthesized on live main instead).
+  // Content-free ceremony discarded — an integration-time interpretation, NOT a
+  // status transition and NEVER a mutation of the DB `synthetic` flag.
+  "outer_converted",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

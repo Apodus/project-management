@@ -471,6 +471,7 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer groups (real two-repo)", () => 
       logger,
       innerLane: innerLane(),
       outerLane: outerLane(),
+      gitRemote: GIT_REMOTE,
       defaultVerifyCommand: "echo verify-ok",
       verifyTimeoutSec: 30,
       ...over,
@@ -842,6 +843,7 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer conflict-immunity (own fixture)
         gitOps: (p) => createGitOps(simpleGit(p)),
         resolveRefInClone: (ref) => resolveVerified(outerBindGit, ref),
       },
+      gitRemote: GIT_REMOTE,
       defaultVerifyCommand: "echo verify-ok",
       verifyTimeoutSec: 30,
     };
@@ -1029,6 +1031,7 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer no-op land (own fixture)", () =
         gitOps: (p) => createGitOps(simpleGit(p)),
         resolveRefInClone: (ref) => resolveVerified(outerBindGit, ref),
       },
+      gitRemote: GIT_REMOTE,
       defaultVerifyCommand: "echo verify-ok",
       verifyTimeoutSec: 30,
     };

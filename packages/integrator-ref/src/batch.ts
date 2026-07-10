@@ -2105,6 +2105,7 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
         logger,
         innerLane: groupLane.innerLane,
         outerLane: groupLane.outerLane,
+        gitRemote: deps.gitRemote,
         defaultVerifyCommand: deps.defaultVerifyCommand,
         verifyTimeoutSec: deps.verifyTimeoutSec,
         integratorId: groupLane.integratorId,

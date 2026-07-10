@@ -28,6 +28,19 @@ export interface AssembledGroupOk {
   /** The outer main SHA the outer rebase anchored to (§6.1 precondition 4). */
   baseOuterSha: string;
   gitlinkPath: string;
+  /**
+   * Direction-C marker (campaign xrepo-gitlink-bump-autoconvert): true ONLY on
+   * the arm where a REAL outer member (`outerRef !== null`) was recognized as a
+   * pure gitlink bump and its rebase SKIPPED — the outer candidate was
+   * synthesized on live main instead. False on BOTH the legacy-rebased path
+   * (`outerRef !== null`, rebase performed) AND the born-synthetic path
+   * (`outerRef === null`, an inner-only group): a conversion is a distinct
+   * honest signal — an integration-time interpretation of a two-member request —
+   * NOT the same thing as a PM-minted inner-only group. Consumed by
+   * group-integration.ts for the log line + PM audit row; never mutates the DB
+   * `synthetic` flag.
+   */
+  outerConverted: boolean;
   /** Release BOTH correlated worktree slots back to their pools. */
   release(): void;
 }
@@ -82,6 +95,33 @@ export interface AssembleGroupDeps {
   outerRef: string | null;
   /** The inner linkedRepo's gitlink path within the outer tree (POSIX slashes). */
   gitlinkPath: string;
+  /**
+   * The git remote name (e.g. "origin"). Used to DWIM-resolve the outer
+   * detection ref before `isPureGitlinkBump` — a bare branch name binds as
+   * `<remote>/<branch>`, mirroring what `rebaseOnto`'s `git checkout <ref>`
+   * performs, so detection sees the exact commit the rebase would.
+   */
+  gitRemote: string;
+}
+
+/** Resolve the outer detection ref to a concrete present commit, mirroring the DWIM
+ *  that rebaseOnto's `git checkout <ref>` performs (bare branch → <remote>/<branch>),
+ *  so isPureGitlinkBump sees the exact commit the rebase would. Returns null when
+ *  neither form resolves ⇒ caller keeps the legacy rebase (fail-open). The `^{commit}`
+ *  peel forces object presence (bare revparse of a 40-hex echoes it back unverified). */
+async function resolveDetectRef(
+  gitOps: GitOps,
+  ref: string,
+  remote: string,
+): Promise<string | null> {
+  for (const cand of [`${ref}^{commit}`, `${remote}/${ref}^{commit}`]) {
+    try {
+      return await gitOps.resolveRef(cand);
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
 }
 
 // ─── The corrected §5.2 9-step assembly ──────────────────────────────
@@ -156,8 +196,27 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
 
     // ── steps 4-6: outer reset, base, then rebase (REAL outer member only) ──
     await outerWt.resetForAttempt();
-    const baseOuterSha = await outerGitOps.resolveRef("HEAD"); // = Mo
+    const baseOuterSha = await outerGitOps.resolveRef("HEAD"); // = Mo (live outer main)
+
+    // Direction-C conversion (campaign xrepo-gitlink-bump-autoconvert): a REAL outer
+    // member whose NET contribution over its fork point is EXACTLY the gitlink is
+    // content-free ceremony — step 8 overwrites the gitlink to Ri regardless, so the
+    // outer rebase is pointless AND is the only thing that can mint outer_conflict.
+    // Recognize it and take the synthetic arm (skip the rebase; steps 7-9 synthesize
+    // the outer candidate on live main — identical to the outerRef===null arm).
+    let skipOuterRebase = false;
+    let outerConverted = false;
     if (deps.outerRef !== null) {
+      const detectRef = await resolveDetectRef(outerGitOps, deps.outerRef, deps.gitRemote);
+      if (
+        detectRef !== null &&
+        (await outerGitOps.isPureGitlinkBump(detectRef, deps.gitlinkPath))
+      ) {
+        skipOuterRebase = true;
+        outerConverted = true;
+      }
+    }
+    if (deps.outerRef !== null && !skipOuterRebase) {
       const outerRebase = await outerGitOps.rebaseOnto(baseOuterSha, deps.outerRef);
       if (!outerRebase.ok) {
         return {
@@ -169,9 +228,10 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
       }
       // outerRebase.treeSha is Ro' — outer rebased, gitlink still at the OLD inner.
     }
-    // SYNTHETIC outer (outerRef null): no rebase — the worktree sits at live
-    // outer main (= baseOuterSha) and step 8 mints the one gitlink-bump commit
-    // on top of it. outer_conflict is structurally unreachable on this arm.
+    // SYNTHETIC outer (outerRef null) OR a converted pure-bump: no rebase — the
+    // worktree sits at live outer main (= baseOuterSha) and step 8 mints the one
+    // gitlink-bump commit on top of it. outer_conflict is structurally unreachable
+    // on this arm.
 
     // ── step 7: copy Ri's objects into the outer clone (for step 9's checkout) ──
     await outerGitOps.fetchFromPath(innerWt.path, Ri);
@@ -219,6 +279,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
       baseInnerSha,
       baseOuterSha,
       gitlinkPath: deps.gitlinkPath,
+      outerConverted,
       release,
     };
   } catch (err) {

@@ -363,6 +363,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       logger,
       innerLane: innerLane(),
       outerLane: outerLane(),
+      gitRemote: "origin",
       defaultVerifyCommand: "echo verify-ok",
       verifyTimeoutSec: 30,
       ...over,

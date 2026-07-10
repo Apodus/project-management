@@ -302,6 +302,22 @@ export class PmClient {
     );
   }
 
+  /**
+   * Record that a REAL outer member was auto-converted to the synthetic arm — a
+   * pure gitlink bump whose rebase was skipped (campaign xrepo-gitlink-bump-
+   * autoconvert). Writes exactly ONE `outer_converted` audit row (no status
+   * transition, no attempt change) so the conversion is legible in the
+   * timeline/audit. Best-effort at the call site — a surfacing failure must
+   * never break the land. POST /api/v1/merge-requests/{id}/outer-converted.
+   */
+  async noteOuterConverted(requestId: string, reason: string): Promise<void> {
+    await this.request<MergeRequestView>(
+      "POST",
+      `/merge-requests/${encodeURIComponent(requestId)}/outer-converted`,
+      { reason },
+    );
+  }
+
   rejectMergeRequest(
     requestId: string,
     payload: {

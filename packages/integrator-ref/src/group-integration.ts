@@ -75,6 +75,9 @@ export interface GroupIntegrationDeps {
   /** The two linked-repo lanes (exactly one inner + one outer). */
   innerLane: RepoLane;
   outerLane: RepoLane;
+  /** The git remote name (e.g. "origin"), threaded to assembleGroup so the
+   *  Direction-C detection can DWIM-resolve a bare outer branch ref. */
+  gitRemote: string;
   /** Per-repo verify fallback when a member has no verifyCmd. */
   defaultVerifyCommand: string;
   verifyTimeoutSec: number;
@@ -417,6 +420,7 @@ export async function runGroupIntegration(
     innerRef,
     outerRef,
     gitlinkPath,
+    gitRemote: deps.gitRemote,
   };
   const asm = await assembleGroup(asmDeps);
 
@@ -474,6 +478,37 @@ export async function runGroupIntegration(
       "markGroupIntegrating failed; releasing worktrees",
     );
     return { kind: "backpressure" };
+  }
+
+  // ── 3b. Direction-C conversion surfacing (campaign xrepo-gitlink-bump-
+  //        autoconvert). A REAL outer member recognized as a pure gitlink bump
+  //        had its rebase SKIPPED (the outer candidate was synthesized on live
+  //        main). Emit an UNCONDITIONAL log line + a best-effort PM audit row so
+  //        the conversion is legible in the timeline/audit — never a silent
+  //        magic. The audit call swallows errors: a surfacing failure must NEVER
+  //        break the land (the DB `synthetic` flag stays untouched — this is an
+  //        integration-time interpretation, not a row mutation). ──
+  if (asm.outerConverted) {
+    logger.info(
+      {
+        groupId: group.id,
+        outerMemberId: outerMember.id,
+        gitlinkPath,
+        baseOuterSha: asm.baseOuterSha,
+      },
+      "outer member superseded: pure gitlink bump — outer candidate synthesized against live main",
+    );
+    try {
+      await pmClient.noteOuterConverted(
+        outerMember.id,
+        "outer member superseded: pure gitlink bump — outer candidate synthesized against live main",
+      );
+    } catch (err) {
+      logger.warn(
+        { groupId: group.id, err: err instanceof Error ? err.message : String(err) },
+        "noteOuterConverted surfacing failed (non-fatal)",
+      );
+    }
   }
 
   // ── 4. startAttempt per member (§5.3) — base = the SHA the per-repo rebase

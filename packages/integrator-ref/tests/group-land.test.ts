@@ -497,6 +497,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
       logger,
       innerLane: innerLane(),
       outerLane: outerLane(),
+      gitRemote: GIT_REMOTE,
       defaultVerifyCommand: "echo verify-ok",
       verifyTimeoutSec: 30,
       ...over,

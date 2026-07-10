@@ -1283,6 +1283,69 @@ export function resetToQueued(id: string, actor: Actor, reason: string): MergeRe
   return toView(updated);
 }
 
+/**
+ * Campaign xrepo-gitlink-bump-autoconvert (Direction C): record that a REAL
+ * outer group member was auto-converted to the synthetic arm at assembly — a
+ * pure gitlink bump whose rebase was skipped, the outer candidate synthesized on
+ * live main. This is an integration-time INTERPRETATION surfaced for legibility,
+ * NOT a lifecycle change: it writes exactly ONE `outer_converted` audit row and
+ * emits audit.recorded — NO status transition, NO attempt changes, and it NEVER
+ * mutates the DB `synthetic` flag (the binding invariant "synthetic ⇒ ref-less"
+ * stays a truthful record of what the worker submitted).
+ *
+ * Authz: integrator (actor.type === "ai_agent"). Mirrors resetToQueued's guard.
+ */
+export function noteOuterConverted(id: string, actor: Actor, reason: string): MergeRequestView {
+  const row = readRequestOrThrow(id);
+
+  if (actor.type !== "ai_agent") {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "Only integrator (ai_agent) users may note an outer-converted member.",
+    );
+  }
+
+  const db = getDb();
+  const now = new Date().toISOString();
+  let auditId: string | null = null;
+  let auditView: AuditLogView | null = null;
+
+  db.transaction((tx) => {
+    const after = { converted: true };
+    auditId = recordAudit(tx, {
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "outer_converted",
+      targetType: "merge_request",
+      targetId: row.id,
+      reason,
+      before: null,
+      after,
+      now,
+    });
+    auditView = {
+      id: auditId,
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "outer_converted",
+      targetType: "merge_request",
+      targetId: row.id,
+      reason,
+      metadataBefore: null,
+      metadataAfter: after,
+      createdAt: now,
+    };
+  });
+
+  // Emit AFTER commit so the admin audit log refreshes live (§2.6).
+  if (auditId !== null && auditView !== null) {
+    emitAuditRecorded(auditId, row.projectId, actor.id, auditView);
+  }
+
+  return toView(row);
+}
+
 // ─── Campaign A2 §P2+P3: escalation post-back ──────────────────────
 
 /**

@@ -6053,6 +6053,19 @@
           "reason"
         ]
       },
+      "MergeRequestOuterConverted": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
       "MergeRequestForceCancel": {
         "type": "object",
         "properties": {
@@ -25452,6 +25465,147 @@
         }
       }
     },
+    "/api/v1/merge-requests/{id}/outer-converted": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Integrator records a pure-gitlink-bump auto-conversion of an outer member",
+        "description": "Writes one durable `outer_converted` audit row: a REAL outer group member was recognized at assembly as a pure gitlink bump and its rebase skipped (the outer candidate synthesized on live main). NO status transition, NO attempt change; the DB `synthetic` flag is untouched. Integrator (ai_agent) only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestOuterConverted"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversion recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/merge-requests/{id}/force-cancel": {
       "post": {
         "tags": [
@@ -32011,7 +32165,8 @@
                 "requeue",
                 "cancel",
                 "force_claim",
-                "claim_reclaimed"
+                "claim_reclaimed",
+                "outer_converted"
               ]
             },
             "required": false,
