@@ -128,12 +128,14 @@ Operator runs Probes A–C on the game_one machine and records the results below
 back to the commander). The campaign proceeds through P1–P3 in parallel with this — only the
 **P4 ops handoff messaging** and the go/no-go on the scope-change trigger depend on the outcome.
 
-### Results (fill in)
+### Results (executed 2026-07-10, read-only against `D:\code\project-management\data\pm.db`)
 
-- **A1 synthetic column present?** ⬜ yes ⬜ no →
-- **A2 applied migrations / newest:** →
-- **B1 bundle version / built-from commit:** →
-- **B2 daemon start time / restarted since last config change?** →
-- **C1/C2 July categories:** →
-- **C3 synthetic count (ever):** →
-- **Scope-change trigger hit?** ⬜ no → proceed ⬜ yes → halt + fix inner-only defect
+- **A1 synthetic column present?** ✅ **YES** — `merge_requests.synthetic` exists ⇒ **migration 0027 is live**. The `synthesize_outer` inner-only endpoint IS reachable in production.
+- **A2 applied migrations / newest:** **38 applied, newest 2026-06-28** (migration 0037 era). The live server is current — NOT the pre-0027 hypothesis.
+- **B1/B2 bundle vintage / daemon start:** not probed here (needs the game_one daemon files / process) — the daemon is clearly running (train landed groups through 2026-07-10T12:49). Check the bundle version + restart-since at deploy time.
+- **C3 synthetic count (ever):** **60** — inner-only `synthesize_outer` HAS been adopted and used; synthetic members land cleanly (e.g. 2026-07-10T06:58, 2026-07-09T22:27). **No inner-only failures observed.**
+- **C1/C2 categories since 2026-06-10:** rejected tally — **conflict 51, other 44, build_failed 13, lint_failed 2**. The `outer_conflict): rynx` gitlink ping-pong is **STILL occurring in July**: `fix/tracer-visibility-gate` + `fix/bullet-visibility` rejected `outer_conflict): rynx` TWICE (07-10 00:37 & 00:58) before landing 01:09; `c2/destructible-doors`, `c1/nav-clearance-los`, `c2/ik-footlock` (07-07). ⇒ **exactly the failure class this campaign kills.** NOTE the `conflict` bucket is mixed: it ALSO contains genuine outer-SOURCE conflicts (`outer_conflict): src/topdownshooter/…`, e.g. `c4/event-poses` 07-10 08:14), `inner_conflict): src/…`, and textual `rebase conflict on …components.hpp` — those are REAL code conflicts the fix correctly does NOT touch. The `other` bucket (44) is mostly binding/pathspec errors (`could not unambiguously bind member`, `pathspec … did not match`) — a separate issue, out of scope.
+- **outer_converted audit rows:** **0** (expected — the fix is not deployed yet).
+- **Scope-change trigger hit?** ✅ **NO** → **proceed.** The sanctioned path is reachable AND used; the gitlink ping-pong persists anyway (worker discipline didn't hold) — the structural auto-convert is warranted. No inner-only defect to fix first.
+
+**Deployment implication (refines step 4):** the server is current (0027 present) and needs **no migration**, but it STILL needs a **redeploy** for the new `outer_converted` audit action + `POST /merge-requests/{id}/outer-converted` route. The conversion itself is daemon-side (works with just the daemon redeploy — groups will land instead of ping-ponging); the audit-row *surfacing* needs the server redeploy too, else the daemon's best-effort POST 404s (swallowed) and you get log-only legibility. Redeploy **both** server and daemon for full behavior.

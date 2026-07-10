@@ -192,8 +192,13 @@ assert byte-identity).
    plain shell where `NoDefaultCurrentDirectoryInExePath` is NOT set (a Claude Code-spawned shell
    sets it; the daemon's children then fail to resolve bare `pm-verify.bat`). Auto-convert is
    **daemon-side only** — it takes effect on this restart; there is **no PM-server migration** in
-   this campaign. But if the P0 audit shows the server predates migration 0027, restart/redeploy
-   the PM server too so `synthesize_outer` becomes reachable.
+   this campaign. **P0 audit executed 2026-07-10:** the live server is already current (migration
+   0027 present, 38 applied through 2026-06-28) and `synthesize_outer` is reachable and used
+   (60 synthetic members) — so no server *migration* is needed. BUT the server STILL needs a
+   **redeploy** for the new `outer_converted` audit action + `POST /merge-requests/{id}/outer-converted`
+   route: the conversion itself is daemon-side (lands groups with just the daemon redeploy), but the
+   audit-row surfacing needs the server too, else the daemon's best-effort POST 404s (swallowed) and
+   you get log-only legibility. **Redeploy both `run.bat` (server) and the integrator daemon.**
 5. Broadcast to game_one workers: "inner-only `synthesize_outer` is still recommended; the train now
    **tolerates** pure gitlink-bump outer branches automatically (auto-converts on drift) — stop
    hand-fixing or rebasing bump branches on drift." Do NOT tell workers bump branches are correct.
