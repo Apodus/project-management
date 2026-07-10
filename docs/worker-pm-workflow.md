@@ -240,7 +240,7 @@ A rejection is **ordinary new work**, not a failure state to halt on. It arrives
 
 ## Cross-repo changes: merge groups (rynx inner + outer)
 
-game_one is a cross-repo setup: the **rynx** inner Rust workspace is embedded in the outer game repo as a gitlink (submodule). A change that spans repos must land as a unit or not at all — otherwise the outer gitlink points at an inner SHA that isn't on inner's main. Use a **merge group**, and pick the form by where your change actually lives. The takeaway up front: **never mint gitlink-bump-only outer branches** — the train synthesizes the bump for you.
+game_one is a cross-repo setup: the **rynx** inner Rust workspace is embedded in the outer game repo as a gitlink (submodule). A change that spans repos must land as a unit or not at all — otherwise the outer gitlink points at an inner SHA that isn't on inner's main. Use a **merge group**, and pick the form by where your change actually lives. The takeaway up front: **never mint gitlink-bump-only outer branches** — the train synthesizes the bump for you (and if one is minted anyway, the train now tolerates it by auto-converting on drift — tolerated, not the supported path).
 
 ### Inner-only changes (the common case): ONE member + `synthesize_outer` — RECOMMENDED
 
@@ -278,7 +278,7 @@ Use this form ONLY when the outer repo carries real content changes, or you're b
    or poll pm_get_merge_group(group_id).
 ```
 
-A bump-only outer branch in this form recreates the failure class — it is stale at submit time, and assembly overwrites the bump anyway. Use the inner-only form instead. An outer branch with real content AND a gitlink bump is fine (the bump is simply overwritten).
+A bump-only outer branch in this form is now **tolerated**: the train auto-converts a pure gitlink-bump outer member — it recognizes the branch as content-free and synthesizes the outer candidate on live main — instead of rejecting `outer_conflict` when outer main drifts under it. So **stop hand-fixing or rebasing a bump branch on drift**; a stale bump no longer sinks the group. But tolerated is not correct: inner-only `synthesize_outer` is still the recommended form, and a bump-only outer branch is ceremony you shouldn't mint in the first place. An outer branch with real content AND a gitlink bump is fine (the bump is simply overwritten) — note that a **mixed** member like this does NOT auto-convert and still legitimately rejects `outer_conflict` if its real content conflicts.
 
 ### Both forms
 

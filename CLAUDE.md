@@ -155,7 +155,12 @@ authoritative per-feature spec is the linked `docs/design/phase-*.md` /
   workspace + outer gitlink) lands as a unit or not at all. `settings.integrator.
 linked_repos` (`[]` = single-repo). Orphaned-inner → durable incident +
   auto-rollforward. **Inner-only groups** (`synthesize_outer: true`) mint a
-  synthetic outer member. **Verify contract:** the outer verify must NOT
+  synthetic outer member; a legacy two-member group whose outer member is a
+  pure gitlink bump is **auto-converted** at assembly (outer rebase skipped,
+  outer synthesized on live main) — always-on/fail-open, so bump-branch drift
+  can't `outer_conflict`, and inner-only stays preferred (deployment guide
+  §14.10 / `roadmaps/roadmap-20260710-xrepo-gitlink-bump-autoconvert.md`).
+  **Verify contract:** the outer verify must NOT
   `submodule update --init` the gitlink path (see deployment guide §14.8).
 - **7.4 Observability + break-glass** — train dashboard / per-request timeline /
   audit; on-read metrics + SLO; 5 admin-only overrides (pause/resume/

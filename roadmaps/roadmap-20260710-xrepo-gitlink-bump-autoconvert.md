@@ -175,3 +175,28 @@ EVERY non-pure / error case.
 `group-integration.ts:160-269` (binding, untouched) / reject surfacing,
 `packages/server/src/services/merge-group.service.ts:321` (`classifyCreateForm`, untouched —
 assert byte-identity).
+
+## Ops handoff (operator actions after merge — NOT executed by the campaign)
+
+1. **P0 deployment-audit FIRST.** Run `docs/gitlink-autoconvert-p0-deployment-audit.md` Probes A–C
+   on the game_one machine before anything else. Findings shape the broadcast and confirm the
+   proximate cause: the server predating migration 0027 ⇒ `synthesize_outer` 400s ⇒ workers fell
+   back to bump branches; the July `outer_conflict` persistence; and whether inner-only is used at
+   all. **If the SCOPE-CHANGE TRIGGER fires (inner-only groups are FAILING in prod), HALT and fix
+   that first** — auto-convert is a safety net for legacy bumps, not a substitute for a working
+   inner-only path.
+2. Merge `campaign-xrepo-gitlink-bump-autoconvert` → `main` (full gate green; one commit per phase).
+3. Rebuild + redistribute the bundle to game_one: `pnpm build`, then `node scripts/distribute.mjs`
+   (ships the integrator bundle + the updated worker/operator docs to the target).
+4. Restart the integrator daemon (`run_daemon.bat` at the game_one target). Gotcha: launch from a
+   plain shell where `NoDefaultCurrentDirectoryInExePath` is NOT set (a Claude Code-spawned shell
+   sets it; the daemon's children then fail to resolve bare `pm-verify.bat`). Auto-convert is
+   **daemon-side only** — it takes effect on this restart; there is **no PM-server migration** in
+   this campaign. But if the P0 audit shows the server predates migration 0027, restart/redeploy
+   the PM server too so `synthesize_outer` becomes reachable.
+5. Broadcast to game_one workers: "inner-only `synthesize_outer` is still recommended; the train now
+   **tolerates** pure gitlink-bump outer branches automatically (auto-converts on drift) — stop
+   hand-fixing or rebasing bump branches on drift." Do NOT tell workers bump branches are correct.
+6. Watch the first converted land on `/projects/{id}/train`: the outer member's timeline shows an
+   `outer_converted` audit row, and the member row still reads `synthetic: false` (the conversion is
+   an integration-time interpretation, never a row mutation).

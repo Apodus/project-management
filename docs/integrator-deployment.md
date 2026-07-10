@@ -628,7 +628,7 @@ Every row preserves the prime invariant: **outer `main` is never advanced to a g
 `pm_request_merge_group` accepts **exactly one of two top-level forms** (the server enforces the exclusivity), and the `members` form has an inner-only variant. Three shapes:
 
 - **INNER-ONLY: exactly ONE member spec + `synthesize_outer: true` — RECOMMENDED for any change that lives entirely in the inner repo.** PM submits the real inner member and records a **synthetic** outer member in the same transaction; at integration the integrator synthesizes the outer candidate against **live outer `main`** (gitlink commit → the rebased inner SHA) and fills the synthetic member's `landedSha` at land. There is no worker-minted bump branch to go stale, so the stale-bump `outer_conflict` rejection class is **structurally impossible** for this form — see §14.9. The flag is strict: it must be exactly `true` (a 1-member array without it stays a 400), the topology must declare exactly one inner + one outer in `linked_repos` (else 400), and it cannot combine with `member_request_ids`.
-- **MULTI-MEMBER `members` (≥2 specs) — the atomic form for REAL outer content changes.** Pass ≥2 member specs (each `{ branch and/or commit_sha, verify_cmd?, task_id? }`); PM **submits and groups them in a single transaction**, so every member is **born group-bound**. This closes the submit→group window entirely: a freshly-submitted member can never be grabbed by a single-repo pickup mid-grouping. Use it when the outer member carries real outer-repo content; an outer member that would be nothing but a gitlink bump should be the inner-only form instead.
+- **MULTI-MEMBER `members` (≥2 specs) — the atomic form for REAL outer content changes.** Pass ≥2 member specs (each `{ branch and/or commit_sha, verify_cmd?, task_id? }`); PM **submits and groups them in a single transaction**, so every member is **born group-bound**. This closes the submit→group window entirely: a freshly-submitted member can never be grabbed by a single-repo pickup mid-grouping. Use it when the outer member carries real outer-repo content; an outer member that would be nothing but a gitlink bump should be the inner-only form instead. That said, the train now **auto-converts** a pure gitlink-bump outer member — it recognizes the member as content-free and synthesizes the outer candidate on live main (§14.10) instead of ping-ponging `outer_conflict` on drift — so a stale bump branch is no longer fatal; inner-only is still preferred.
 - **`member_request_ids` — the legacy two-step form.** Submit each repo's change as a normal merge request first (`pm_request_merge`, giving each member a `branch`/`commit_sha` and `verify_cmd`), then bind ≥2 already-queued, ungrouped request ids into the group. Cannot combine with `synthesize_outer`.
 
 Either way, a **grouped member is structurally guarded from single-repo pickup**: when a member's `group_id` is set, `transitionToIntegrating` returns **`409 GROUPED_MEMBER`** — independent of the client's list query and of serial vs. parallel mode (the query filter is a fast-path optimization, the 409 is the hard guard; honest dual-mechanism). The group lands or fails atomically; the worker subscribes to `merge.group.landed` / `merge.group.rejected` with the returned group id. `pm_get_merge_group` reports the group + member statuses.
@@ -729,6 +729,37 @@ additive on every view — real members carry `synthetic: false` — so existing
   corrective guidance baked in); the ref resolves in both repos or neither (the §14.6 ambiguity
   row); a synthetic member that "unexpectedly carries a branch/commitSha; refusing to integrate" —
   that one indicates an upstream PM bug and is worth a report.
+
+### 14.10 Legacy two-member gitlink-bump auto-convert (operator view)
+
+A legacy two-member group (a **real** outer member minted as a gitlink-bump branch, §14.7
+`members`/`member_request_ids`) no longer ping-pongs `outer_conflict` when outer main's gitlink
+moved first (the grass-stability ×7 loop). At assembly, **before** the outer rebase, the
+integrator inspects the real outer member: if its **net diff over `merge-base(outerRef, live
+outer main)` is EXACTLY the one declared gitlink path**, that member is content-free ceremony —
+step 8 overwrites the gitlink to `Ri` regardless of what the branch said — so the integrator
+**skips the outer rebase** and synthesizes the outer candidate on live outer `main` (the
+identical §14.9 synthetic arm: gitlink commit → `Ri` on top of `baseOuterSha`). ⇒ `outer_conflict`
+is **structurally unreachable** for that member even when outer main's gitlink advanced under it.
+
+- **Legibility.** The conversion is never silent: an unconditional log line
+  `outer member superseded: pure gitlink bump — outer candidate synthesized against live main`
+  plus a **best-effort** `outer_converted` audit row on the outer member's timeline (the audit
+  call swallows errors — a surfacing failure never breaks the land). It is **not** a lifecycle
+  change and does **not** flip the DB `synthetic` flag — the real member's row stays an honest
+  record; the conversion is an integration-time interpretation, not a row mutation. `landedSha`
+  fills with the synthesized outer commit `Ro` exactly as the legacy path would.
+- **Scope limits (state plainly).** It fires **only** when the member's net diff is EXACTLY the
+  one declared gitlink path. A **mixed** outer member (gitlink + real source, or + `.gitmodules`)
+  is NOT converted and still legitimately produces `outer_conflict` when its real content
+  genuinely conflicts — that is signal, not noise. Only the SINGLE gitlink at the declared
+  `linked_repos` path is converted — a second gitlink (e.g. `tools/rynx-treegen`) is not. Verify
+  failures and every other reject category are untouched. It is **always-on / fail-open**: there
+  is no setting or flag, it is unconditional once the daemon bundle is deployed, and any detection
+  error keeps the legacy `rebaseOnto` — today's behavior, never worse.
+- **Relationship to §14.9.** Inner-only `synthesize_outer` remains **RECOMMENDED** — it never
+  mints a bump branch in the first place. Auto-convert is a **safety net** that makes the legacy
+  bump-branch pattern non-fatal on drift, not a replacement for the inner-only form.
 
 ---
 
