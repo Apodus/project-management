@@ -40,12 +40,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { simpleGit, type SimpleGit } from "simple-git";
 import { serve, type ServerType } from "@hono/node-server";
 import { createApp } from "../../server/src/app.js";
@@ -53,6 +53,7 @@ import {
   initializeDatabase,
   closeDb,
   projects,
+  auditLog,
   type AppDatabase,
 } from "../../server/src/db/index.js";
 import { createTestProject, createTestAiAgent, createTestTask } from "../../server/tests/utils.js";
@@ -1379,6 +1380,266 @@ describe.skipIf(!RUN)(
       const detail = await h.getGroupDetail(group.id);
       const synthFinal = detail.members.find((m) => m.synthetic)!;
       expect(synthFinal.landedSha).toBe(await h.outerBareMainSha());
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+    }, 120_000);
+  },
+);
+
+// ─── P3 pure-gitlink-bump auto-convert seals (additive; a–g untouched) ─────
+//
+// Direction-C (campaign xrepo-gitlink-bump-autoconvert). A LEGACY two-real-member
+// cross-repo group whose OUTER member is a PURE gitlink bump is content-free
+// ceremony (assembly step 8 overwrites the gitlink to the rebased inner SHA
+// anyway, and the outer rebase is the ONLY thing that can mint `outer_conflict`).
+// P2 (768176b) recognizes the bump at assembly and takes the synthetic arm —
+// skips the outer rebase, synthesizes the outer candidate on LIVE main — writing
+// ONE `outer_converted` audit row (awaited before the attempts start) while the
+// DB `synthetic` flag stays untouched. These seals spawn the BUILT integrator
+// against the real in-process PM server (mirroring flow (g)'s deferred spawn).
+
+// The EXACT reason the integrator sends on conversion (VERBATIM — cross-checked
+// against group-integration.ts + group-convert.test.ts:68).
+const CONVERT_REASON =
+  "outer member superseded: pure gitlink bump — outer candidate synthesized against live main";
+
+// Mint + push an OUTER branch off live outer main that bumps the vendor/rynx
+// gitlink → refs.innerFeatureSha. A PURE bump touches ONLY the 160000 gitlink;
+// with opts.bumpEditsSource it ALSO writes+adds src/foo.txt (diff = 2 paths →
+// never converts, the negative seal). Returns the pushed bump commit SHA (the
+// seals submit by commitSha). Modeled on flow (d) 884-892 / group-convert
+// buildWorld.
+async function mintOuterBumpBranch(
+  outerBareUrl: string,
+  refs: FixtureRefs,
+  opts: { workDir: string; branch: string; bumpEditsSource?: boolean },
+): Promise<string> {
+  await simpleGit().clone(outerBareUrl, opts.workDir);
+  const og = simpleGit(opts.workDir);
+  await configIdentity(og);
+  await og.checkout("main");
+  await og.checkoutLocalBranch(opts.branch);
+  await og.raw([
+    "update-index",
+    "--add",
+    "--cacheinfo",
+    `160000,${refs.innerFeatureSha},${GITLINK_PATH}`,
+  ]);
+  if (opts.bumpEditsSource) {
+    mkdirSync(path.join(opts.workDir, "src"), { recursive: true });
+    writeFileSync(path.join(opts.workDir, "src", "foo.txt"), "outer source change\n");
+    await og.add(["src/foo.txt"]);
+  }
+  await og.commit("outer gitlink bump -> inner feature");
+  await og.push(["-u", "origin", opts.branch]);
+  return (await og.revparse(["HEAD"])).trim();
+}
+
+// Drift BOTH remotes AFTER submit, BEFORE pickup — the grass-stability repro: a
+// concurrent inner commit lands on inner main, then outer main's gitlink is
+// bumped to it, so a LEGACY rebase of a stale outer bump would both-sides-modify
+// vendor/rynx (→ outer_conflict). Mirrors flow (g)'s drift block (1275-1301).
+async function driftOuterGitlink(
+  h: Harness,
+  innerWorkDir: string,
+  outerWorkDir: string,
+): Promise<{ innerSecondSha: string; advancedOuterMain: string }> {
+  await simpleGit().clone(h.innerBare, innerWorkDir);
+  const ig = simpleGit(innerWorkDir);
+  await configIdentity(ig);
+  await ig.checkout("main");
+  writeFileSync(path.join(innerWorkDir, "other.txt"), "concurrent\n");
+  await ig.add(["other.txt"]);
+  await ig.commit("concurrent inner change");
+  await ig.push(["origin", "main"]);
+  const innerSecondSha = (await ig.revparse(["HEAD"])).trim();
+
+  await simpleGit().clone(h.outerBare, outerWorkDir);
+  const og = simpleGit(outerWorkDir);
+  await configIdentity(og);
+  await og.raw([
+    "update-index",
+    "--add",
+    "--cacheinfo",
+    `160000,${innerSecondSha},${GITLINK_PATH}`,
+  ]);
+  await og.commit("concurrent outer: bump gitlink to the drifted inner");
+  await og.push(["origin", "main"]);
+  const advancedOuterMain = await h.outerBareMainSha();
+  return { innerSecondSha, advancedOuterMain };
+}
+
+// Read the `outer_converted` audit rows for a specific outer member (invariant 5
+// discriminator; absence proves the legacy path in the negative seal).
+function outerConvertedRows(h: Harness, outerMemberId: string) {
+  return h.db
+    .select()
+    .from(auditLog)
+    .where(and(eq(auditLog.action, "outer_converted"), eq(auditLog.targetId, outerMemberId)))
+    .all();
+}
+
+// ─── Seal (h): campaign seal — drift-immune converted land ─────────
+describe.skipIf(!RUN)(
+  "group E2E (h) — two-member pure-bump group: drift-immune converted land (campaign seal P3)",
+  () => {
+    let h: Harness;
+    let refs: FixtureRefs;
+    beforeAll(async () => {
+      // Deferred spawn (mirrors flow (g)): drift immunity depends on the
+      // submit → drift → spawn ordering — the integrator's first sight of the
+      // group must be POST-drift.
+      ({ h, refs } = await makeGroupHarness());
+    }, 90_000);
+    afterAll(async () => {
+      if (h) await h.teardown();
+    });
+
+    it("stale pure-bump outer + gitlink drift → group LANDS, gitlink @ Ri, zero outer_conflict, converted (inv 1/2/5/7)", async () => {
+      const innerTask = createTestTask(h.db, { projectId: h.project.id });
+      // A PURE gitlink bump off main0: vendor/rynx → inner feature. Submitted by
+      // commitSha (the proven-safe e2e path; the branch/--mirror resolvability
+      // delta is already unit-sealed in group-convert.test.ts case 2).
+      const outerBumpSha = await mintOuterBumpBranch(h.outerBare, refs, {
+        workDir: path.join(h.tmpRoot, "outer-bump-h"),
+        branch: "bump/outer-h",
+      });
+      const { group, outer } = await h.submitGroup(refs.innerFeatureSha, outerBumpSha, {
+        innerVerify: "exit 0",
+        outerVerify: "exit 0",
+        innerTask: innerTask.id,
+      });
+
+      // Drift outer main's gitlink BEFORE pickup — a legacy rebase of the stale
+      // bump would both-sides-modify vendor/rynx (the grass-stability ×7 repro).
+      await driftOuterGitlink(
+        h,
+        path.join(h.tmpRoot, "inner-drift-h"),
+        path.join(h.tmpRoot, "outer-drift-h"),
+      );
+
+      // NOW spawn — first sight of the group is post-drift.
+      await h.spawnIntegrator();
+      const final = await h.pollGroup(group.id, 90_000);
+
+      // ── Lands despite the drift (conversion skipped the outer rebase). ──
+      expect(final.state).toBe("landed");
+      const Ri = await h.innerBareMainSha();
+      expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
+
+      const detail = await h.getGroupDetail(group.id);
+      const outerFinal = detail.members.find((m) => m.id === outer.id)!;
+      expect(outerFinal.landedSha).toBe(await h.outerBareMainSha());
+
+      // ── ZERO outer_conflict — no member rejected, no orphan incident. ──
+      expect(final.state).not.toBe("rejected");
+      for (const m of detail.members) expect(m.rejectReason).toBeNull();
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+
+      // ── inv7 — conversion NEVER mutates the DB synthetic flag. ──
+      for (const m of detail.members) expect(m.synthetic).toBe(false);
+
+      // ── inv5 — exactly ONE outer_converted audit row on the outer member,
+      //    carrying the exact CONVERT_REASON. ──
+      const rows = outerConvertedRows(h, outer.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].reason).toBe(CONVERT_REASON);
+    }, 120_000);
+  },
+);
+
+// ─── Seal (i): negative — mixed bump+source still rejects outer_conflict ─
+describe.skipIf(!RUN)("group E2E (i) — mixed bump+source still rejects outer_conflict (P3)", () => {
+  let h: Harness;
+  let refs: FixtureRefs;
+  beforeAll(async () => {
+    ({ h, refs } = await makeGroupHarness());
+  }, 90_000);
+  afterAll(async () => {
+    if (h) await h.teardown();
+  });
+
+  it("mixed bump+source (diff >1 path) never converts → legacy rebase conflicts on drift → group rejects, neither bare advances (inv 4)", async () => {
+    // Bump the gitlink AND edit src/foo.txt → 2-path diff → NEVER converts.
+    const outerBumpSha = await mintOuterBumpBranch(h.outerBare, refs, {
+      workDir: path.join(h.tmpRoot, "outer-bump-i"),
+      branch: "bump/outer-i",
+      bumpEditsSource: true,
+    });
+    const { group, outer } = await h.submitGroup(refs.innerFeatureSha, outerBumpSha, {
+      innerVerify: "exit 0",
+      outerVerify: "exit 0",
+    });
+
+    // Drift outer main's gitlink to a divergent inner sha → the legacy rebase
+    // genuinely both-sides-modifies vendor/rynx.
+    await driftOuterGitlink(
+      h,
+      path.join(h.tmpRoot, "inner-drift-i"),
+      path.join(h.tmpRoot, "outer-drift-i"),
+    );
+
+    // Capture the post-drift bare mains BEFORE spawn — a reject must not
+    // advance EITHER past this point (verify+rebase gate before any push).
+    const innerBefore = await h.innerBareMainSha();
+    const outerBefore = await h.outerBareMainSha();
+
+    await h.spawnIntegrator();
+    const final = await h.pollGroup(group.id, 90_000);
+
+    expect(final.state).toBe("rejected");
+    const detail = await h.getGroupDetail(group.id);
+    expect(detail.members.some((m) => (m.rejectReason ?? "").includes("outer_conflict"))).toBe(
+      true,
+    );
+
+    // NEITHER bare main advanced.
+    expect(await h.innerBareMainSha()).toBe(innerBefore);
+    expect(await h.outerBareMainSha()).toBe(outerBefore);
+
+    // NO conversion audit row for the outer member (legacy path taken).
+    expect(outerConvertedRows(h, outer.id)).toHaveLength(0);
+
+    expect(await h.listOpenIncidents()).toHaveLength(0);
+  }, 120_000);
+});
+
+// ─── Seal (j): happy-path equivalence — converted land, gitlink === Ri ──
+describe.skipIf(!RUN)(
+  "group E2E (j) — pure-bump happy-path equivalence: converted land, gitlink === Ri (P3)",
+  () => {
+    let h: Harness;
+    let refs: FixtureRefs;
+    beforeAll(async () => {
+      ({ h, refs } = await makeGroupHarness());
+    }, 90_000);
+    afterAll(async () => {
+      if (h) await h.teardown();
+    });
+
+    it("no drift: pure bump converts + lands with gitlink === Ri (identical to a legacy clean rebase); audit row proves the CONVERTED path (inv 2/5)", async () => {
+      // Pure bump, NO drift. A legacy clean rebase would ALSO land with gitlink
+      // === Ri — so ONLY the audit row discriminates converted-vs-legacy.
+      const outerBumpSha = await mintOuterBumpBranch(h.outerBare, refs, {
+        workDir: path.join(h.tmpRoot, "outer-bump-j"),
+        branch: "bump/outer-j",
+      });
+      const { group, outer } = await h.submitGroup(refs.innerFeatureSha, outerBumpSha, {
+        innerVerify: "exit 0",
+        outerVerify: "exit 0",
+      });
+
+      await h.spawnIntegrator();
+      const final = await h.pollGroup(group.id, 90_000);
+
+      expect(final.state).toBe("landed");
+      const Ri = await h.innerBareMainSha();
+      expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
+
+      // MUST assert the CONVERTED path was taken — WITHOUT this (j) is vacuous.
+      const rows = outerConvertedRows(h, outer.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].reason).toBe(CONVERT_REASON);
+
       expect(await h.listOpenIncidents()).toHaveLength(0);
     }, 120_000);
   },
