@@ -257,6 +257,33 @@ export interface GitOps {
    * a no-op push through).
    */
   treesIdentical(a: string, b: string): Promise<boolean>;
+  /**
+   * Direction-C detection for campaign xrepo-gitlink-bump-autoconvert. Returns
+   * true iff the NET change of `outerRef` over its MERGE-BASE with the current
+   * worktree HEAD (= live outer main) is EXACTLY the single `gitlinkPath` — i.e.
+   * `outerRef` is a "pure gitlink bump" that only advances the recorded inner
+   * submodule pointer and touches nothing else.
+   *
+   * (a) The diff base is the MERGE-BASE of HEAD and `outerRef`, NOT HEAD itself.
+   *     This is load-bearing for the bump-to-already-landed case: when main has
+   *     ALREADY advanced to the same inner gitlink value, `diff HEAD..outerRef`
+   *     is empty (a naive HEAD-based check would wrongly return false), but the
+   *     net change introduced BY the bump commit — measured from where it forked
+   *     — is still exactly the one gitlink path. Measuring from the merge-base
+   *     captures the bump's own contribution regardless of main's drift.
+   *
+   * (b) FAIL-OPEN contract: ANY error, ambiguity, or empty diff returns `false`
+   *     so the caller keeps the legacy rebase path. A missing/unresolvable ref,
+   *     unrelated histories (no merge-base), a bad object, a spawn failure, or a
+   *     zero-path diff are all a safe "not a pure bump" — never a throw. This
+   *     DELIBERATELY DIVERGES from isAncestor/treesIdentical (which REJECT on an
+   *     unexpected exit): here the primitive only ever gates an OPTIMIZATION, so
+   *     an error must degrade to the proven legacy path, not escalate.
+   *
+   * (c) Consumed by assembleGroup in a later phase of this campaign to auto-
+   *     convert a pure inner-gitlink bump into the skip-rebase assembly form.
+   */
+  isPureGitlinkBump(outerRef: string, gitlinkPath: string): Promise<boolean>;
 }
 
 export interface GitOpsOptions {
@@ -1010,6 +1037,30 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     return runTreesIdentical(a, b, topLevel);
   }
 
+  async function isPureGitlinkBump(outerRef: string, gitlinkPath: string): Promise<boolean> {
+    try {
+      const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+      const wantPath = gitlinkPath.replace(/\\/g, "/"); // git index convention: POSIX slashes
+      // (1) merge-base HEAD <outerRef>: exit 0 → base; exit 1 (unrelated) or 128
+      //     (bad ref) → fail-open false.
+      const mb = await runGitCapture(["merge-base", "HEAD", outerRef], topLevel);
+      if (mb.code !== 0) return false;
+      const base = mb.stdout.trim();
+      if (!/^[0-9a-f]{40}$/.test(base)) return false;
+      // (2) diff --name-only <base> <outerRef>: exits 0 whether or not a diff
+      //     exists; any non-zero → fail-open false.
+      const diff = await runGitCapture(["diff", "--name-only", base, outerRef], topLevel);
+      if (diff.code !== 0) return false;
+      const paths = diff.stdout
+        .split("\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      return paths.length === 1 && paths[0] === wantPath; // empty diff ⇒ length 0 ⇒ false
+    } catch {
+      return false; // revparse/spawn failure ⇒ fail-open to legacy
+    }
+  }
+
   return {
     fetch,
     fetchFromPath,
@@ -1027,5 +1078,6 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     runVerify,
     isAncestor,
     treesIdentical,
+    isPureGitlinkBump,
   };
 }
