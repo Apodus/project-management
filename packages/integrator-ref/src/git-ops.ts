@@ -284,6 +284,89 @@ export interface GitOps {
    *     convert a pure inner-gitlink bump into the skip-rebase assembly form.
    */
   isPureGitlinkBump(outerRef: string, gitlinkPath: string): Promise<boolean>;
+  /**
+   * campaign xrepo-gitlink-umbrella-widening (P1). Split `outerRef`'s NET diff
+   * over `merge-base(baseSha, outerRef)` into the MANAGED-gitlink hunks vs
+   * everything else (source). `managedPaths` is the configured gitlink-path set
+   * (normalized to POSIX slashes internally). For each CHANGED managed gitlink
+   * the recorded 160000 target G (in `outerRef`'s tree) is resolved into
+   * `gitlinkTargets`; every other changed path (incl. `.gitmodules`, real
+   * source, or an UNMANAGED 160000) lands in `sourcePaths`.
+   *
+   * FAIL-OPEN: returns `null` (⇒ caller keeps the legacy rebase) on any
+   * unresolvable ref / unrelated history (no merge-base), diff/spawn error, a
+   * DELETED managed gitlink (an intentional submodule removal we must not
+   * re-author), or a managed path whose entry is not a well-formed 160000
+   * gitlink. `--no-renames` guarantees single-path name-status records, so the
+   * NUL stream is strictly alternating (status, path).
+   */
+  splitGitlinkDiff(
+    outerRef: string,
+    baseSha: string,
+    managedPaths: ReadonlySet<string>,
+  ): Promise<GitlinkDiffSplit | null>;
+  /**
+   * campaign xrepo-gitlink-umbrella-widening (P1). Numeric-exit presence probe:
+   * `git cat-file -e <ref>` in THIS gitOps's worktree store. Resolves `true`
+   * when the object is present (exit 0), `false` when absent (exit 1), and
+   * THROWS on any other exit / spawn error (the runIsAncestor precedent) so the
+   * classifier fails open rather than misreading a corrupt-repo error as
+   * "absent". Callers pass a validated 40-hex gitlink target (a commit id) BARE
+   * — see runObjectExists for why the `^{commit}` peel is deliberately omitted.
+   */
+  objectPresent(ref: string): Promise<boolean>;
+}
+
+/**
+ * campaign xrepo-gitlink-umbrella-widening (P1). The split of an outer member's
+ * NET diff (over its merge-base with live outer main) into MANAGED-gitlink
+ * hunks vs everything else. Produced by `GitOps.splitGitlinkDiff`, consumed by
+ * `classifyOuterGitlinkDiff`.
+ */
+export interface GitlinkDiffSplit {
+  /** Non-managed-gitlink changed paths: `.gitmodules`, an UNMANAGED 160000, real source. */
+  sourcePaths: string[];
+  /** managedPath → G (the 160000 target in `outerRef`'s tree), only for CHANGED managed gitlinks. */
+  gitlinkTargets: Map<string, string>;
+}
+
+/**
+ * The five-way classification of an outer member's gitlink diff against the
+ * landing inner `Ri`:
+ *  - `pure_bump` — a managed gitlink moves, no source; every target is
+ *    ancestor-of-`Ri`. (The existing skip-rebase synthesize arm.)
+ *  - `normalize` — managed gitlink(s) move alongside real source; every target
+ *    is ancestor-of-`Ri`. Strip the gitlink hunk, rebase `sourcePaths`, step 8
+ *    authors `Ri`.
+ *  - `diverged` — a managed target G is present but NOT an ancestor of `Ri`
+ *    (Tier-2 legible reject).
+ *  - `unreachable` — a managed target G is absent even after an all-refs fetch
+ *    (Tier-2 legible reject).
+ *  - `legacy` — no managed gitlink hunk, or any fail-open error path; routes to
+ *    the unchanged rebase. NEVER causes a land.
+ */
+export type OuterGitlinkClassification =
+  | { kind: "pure_bump" }
+  | { kind: "normalize"; sourcePaths: string[] }
+  | { kind: "diverged"; path: string; target: string }
+  | { kind: "unreachable"; path: string; target: string }
+  | { kind: "legacy"; reason: string };
+
+/**
+ * Inputs to `classifyOuterGitlinkDiff`. `managedGitlinkPaths` is sourced from
+ * the single configured `gitlinkPath` (a one-element set today; the SET shape
+ * is future-proofing — see roadmap §D). `innerGitOps` MUST be bound to the
+ * inner clone (it holds `Ri` and, after the all-refs fetch, the reachable
+ * gitlink targets); the ancestry + presence probes are INNER-repo relations.
+ */
+export interface ClassifyOuterGitlinkArgs {
+  outerGitOps: GitOps;
+  innerGitOps: GitOps;
+  outerRef: string;
+  baseOuterSha: string;
+  innerLandingSha: string;
+  managedGitlinkPaths: ReadonlySet<string>;
+  gitRemote: string;
 }
 
 export interface GitOpsOptions {
@@ -503,6 +586,68 @@ function runTreesIdentical(a: string, b: string, cwd: string): Promise<boolean> 
       else reject(new Error(`git diff --quiet ${a} ${b} exited ${code}: ${stderr.trim()}`));
     });
   });
+}
+
+/**
+ * campaign xrepo-gitlink-umbrella-widening (P1). Presence probe: `git cat-file
+ * -e <ref>` as a DIRECT spawn reading the NUMERIC exit code (the runIsAncestor
+ * precedent). Resolves `true` on exit 0 (object present in this store), `false`
+ * on exit 1 (absent), and REJECTS on any other exit / spawn error so the caller
+ * fails open rather than misreading a corrupt-repo error as "absent".
+ *
+ * BARE ref by design — NO `^{commit}` peel. Empirically `cat-file -e
+ * <full-40-hex>` is exactly {present → 0, absent → 1}; adding the `^{commit}`
+ * peel turns an ABSENT object into a fatal exit-128 ("Not a valid object
+ * name"), which would make every genuinely-unpushed gitlink target read as a
+ * probe ERROR (→ fail-open legacy) instead of cleanly `unreachable`. The peel's
+ * only benefit — rejecting a present-but-non-commit oid — cannot apply here:
+ * the caller passes a validated 40-hex gitlink TARGET (a commit id), and a hash
+ * collision with a present tree/blob of the same oid is impossible.
+ */
+function runObjectExists(ref: string, cwd: string): Promise<boolean> {
+  return new Promise<boolean>((resolve, reject) => {
+    const child = spawn("git", ["cat-file", "-e", ref], {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      if (code === 0) resolve(true);
+      else if (code === 1) resolve(false);
+      else reject(new Error(`git cat-file -e ${ref} exited ${code}: ${stderr.trim()}`));
+    });
+  });
+}
+
+/**
+ * campaign xrepo-gitlink-umbrella-widening (P1). Read the 160000 gitlink target
+ * sha recorded at `gitlinkPath` in `ref`'s tree (`git ls-tree <ref> -- <path>`)
+ * via runGitCapture. Returns the 40-hex sha, or `null` when ls-tree fails, the
+ * path is absent, or the entry is not a well-formed 160000 gitlink (a safe null
+ * → splitGitlinkDiff fails open). Mirrors the readSubmoduleGitlink parse idiom
+ * (mode / type / sha / path columns, split on whitespace incl. the tab).
+ */
+async function lsTreeGitlinkTarget(
+  ref: string,
+  gitlinkPath: string,
+  cwd: string,
+): Promise<string | null> {
+  const out = await runGitCapture(["ls-tree", ref, "--", gitlinkPath], cwd);
+  if (out.code !== 0) return null;
+  for (const line of out.stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    const parts = trimmed.split(/\s+/);
+    if (parts[0] === "160000" && parts[2] && /^[0-9a-f]{40}$/.test(parts[2])) {
+      return parts[2];
+    }
+  }
+  return null;
 }
 
 /**
@@ -1061,6 +1206,66 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     }
   }
 
+  async function splitGitlinkDiff(
+    outerRef: string,
+    baseSha: string,
+    managedPaths: ReadonlySet<string>,
+  ): Promise<GitlinkDiffSplit | null> {
+    try {
+      const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+      const managed = new Set<string>();
+      for (const p of managedPaths) managed.add(p.replace(/\\/g, "/")); // POSIX index convention
+
+      // (1) merge-base(baseSha, outerRef): unresolvable ref (128) or unrelated
+      //     history (1) → null (fail-open to legacy). Guard the 40-hex shape.
+      const mb = await runGitCapture(["merge-base", baseSha, outerRef], topLevel);
+      if (mb.code !== 0) return null;
+      const mergeBase = mb.stdout.trim();
+      if (!/^[0-9a-f]{40}$/.test(mergeBase)) return null;
+
+      // (2) name-status over the NET diff, NUL-delimited. `--no-renames`
+      //     guarantees single-path records (no R/C 3-field records), so the
+      //     stream is strictly alternating (status, path).
+      const ns = await runGitCapture(
+        ["diff", "--name-status", "--no-renames", "-z", mergeBase, outerRef],
+        topLevel,
+      );
+      if (ns.code !== 0) return null;
+
+      const tokens = ns.stdout.split("\0");
+      // Drop the trailing empty token after the final NUL.
+      if (tokens.length > 0 && tokens[tokens.length - 1] === "") tokens.pop();
+
+      const sourcePaths: string[] = [];
+      const gitlinkTargets = new Map<string, string>();
+      for (let i = 0; i + 1 < tokens.length; i += 2) {
+        const status = tokens[i];
+        const changedPath = tokens[i + 1];
+        if (managed.has(changedPath)) {
+          // A DELETED managed gitlink is an intentional submodule removal — do
+          // NOT re-author it; fail-open to the legacy rebase.
+          if (status.startsWith("D")) return null;
+          const target = await lsTreeGitlinkTarget(outerRef, changedPath, topLevel);
+          if (target === null) return null;
+          gitlinkTargets.set(changedPath, target);
+        } else {
+          // Everything else (`.gitmodules`, real source, an UNMANAGED 160000)
+          // rides the source bucket → legacy/normalize rebase, exactly as today.
+          sourcePaths.push(changedPath);
+        }
+      }
+      return { sourcePaths, gitlinkTargets };
+    } catch {
+      return null; // revparse / spawn failure ⇒ fail-open to legacy
+    }
+  }
+
+  async function objectPresent(ref: string): Promise<boolean> {
+    // Same cwd resolution as isAncestor — the worktree this gitOps is bound to.
+    const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+    return runObjectExists(ref, topLevel);
+  }
+
   return {
     fetch,
     fetchFromPath,
@@ -1079,5 +1284,92 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     isAncestor,
     treesIdentical,
     isPureGitlinkBump,
+    splitGitlinkDiff,
+    objectPresent,
   };
+}
+
+/**
+ * campaign xrepo-gitlink-umbrella-widening (P1). Classify an outer member's
+ * gitlink diff into the five-way {pure_bump, normalize, diverged, unreachable,
+ * legacy} verdict that drives assembly (P2 wiring). DETECTION ONLY — this
+ * function reads git state and never mutates a worktree, DB, or ref.
+ *
+ * The whole body is wrapped so ANY escape (a thrown probe, an isAncestor throw
+ * on a bad object, an unexpected error) routes to `legacy` — fail-open is TOTAL,
+ * so no detection error can bubble into `assembleGroup`'s catch (which would
+ * surface as `gitlink_mismatch`) or, worse, cause a land.
+ *
+ * Gate (safety invariant 1): each CHANGED managed gitlink target G must be
+ * present in the inner store AND `isAncestor(G, Ri)`. A present-but-not-ancestor
+ * G is `diverged`; a G still absent after an all-refs `fetch origin` (NEVER
+ * fetch-by-sha — see roadmap §E) is `unreachable`. Both are DELIBERATE
+ * conservative rejects (Tier-2), never a land.
+ */
+export async function classifyOuterGitlinkDiff(
+  args: ClassifyOuterGitlinkArgs,
+): Promise<OuterGitlinkClassification> {
+  const {
+    outerGitOps,
+    innerGitOps,
+    outerRef,
+    baseOuterSha,
+    innerLandingSha,
+    managedGitlinkPaths,
+    gitRemote,
+  } = args;
+  try {
+    const split = await outerGitOps.splitGitlinkDiff(outerRef, baseOuterSha, managedGitlinkPaths);
+    if (split === null) return { kind: "legacy", reason: "outer split failed" };
+    // A member that doesn't touch a MANAGED gitlink keeps the untouched legacy
+    // rebase (byte-identical) — covers `.gitmodules`-only, pure-source, and the
+    // empty branch.
+    if (split.gitlinkTargets.size === 0) {
+      return { kind: "legacy", reason: "no managed gitlink hunk" };
+    }
+
+    for (const [gitlinkPath, target] of split.gitlinkTargets) {
+      // ── presence probe (INNER store), before the fetch ──
+      let present: boolean;
+      try {
+        present = await innerGitOps.objectPresent(target);
+      } catch {
+        return { kind: "legacy", reason: "present-probe error" };
+      }
+      if (!present) {
+        // Absent locally: an ALL-REFS fetch (never fetch-by-sha), then re-probe.
+        // A fetch transport/auth error is transient → fail-open (never a
+        // terminal reject).
+        try {
+          await innerGitOps.fetch(gitRemote);
+        } catch {
+          return { kind: "legacy", reason: "inner fetch transport error" };
+        }
+        try {
+          present = await innerGitOps.objectPresent(target);
+        } catch {
+          return { kind: "legacy", reason: "present-probe error" };
+        }
+        if (!present) return { kind: "unreachable", path: gitlinkPath, target };
+      }
+      // ── ancestor gate (INNER-repo relation) ──
+      let ancestor: boolean;
+      try {
+        ancestor = await innerGitOps.isAncestor(target, innerLandingSha);
+      } catch {
+        // isAncestor THROWS on exit ≠ 0/1 (bad object → 128). Catch it here so
+        // it never bubbles into assembleGroup's catch as `gitlink_mismatch`.
+        return { kind: "legacy", reason: "isAncestor threw" };
+      }
+      if (!ancestor) return { kind: "diverged", path: gitlinkPath, target };
+    }
+
+    // Every managed target is present + ancestor-of-Ri: strip the gitlink
+    // hunk(s). Empty source ⇒ pure bump; else normalize the source patch.
+    return split.sourcePaths.length === 0
+      ? { kind: "pure_bump" }
+      : { kind: "normalize", sourcePaths: split.sourcePaths };
+  } catch (err) {
+    return { kind: "legacy", reason: errText(err) };
+  }
 }
