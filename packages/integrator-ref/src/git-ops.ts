@@ -31,6 +31,29 @@ export interface RebaseConflict {
 export type RebaseResult = RebaseSuccess | RebaseConflict;
 
 /**
+ * campaign xrepo-gitlink-umbrella-widening (P2). The result of applying an outer
+ * member's SOURCE-only net patch (the managed gitlink hunk EXCLUDED) onto the
+ * live outer main worktree via `GitOps.applyExcludingGitlink`. On success the
+ * worktree HEAD is a single squash commit carrying the source patch (or, when
+ * the source is empty after excluding the gitlink, the unchanged HEAD — no empty
+ * commit); on a source conflict the worktree is `reset --hard` back to clean and
+ * `conflictingFiles` is the `--diff-filter=U` set. The gitlink hunk is NEVER in
+ * this patch — step 8 authors it to Ri.
+ */
+export interface ApplyExcludingGitlinkSuccess {
+  ok: true;
+  committedSha: string;
+}
+export interface ApplyExcludingGitlinkConflict {
+  ok: false;
+  conflictingFiles: string[];
+  stderr: string;
+}
+export type ApplyExcludingGitlinkResult =
+  | ApplyExcludingGitlinkSuccess
+  | ApplyExcludingGitlinkConflict;
+
+/**
  * Campaign A4 P2. The result of `git revert <sha>` on the current worktree. On
  * success the worktree HEAD is the revert commit (one new commit undoing `sha`);
  * on a textual conflict the revert is `--abort`ed (no partial state) and
@@ -306,6 +329,26 @@ export interface GitOps {
     managedPaths: ReadonlySet<string>,
   ): Promise<GitlinkDiffSplit | null>;
   /**
+   * campaign xrepo-gitlink-umbrella-widening (P2). Synthesize `outerRef`'s
+   * SOURCE-only net contribution onto the CURRENT worktree (which the caller has
+   * reset to live outer main), EXCLUDING every path in `excludePaths` (the
+   * managed gitlink). Mechanism: `git diff --binary <merge-base(baseSha,outerRef)>
+   * <outerRef> -- . :(exclude)<path>…` piped into `git apply --3way --index`. The
+   * excluded managed gitlink hunk is dropped from the patch, so assembly step 8
+   * remains the SOLE author of the landed gitlink (→ Ri) — the stale outer
+   * gitlink can never conflict. On a SOURCE conflict the worktree is
+   * `reset --hard` (no partial state) and `{ok:false, conflictingFiles}` returns
+   * (→ assembleGroup mints `outer_conflict`). A clean apply that stages nothing
+   * (the source net is empty — a pure bump reaching this path) returns HEAD
+   * without an empty commit. A merge-base/diff INFRA failure THROWS (→
+   * assembleGroup's catch → gitlink_mismatch), never a false conflict.
+   */
+  applyExcludingGitlink(
+    baseSha: string,
+    outerRef: string,
+    excludePaths: ReadonlySet<string>,
+  ): Promise<ApplyExcludingGitlinkResult>;
+  /**
    * campaign xrepo-gitlink-umbrella-widening (P1). Numeric-exit presence probe:
    * `git cat-file -e <ref>` in THIS gitOps's worktree store. Resolves `true`
    * when the object is present (exit 0), `false` when absent (exit 1), and
@@ -457,6 +500,75 @@ function runGitCapture(
     child.on("close", (code) => {
       resolve({ stdout, code: code ?? -1, stderr });
     });
+  });
+}
+
+/**
+ * campaign xrepo-gitlink-umbrella-widening (P2). Like `runGitCapture` but
+ * BINARY-SAFE: accumulates raw Buffer chunks and returns `stdout` as a Buffer
+ * (never a lossy `.toString()`). Required for `git diff --binary`, whose output
+ * carries base85-encoded binary hunks that MUST survive byte-for-byte to feed
+ * `git apply`. Resolves with the numeric exit code (does NOT reject on non-zero).
+ */
+function runGitCaptureBuffer(
+  args: string[],
+  cwd: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<{ stdout: Buffer; code: number; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      env: env ?? process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const chunks: Buffer[] = [];
+    let stderr = "";
+    child.stdout?.on("data", (d: Buffer) => {
+      chunks.push(d);
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      resolve({ stdout: Buffer.concat(chunks), code: code ?? -1, stderr });
+    });
+  });
+}
+
+/**
+ * campaign xrepo-gitlink-umbrella-widening (P2). Run a git subcommand feeding
+ * `input` on STDIN, resolving the NUMERIC exit code (does NOT reject on non-zero
+ * — the caller inspects `code`, e.g. `git apply` exit 1 = a patch conflict, not
+ * an infra error). `stdio: ["pipe","ignore","pipe"]` (stdout discarded). A stdin
+ * EPIPE (git closing its input early on a parse error) is swallowed so it never
+ * crashes the process. Used by `applyExcludingGitlink` to pipe a `git diff
+ * --binary` blob into `git apply --3way`.
+ */
+function runGitStdin(
+  args: string[],
+  cwd: string,
+  input: Buffer,
+  env?: NodeJS.ProcessEnv,
+): Promise<{ code: number; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      env: env ?? process.env,
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    // Swallow EPIPE: git may close stdin early (e.g. on a malformed patch header)
+    // before we finish writing, which would otherwise throw on the socket.
+    child.stdin?.on("error", () => {});
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      resolve({ code: code ?? -1, stderr });
+    });
+    child.stdin?.end(input);
   });
 }
 
@@ -1266,6 +1378,100 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     return runObjectExists(ref, topLevel);
   }
 
+  async function applyExcludingGitlink(
+    baseSha: string,
+    outerRef: string,
+    excludePaths: ReadonlySet<string>,
+  ): Promise<ApplyExcludingGitlinkResult> {
+    const topLevel = (await git.revparse(["--show-toplevel"])).trim();
+
+    // (1) merge-base(baseSha, outerRef). A non-zero exit / malformed sha is a
+    //     genuine INFRA error (unresolvable ref / unrelated history) — THROW so
+    //     assembleGroup's catch surfaces gitlink_mismatch, never a false
+    //     conflict. (Assembly only calls this AFTER splitGitlinkDiff already
+    //     resolved the same merge-base, so this is defense-in-depth.)
+    const mb = await runGitCapture(["merge-base", baseSha, outerRef], topLevel);
+    if (mb.code !== 0 || !/^[0-9a-f]{40}$/.test(mb.stdout.trim())) {
+      throw new Error(
+        `applyExcludingGitlink: merge-base ${baseSha} ${outerRef} failed (exit ${mb.code}): ${mb.stderr.trim()}`,
+      );
+    }
+    const mergeBase = mb.stdout.trim();
+
+    // (2) SOURCE-only net patch = the diff mergeBase..outerRef, EXCLUDING every
+    //     managed gitlink path. The leading `.` positive pathspec is REQUIRED —
+    //     a lone `:(exclude)` pathspec matches nothing (git needs at least one
+    //     positive magic to subtract from). `--binary` keeps binary hunks
+    //     apply-able; POSIX-slash the exclude paths (git pathspec convention).
+    const excludeArgs = [...excludePaths].map((p) => `:(exclude)${p.replace(/\\/g, "/")}`);
+    const diff = await runGitCaptureBuffer(
+      ["diff", "--binary", mergeBase, outerRef, "--", ".", ...excludeArgs],
+      topLevel,
+    );
+    if (diff.code !== 0) {
+      throw new Error(
+        `applyExcludingGitlink: diff ${mergeBase}..${outerRef} failed (exit ${diff.code}): ${diff.stderr.trim()}`,
+      );
+    }
+
+    // EMPTY net source (everything the member changed WAS the excluded managed
+    // gitlink — a pure bump reaching this path, or a defensive guard): there is
+    // nothing to apply. `git apply` REJECTS empty stdin ("No valid patches in
+    // input", exit 128), so short-circuit to the clean no-commit return (the
+    // plan's "empty patch, no commit" arm) rather than mis-reading that 128 as a
+    // source conflict. Step 8 still authors the gitlink to Ri.
+    if (diff.stdout.length === 0) {
+      return { ok: true, committedSha: (await git.revparse(["HEAD"])).trim() };
+    }
+
+    // (2b) Empty source net (e.g. a pure gitlink bump reaching this defensive
+    //      path — assembly routes pure bumps to the skip-rebase arm, never here).
+    //      `git apply` exits non-zero on an EMPTY patch, so short-circuit: no
+    //      source to apply, no commit; step 8 still authors the gitlink → Ri.
+    if (diff.stdout.length === 0) {
+      return { ok: true, committedSha: (await git.revparse(["HEAD"])).trim() };
+    }
+
+    // (3) Apply the source patch onto the worktree + index. `--3way` falls back
+    //     to a 3-way merge (using the blobs the patch names, all present in this
+    //     clone) when a context hunk doesn't apply cleanly — the same conflict
+    //     semantics a rebase would surface. Non-zero exit ⇒ a SOURCE conflict:
+    //     capture the UU set, hard-reset to restore the clean live-main tree, and
+    //     return {ok:false}.
+    const applied = await runGitStdin(
+      ["apply", "--3way", "--index", "--whitespace=nowarn"],
+      topLevel,
+      diff.stdout,
+    );
+    if (applied.code !== 0) {
+      const uu = await runGitCapture(["diff", "--name-only", "--diff-filter=U"], topLevel);
+      const conflictingFiles = uu.stdout
+        .split("\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      await runGit(["reset", "--hard"], topLevel, process.env).catch(() => {
+        /* best-effort: restore clean tree; a failed reset can't leave a land */
+      });
+      return { ok: false, conflictingFiles, stderr: applied.stderr };
+    }
+
+    // (4) Clean apply. If nothing was staged (empty source net), do NOT create an
+    //     empty commit — return the unchanged HEAD (a pure bump reaching this
+    //     path; step 8 still authors the gitlink). Else commit the squashed
+    //     source with the pool-clone EXPLICIT identity (no configured user).
+    if (await runIndexMatchesHead(topLevel)) {
+      return { ok: true, committedSha: (await git.revparse(["HEAD"])).trim() };
+    }
+    await git.raw([
+      ...COMMIT_IDENTITY_ARGS,
+      "commit",
+      "-m",
+      "assemble: normalize outer source (managed gitlink stripped)",
+      "--no-verify",
+    ]);
+    return { ok: true, committedSha: (await git.revparse(["HEAD"])).trim() };
+  }
+
   return {
     fetch,
     fetchFromPath,
@@ -1286,6 +1492,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     isPureGitlinkBump,
     splitGitlinkDiff,
     objectPresent,
+    applyExcludingGitlink,
   };
 }
 

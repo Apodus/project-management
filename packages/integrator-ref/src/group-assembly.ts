@@ -41,6 +41,19 @@ export interface AssembledGroupOk {
    * `synthetic` flag.
    */
   outerConverted: boolean;
+  /**
+   * Normalization marker (campaign xrepo-gitlink-umbrella-widening P2): true
+   * ONLY on the arm where a REAL outer member (`outerRef !== null`) carried real
+   * source ALONGSIDE the managed gitlink hunk, and the gitlink hunk was STRIPPED
+   * — its source-only net patch was synthesized onto live outer main via
+   * `applyExcludingGitlink` (the outer rebase skipped) and step 8 authored the
+   * gitlink to Ri. Mutually exclusive with `outerConverted` (that is the
+   * pure-bump, no-source arm). False on the legacy-rebased path and both
+   * synthetic paths. Like `outerConverted`, an integration-time interpretation
+   * surfaced via a log line (durable audit row deferred to P3) — NEVER mutates
+   * the DB `synthetic` flag.
+   */
+  outerGitlinkNormalized: boolean;
   /** Release BOTH correlated worktree slots back to their pools. */
   release(): void;
 }
@@ -206,14 +219,46 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
     // the outer candidate on live main — identical to the outerRef===null arm).
     let skipOuterRebase = false;
     let outerConverted = false;
+    let outerGitlinkNormalized = false;
     if (deps.outerRef !== null) {
+      // Split the outer member's NET diff into the managed gitlink hunk vs source
+      // (fail-open null ⇒ keep the legacy rebase). The strip decision is PURELY
+      // structural — no ancestry gate here: the inner member DEFINES Ri, step 8
+      // authors the landed gitlink to Ri, and the outer verify against Ri is the
+      // guard. (The ancestry gate + diverged/unreachable legibility live on the
+      // P4 lone-outer path, where there is no inner member to define Ri.)
       const detectRef = await resolveDetectRef(outerGitOps, deps.outerRef, deps.gitRemote);
-      if (
-        detectRef !== null &&
-        (await outerGitOps.isPureGitlinkBump(detectRef, deps.gitlinkPath))
-      ) {
-        skipOuterRebase = true;
-        outerConverted = true;
+      if (detectRef !== null) {
+        const managedPaths = new Set([deps.gitlinkPath]);
+        const split = await outerGitOps.splitGitlinkDiff(detectRef, baseOuterSha, managedPaths);
+        if (split !== null && split.gitlinkTargets.size > 0) {
+          if (split.sourcePaths.length === 0) {
+            // Pure gitlink bump — the existing skip-rebase synthesize arm.
+            skipOuterRebase = true;
+            outerConverted = true;
+          } else {
+            // Mixed source + managed gitlink: strip the gitlink hunk, synthesize
+            // the source-only net patch onto live outer main. A SOURCE conflict
+            // still rejects outer_conflict (byte-identity NOT claimed — a squashed
+            // apply --3way can differ in conflict incidence from a per-commit
+            // rebase); the gitlink hunk can never conflict (it's excluded).
+            const applied = await outerGitOps.applyExcludingGitlink(
+              baseOuterSha,
+              detectRef,
+              managedPaths,
+            );
+            if (!applied.ok) {
+              return {
+                ok: false,
+                reason: "outer_conflict",
+                detail: applied.conflictingFiles.join(", "),
+                release,
+              };
+            }
+            skipOuterRebase = true;
+            outerGitlinkNormalized = true;
+          }
+        }
       }
     }
     if (deps.outerRef !== null && !skipOuterRebase) {
@@ -280,6 +325,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
       baseOuterSha,
       gitlinkPath: deps.gitlinkPath,
       outerConverted,
+      outerGitlinkNormalized,
       release,
     };
   } catch (err) {

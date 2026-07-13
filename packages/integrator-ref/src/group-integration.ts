@@ -511,6 +511,27 @@ export async function runGroupIntegration(
     }
   }
 
+  // ── 3c. Gitlink-normalization surfacing (campaign xrepo-gitlink-umbrella-
+  //        widening P2). A REAL outer member carrying source ALONGSIDE the
+  //        managed gitlink had the gitlink hunk STRIPPED — its source-only net
+  //        patch was synthesized onto live outer main and step 8 authored the
+  //        gitlink to the landing inner Ri. Emit an unconditional legible log
+  //        line so the normalization is visible in the daemon trail; the DB
+  //        `synthetic` flag stays untouched (an integration-time interpretation,
+  //        like a conversion — never a row mutation).
+  // P3: durable audit row (outer_gitlink_normalized action) deferred.
+  if (asm.outerGitlinkNormalized) {
+    logger.info(
+      {
+        groupId: group.id,
+        outerMemberId: outerMember.id,
+        gitlinkPath,
+        baseOuterSha: asm.baseOuterSha,
+      },
+      "outer member gitlink normalized: stale-but-reachable gitlink stripped — outer source applied onto live main, gitlink authored to landing inner",
+    );
+  }
+
   // ── 4. startAttempt per member (§5.3) — base = the SHA the per-repo rebase
   //       anchored to (Mi / Mo). No batch tags (a group is not a batch). ──
   const innerAttempt = await pmClient.startAttempt(innerMember.id, asm.baseInnerSha, {});

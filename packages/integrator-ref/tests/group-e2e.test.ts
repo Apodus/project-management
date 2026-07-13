@@ -1547,8 +1547,15 @@ describe.skipIf(!RUN)(
   },
 );
 
-// ─── Seal (i): negative — mixed bump+source still rejects outer_conflict ─
-describe.skipIf(!RUN)("group E2E (i) — mixed bump+source still rejects outer_conflict (P3)", () => {
+// ─── Seal (i): mixed bump+source NORMALIZES and lands on gitlink drift ──
+// Umbrella widening supersedes the prior campaign's "mixed never converts →
+// rejects" scope limit. A mixed feature branch (gitlink hunk + real source)
+// whose gitlink is stale-but-strippable now has the gitlink hunk stripped and
+// its source applied onto live outer main; step 8 authors the gitlink → Ri, so
+// gitlink drift can no longer mint outer_conflict. This is the live P6 scenario.
+// (The negative case — a mixed member whose SOURCE genuinely conflicts still
+// rejects outer_conflict — is sealed by group-normalize.test.ts case iii.)
+describe.skipIf(!RUN)("group E2E (i) — mixed bump+source normalizes + lands on gitlink drift", () => {
   let h: Harness;
   let refs: FixtureRefs;
   beforeAll(async () => {
@@ -1558,8 +1565,8 @@ describe.skipIf(!RUN)("group E2E (i) — mixed bump+source still rejects outer_c
     if (h) await h.teardown();
   });
 
-  it("mixed bump+source (diff >1 path) never converts → legacy rebase conflicts on drift → group rejects, neither bare advances (inv 4)", async () => {
-    // Bump the gitlink AND edit src/foo.txt → 2-path diff → NEVER converts.
+  it("mixed bump+source (diff >1 path) strips the stale gitlink on drift → source applies → group LANDS, gitlink === Ri", async () => {
+    // Bump the gitlink AND edit src/foo.txt → 2-path diff (mixed member).
     const outerBumpSha = await mintOuterBumpBranch(h.outerBare, refs, {
       workDir: path.join(h.tmpRoot, "outer-bump-i"),
       branch: "bump/outer-i",
@@ -1570,33 +1577,28 @@ describe.skipIf(!RUN)("group E2E (i) — mixed bump+source still rejects outer_c
       outerVerify: "exit 0",
     });
 
-    // Drift outer main's gitlink to a divergent inner sha → the legacy rebase
-    // genuinely both-sides-modifies vendor/rynx.
+    // Drift outer main's gitlink to a divergent inner sha → under LEGACY this
+    // both-sides-modifies vendor/rynx (outer_conflict). Under the umbrella the
+    // gitlink hunk is stripped and only the source (src/foo.txt) is applied,
+    // which does not conflict with the gitlink-only drift → the group LANDS.
     await driftOuterGitlink(
       h,
       path.join(h.tmpRoot, "inner-drift-i"),
       path.join(h.tmpRoot, "outer-drift-i"),
     );
 
-    // Capture the post-drift bare mains BEFORE spawn — a reject must not
-    // advance EITHER past this point (verify+rebase gate before any push).
-    const innerBefore = await h.innerBareMainSha();
-    const outerBefore = await h.outerBareMainSha();
-
     await h.spawnIntegrator();
     const final = await h.pollGroup(group.id, 90_000);
 
-    expect(final.state).toBe("rejected");
-    const detail = await h.getGroupDetail(group.id);
-    expect(detail.members.some((m) => (m.rejectReason ?? "").includes("outer_conflict"))).toBe(
-      true,
-    );
+    expect(final.state).toBe("landed");
+    // Outer bare main's gitlink now points at the landed inner (Ri) — step 8
+    // authored it, not the branch's stale bump value.
+    const Ri = await h.innerBareMainSha();
+    expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
 
-    // NEITHER bare main advanced.
-    expect(await h.innerBareMainSha()).toBe(innerBefore);
-    expect(await h.outerBareMainSha()).toBe(outerBefore);
-
-    // NO conversion audit row for the outer member (legacy path taken).
+    // NOT a pure-bump conversion — the mixed member took the NORMALIZE arm.
+    // (The durable outer_gitlink_normalized audit row is added in P3; here we
+    // only assert the pure-bump convert row is absent.)
     expect(outerConvertedRows(h, outer.id)).toHaveLength(0);
 
     expect(await h.listOpenIncidents()).toHaveLength(0);
