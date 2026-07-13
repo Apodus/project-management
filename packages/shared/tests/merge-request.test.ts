@@ -62,6 +62,8 @@ describe("MERGE_REJECT_CATEGORIES", () => {
       "verify_timeout",
       "policy",
       "other",
+      "gitlink_unreachable",
+      "gitlink_diverged",
     ]);
   });
 });

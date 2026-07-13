@@ -43,6 +43,13 @@ export const AUDIT_ACTIONS = [
   // Content-free ceremony discarded — an integration-time interpretation, NOT a
   // status transition and NEVER a mutation of the DB `synthetic` flag.
   "outer_converted",
+  // ── Cross-repo gitlink normalization (umbrella-widening) ──
+  // A REAL outer member carried source ALONGSIDE the managed gitlink; the
+  // stale-but-reachable gitlink hunk was STRIPPED at assembly (outer source
+  // applied onto live main, step 8 authored the gitlink to the landing inner
+  // Ri). Like `outer_converted`, this is an integration-time interpretation —
+  // NOT a status transition and NEVER a mutation of the DB `synthetic` flag.
+  "outer_gitlink_normalized",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

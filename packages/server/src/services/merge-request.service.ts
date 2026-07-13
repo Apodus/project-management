@@ -1346,6 +1346,70 @@ export function noteOuterConverted(id: string, actor: Actor, reason: string): Me
   return toView(row);
 }
 
+/**
+ * Record that a REAL outer member had its stale-but-reachable managed gitlink
+ * hunk stripped at assembly — the outer source-only net patch was synthesized
+ * onto live main and step 8 authored the gitlink to the landing inner Ri
+ * (campaign xrepo-gitlink-umbrella-widening). Writes exactly ONE
+ * `outer_gitlink_normalized` audit row (no status transition, no attempt
+ * change; the DB `synthetic` flag is untouched — an integration-time
+ * interpretation, like a conversion). Integrator (ai_agent) only.
+ */
+export function noteOuterGitlinkNormalized(
+  id: string,
+  actor: Actor,
+  reason: string,
+): MergeRequestView {
+  const row = readRequestOrThrow(id);
+
+  if (actor.type !== "ai_agent") {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "Only integrator (ai_agent) users may note an outer-gitlink-normalized member.",
+    );
+  }
+
+  const db = getDb();
+  const now = new Date().toISOString();
+  let auditId: string | null = null;
+  let auditView: AuditLogView | null = null;
+
+  db.transaction((tx) => {
+    const after = { normalized: true };
+    auditId = recordAudit(tx, {
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "outer_gitlink_normalized",
+      targetType: "merge_request",
+      targetId: row.id,
+      reason,
+      before: null,
+      after,
+      now,
+    });
+    auditView = {
+      id: auditId,
+      projectId: row.projectId,
+      actorId: actor.id,
+      action: "outer_gitlink_normalized",
+      targetType: "merge_request",
+      targetId: row.id,
+      reason,
+      metadataBefore: null,
+      metadataAfter: after,
+      createdAt: now,
+    };
+  });
+
+  // Emit AFTER commit so the admin audit log refreshes live (§2.6).
+  if (auditId !== null && auditView !== null) {
+    emitAuditRecorded(auditId, row.projectId, actor.id, auditView);
+  }
+
+  return toView(row);
+}
+
 // ─── Campaign A2 §P2+P3: escalation post-back ──────────────────────
 
 /**

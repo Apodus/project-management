@@ -77,6 +77,7 @@ interface FakePm {
   landGroupBody?: { members: { requestId: string; landedSha: string; role: string }[] };
   attemptCompletions: { attemptId: string; status: string; treeSha?: string }[];
   outerConverted?: { requestId: string; reason: string };
+  outerGitlinkNormalized?: { requestId: string; reason: string };
 }
 
 function nowIso(): string {
@@ -95,6 +96,10 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
     async noteOuterConverted(requestId: string, reason: string): Promise<void> {
       state.calls.push("noteOuterConverted");
       state.outerConverted = { requestId, reason };
+    },
+    async noteOuterGitlinkNormalized(requestId: string, reason: string): Promise<void> {
+      state.calls.push("noteOuterGitlinkNormalized");
+      state.outerGitlinkNormalized = { requestId, reason };
     },
     async rejectGroup(
       _id: string,
@@ -473,6 +478,9 @@ describe.skipIf(!GIT_AVAILABLE)("gitlink normalization arm (real two-repo)", () 
     // NO outer_conflict, NO conversion surfacing.
     expect(state.calls).not.toContain("rejectGroup");
     expect(state.calls).not.toContain("noteOuterConverted");
+    // The normalization was surfaced durably (outer_gitlink_normalized audit row).
+    expect(state.calls).toContain("noteOuterGitlinkNormalized");
+    expect(state.outerGitlinkNormalized?.requestId).toBe("req-outer");
 
     const result = await landAssembledGroup(
       {

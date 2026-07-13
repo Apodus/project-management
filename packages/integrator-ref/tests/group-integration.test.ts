@@ -80,6 +80,13 @@ interface FakePm {
   cacheLookups?: { treeSha: string; stepId: string }[];
   /** Phase 7.5 Step 7: captured completeAttempt bodies (steps[] M1 assertion). */
   completeBodies?: { status: string; steps?: unknown[] }[];
+  /** P3 legibility: captured merge_rejection task comments (choke-point assertion). */
+  taskComments?: {
+    taskId: string;
+    body: string;
+    commentType?: string;
+    metadata?: Record<string, unknown> | null;
+  }[];
 }
 
 function nowIso(): string {
@@ -162,6 +169,22 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
     },
     async emitVerifyCacheMismatch(): Promise<void> {
       state.calls.push("emitVerifyCacheMismatch");
+    },
+    async postTaskComment(
+      taskId: string,
+      body: {
+        body: string;
+        commentType?: string;
+        metadata?: Record<string, unknown> | null;
+      },
+    ): Promise<void> {
+      state.calls.push("postTaskComment");
+      (state.taskComments ??= []).push({
+        taskId,
+        body: body.body,
+        commentType: body.commentType,
+        metadata: body.metadata,
+      });
     },
   };
   return fake as unknown as GroupIntegrationDeps["pmClient"];
@@ -628,8 +651,10 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
   });
 
   // ── 5c. FIX 1 ambiguity: a ref resolving in NEITHER repo → fail loud ──
-  it("FIX 1: a member ref resolving in NEITHER repo → rejected (no guess)", async () => {
-    const inner = makeMember({ id: "req-inner", commitSha: innerFeatureSha });
+  it("FIX 1: a member ref resolving in NEITHER repo → rejected (no guess), P3 posts a merge_rejection comment", async () => {
+    // P3: give the (would-be) inner member a taskId so the binding-failure
+    // choke-point targets it (a null-taskId member is skipped).
+    const inner = makeMember({ id: "req-inner", commitSha: innerFeatureSha, taskId: "task-inner" });
     const outer = makeMember({ id: "req-outer", commitSha: outerFeatureSha });
     const state: FakePm = {
       group: { state: "forming", members: [inner, outer] },
@@ -646,6 +671,16 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       expect(outcome.reason).toMatch(/could not unambiguously bind/);
     }
     expect(state.calls).not.toContain("markGroupIntegrating");
+    // P3 legibility: exactly ONE merge_rejection comment on the taskId-carrying
+    // member (the binding-failure silent-drain fix). The null-taskId outer is skipped.
+    expect(state.calls.filter((c) => c === "postTaskComment").length).toBe(1);
+    expect(state.taskComments).toHaveLength(1);
+    const comment = state.taskComments![0];
+    expect(comment.taskId).toBe("task-inner");
+    expect(comment.commentType).toBe("merge_rejection");
+    expect(comment.metadata?.category).toBe("other");
+    expect(comment.metadata?.groupId).toBe("grp-5c");
+    expect(comment.body).toContain("could not unambiguously bind");
   });
 
   // ── 6. FIX 2 transition legality: pre-pickup assembly conflict → forming-reject ──

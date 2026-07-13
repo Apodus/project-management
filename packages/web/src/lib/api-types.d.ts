@@ -10391,6 +10391,184 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/merge-requests/{id}/outer-converted": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator records a pure-gitlink-bump auto-conversion of an outer member
+     * @description Writes one durable `outer_converted` audit row: a REAL outer group member was recognized at assembly as a pure gitlink bump and its rebase skipped (the outer candidate synthesized on live main). NO status transition, NO attempt change; the DB `synthetic` flag is untouched. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestOuterConverted"];
+        };
+      };
+      responses: {
+        /** @description Conversion recorded */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/outer-gitlink-normalized": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Integrator records a gitlink normalization of an outer member
+     * @description Writes one durable `outer_gitlink_normalized` audit row: a REAL outer group member carried source ALONGSIDE the managed gitlink and had the stale-but-reachable gitlink hunk stripped at assembly (outer source applied onto live main, the gitlink authored to the landing inner). NO status transition, NO attempt change; the DB `synthetic` flag is untouched. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergeRequestOuterGitlinkNormalized"];
+        };
+      };
+      responses: {
+        /** @description Normalization recorded */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["MergeRequest"];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/merge-requests/{id}/force-cancel": {
     parameters: {
       query?: never;
@@ -14310,7 +14488,9 @@ export interface paths {
             | "requeue"
             | "cancel"
             | "force_claim"
-            | "claim_reclaimed";
+            | "claim_reclaimed"
+            | "outer_converted"
+            | "outer_gitlink_normalized";
           targetType?:
             | "merge_request"
             | "merge_group"
@@ -15952,6 +16132,8 @@ export interface components {
         | "verify_timeout"
         | "policy"
         | "other"
+        | "gitlink_unreachable"
+        | "gitlink_diverged"
         | null;
       rejectReason: string | null;
       failedFiles: string[] | null;
@@ -16001,6 +16183,8 @@ export interface components {
         | "verify_timeout"
         | "policy"
         | "other"
+        | "gitlink_unreachable"
+        | "gitlink_diverged"
         | null;
       failureReason: string | null;
       failedFiles: string[] | null;
@@ -16093,6 +16277,12 @@ export interface components {
     MergeRequestResetToQueued: {
       reason: string;
     };
+    MergeRequestOuterConverted: {
+      reason: string;
+    };
+    MergeRequestOuterGitlinkNormalized: {
+      reason: string;
+    };
     MergeRequestForceCancel: {
       reason?: string;
     };
@@ -16119,7 +16309,9 @@ export interface components {
             | "lint_failed"
             | "verify_timeout"
             | "policy"
-            | "other";
+            | "other"
+            | "gitlink_unreachable"
+            | "gitlink_diverged";
           failureReason: string;
           failedFiles?: string[];
           logExcerpt?: string;
@@ -16142,7 +16334,9 @@ export interface components {
         | "lint_failed"
         | "verify_timeout"
         | "policy"
-        | "other";
+        | "other"
+        | "gitlink_unreachable"
+        | "gitlink_diverged";
       reason: string;
       failedFiles?: string[];
       logExcerpt?: string;

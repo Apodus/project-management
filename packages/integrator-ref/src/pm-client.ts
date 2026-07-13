@@ -111,7 +111,9 @@ export type RejectCategory =
   | "lint_failed"
   | "verify_timeout"
   | "policy"
-  | "other";
+  | "other"
+  | "gitlink_unreachable"
+  | "gitlink_diverged";
 
 export type MergeRequestDetailView = MergeRequestView & {
   attempts: MergeAttemptView[];
@@ -314,6 +316,23 @@ export class PmClient {
     await this.request<MergeRequestView>(
       "POST",
       `/merge-requests/${encodeURIComponent(requestId)}/outer-converted`,
+      { reason },
+    );
+  }
+
+  /**
+   * Record that a REAL outer member had its stale-but-reachable managed gitlink
+   * stripped at assembly — its source-only net patch synthesized onto live main
+   * and the gitlink authored to the landing inner (campaign xrepo-gitlink-
+   * umbrella-widening). Writes exactly ONE `outer_gitlink_normalized` audit row
+   * (no status transition, no attempt change) so the normalization is legible in
+   * the timeline/audit. Best-effort at the call site — a surfacing failure must
+   * never break the land. POST /api/v1/merge-requests/{id}/outer-gitlink-normalized.
+   */
+  async noteOuterGitlinkNormalized(requestId: string, reason: string): Promise<void> {
+    await this.request<MergeRequestView>(
+      "POST",
+      `/merge-requests/${encodeURIComponent(requestId)}/outer-gitlink-normalized`,
       { reason },
     );
   }

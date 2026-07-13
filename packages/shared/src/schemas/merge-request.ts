@@ -37,6 +37,11 @@ export type MergeAttemptStatus = (typeof MERGE_ATTEMPT_STATUSES)[number];
 //   merge_attempts.failureCategory
 //   SSE event payloads
 //   merge_rejection auto-comment metadata
+// The two cross-repo gitlink categories (umbrella-widening) tag a Tier-2 group
+// reject: `gitlink_unreachable` = the outer's managed gitlink target is absent
+// after an all-refs fetch (genuinely unpushed); `gitlink_diverged` = the target
+// is present but NOT an ancestor of the landing inner. Producers ship in P4
+// (lone-outer); P3 lands the category value-space + reject-comment plumbing.
 export const MERGE_REJECT_CATEGORIES = [
   "conflict",
   "build_failed",
@@ -45,6 +50,8 @@ export const MERGE_REJECT_CATEGORIES = [
   "verify_timeout",
   "policy",
   "other",
+  "gitlink_unreachable",
+  "gitlink_diverged",
 ] as const;
 export type MergeRejectCategory = (typeof MERGE_REJECT_CATEGORIES)[number];
 

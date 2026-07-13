@@ -5534,6 +5534,8 @@
               "verify_timeout",
               "policy",
               "other",
+              "gitlink_unreachable",
+              "gitlink_diverged",
               null
             ]
           },
@@ -5727,6 +5729,8 @@
               "verify_timeout",
               "policy",
               "other",
+              "gitlink_unreachable",
+              "gitlink_diverged",
               null
             ]
           },
@@ -6066,6 +6070,19 @@
           "reason"
         ]
       },
+      "MergeRequestOuterGitlinkNormalized": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
       "MergeRequestForceCancel": {
         "type": "object",
         "properties": {
@@ -6139,7 +6156,9 @@
                   "lint_failed",
                   "verify_timeout",
                   "policy",
-                  "other"
+                  "other",
+                  "gitlink_unreachable",
+                  "gitlink_diverged"
                 ]
               },
               "failureReason": {
@@ -6211,7 +6230,9 @@
               "lint_failed",
               "verify_timeout",
               "policy",
-              "other"
+              "other",
+              "gitlink_unreachable",
+              "gitlink_diverged"
             ]
           },
           "reason": {
@@ -25606,6 +25627,147 @@
         }
       }
     },
+    "/api/v1/merge-requests/{id}/outer-gitlink-normalized": {
+      "post": {
+        "tags": [
+          "Merge Requests"
+        ],
+        "summary": "Integrator records a gitlink normalization of an outer member",
+        "description": "Writes one durable `outer_gitlink_normalized` audit row: a REAL outer group member carried source ALONGSIDE the managed gitlink and had the stale-but-reachable gitlink hunk stripped at assembly (outer source applied onto live main, the gitlink authored to the landing inner). NO status transition, NO attempt change; the DB `synthetic` flag is untouched. Integrator (ai_agent) only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01JE7KQXZJ9P3M4ABCDEF0X1Y2"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestOuterGitlinkNormalized"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Normalization recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MergeRequest"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/merge-requests/{id}/force-cancel": {
       "post": {
         "tags": [
@@ -32166,7 +32328,8 @@
                 "cancel",
                 "force_claim",
                 "claim_reclaimed",
-                "outer_converted"
+                "outer_converted",
+                "outer_gitlink_normalized"
               ]
             },
             "required": false,

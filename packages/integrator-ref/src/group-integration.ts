@@ -374,6 +374,41 @@ function summaryLine(text: string): string {
   return (line ?? "").trim().slice(0, 500);
 }
 
+// ─── rejectGroupLegibly (the single group-reject choke-point) ─────────
+
+/**
+ * Reject a whole group AND surface it legibly. The `rejectGroup` call is
+ * BYTE-IDENTICAL to the bare call it replaces (same reason + category) — the
+ * ONLY addition is a best-effort structured `merge_rejection` task comment per
+ * real member, so an author sees the failure where they work instead of a
+ * silent drain (the live P6-v1 binding-failure mode: the group-reject path
+ * posts NO per-member comment by design). The comment posts are wrapped
+ * individually and NEVER throw out of the reject path — a comment failure must
+ * not turn a clean reject into an unhandled error.
+ */
+async function rejectGroupLegibly(
+  pmClient: PmClient,
+  logger: Logger,
+  group: GroupToIntegrate,
+  opts: { reason: string; category: RejectCategory; taskIds: string[] },
+): Promise<void> {
+  await pmClient.rejectGroup(group.id, { reason: opts.reason, category: opts.category });
+  for (const taskId of opts.taskIds) {
+    try {
+      await pmClient.postTaskComment(taskId, {
+        body: `Merge group rejected: ${opts.reason}`,
+        commentType: "merge_rejection",
+        metadata: { groupId: group.id, category: opts.category, reason: opts.reason },
+      });
+    } catch (e) {
+      logger.warn(
+        { err: e instanceof Error ? e.message : String(e), taskId },
+        "merge_rejection comment post failed (non-fatal)",
+      );
+    }
+  }
+}
+
 // ─── runGroupIntegration ──────────────────────────────────────────────
 
 /**
@@ -396,14 +431,16 @@ export async function runGroupIntegration(
       { groupId: group.id, reason: bound.reason },
       "group member→role binding failed; rejecting from forming",
     );
-    // FIX 3: the rejectGroup `reason` IS the surfacing (the MERGE_GROUP_REJECTED
-    // event + the group's resolutionReason carry it; the group-reject path does
-    // NOT post a per-member merge_rejection comment — confirmed in
-    // merge-group.service.rejectGroup / routes/merge-groups.ts). Surfacing
-    // exactly once, no double-reject.
-    await pmClient.rejectGroup(group.id, {
+    // The rejectGroup `reason` rides the MERGE_GROUP_REJECTED event + the
+    // group's resolutionReason; rejectGroupLegibly ADDITIVELY posts a structured
+    // merge_rejection comment on every real member (the group-reject path posts
+    // none by design — this binding-failure site is exactly the P6-v1 silent
+    // drain). No bound innerMember here, so target every member carrying a
+    // taskId (a synthetic outer has taskId == null and is skipped).
+    await rejectGroupLegibly(pmClient, logger, group, {
       reason: bound.reason,
       category: "other",
+      taskIds: group.members.map((m) => m.taskId).filter((t): t is string => t != null),
     });
     return { kind: "rejected", reason: bound.reason };
   }
@@ -443,9 +480,10 @@ export async function runGroupIntegration(
       { groupId: group.id, reason },
       "group assembly failed pre-pickup; rejecting from forming",
     );
-    await pmClient.rejectGroup(group.id, {
+    await rejectGroupLegibly(pmClient, logger, group, {
       reason,
       category: isConflict ? "conflict" : "other",
+      taskIds: [innerMember.taskId].filter((t): t is string => t != null),
     });
     // FIX 4 surfacing path also: release the (held) worktrees the failed
     // assembly leased.
@@ -518,8 +556,10 @@ export async function runGroupIntegration(
   //        gitlink to the landing inner Ri. Emit an unconditional legible log
   //        line so the normalization is visible in the daemon trail; the DB
   //        `synthetic` flag stays untouched (an integration-time interpretation,
-  //        like a conversion — never a row mutation).
-  // P3: durable audit row (outer_gitlink_normalized action) deferred.
+  //        like a conversion — never a row mutation). A best-effort durable
+  //        `outer_gitlink_normalized` audit row makes it legible in the
+  //        timeline/audit; the audit call swallows errors so a surfacing failure
+  //        can never break the land.
   if (asm.outerGitlinkNormalized) {
     logger.info(
       {
@@ -530,6 +570,17 @@ export async function runGroupIntegration(
       },
       "outer member gitlink normalized: stale-but-reachable gitlink stripped — outer source applied onto live main, gitlink authored to landing inner",
     );
+    try {
+      await pmClient.noteOuterGitlinkNormalized(
+        outerMember.id,
+        "outer member gitlink normalized: stale-but-reachable gitlink stripped — outer source applied onto live main, gitlink authored to landing inner",
+      );
+    } catch (err) {
+      logger.warn(
+        { groupId: group.id, err: err instanceof Error ? err.message : String(err) },
+        "noteOuterGitlinkNormalized surfacing failed (non-fatal)",
+      );
+    }
   }
 
   // ── 4. startAttempt per member (§5.3) — base = the SHA the per-repo rebase
@@ -695,10 +746,15 @@ export async function runGroupIntegration(
 
     const reason = `assembled verify failed: ${failingRepo} ${failReason}`;
     // rejectGroup rejects ALL members atomically (do NOT also per-member
-    // rejectMergeRequest — that would double-reject). FIX 3: the rejectGroup
-    // `reason` IS the exactly-once surfacing record (no merge_rejection comment
-    // is posted by the group-reject path).
-    await pmClient.rejectGroup(group.id, { reason, category: rejectCategory });
+    // rejectMergeRequest — that would double-reject). rejectGroupLegibly ADDS a
+    // best-effort merge_rejection comment on the bound inner member (the
+    // group-reject path posts none) — no double-post: this site posts no member
+    // comment today.
+    await rejectGroupLegibly(pmClient, logger, group, {
+      reason,
+      category: rejectCategory,
+      taskIds: [innerMember.taskId].filter((t): t is string => t != null),
+    });
     asm.release();
     logger.info(
       { groupId: group.id, reason },
