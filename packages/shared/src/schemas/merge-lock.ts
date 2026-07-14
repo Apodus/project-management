@@ -58,6 +58,22 @@ export type MergeLockLandingIntent = z.infer<typeof mergeLockLandingIntentSchema
 export const mergeLockHolderViewSchema = z.enum(["you", "someone_else", "none"]);
 export type MergeLockHolderView = z.infer<typeof mergeLockHolderViewSchema>;
 
+// ─── Integrator liveness ──────────────────────────────────────────
+// Additive, read-path-only block derived on-read from integrator_health
+// (Phase 7.4 heartbeat + the single HEALTH_STALE_MS staleness cutoff).
+// Lets an agent looking at a stalled lane self-diagnose "integrator down
+// (restart it)" vs "alive, slow verify (wait)". `stall` correlates a
+// stale/absent heartbeat with a queued-but-unattempted request — the
+// "queue is not being consumed" signal.
+export const integratorLivenessSchema = z.object({
+  status: z.enum(["alive", "stale", "down"]),
+  last_heartbeat_age_sec: z.number().nullable(),
+  lane_status: z.enum(["idle", "integrating"]).nullable(),
+  version: z.string().nullable(),
+  stall: z.literal("integrator_down").nullable(),
+});
+export type IntegratorLiveness = z.infer<typeof integratorLivenessSchema>;
+
 export const mergeLockSchema = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -80,6 +96,10 @@ export const mergeLockSchema = z.object({
   abandonReason: z.string().nullable(),
   queueLength: z.number().int(),
   yourPosition: z.number().int().nullable(),
+  // Integrator liveness for this lane, derived on-read (additive, optional
+  // — absent on locks read without a liveness derivation). See
+  // integratorLivenessSchema.
+  integrator: integratorLivenessSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

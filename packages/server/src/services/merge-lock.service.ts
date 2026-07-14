@@ -10,6 +10,7 @@ import type {
 import { getDb, mergeLocks, mergeLockQueue, projects, tasks, users } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
+import { deriveLiveness } from "./integrator-liveness.service.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -284,7 +285,7 @@ function sweepExpired(lockId: string): boolean {
 
 // ─── View ─────────────────────────────────────────────────────────
 
-function toView(lock: MergeLockRow, callerId: string | null): MergeLockView {
+function toView(lock: MergeLockRow, callerId: string | null, now: string): MergeLockView {
   const callerHolds = callerId !== null && lock.holderId === callerId;
   const holder = !lock.holderId ? "none" : callerHolds ? "you" : "someone_else";
   return {
@@ -306,6 +307,9 @@ function toView(lock: MergeLockRow, callerId: string | null): MergeLockView {
     abandonReason: lock.abandonReason,
     queueLength: queueLength(lock.id),
     yourPosition: callerId ? positionForUser(lock.id, callerId) : null,
+    // Integrator liveness + stall hint, derived on-read from integrator_health
+    // (reuses the health service's single staleness cutoff).
+    integrator: deriveLiveness(lock.projectId, lock.resource, now),
     createdAt: lock.createdAt,
     updatedAt: lock.updatedAt,
   };
@@ -558,7 +562,7 @@ export function getLock(projectId: string, resource: string, actor: Actor | null
   const lock = getOrCreateLock(projectId, resource);
   sweepExpired(lock.id);
   const fresh = readLock(lock.id);
-  return toView(fresh, actor?.id ?? null);
+  return toView(fresh, actor?.id ?? null, new Date().toISOString());
 }
 
 /**
@@ -579,7 +583,9 @@ export function listLocks(projectId: string, actor: Actor | null): MergeLockView
     .from(mergeLocks)
     .where(eq(mergeLocks.projectId, projectId))
     .all() as MergeLockRow[];
-  return fresh.map((r) => toView(r, actor?.id ?? null));
+  // Consistent `now` across every lane in the list.
+  const now = new Date().toISOString();
+  return fresh.map((r) => toView(r, actor?.id ?? null, now));
 }
 
 function ensureUserExists(userId: string): void {
