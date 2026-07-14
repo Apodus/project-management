@@ -16,8 +16,9 @@
  * and the fuller FakePm from group-land.test.ts (landGroupBody /
  * attemptCompletions / ordered calls).
  *
- * Proves: (a) the binding guard (outer-bound real member / unresolvable ref /
- * two synthetics / a ref-carrying synthetic → rejected PRE-pickup, no leak);
+ * Proves: (a) the binding (unresolvable ref / two synthetics / a ref-carrying
+ * synthetic → rejected PRE-pickup, no leak; a lone OUTER real member now binds
+ * real→outer / synthetic→inner and reaches ready_to_land — no longer rejected);
  * (b) synthetic assembly (baseOuterSha == live outer main; Ro == exactly ONE
  * gitlink commit on top of it; gitlink @ Ri; materialized working tree;
  * truthful attempt bases); (c) the land flows UNCHANGED keyed by requestId
@@ -26,7 +27,11 @@
  * main between submit and integrate, and the synthetic group still lands;
  * (e) the NO-OP land — content already on both mains → idempotent gitlink op
  * (no empty bump commit ever exists) + up-to-date FF pushes land cleanly at
- * the current mains.
+ * the current mains; (f) OUTER-ONLY (synthetic-inner, Tier-3, campaign
+ * umbrella-widening P4): a lone outer lands with inner as a no-op (Ri = live
+ * inner main), ancestry-gated — ancestor+source → normalize+LANDS, pure bump →
+ * convert+LANDS, present-but-not-ancestor → gitlink_diverged, absent-after-
+ * fetch → gitlink_unreachable (both Tier-2 legible rejects on the real outer).
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
@@ -122,6 +127,12 @@ interface FakePm {
     treeSha?: string;
     steps?: unknown[];
   }[];
+  /** Recorded noteOuterConverted args (Direction-C surfacing). */
+  outerConverted?: { requestId: string; reason: string };
+  /** Recorded noteOuterGitlinkNormalized args (P2/P4 normalization surfacing). */
+  outerGitlinkNormalized?: { requestId: string; reason: string };
+  /** Recorded merge_rejection task comments (rejectGroupLegibly), in order. */
+  comments: { taskId: string; commentType: string; category?: string; reason?: string }[];
 }
 
 function nowIso(): string {
@@ -263,6 +274,29 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
         m.rejectReason = payload.reason;
       }
       return m;
+    },
+    // ── surfacing spies (Direction-C conversion + P2/P4 normalization) ──
+    async noteOuterConverted(requestId: string, reason: string): Promise<void> {
+      state.calls.push("noteOuterConverted");
+      state.outerConverted = { requestId, reason };
+    },
+    async noteOuterGitlinkNormalized(requestId: string, reason: string): Promise<void> {
+      state.calls.push("noteOuterGitlinkNormalized");
+      state.outerGitlinkNormalized = { requestId, reason };
+    },
+    // ── legibility: the per-real-member merge_rejection task comment ──
+    async postTaskComment(
+      taskId: string,
+      body: { commentType: string; metadata?: { category?: string; reason?: string } },
+    ): Promise<unknown> {
+      state.calls.push("postTaskComment");
+      state.comments.push({
+        taskId,
+        commentType: body.commentType,
+        category: body.metadata?.category,
+        reason: body.metadata?.reason,
+      });
+      return {};
     },
   };
   return fake as unknown as GroupIntegrationDeps["pmClient"];
@@ -462,6 +496,7 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer groups (real two-repo)", () => 
       calls: [],
       requestRejects: [],
       attemptCompletions: [],
+      comments: [],
     };
   }
 
@@ -489,8 +524,17 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer groups (real two-repo)", () => 
     if (o) outerPool.release(o);
   }
 
-  // ── (a) the binding guard — all PRE-pickup, no leak ──
-  it("binding guard: real member binds to the OUTER repo → rejected with submit-a-plain-request guidance", async () => {
+  // ── (a) the binding — a lone outer real member is NO LONGER rejected ──
+  // (was the obsolete "outer-only changes don't need a group" guard). Tier-3
+  // (campaign umbrella-widening P4): a real member that binds to the OUTER repo
+  // now flips roles — real → OUTER, synthetic → INNER (innerRef null) — and the
+  // group lands the outer with inner as a no-op. Here the outer member carries
+  // NO managed-gitlink change (feature/outer only touches app.txt), so the
+  // classifier fails open to the legacy rebase; the point of THIS test is only
+  // that the bind flips and reaches ready_to_land (no PRE-pickup reject). The
+  // deep gitlink-classification cases (normalize / pure_bump / diverged /
+  // unreachable) live in the dedicated outer-only fixture below.
+  it("binding: a lone outer real member binds real→OUTER / synthetic→INNER and reaches ready_to_land (no longer rejected)", async () => {
     const state = makeState([
       makeMember({ id: "req-real", commitSha: outerFeatureSha }),
       makeSynthetic(),
@@ -499,20 +543,19 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer groups (real two-repo)", () => 
       { id: "grp-synth-a1", members: state.group.members },
       depsFor(state),
     );
-    expect(outcome.kind).toBe("rejected");
-    if (outcome.kind === "rejected") {
-      expect(outcome.reason).toMatch(/binds to the OUTER repo.*don't need a group/);
-    }
-    expect(state.rejectPayload?.reason).toMatch(
-      /binds to the OUTER repo.*don't need a group.*submit a plain merge request/,
-    );
-    // PRE-pickup: rejected from FORMING, no markGroupIntegrating, no attempts.
-    expect(state.calls).not.toContain("markGroupIntegrating");
-    expect(state.calls).toContain("rejectGroup");
-    expect(state.attempts.length).toBe(0);
-    // No worktrees were leased → pools still free.
+    expect(outcome.kind).toBe("ready_to_land");
+    if (outcome.kind !== "ready_to_land") throw new Error("not ready_to_land");
+    // Roles flipped: the real outer member is the OUTER; the synthetic is INNER.
+    expect(outcome.outerMember.id).toBe("req-real");
+    expect(outcome.innerMember.id).toBe("req-synth");
+    // Inner is a no-op: Ri == live inner main (baseInnerSha), the inner never
+    // rebased. The inner verify was short-circuited (no completeAttempt:failed).
+    expect(outcome.Ri).toBe(outcome.assembled.baseInnerSha);
+    expect(state.calls).toContain("markGroupIntegrating");
+    expect(state.calls).not.toContain("rejectGroup");
+    outcome.assembled.release();
     assertPoolsReacquirable();
-  });
+  }, 30_000);
 
   it("binding guard: real member ref resolves in NEITHER repo → rejected", async () => {
     const state = makeState([
@@ -822,6 +865,7 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer conflict-immunity (own fixture)
       calls: [],
       requestRejects: [],
       attemptCompletions: [],
+      comments: [],
     };
     const deps: GroupIntegrationDeps = {
       pmClient: makeFakePm(state),
@@ -1010,6 +1054,7 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer no-op land (own fixture)", () =
       calls: [],
       requestRejects: [],
       attemptCompletions: [],
+      comments: [],
     };
     const deps: GroupIntegrationDeps = {
       pmClient: makeFakePm(state),
@@ -1086,4 +1131,406 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer no-op land (own fixture)", () =
     expect(state.group.state).toBe("landed");
     expect(state.calls).not.toContain("rejectGroup");
   }, 30_000);
+});
+
+// ─── (f) OUTER-ONLY (synthetic-inner) groups — Tier-3, campaign umbrella P4 ──
+//
+// The MIRROR of the inner-only synthetic-outer form: a lone REAL outer member
+// binds real→OUTER / synthetic→INNER (innerRef null) and lands the outer with
+// inner as a NO-OP (Ri = live inner main; inner never advances). The gitlink is
+// ancestry-gated by classifyOuterGitlinkDiff:
+//   - ancestor + source          → normalize (strip gitlink hunk, apply source) → LANDS
+//   - ancestor, gitlink-only      → pure_bump (convert)                          → LANDS
+//   - present-but-not-ancestor    → gitlink_diverged   (Tier-2 legible reject)
+//   - absent after all-refs fetch → gitlink_unreachable (Tier-2 legible reject)
+// Each scenario runs against its OWN fresh two-repo world (a landing test
+// advances outer main, so isolation keeps the ancestry/no-op assertions crisp).
+describe.skipIf(!GIT_AVAILABLE)("outer-only (synthetic-inner) groups (own fixtures)", () => {
+  const tmpRoots: string[] = [];
+  const logger = createLogger("error");
+
+  afterAll(() => {
+    for (const r of tmpRoots) {
+      try {
+        rmSync(r, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  interface OuterOnlyWorld {
+    innerBare: string;
+    outerBare: string;
+    innerBaseA: string;
+    innerMainB: string;
+    innerDivergedD: string;
+    innerUnreachableU: string;
+    featureNormalize: string;
+    featurePurebump: string;
+    featureDiverged: string;
+    featureUnreachable: string;
+    innerPool: WorktreePool;
+    outerPool: WorktreePool;
+    innerBindGit: SimpleGit;
+    outerBindGit: SimpleGit;
+  }
+
+  /** Build a fresh isolated two-repo world for one outer-only scenario. */
+  async function buildWorld(tag: string): Promise<OuterOnlyWorld> {
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), `pm-int-outeronly-${tag}-`));
+    tmpRoots.push(tmpRoot);
+    const innerBare = path.join(tmpRoot, "inner.git");
+    const outerBare = path.join(tmpRoot, "outer.git");
+    const worktreeRoot = path.join(tmpRoot, "wtroot");
+    await simpleGit().init(["--bare", "--initial-branch=main", innerBare]);
+    await simpleGit().init(["--bare", "--initial-branch=main", outerBare]);
+
+    // ── seed INNER: main A → B (A ancestor of B = Ri), a DIVERGED side commit
+    //    D (present but not on main), and an UNPUSHED U (never on the remote). ──
+    const innerSeed = path.join(tmpRoot, "inner-seed");
+    await simpleGit().clone(innerBare, innerSeed);
+    const ig = simpleGit(innerSeed);
+    await configIdentity(ig);
+    writeFileSync(path.join(innerSeed, "lib.txt"), "v1\n");
+    await ig.add(["lib.txt"]);
+    await ig.commit("inner main base (A)");
+    await ig.branch(["-M", "main"]);
+    await ig.push(["-u", "origin", "main"]);
+    const innerBaseA = (await ig.revparse(["HEAD"])).trim();
+
+    writeFileSync(path.join(innerSeed, "lib.txt"), "v2\n");
+    await ig.add(["lib.txt"]);
+    await ig.commit("inner main advance (B)");
+    await ig.push(["origin", "main"]);
+    const innerMainB = (await ig.revparse(["HEAD"])).trim();
+
+    // DIVERGED D: branch off A, a commit NOT reachable from main (present after
+    // an all-refs fetch, but not an ancestor of B).
+    await ig.checkout(innerBaseA);
+    await ig.checkoutLocalBranch("diverged");
+    writeFileSync(path.join(innerSeed, "side.txt"), "divergent\n");
+    await ig.add(["side.txt"]);
+    await ig.commit("inner diverged commit (D)");
+    await ig.push(["-u", "origin", "diverged"]);
+    const innerDivergedD = (await ig.revparse(["HEAD"])).trim();
+
+    // UNREACHABLE U: a real commit whose object is created locally and NEVER
+    // pushed — absent from the bare remote even after an all-refs fetch.
+    await ig.checkout(innerBaseA);
+    await ig.checkoutLocalBranch("unpushed");
+    writeFileSync(path.join(innerSeed, "ghost.txt"), "never pushed\n");
+    await ig.add(["ghost.txt"]);
+    await ig.commit("inner unreachable commit (U)");
+    const innerUnreachableU = (await ig.revparse(["HEAD"])).trim();
+    await ig.checkout("main"); // leave the seed on main; U stays unpushed
+
+    // ── seed OUTER: main gitlink @ A, plus one feature branch per scenario. ──
+    const outerSeed = path.join(tmpRoot, "outer-seed");
+    await simpleGit().clone(outerBare, outerSeed);
+    const og = simpleGit(outerSeed);
+    await configIdentity(og);
+    const innerUrlForGitmodules = innerBare.replace(/\\/g, "/");
+    writeFileSync(path.join(outerSeed, "top.txt"), "top v1\n");
+    writeFileSync(
+      path.join(outerSeed, ".gitmodules"),
+      `[submodule "rynx"]\n\tpath = ${GITLINK_PATH}\n\turl = ${innerUrlForGitmodules}\n`,
+    );
+    await og.add(["top.txt", ".gitmodules"]);
+    await og.raw(["update-index", "--add", "--cacheinfo", `160000,${innerBaseA},${GITLINK_PATH}`]);
+    await og.commit("outer main base with gitlink @ A");
+    await og.branch(["-M", "main"]);
+    await og.push(["-u", "origin", "main"]);
+
+    // A feature branch that bumps the managed gitlink to `target` and, when
+    // `withSource`, also carries a real source file (→ normalize vs pure_bump).
+    const mkFeature = async (
+      name: string,
+      target: string,
+      withSource: boolean,
+    ): Promise<string> => {
+      await og.checkout("main");
+      await og.checkoutLocalBranch(name);
+      if (withSource) {
+        writeFileSync(path.join(outerSeed, "app.txt"), `outer source for ${name}\n`);
+        await og.add(["app.txt"]);
+      }
+      await og.raw(["update-index", "--cacheinfo", `160000,${target},${GITLINK_PATH}`]);
+      await og.commit(
+        `outer ${name}: gitlink -> ${target.slice(0, 8)}${withSource ? " + source" : ""}`,
+      );
+      await og.push(["-u", "origin", name]);
+      const sha = (await og.revparse(["HEAD"])).trim();
+      return sha;
+    };
+
+    const featureNormalize = await mkFeature("feature/normalize", innerMainB, true);
+    const featurePurebump = await mkFeature("feature/purebump", innerMainB, false);
+    const featureDiverged = await mkFeature("feature/diverged", innerDivergedD, false);
+    const featureUnreachable = await mkFeature("feature/unreachable", innerUnreachableU, false);
+    await og.checkout("main");
+
+    // ── pools (size-1) + binding clones (all feature branches fetched). ──
+    const innerPool = createWorktreePool({
+      worktreeRoot,
+      worktreeName: "inner",
+      gitRepoUrl: innerBare,
+      gitRemote: GIT_REMOTE,
+      gitMainBranch: GIT_MAIN,
+      parallelism: 1,
+      cleanKeep: [],
+    });
+    const outerPool = createWorktreePool({
+      worktreeRoot,
+      worktreeName: "outer",
+      gitRepoUrl: outerBare,
+      gitRemote: GIT_REMOTE,
+      gitMainBranch: GIT_MAIN,
+      parallelism: 1,
+      cleanKeep: [],
+    });
+    await innerPool.ensureAll();
+    await outerPool.ensureAll();
+
+    const innerBind = path.join(tmpRoot, "inner-bind");
+    const outerBind = path.join(tmpRoot, "outer-bind");
+    await simpleGit().clone(innerBare, innerBind);
+    await simpleGit().clone(outerBare, outerBind);
+    const innerBindGit = simpleGit(innerBind);
+    const outerBindGit = simpleGit(outerBind);
+    await innerBindGit.fetch("origin");
+    await outerBindGit.fetch("origin");
+
+    return {
+      innerBare,
+      outerBare,
+      innerBaseA,
+      innerMainB,
+      innerDivergedD,
+      innerUnreachableU,
+      featureNormalize,
+      featurePurebump,
+      featureDiverged,
+      featureUnreachable,
+      innerPool,
+      outerPool,
+      innerBindGit,
+      outerBindGit,
+    };
+  }
+
+  function worldDeps(w: OuterOnlyWorld, state: FakePm): GroupIntegrationDeps {
+    return {
+      pmClient: makeFakePm(state),
+      logger,
+      innerLane: {
+        role: "inner",
+        name: "rynx-inner",
+        acquire: () => w.innerPool.acquire(),
+        release: (wt) => w.innerPool.release(wt),
+        gitOps: (p) => createGitOps(simpleGit(p)),
+        gitlinkPath: GITLINK_PATH,
+        resolveRefInClone: (ref) => resolveVerified(w.innerBindGit, ref),
+      },
+      outerLane: {
+        role: "outer",
+        name: "app-outer",
+        acquire: () => w.outerPool.acquire(),
+        release: (wt) => w.outerPool.release(wt),
+        gitOps: (p) => createGitOps(simpleGit(p)),
+        resolveRefInClone: (ref) => resolveVerified(w.outerBindGit, ref),
+      },
+      gitRemote: GIT_REMOTE,
+      defaultVerifyCommand: "echo verify-ok",
+      verifyTimeoutSec: 30,
+    };
+  }
+
+  function outerOnlyState(outerCommitSha: string): FakePm {
+    return {
+      group: {
+        state: "forming",
+        members: [
+          makeMember({ id: "req-outer", commitSha: outerCommitSha, taskId: "task-outer" }),
+          makeSynthetic({ id: "req-synth-inner" }),
+        ],
+      },
+      attempts: [],
+      calls: [],
+      requestRejects: [],
+      attemptCompletions: [],
+      comments: [],
+    };
+  }
+
+  async function bareSha(bare: string, ref: string): Promise<string> {
+    return (await simpleGit(bare).revparse([ref])).trim();
+  }
+
+  // ── ANCESTOR + source → normalize → LANDS ──
+  it("ancestor gitlink + source → normalize, LANDS: inner main unchanged, outer gitlink -> Ri, noteOuterGitlinkNormalized on the real outer", async () => {
+    const w = await buildWorld("norm");
+    const state = outerOnlyState(w.featureNormalize);
+    const deps = worldDeps(w, state);
+    const integ = await runGroupIntegration(
+      { id: "grp-outeronly-norm", members: state.group.members },
+      deps,
+    );
+    expect(integ.kind).toBe("ready_to_land");
+    if (integ.kind !== "ready_to_land") throw new Error(`not ready: ${JSON.stringify(integ)}`);
+
+    // Roles flipped: real → OUTER, synthetic → INNER.
+    expect(integ.outerMember.id).toBe("req-outer");
+    expect(integ.innerMember.id).toBe("req-synth-inner");
+
+    const asm = integ.assembled;
+    // Normalization arm fired (gitlink stripped + source applied), NOT convert.
+    expect(asm.outerGitlinkNormalized).toBe(true);
+    expect(asm.outerConverted).toBe(false);
+    // Inner is a NO-OP: Ri == live inner main == B, no inner rebase.
+    expect(integ.Ri).toBe(asm.baseInnerSha);
+    expect(integ.Ri).toBe(w.innerMainB);
+    // The committed gitlink references Ri (the landing inner main).
+    expect(await asm.outerGitOps.readSubmoduleGitlink(GITLINK_PATH)).toBe(integ.Ri);
+    // Surfacing: noteOuterGitlinkNormalized on the REAL outer member.
+    expect(state.calls).toContain("noteOuterGitlinkNormalized");
+    expect(state.outerGitlinkNormalized?.requestId).toBe("req-outer");
+
+    const result = await landAssembledGroup(
+      {
+        groupId: "grp-outeronly-norm",
+        projectId: "proj-1",
+        ready: integ,
+        innerRepoName: "rynx-inner",
+        outerRepoName: "app-outer",
+      },
+      { pmClient: deps.pmClient, logger, gitRemote: GIT_REMOTE, gitMainBranch: GIT_MAIN },
+    );
+    expect(result.kind).toBe("landed");
+
+    // Inner bare main is BYTE-UNCHANGED (the no-op inner never advanced).
+    expect(await bareSha(w.innerBare, GIT_MAIN)).toBe(w.innerMainB);
+    // Outer advanced to Ro; its gitlink references Ri and the source landed.
+    expect(await bareSha(w.outerBare, GIT_MAIN)).toBe(integ.Ro);
+    const lsTree = await simpleGit(w.outerBare).raw(["ls-tree", GIT_MAIN, GITLINK_PATH]);
+    expect(lsTree.trim()).toBe(`160000 commit ${integ.Ri}\t${GITLINK_PATH}`);
+    const appBlob = await simpleGit(w.outerBare).raw(["ls-tree", GIT_MAIN, "app.txt"]);
+    expect(appBlob.trim()).not.toBe("");
+
+    // landGroup body keyed by requestId, [inner, outer]: synthetic inner @ Ri,
+    // real outer @ Ro.
+    expect(state.landGroupBody?.members).toEqual([
+      { requestId: "req-synth-inner", landedSha: integ.Ri, role: "inner" },
+      { requestId: "req-outer", landedSha: integ.Ro, role: "outer" },
+    ]);
+    expect(state.calls).not.toContain("rejectGroup");
+  }, 45_000);
+
+  // ── ANCESTOR, gitlink-only → pure_bump (convert) → LANDS no-op inner ──
+  it("pure gitlink bump to inner main → convert, LANDS: inner main unchanged (no-op inner), outer advances, noteOuterConverted on the real outer", async () => {
+    const w = await buildWorld("bump");
+    const innerCountBefore = parseInt(
+      (await simpleGit(w.innerBare).raw(["rev-list", "--count", GIT_MAIN])).trim(),
+      10,
+    );
+    const state = outerOnlyState(w.featurePurebump);
+    const deps = worldDeps(w, state);
+    const integ = await runGroupIntegration(
+      { id: "grp-outeronly-bump", members: state.group.members },
+      deps,
+    );
+    expect(integ.kind).toBe("ready_to_land");
+    if (integ.kind !== "ready_to_land") throw new Error(`not ready: ${JSON.stringify(integ)}`);
+
+    const asm = integ.assembled;
+    // Pure-bump arm fired (convert), NOT normalize.
+    expect(asm.outerConverted).toBe(true);
+    expect(asm.outerGitlinkNormalized).toBe(false);
+    // No-op inner: Ri == live inner main == B.
+    expect(integ.Ri).toBe(asm.baseInnerSha);
+    expect(integ.Ri).toBe(w.innerMainB);
+    expect(await asm.outerGitOps.readSubmoduleGitlink(GITLINK_PATH)).toBe(integ.Ri);
+    expect(state.calls).toContain("noteOuterConverted");
+    expect(state.outerConverted?.requestId).toBe("req-outer");
+
+    const result = await landAssembledGroup(
+      {
+        groupId: "grp-outeronly-bump",
+        projectId: "proj-1",
+        ready: integ,
+        innerRepoName: "rynx-inner",
+        outerRepoName: "app-outer",
+      },
+      { pmClient: deps.pmClient, logger, gitRemote: GIT_REMOTE, gitMainBranch: GIT_MAIN },
+    );
+    expect(result.kind).toBe("landed");
+
+    // Inner bare main BYTE-UNCHANGED: same sha AND same commit count.
+    expect(await bareSha(w.innerBare, GIT_MAIN)).toBe(w.innerMainB);
+    const innerCountAfter = parseInt(
+      (await simpleGit(w.innerBare).raw(["rev-list", "--count", GIT_MAIN])).trim(),
+      10,
+    );
+    expect(innerCountAfter).toBe(innerCountBefore);
+    // Outer advanced; gitlink -> Ri (inner main).
+    expect(await bareSha(w.outerBare, GIT_MAIN)).toBe(integ.Ro);
+    const lsTree = await simpleGit(w.outerBare).raw(["ls-tree", GIT_MAIN, GITLINK_PATH]);
+    expect(lsTree.trim()).toBe(`160000 commit ${integ.Ri}\t${GITLINK_PATH}`);
+  }, 45_000);
+
+  // ── present-but-NOT-ancestor → gitlink_diverged (Tier-2 legible reject) ──
+  it("diverged gitlink (present, not an ancestor of inner main) → gitlink_diverged reject + category + merge_rejection comment on the real outer task", async () => {
+    const w = await buildWorld("div");
+    const state = outerOnlyState(w.featureDiverged);
+    const deps = worldDeps(w, state);
+    const integ = await runGroupIntegration(
+      { id: "grp-outeronly-div", members: state.group.members },
+      deps,
+    );
+    expect(integ.kind).toBe("rejected");
+    if (integ.kind === "rejected") {
+      expect(integ.reason).toMatch(/gitlink_diverged/);
+    }
+    // Category surfaced correctly (not collapsed to "other").
+    expect(state.rejectPayload?.category).toBe("gitlink_diverged");
+    // PRE-pickup: never picked up (assembly failed before markGroupIntegrating).
+    expect(state.calls).not.toContain("markGroupIntegrating");
+    expect(state.calls).toContain("rejectGroup");
+    // Legibility: the merge_rejection comment targets the REAL OUTER member's
+    // task (the synthetic inner has a null taskId and is skipped).
+    const outerComment = state.comments.find((c) => c.taskId === "task-outer");
+    expect(outerComment).toBeDefined();
+    expect(outerComment?.commentType).toBe("merge_rejection");
+    expect(outerComment?.category).toBe("gitlink_diverged");
+    // Inner main never touched; pools released (assembly leased then freed).
+    expect(await bareSha(w.innerBare, GIT_MAIN)).toBe(w.innerMainB);
+    const i = w.innerPool.acquire();
+    const o = w.outerPool.acquire();
+    expect(i).not.toBeNull();
+    expect(o).not.toBeNull();
+    if (i) w.innerPool.release(i);
+    if (o) w.outerPool.release(o);
+  }, 45_000);
+
+  // ── absent after all-refs fetch → gitlink_unreachable (Tier-2 reject) ──
+  it("unreachable gitlink (absent after an all-refs fetch) → gitlink_unreachable reject + category + merge_rejection comment on the real outer task", async () => {
+    const w = await buildWorld("unr");
+    const state = outerOnlyState(w.featureUnreachable);
+    const deps = worldDeps(w, state);
+    const integ = await runGroupIntegration(
+      { id: "grp-outeronly-unr", members: state.group.members },
+      deps,
+    );
+    expect(integ.kind).toBe("rejected");
+    if (integ.kind === "rejected") {
+      expect(integ.reason).toMatch(/gitlink_unreachable/);
+    }
+    expect(state.rejectPayload?.category).toBe("gitlink_unreachable");
+    expect(state.calls).not.toContain("markGroupIntegrating");
+    const outerComment = state.comments.find((c) => c.taskId === "task-outer");
+    expect(outerComment).toBeDefined();
+    expect(outerComment?.commentType).toBe("merge_rejection");
+    expect(outerComment?.category).toBe("gitlink_unreachable");
+    expect(await bareSha(w.innerBare, GIT_MAIN)).toBe(w.innerMainB);
+  }, 45_000);
 });

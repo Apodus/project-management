@@ -127,6 +127,10 @@ const createGroupBody = z
     // change), PM also records a synthetic outer member. STRICT === true
     // semantics — an explicit false behaves exactly like absent.
     synthesizeOuter: z.boolean().optional(),
+    // Outer-only cross-repo form (the mirror): with EXACTLY ONE member spec
+    // (the outer change), PM also records a synthetic inner member. STRICT
+    // === true semantics; mutually exclusive with synthesizeOuter.
+    synthesizeInner: z.boolean().optional(),
   })
   .superRefine((v, ctx) => {
     const hasIds = v.memberRequestIds !== undefined;
@@ -135,6 +139,14 @@ const createGroupBody = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Provide exactly one of memberRequestIds or members.",
+      });
+      return;
+    }
+    if (v.synthesizeOuter === true && v.synthesizeInner === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["synthesizeInner"],
+        message: "synthesizeInner and synthesizeOuter are mutually exclusive; provide exactly one.",
       });
       return;
     }
@@ -152,6 +164,22 @@ const createGroupBody = z
           path: ["members"],
           message:
             "synthesizeOuter requires exactly one member spec (the inner change); the outer member is synthesized at integration time.",
+        });
+      }
+    } else if (v.synthesizeInner === true) {
+      if (hasIds) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["synthesizeInner"],
+          message:
+            "synthesizeInner cannot be combined with memberRequestIds; provide members with exactly one outer member spec.",
+        });
+      } else if (v.members!.length !== 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["members"],
+          message:
+            "synthesizeInner requires exactly one member spec (the outer change); the inner member is synthesized at integration time.",
         });
       }
     } else if (hasSpecs && v.members!.length < 2) {
@@ -213,7 +241,7 @@ const createGroupRoute = createRoute({
   tags: ["Merge Groups"],
   summary: "Create a merge group (bind existing, or atomic submit-and-group)",
   description:
-    "Create a 'forming' merge group three ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping); (c) members with exactly ONE spec + synthesizeOuter: true — inner-only cross-repo form: PM records the real inner member plus a synthetic outer member (no branch/commit); the integrator synthesizes the outer gitlink-bump candidate at integration and fills its landedSha at land. Requires settings.integrator.linked_repos to declare exactly one inner and one outer repo. The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.",
+    "Create a 'forming' merge group four ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping); (c) members with exactly ONE spec + synthesizeOuter: true — inner-only cross-repo form: PM records the real inner member plus a synthetic outer member (no branch/commit); the integrator synthesizes the outer gitlink-bump candidate at integration and fills its landedSha at land; (d) members with exactly ONE spec + synthesizeInner: true — outer-only cross-repo form (the mirror; mutually exclusive with synthesizeOuter): PM records the real outer member plus a synthetic inner member; the integrator lands the outer with inner as a no-op (Ri = live inner main, ancestry-gated). (c)/(d) require settings.integrator.linked_repos to declare exactly one inner and one outer repo. The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     body: { content: { "application/json": { schema: createGroupBody } }, required: true },
@@ -547,7 +575,11 @@ export function createMergeGroupRoutes(): OpenAPIHono<{
       resource: body.resource,
       submittedBy: user.id,
       ...(body.members !== undefined
-        ? { members: body.members, synthesizeOuter: body.synthesizeOuter }
+        ? {
+            members: body.members,
+            synthesizeOuter: body.synthesizeOuter,
+            synthesizeInner: body.synthesizeInner,
+          }
         : { memberRequestIds: body.memberRequestIds }),
     });
     return c.json({ data: detail }, 201);

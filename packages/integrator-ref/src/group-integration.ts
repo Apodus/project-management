@@ -14,12 +14,20 @@
  * transitions: forming→rejected for a PRE-pickup failure; integrating→rejected
  * for a POST-pickup verify failure).
  *
- * SYNTHETIC-OUTER groups (inner-only, campaign 2026-06-10): a group whose
- * outer member is PM-minted (`synthetic: true`, ref-less) flows through the
- * SAME sequence — binding maps the synthetic member to the outer role with
- * `outerRef: null`, the assembly skips the outer rebase (the outer candidate
- * is synthesized as one gitlink-bump commit on live outer main), and verify /
- * land / reject are identical, keyed by requestId. No forked code path.
+ * SYNTHETIC groups (cross-repo synthesize forms) flow through the SAME sequence
+ * with one synthetic (PM-minted, ref-less) member, no forked code path:
+ *   - SYNTHETIC-OUTER (inner-only, campaign 2026-06-10): binding maps the
+ *     synthetic to the outer role with `outerRef: null`; the assembly skips the
+ *     outer rebase (the outer candidate is synthesized as one gitlink-bump
+ *     commit on live outer main).
+ *   - SYNTHETIC-INNER (outer-only, campaign umbrella-widening P4, the mirror):
+ *     binding maps the synthetic to the inner role with `innerRef: null`; the
+ *     assembly skips the inner rebase (Ri = live inner main, the no-op inner)
+ *     and the inner verify is short-circuited to a pass — the outer verify
+ *     against Ri is the sole gate. The ancestry classifier gates the gitlink
+ *     (ancestor→normalize+land; not-ancestor→gitlink_diverged; unreachable→
+ *     gitlink_unreachable).
+ * Verify / land / reject are identical, keyed by requestId.
  *
  * The lane-lock acquire/heartbeat/release lives in the scheduler wrapper
  * (batch.ts), exactly as runBatchOnce wraps its drain — this function assumes
@@ -33,7 +41,12 @@ import type { PmClient, RejectCategory } from "./pm-client.js";
 import { assembleGroup, type AssembledGroupOk, type AssembleGroupDeps } from "./group-assembly.js";
 import { categorize } from "./categorize.js";
 import { chaosCrashPoint } from "./chaos.js";
-import { runPipeline, toVerifyStepResults, type PipelineCacheCtx } from "./verify-pipeline.js";
+import {
+  runPipeline,
+  toVerifyStepResults,
+  type PipelineCacheCtx,
+  type PipelineResult,
+} from "./verify-pipeline.js";
 import type { CacheMode, VerifyStep, VerifyStepResult } from "@pm/shared";
 
 // ─── Role-bound repo descriptor (config-declared role) ────────────────
@@ -131,8 +144,13 @@ export interface GroupToIntegrate {
 interface MemberBinding {
   innerMember: MergeRequestView;
   outerMember: MergeRequestView;
-  /** The resolved ref to rebase per repo (commitSha ?? branch). */
-  innerRef: string;
+  /**
+   * The resolved inner ref to rebase (commitSha ?? branch). NULL ⇔ the inner
+   * member is SYNTHETIC (an outer-only group, campaign umbrella-widening P4):
+   * it carries no branch/commitSha — the assembly skips the inner rebase and
+   * lands the outer with Ri = live inner main (the no-op inner).
+   */
+  innerRef: string | null;
   /**
    * NULL ⇔ the outer member is SYNTHETIC (an inner-only group): it carries no
    * branch/commitSha — the assembly skips the outer rebase and synthesizes the
@@ -160,15 +178,19 @@ function memberIdentityRef(m: MergeRequestView): string | null {
  * a member that resolves in BOTH repos, or NEITHER, is not unambiguously
  * bindable → return an error (the caller rejects the group from FORMING).
  *
- * SYNTHETIC-OUTER arm (inner-only groups, campaign 2026-06-10): when exactly
- * ONE member is `synthetic === true` (strict — undefined takes the legacy arm
- * byte-identically), that member IS the outer by construction (PM mints it
- * ref-less on `synthesizeOuter`): the REAL member's identity ref must bind to
- * the INNER repo (an outer-only binding means the change does not need a group
- * at all — fail loud with guidance), and `outerRef` is null so the assembly
- * skips the outer rebase. Two synthetic members, or a synthetic member that
- * unexpectedly carries a ref, fail loud. All failures stay PRE-pickup
- * (forming→rejected, the existing path).
+ * SYNTHETIC arm (cross-repo synthesize forms): when exactly ONE member is
+ * `synthetic === true` (strict — undefined takes the legacy arm byte-identically),
+ * the synthetic member's role is derived from WHERE the REAL member's identity
+ * ref resolves:
+ *   - real → INNER repo ⇒ inner-only `synthesizeOuter` group (campaign
+ *     2026-06-10): the synthetic IS the outer; `outerRef` null so the assembly
+ *     skips the outer rebase and synthesizes the gitlink bump on live outer main.
+ *   - real → OUTER repo ⇒ outer-only `synthesizeInner` group (campaign
+ *     umbrella-widening P4, the mirror): the synthetic IS the inner; `innerRef`
+ *     null so the assembly skips the inner rebase and lands the outer with
+ *     Ri = live inner main (the ancestry classifier gates the gitlink).
+ * Two synthetic members, or a synthetic member that unexpectedly carries a ref,
+ * fail loud. All failures stay PRE-pickup (forming→rejected, the existing path).
  *
  * Returns the bound inner/outer members + their rebase refs + the inner
  * gitlink path, or `{ ok:false, reason }` when binding is ambiguous/unresolvable.
@@ -239,19 +261,8 @@ export async function bindMembersToRoles(
         reason: `could not unambiguously bind member ${real.id} to inner/outer repo: ref "${ref}" resolves in NEITHER repo`,
       };
     }
-    if (!resolvesInner) {
-      // OUTER only: an outer-only change has no inner half to synthesize a
-      // gitlink bump for — the group form is the wrong tool. Fail loud with
-      // the corrective guidance.
-      return {
-        ok: false,
-        reason: `synthetic-outer group: real member ${real.id} ref "${ref}" binds to the OUTER repo — outer-only changes don't need a group; submit a plain merge request`,
-      };
-    }
-
-    // INNER only — bind: real member is the inner, synthetic is the outer,
-    // outerRef null (the assembly skips the outer rebase). gitlinkPath check
-    // below is shared with the legacy arm (unchanged).
+    // The gitlink path is a property of the inner repo regardless of WHICH
+    // member is inner (shared with the legacy arm, unchanged).
     const gitlinkPath = innerLane.gitlinkPath;
     if (!gitlinkPath) {
       return {
@@ -259,6 +270,29 @@ export async function bindMembersToRoles(
         reason: `inner linked repo "${innerLane.name}" has no gitlinkPath configured; cannot assemble the group`,
       };
     }
+
+    if (!resolvesInner) {
+      // OUTER only (Tier-3, campaign umbrella-widening P4): the real member is
+      // the OUTER; the synthetic is the INNER. innerRef null ⇒ the assembly
+      // skips the inner rebase and lands the outer with Ri = live inner main
+      // (the no-op inner). The ancestry classifier gates the gitlink at
+      // assembly (ancestor→normalize+land; not-ancestor→gitlink_diverged;
+      // unreachable→gitlink_unreachable) — this is the mirror of the inner-only
+      // synthesize_outer bind.
+      return {
+        ok: true,
+        binding: {
+          innerMember: synthetic,
+          outerMember: real,
+          innerRef: null,
+          outerRef: ref,
+          gitlinkPath,
+        },
+      };
+    }
+
+    // INNER only — bind: real member is the inner, synthetic is the outer,
+    // outerRef null (the assembly skips the outer rebase).
     return {
       ok: true,
       binding: {
@@ -374,6 +408,42 @@ function summaryLine(text: string): string {
   return (line ?? "").trim().slice(0, 500);
 }
 
+/**
+ * The synthetic PASS PipelineResult for a NO-OP inner (a lone-outer group,
+ * campaign umbrella-widening P4). innerRef === null ⇒ Ri === live inner main,
+ * an already-landed-and-verified tree, so the inner verify is short-circuited
+ * (see the verify site). Shaped so the downstream consumers behave exactly like
+ * a real single-step pass: `outcome === "pass"`, no `failingStep`, one passing
+ * step whose empty `logPath`/`treeSha`/`stepConfigSha` map through
+ * `toVerifyStepResults` to a `logUrl: undefined` / empty-string wire shape (the
+ * schema allows empty strings there). No verify actually ran.
+ */
+function syntheticInnerPass(): PipelineResult {
+  return {
+    outcome: "pass",
+    failingStep: null,
+    steps: [
+      {
+        stepId: "verify",
+        outcome: "pass",
+        durationMs: 0,
+        cached: false,
+        treeSha: "",
+        stepConfigSha: "",
+        verify: {
+          exitCode: 0,
+          signal: null,
+          stdout: "",
+          stderr: "",
+          durationMs: 0,
+          timedOut: false,
+          logPath: "",
+        },
+      },
+    ],
+  };
+}
+
 // ─── rejectGroupLegibly (the single group-reject choke-point) ─────────
 
 /**
@@ -471,19 +541,34 @@ export async function runGroupIntegration(
       );
       return { kind: "backpressure" };
     }
-    // inner_conflict / outer_conflict / gitlink_mismatch: a PRE-PICKUP assembly
-    // failure → reject straight from FORMING (FIX 2; do NOT markGroupIntegrating
-    // — forming→rejected is a legal §3.3 edge, no 409).
-    const isConflict = asm.reason === "inner_conflict" || asm.reason === "outer_conflict";
+    // inner_conflict / outer_conflict / gitlink_diverged / gitlink_unreachable /
+    // gitlink_mismatch: a PRE-PICKUP assembly failure → reject straight from
+    // FORMING (FIX 2; do NOT markGroupIntegrating — forming→rejected is a legal
+    // §3.3 edge, no 409). Map each assembly reason to its OWN reject category so
+    // the Tier-2 gitlink rejects surface with the right category (not collapsed
+    // to "other"); the conflicts stay "conflict", the §11 mismatch stays "other".
+    const category: RejectCategory =
+      asm.reason === "inner_conflict" || asm.reason === "outer_conflict"
+        ? "conflict"
+        : asm.reason === "gitlink_diverged"
+          ? "gitlink_diverged"
+          : asm.reason === "gitlink_unreachable"
+            ? "gitlink_unreachable"
+            : "other";
     const reason = `group assembly failed (${asm.reason})${asm.detail ? `: ${asm.detail}` : ""}`;
     logger.warn(
       { groupId: group.id, reason },
       "group assembly failed pre-pickup; rejecting from forming",
     );
+    // Target ALL real members' tasks (same pattern as the binding-failure
+    // choke-point): a lone-outer group's inner member is SYNTHETIC (null
+    // taskId), so `[innerMember.taskId]` alone would silently drain the outer
+    // author's comment. (Two-member groups additively get the outer task a
+    // comment too — intended.)
     await rejectGroupLegibly(pmClient, logger, group, {
       reason,
-      category: isConflict ? "conflict" : "other",
-      taskIds: [innerMember.taskId].filter((t): t is string => t != null),
+      category,
+      taskIds: group.members.map((m) => m.taskId).filter((t): t is string => t != null),
     });
     // FIX 4 surfacing path also: release the (held) worktrees the failed
     // assembly leased.
@@ -650,8 +735,18 @@ export async function runGroupIntegration(
     };
   }
 
-  const [pipeI, pipeO] = await Promise.all([
-    runPipeline(innerSteps, {
+  // Inner-verify short-circuit (campaign umbrella-widening P4): a lone-outer
+  // group's inner is a NO-OP — innerRef === null ⇒ Ri === live inner main, an
+  // already-landed-and-verified tree. Running defaultVerifyCommand against it is
+  // redundant AND re-exposes the land to inner-verify flakiness (a transient
+  // inner failure would wrongly reject a change that only touches the outer).
+  // Synthesize a PASS instead of running the pipeline (the outer verify against
+  // Ri remains the sole real gate).
+  const runInnerPipeline = (): Promise<PipelineResult> => {
+    if (innerRef === null) {
+      return Promise.resolve(syntheticInnerPass());
+    }
+    return runPipeline(innerSteps, {
       gitOps: asm.innerGitOps,
       cwd: asm.innerWt.path,
       verifyTimeoutSec: deps.verifyTimeoutSec,
@@ -660,7 +755,11 @@ export async function runGroupIntegration(
       attemptId: innerAttempt.id,
       cache: innerCache,
       logger: deps.logger,
-    }),
+    });
+  };
+
+  const [pipeI, pipeO] = await Promise.all([
+    runInnerPipeline(),
     runPipeline(outerSteps, {
       gitOps: asm.outerGitOps,
       cwd: asm.outerWt.path,
@@ -747,13 +846,15 @@ export async function runGroupIntegration(
     const reason = `assembled verify failed: ${failingRepo} ${failReason}`;
     // rejectGroup rejects ALL members atomically (do NOT also per-member
     // rejectMergeRequest — that would double-reject). rejectGroupLegibly ADDS a
-    // best-effort merge_rejection comment on the bound inner member (the
+    // best-effort merge_rejection comment on every real member's task (the
     // group-reject path posts none) — no double-post: this site posts no member
-    // comment today.
+    // comment today. Target ALL real members' tasks (a lone-outer group's inner
+    // member is synthetic with a null taskId, so `[innerMember.taskId]` alone
+    // would silently drain the outer author's comment).
     await rejectGroupLegibly(pmClient, logger, group, {
       reason,
       category: rejectCategory,
-      taskIds: [innerMember.taskId].filter((t): t is string => t != null),
+      taskIds: group.members.map((m) => m.taskId).filter((t): t is string => t != null),
     });
     asm.release();
     logger.info(

@@ -482,6 +482,137 @@ describe("Merge Groups API", () => {
     });
   });
 
+  // ─── A3. POST create — outer-only synthesizeInner form (the mirror) ────
+  describe("POST /api/v1/projects/:projectId/merge-groups (outer-only synthesizeInner form)", () => {
+    const XREPO_SETTINGS = {
+      integrator: {
+        linked_repos: [
+          { name: "rynx", path: "../rynx", role: "inner" },
+          { name: "game", path: ".", role: "outer", gitlink_path: "rynx" },
+        ],
+      },
+    };
+
+    it("201 outer-only form: real outer member + synthetic inner member on the wire", async () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const agent = createTestAiAgent(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        {
+          token: agent.token,
+          body: {
+            resource: "main",
+            members: [{ branch: "feat/outer" }],
+            synthesizeInner: true,
+          },
+        },
+      );
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json.data.state).toBe("forming");
+      expect(json.data.members).toHaveLength(2);
+
+      const real = json.data.members.find((m: { synthetic: boolean }) => !m.synthetic);
+      expect(real.branch).toBe("feat/outer");
+      expect(real.status).toBe("queued");
+
+      const synthetic = json.data.members.find((m: { synthetic: boolean }) => m.synthetic);
+      expect(synthetic).toMatchObject({
+        branch: null,
+        commitSha: null,
+        taskId: null,
+        verifyCmd: null,
+        synthetic: true,
+        status: "queued",
+      });
+    });
+
+    it("400 (Zod tier) when the flag rides with 2 members", async () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const agent = createTestAiAgent(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        {
+          token: agent.token,
+          body: {
+            resource: "main",
+            members: [{ branch: "feat/a" }, { branch: "feat/b" }],
+            synthesizeInner: true,
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain("synthesizeInner requires exactly one member spec");
+    });
+
+    it("400 (Zod tier) when the flag rides with memberRequestIds", async () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const agent = createTestAiAgent(testApp.db);
+      const a = await submitRequest(project.id, agent.token, { branch: "a" });
+      const b = await submitRequest(project.id, agent.token, { branch: "b" });
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        {
+          token: agent.token,
+          body: { resource: "main", memberRequestIds: [a, b], synthesizeInner: true },
+        },
+      );
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain(
+        "synthesizeInner cannot be combined with memberRequestIds",
+      );
+    });
+
+    it("400 (Zod tier) when BOTH synthesize flags are set (mutually exclusive)", async () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const agent = createTestAiAgent(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        {
+          token: agent.token,
+          body: {
+            resource: "main",
+            members: [{ branch: "feat/outer" }],
+            synthesizeInner: true,
+            synthesizeOuter: true,
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain("mutually exclusive");
+    });
+
+    it("400 (service tier) when the project declares no inner/outer topology", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-groups`,
+        {
+          token: agent.token,
+          body: {
+            resource: "main",
+            members: [{ branch: "feat/outer" }],
+            synthesizeInner: true,
+          },
+        },
+      );
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error.code).toBe("VALIDATION_ERROR");
+      expect(json.error.message).toContain("exactly one inner and one outer repo");
+    });
+  });
+
   // ─── B. GET by id ────────────────────────────────────────────────
   describe("GET /api/v1/merge-groups/:id", () => {
     it("200 with members (worker)", async () => {

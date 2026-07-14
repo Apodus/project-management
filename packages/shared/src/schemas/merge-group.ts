@@ -66,6 +66,9 @@ export type MergeGroupMemberSpec = z.infer<typeof mergeGroupMemberSpecSchema>;
 //     pickup can never grab one mid-grouping (closes the submit/group race).
 //   - members (exactly one) + synthesizeOuter: true: the inner-only cross-repo
 //     form — PM records the real inner member plus a synthetic outer member.
+//   - members (exactly one) + synthesizeInner: true: the outer-only cross-repo
+//     form (the mirror) — PM records the real outer member plus a synthetic
+//     inner member; the integrator lands the outer with inner as a no-op.
 export const createMergeGroupSchema = z
   .object({
     resource: z.string().min(1).default("main"),
@@ -81,6 +84,13 @@ export const createMergeGroupSchema = z
     // gitlink-bump candidate at integration time. STRICT === true semantics:
     // an explicit false behaves exactly like absent.
     synthesizeOuter: z.boolean().optional(),
+    // Outer-only cross-repo form (campaign xrepo-gitlink-umbrella-widening P4,
+    // the MIRROR of synthesizeOuter): with EXACTLY ONE member spec (the outer
+    // change), PM records a synthetic INNER member (no branch/commit) and the
+    // integrator lands the outer with inner as a no-op (Ri = live inner main,
+    // ancestry-gated). STRICT === true semantics — an explicit false behaves
+    // exactly like absent; mutually exclusive with synthesizeOuter.
+    synthesizeInner: z.boolean().optional(),
   })
   .superRefine((v, ctx) => {
     const hasIds = v.memberRequestIds !== undefined;
@@ -89,6 +99,16 @@ export const createMergeGroupSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Provide exactly one of memberRequestIds or members.",
+      });
+      return;
+    }
+    // The two synthesize forms are OPPOSITE roles (one mints a synthetic outer,
+    // the other a synthetic inner) — never both on one request.
+    if (v.synthesizeOuter === true && v.synthesizeInner === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["synthesizeInner"],
+        message: "synthesizeInner and synthesizeOuter are mutually exclusive; provide exactly one.",
       });
       return;
     }
@@ -106,6 +126,22 @@ export const createMergeGroupSchema = z
           path: ["members"],
           message:
             "synthesizeOuter requires exactly one member spec (the inner change); the outer member is synthesized at integration time.",
+        });
+      }
+    } else if (v.synthesizeInner === true) {
+      if (hasIds) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["synthesizeInner"],
+          message:
+            "synthesizeInner cannot be combined with memberRequestIds; provide members with exactly one outer member spec.",
+        });
+      } else if (v.members!.length !== 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["members"],
+          message:
+            "synthesizeInner requires exactly one member spec (the outer change); the inner member is synthesized at integration time.",
         });
       }
     } else if (hasSpecs && v.members!.length < 2) {

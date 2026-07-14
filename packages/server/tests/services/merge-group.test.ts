@@ -915,6 +915,233 @@ describe("merge-group service", () => {
     });
   });
 
+  // ─── createGroup (outer-only synthesizeInner arm) ─────────────────
+  // The MIRROR of the inner-only synthesizeOuter arm (campaign umbrella-widening
+  // P4): exactly ONE real OUTER member spec + a server-minted synthetic INNER
+  // member. Same form matrix, same topology gate; plus the mutual-exclusion 400.
+  describe("createGroup (outer-only synthesizeInner arm)", () => {
+    const XREPO_SETTINGS = {
+      integrator: {
+        linked_repos: [
+          { name: "rynx", path: "../rynx", role: "inner" },
+          { name: "game", path: ".", role: "outer", gitlink_path: "rynx" },
+        ],
+      },
+    };
+
+    function setupOuterOnly(opts: { withTask?: boolean } = {}) {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      const integrator = createTestAiAgent(testApp.db);
+      const task = opts.withTask ? createTestTask(testApp.db, { projectId: project.id }) : null;
+      const g = svc.createGroup({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        members: [
+          {
+            branch: "feat/outer",
+            verifyCmd: "pnpm verify",
+            ...(task ? { taskId: task.id } : {}),
+          },
+        ],
+        synthesizeInner: true,
+      });
+      const real = g.members.find((m) => !m.synthetic)!;
+      const synthetic = g.members.find((m) => m.synthetic)!;
+      return { project, submitter, integrator, task, g, real, synthetic };
+    }
+
+    function expectNoRows(projectId: string) {
+      const groups = testApp.db
+        .select()
+        .from(mergeRequestGroups)
+        .where(eq(mergeRequestGroups.projectId, projectId))
+        .all();
+      const requests = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.projectId, projectId))
+        .all();
+      expect(groups).toHaveLength(0);
+      expect(requests).toHaveLength(0);
+    }
+
+    it("happy path: forming group with the real outer member + a synthetic inner member", () => {
+      const { g, real, synthetic, task } = setupOuterOnly({ withTask: true });
+
+      expect(g.state).toBe("forming");
+      expect(g.members).toHaveLength(2);
+
+      // The real member persists the OUTER spec fields and is NOT synthetic.
+      expect(real.branch).toBe("feat/outer");
+      expect(real.verifyCmd).toBe("pnpm verify");
+      expect(real.taskId).toBe(task!.id);
+      expect(real.status).toBe("queued");
+      expect(real.synthetic).toBe(false);
+
+      // The synthetic INNER member: all-null refs, queued, group-bound, synthetic.
+      expect(synthetic.branch).toBeNull();
+      expect(synthetic.commitSha).toBeNull();
+      expect(synthetic.verifyCmd).toBeNull();
+      expect(synthetic.taskId).toBeNull();
+      expect(synthetic.status).toBe("queued");
+      expect(synthetic.synthetic).toBe(true);
+
+      // Direct DB read: exactly 2 group-bound member rows, the synthetic one
+      // flagged + ref-less.
+      const rows = testApp.db
+        .select()
+        .from(mergeRequests)
+        .where(eq(mergeRequests.groupId, g.id))
+        .all();
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.groupId === g.id)).toBe(true);
+      const syntheticRow = rows.find((r) => r.synthetic)!;
+      expect(syntheticRow.id).toBe(synthetic.id);
+      expect(syntheticRow.branch).toBeNull();
+      expect(syntheticRow.commitSha).toBeNull();
+      expect(syntheticRow.status).toBe("queued");
+
+      // getById view round-trips the flag.
+      const got = svc.getById(g.id);
+      expect(got.members.find((m) => m.id === synthetic.id)!.synthetic).toBe(true);
+      expect(got.members.find((m) => m.id === real.id)!.synthetic).toBe(false);
+    });
+
+    it("flag + 2 specs → 400 (exactly one member spec required); nothing written", () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/a" }, { branch: "feat/b" }],
+          synthesizeInner: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message:
+            "synthesizeInner requires exactly one member spec (the outer change); the inner member is synthesized at integration time.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("flag + memberRequestIds → 400 (cannot combine); nothing written", () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          memberRequestIds: ["a", "b"],
+          synthesizeInner: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message:
+            "synthesizeInner cannot be combined with memberRequestIds; provide members with exactly one outer member spec.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("synthesizeInner AND synthesizeOuter both set → 400 (mutually exclusive); nothing written", () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/outer" }],
+          synthesizeInner: true,
+          synthesizeOuter: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message:
+            "synthesizeInner and synthesizeOuter are mutually exclusive; provide exactly one.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("1 spec with an EXPLICIT synthesizeInner: false → 400 (strict === true); nothing written", () => {
+      const project = createTestProject(testApp.db, { settings: XREPO_SETTINGS });
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/outer" }],
+          synthesizeInner: false,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "A merge group requires at least 2 member specs.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("flag without linked_repos settings → 400 topology error (synthesizeInner); nothing written", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: project.id,
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/outer" }],
+          synthesizeInner: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message:
+            "synthesizeInner requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found 0 inner / 0 outer.",
+        }),
+      );
+      expectNoRows(project.id);
+    });
+
+    it("synthetic inner member is never single-repo-pickable (409 GROUPED_MEMBER)", () => {
+      const { synthetic, integrator } = setupOuterOnly();
+      expect(() =>
+        mrSvc.transitionToIntegrating(synthetic.id, AGENT(integrator.user.id)),
+      ).toThrowError(expect.objectContaining({ code: "GROUPED_MEMBER" }));
+    });
+
+    it("landGroup lands the synthetic inner member: landedSha=Ri, role inner", () => {
+      const { g, real, synthetic, integrator } = setupOuterOnly({ withTask: true });
+      svc.markIntegrating(g.id, AGENT(integrator.user.id));
+      const out = svc.landGroup(
+        g.id,
+        {
+          members: [
+            { requestId: synthetic.id, landedSha: "Ri", role: "inner" },
+            { requestId: real.id, landedSha: "Ro", role: "outer" },
+          ],
+        },
+        AGENT(integrator.user.id),
+      );
+      expect(out.state).toBe("landed");
+      const sLanded = out.members.find((m) => m.id === synthetic.id)!;
+      expect(sLanded.status).toBe("landed");
+      expect(sLanded.landedSha).toBe("Ri");
+      const rLanded = out.members.find((m) => m.id === real.id)!;
+      expect(rLanded.landedSha).toBe("Ro");
+    });
+  });
+
   // ─── getById / list ───────────────────────────────────────────────
   describe("getById / list", () => {
     it("getById returns members ordered by enqueuedAt asc; 404 for missing", () => {

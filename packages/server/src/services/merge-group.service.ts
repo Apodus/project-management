@@ -41,6 +41,17 @@ export interface CreateGroupParams {
    * settings.integrator.linked_repos to declare exactly one inner + one outer.
    */
   synthesizeOuter?: boolean;
+  /**
+   * Outer-only cross-repo form (campaign xrepo-gitlink-umbrella-widening P4,
+   * the MIRROR of synthesizeOuter): with EXACTLY ONE member spec (the outer
+   * change), PM also inserts a SYNTHETIC inner member (no branch/commit) in the
+   * same txn; the integrator lands the outer with inner as a no-op (Ri = live
+   * inner main, ancestry-gated). STRICT `=== true` semantics — an explicit
+   * false behaves exactly like absent; mutually exclusive with synthesizeOuter.
+   * Requires settings.integrator.linked_repos to declare exactly one inner +
+   * one outer.
+   */
+  synthesizeInner?: boolean;
 }
 
 export interface GroupWithMembers extends MergeRequestGroupView {
@@ -307,7 +318,11 @@ function withMembers(row: MergeGroupRow): GroupWithMembers {
  * (createGroup dispatches on it; the route/shared Zod tiers pre-validate the
  * same matrix on the wire, the service re-classifies defensively).
  */
-export type CreateForm = { kind: "bind" } | { kind: "atomic" } | { kind: "inner_only" };
+export type CreateForm =
+  | { kind: "bind" }
+  | { kind: "atomic" }
+  | { kind: "inner_only" }
+  | { kind: "outer_only" };
 
 /**
  * Classify a create-group call into its form, owning the ENTIRE form matrix:
@@ -315,6 +330,8 @@ export type CreateForm = { kind: "bind" } | { kind: "atomic" } | { kind: "inner_
  *  - exactly one of `memberRequestIds` | `members` (both/neither → 400);
  *  - `synthesizeOuter === true` (STRICT — an explicit false behaves exactly
  *    like absent) requires the members arm with EXACTLY ONE spec → inner_only;
+ *  - `synthesizeInner === true` (the mirror, STRICT) requires the members arm
+ *    with EXACTLY ONE spec → outer_only; mutually exclusive with synthesizeOuter;
  *  - otherwise the legacy floors hold: ids arm ≥2 → bind, members arm ≥2 →
  *    atomic (each <2 → 400 with the exact legacy message).
  */
@@ -326,6 +343,15 @@ export function classifyCreateForm(params: CreateGroupParams): CreateForm {
       400,
       "VALIDATION_ERROR",
       "Provide exactly one of memberRequestIds or members.",
+    );
+  }
+
+  // The two synthesize forms are OPPOSITE roles — never both on one request.
+  if (params.synthesizeOuter === true && params.synthesizeInner === true) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "synthesizeInner and synthesizeOuter are mutually exclusive; provide exactly one.",
     );
   }
 
@@ -345,6 +371,24 @@ export function classifyCreateForm(params: CreateGroupParams): CreateForm {
       );
     }
     return { kind: "inner_only" };
+  }
+
+  if (params.synthesizeInner === true) {
+    if (hasIds) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "synthesizeInner cannot be combined with memberRequestIds; provide members with exactly one outer member spec.",
+      );
+    }
+    if (params.members!.length !== 1) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "synthesizeInner requires exactly one member spec (the outer change); the inner member is synthesized at integration time.",
+      );
+    }
+    return { kind: "outer_only" };
   }
 
   if (hasSpecs) {
@@ -404,6 +448,8 @@ export function createGroup(params: CreateGroupParams): GroupWithMembers {
       return createGroupFromSpecs(params);
     case "inner_only":
       return createGroupInnerOnly(params, params.members![0]);
+    case "outer_only":
+      return createGroupOuterOnly(params, params.members![0]);
   }
 }
 
@@ -496,7 +542,7 @@ function createGroupInnerOnly(
     );
   }
   validateTaskBelongsToProject(params.projectId, innerSpec.taskId ?? null);
-  assertInnerOuterTopology(params.projectId);
+  assertInnerOuterTopology(params.projectId, "synthesizeOuter");
 
   const resource = params.resource ?? "main";
   const db = getDb();
@@ -552,13 +598,96 @@ function createGroupInnerOnly(
 }
 
 /**
- * Topology gate for the inner-only form: the project must declare EXACTLY one
- * inner and one outer repo in settings.integrator.linked_repos, else the
- * integrator cannot know which gitlink to bump. Settings are read tolerantly
+ * Outer-only cross-repo arm (campaign xrepo-gitlink-umbrella-widening P4) — the
+ * MIRROR of createGroupInnerOnly. Validates the ONE real outer spec + the
+ * project's inner/outer topology, then in ONE txn inserts the forming group row,
+ * the real outer member, and a server-minted SYNTHETIC inner member (no
+ * branch/commit/verifyCmd/taskId; synthetic = true). The integrator binds the
+ * synthetic member to the INNER role, lands the outer with inner as a no-op
+ * (Ri = live inner main), and fills the synthetic member's landedSha at land.
+ * Real-then-synthetic insert order. Like the other arms: no events, no audit
+ * rows on create.
+ */
+function createGroupOuterOnly(
+  params: CreateGroupParams,
+  outerSpec: MergeGroupMemberSpec,
+): GroupWithMembers {
+  ensureProjectExists(params.projectId);
+  ensureUserExists(params.submittedBy);
+
+  // Pre-txn validation (no rows written yet, so a throw leaves nothing behind).
+  if (!outerSpec.branch && !outerSpec.commitSha) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "Each member spec needs at least one of branch / commitSha.",
+    );
+  }
+  validateTaskBelongsToProject(params.projectId, outerSpec.taskId ?? null);
+  assertInnerOuterTopology(params.projectId, "synthesizeInner");
+
+  const resource = params.resource ?? "main";
+  const db = getDb();
+  const now = new Date().toISOString();
+  const groupId = createId();
+
+  db.transaction((tx) => {
+    tx.insert(mergeRequestGroups)
+      .values({
+        id: groupId,
+        projectId: params.projectId,
+        resource,
+        state: "forming",
+        submittedBy: params.submittedBy,
+        integratorId: null,
+        resolvedAt: null,
+        resolutionReason: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    // The real outer member, born group-bound (same shape as the atomic arm).
+    insertRequestRow(tx, {
+      projectId: params.projectId,
+      resource,
+      submittedBy: params.submittedBy,
+      taskId: outerSpec.taskId ?? null,
+      branch: outerSpec.branch ?? null,
+      commitSha: outerSpec.commitSha ?? null,
+      verifyCmd: outerSpec.verifyCmd ?? null,
+      status: "queued",
+      groupId,
+    });
+
+    // The synthetic inner member: no refs to land (inner is a no-op at Ri =
+    // live inner main), no task (the outer member carries the work linkage).
+    insertRequestRow(tx, {
+      projectId: params.projectId,
+      resource,
+      submittedBy: params.submittedBy,
+      taskId: null,
+      branch: null,
+      commitSha: null,
+      verifyCmd: null,
+      status: "queued",
+      groupId,
+      synthetic: true,
+    });
+  });
+
+  return withMembers(readGroupOrThrow(groupId));
+}
+
+/**
+ * Topology gate for the synthesize forms (inner-only and outer-only): the
+ * project must declare EXACTLY one inner and one outer repo in
+ * settings.integrator.linked_repos, else the integrator cannot know which
+ * gitlink to bump. Settings are read tolerantly
  * as plain JSON (the metrics.service idiom) — a missing/odd shape counts as
  * zero declared repos, never a crash.
  */
-function assertInnerOuterTopology(projectId: string): void {
+function assertInnerOuterTopology(projectId: string, formName: string): void {
   const db = getDb();
   const row = db
     .select({ settings: projects.settings })
@@ -577,7 +706,7 @@ function assertInnerOuterTopology(projectId: string): void {
     throw new AppError(
       400,
       "VALIDATION_ERROR",
-      `synthesizeOuter requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found ${innerCount} inner / ${outerCount} outer.`,
+      `${formName} requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found ${innerCount} inner / ${outerCount} outer.`,
     );
   }
 }

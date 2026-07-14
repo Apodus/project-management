@@ -11300,7 +11300,7 @@ export interface paths {
     put?: never;
     /**
      * Create a merge group (bind existing, or atomic submit-and-group)
-     * @description Create a 'forming' merge group three ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping); (c) members with exactly ONE spec + synthesizeOuter: true — inner-only cross-repo form: PM records the real inner member plus a synthetic outer member (no branch/commit); the integrator synthesizes the outer gitlink-bump candidate at integration and fills its landedSha at land. Requires settings.integrator.linked_repos to declare exactly one inner and one outer repo. The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.
+     * @description Create a 'forming' merge group four ways (exactly one): (a) memberRequestIds — bind >=2 ALREADY-queued, ungrouped merge requests; (b) members — atomically submit >=2 NEW member requests AND form the group in ONE call, so members are born group-bound (the race-free path — a single-repo pickup can never grab a member mid-grouping); (c) members with exactly ONE spec + synthesizeOuter: true — inner-only cross-repo form: PM records the real inner member plus a synthetic outer member (no branch/commit); the integrator synthesizes the outer gitlink-bump candidate at integration and fills its landedSha at land; (d) members with exactly ONE spec + synthesizeInner: true — outer-only cross-repo form (the mirror; mutually exclusive with synthesizeOuter): PM records the real outer member plus a synthetic inner member; the integrator lands the outer with inner as a no-op (Ri = live inner main, ancestry-gated). (c)/(d) require settings.integrator.linked_repos to declare exactly one inner and one outer repo. The integrator lands-or-fails the whole group atomically. Subscribe to merge.group.* SSE events for the outcome.
      */
     post: {
       parameters: {
@@ -16428,6 +16428,7 @@ export interface components {
         taskId?: string;
       }[];
       synthesizeOuter?: boolean;
+      synthesizeInner?: boolean;
     };
     MergeGroupPickup: {
       integratorId?: string;

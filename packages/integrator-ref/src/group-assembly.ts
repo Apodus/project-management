@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import type { GitOps } from "./git-ops.js";
+import { classifyOuterGitlinkDiff, type GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
 
 // ─── Result type (discriminated union, mirrors git-ops RebaseResult) ──
@@ -29,29 +29,32 @@ export interface AssembledGroupOk {
   baseOuterSha: string;
   gitlinkPath: string;
   /**
-   * Direction-C marker (campaign xrepo-gitlink-bump-autoconvert): true ONLY on
-   * the arm where a REAL outer member (`outerRef !== null`) was recognized as a
-   * pure gitlink bump and its rebase SKIPPED — the outer candidate was
-   * synthesized on live main instead. False on BOTH the legacy-rebased path
-   * (`outerRef !== null`, rebase performed) AND the born-synthetic path
-   * (`outerRef === null`, an inner-only group): a conversion is a distinct
-   * honest signal — an integration-time interpretation of a two-member request —
-   * NOT the same thing as a PM-minted inner-only group. Consumed by
-   * group-integration.ts for the log line + PM audit row; never mutates the DB
-   * `synthetic` flag.
+   * Direction-C marker (campaign xrepo-gitlink-bump-autoconvert): true when a
+   * REAL outer member (`outerRef !== null`) was recognized as a pure gitlink
+   * bump and its rebase SKIPPED — the outer candidate was synthesized on live
+   * main instead. Fires on BOTH the two-member arm (structural, campaign
+   * autoconvert) AND the lone-outer arm (ancestry-gated `pure_bump`, campaign
+   * umbrella-widening P4 — the real member is the outer, the inner is synthetic).
+   * False on the legacy-rebased path (`outerRef !== null`, rebase performed) AND
+   * the born-synthetic-outer path (`outerRef === null`, an inner-only group): a
+   * conversion is a distinct honest signal — an integration-time interpretation
+   * of a real outer member — NOT the same thing as a PM-minted synthetic outer.
+   * Consumed by group-integration.ts for the log line + PM audit row; never
+   * mutates the DB `synthetic` flag.
    */
   outerConverted: boolean;
   /**
-   * Normalization marker (campaign xrepo-gitlink-umbrella-widening P2): true
-   * ONLY on the arm where a REAL outer member (`outerRef !== null`) carried real
-   * source ALONGSIDE the managed gitlink hunk, and the gitlink hunk was STRIPPED
-   * — its source-only net patch was synthesized onto live outer main via
-   * `applyExcludingGitlink` (the outer rebase skipped) and step 8 authored the
-   * gitlink to Ri. Mutually exclusive with `outerConverted` (that is the
-   * pure-bump, no-source arm). False on the legacy-rebased path and both
-   * synthetic paths. Like `outerConverted`, an integration-time interpretation
-   * surfaced via a log line (durable audit row deferred to P3) — NEVER mutates
-   * the DB `synthetic` flag.
+   * Normalization marker (campaign xrepo-gitlink-umbrella-widening P2/P4): true
+   * when a REAL outer member (`outerRef !== null`) carried real source ALONGSIDE
+   * the managed gitlink hunk, and the gitlink hunk was STRIPPED — its source-only
+   * net patch was synthesized onto live outer main via `applyExcludingGitlink`
+   * (the outer rebase skipped) and step 8 authored the gitlink to Ri. Fires on
+   * BOTH the two-member arm (P2, structural) AND the lone-outer arm (P4,
+   * ancestry-gated `normalize`). Mutually exclusive with `outerConverted` (that
+   * is the pure-bump, no-source arm). False on the legacy-rebased path and the
+   * born-synthetic-outer path. Like `outerConverted`, an integration-time
+   * interpretation surfaced via a log line + durable audit row (P3) — NEVER
+   * mutates the DB `synthetic` flag.
    */
   outerGitlinkNormalized: boolean;
   /** Release BOTH correlated worktree slots back to their pools. */
@@ -66,10 +69,20 @@ export interface AssembledGroupErr {
    * - `inner_conflict` / `outer_conflict`: the inner/outer rebase conflicted.
    *   (`outer_conflict` is structurally unreachable when the outer member is
    *   synthetic — there is no outer ref to rebase; see AssembleGroupDeps.outerRef.)
+   * - `gitlink_diverged` / `gitlink_unreachable`: a lone-outer group (campaign
+   *   umbrella-widening P4) whose managed gitlink target is present-but-not-an-
+   *   ancestor of the landing inner (`diverged`) or absent even after an all-refs
+   *   fetch (`unreachable`) — DELIBERATE Tier-2 conservative rejects, never a land.
    * - `gitlink_mismatch`: the §11 post-assembly assertion failed (committed
    *   gitlink != Ri, or the working tree at gitlinkPath was not populated).
    */
-  reason: "backpressure" | "inner_conflict" | "outer_conflict" | "gitlink_mismatch";
+  reason:
+    | "backpressure"
+    | "inner_conflict"
+    | "outer_conflict"
+    | "gitlink_diverged"
+    | "gitlink_unreachable"
+    | "gitlink_mismatch";
   /** Extra detail for logging (conflicting files / mismatch detail). */
   detail?: string;
   /** Release whatever slots were taken (no-op when nothing was acquired). */
@@ -95,8 +108,15 @@ export interface AssembleGroupDeps {
   releaseOuter(wt: Worktree): void;
   /** Build a GitOps bound to a worktree path (the batch.ts factory convention). */
   gitOps(worktreePath: string): GitOps;
-  /** Inner member ref to rebase: branch ?? commitSha. */
-  innerRef: string;
+  /**
+   * Inner member ref to rebase: branch ?? commitSha. NULL ⇔ the inner member is
+   * SYNTHETIC (an outer-only group, campaign umbrella-widening P4) — steps 1-3
+   * degenerate to resetForAttempt + HEAD as both baseInnerSha AND Ri (no inner
+   * ref, nothing to rebase ⇒ `inner_conflict` structurally unreachable and inner
+   * main never advances at land). The outer arm then runs the ancestry-gated
+   * `classifyOuterGitlinkDiff` against Ri = live inner main.
+   */
+  innerRef: string | null;
   /**
    * Outer member ref to rebase: branch ?? commitSha. NULL ⇔ the outer member
    * is SYNTHETIC (an inner-only group, campaign 2026-06-10) — steps 4-6
@@ -146,7 +166,11 @@ async function resolveDetectRef(
  * Sequence:
  *   §5.1  correlated lease: acquire inner THEN outer (fixed order, deadlock-free);
  *         release-on-partial-failure; either null -> backpressure.
- *   1-3   inner: resetForAttempt; baseInnerSha = HEAD; rebase inner -> Ri.
+ *   1-3   inner: resetForAttempt; baseInnerSha = HEAD; then
+ *           - `innerRef` non-null (a REAL inner member): rebase inner -> Ri.
+ *           - `innerRef` null (a SYNTHETIC inner member, outer-only group,
+ *             campaign umbrella-widening P4): Ri = baseInnerSha (live inner main),
+ *             no rebase — the inner is a no-op and inner main never advances.
  *   4-6   outer: resetForAttempt; baseOuterSha = HEAD; then
  *           - `outerRef` non-null (a REAL outer member): rebase outer -> Ro'.
  *           - `outerRef` null (a SYNTHETIC outer member, inner-only group):
@@ -193,19 +217,28 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
     const innerGitOps = deps.gitOps(innerWt.path);
     const outerGitOps = deps.gitOps(outerWt.path);
 
-    // ── steps 1-3: inner reset, base, rebase ──
+    // ── steps 1-3: inner reset, base, then rebase (REAL inner member only) ──
     await innerWt.resetForAttempt();
-    const baseInnerSha = await innerGitOps.resolveRef("HEAD"); // = Mi
-    const innerRebase = await innerGitOps.rebaseOnto(baseInnerSha, deps.innerRef);
-    if (!innerRebase.ok) {
-      return {
-        ok: false,
-        reason: "inner_conflict",
-        detail: innerRebase.conflictingFiles.join(", "),
-        release,
-      };
+    const baseInnerSha = await innerGitOps.resolveRef("HEAD"); // = Mi (live inner main)
+    let Ri: string;
+    if (deps.innerRef !== null) {
+      const innerRebase = await innerGitOps.rebaseOnto(baseInnerSha, deps.innerRef);
+      if (!innerRebase.ok) {
+        return {
+          ok: false,
+          reason: "inner_conflict",
+          detail: innerRebase.conflictingFiles.join(", "),
+          release,
+        };
+      }
+      Ri = innerRebase.treeSha;
+    } else {
+      // SYNTHETIC inner (outer-only group, campaign umbrella-widening P4): the
+      // inner is a NO-OP — Ri = live inner main. No rebase ⇒ inner HEAD never
+      // moves ⇒ the inner land push is an up-to-date no-op (inner main never
+      // advances). `inner_conflict` is structurally unreachable on this arm.
+      Ri = baseInnerSha;
     }
-    const Ri = innerRebase.treeSha;
 
     // ── steps 4-6: outer reset, base, then rebase (REAL outer member only) ──
     await outerWt.resetForAttempt();
@@ -220,13 +253,13 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
     let skipOuterRebase = false;
     let outerConverted = false;
     let outerGitlinkNormalized = false;
-    if (deps.outerRef !== null) {
+    if (deps.outerRef !== null && deps.innerRef !== null) {
+      // ── TWO-MEMBER arm (a REAL inner defines Ri): PURELY STRUCTURAL strip,
+      //    no ancestry gate — the inner member DEFINES Ri, step 8 authors the
+      //    landed gitlink to Ri, and the outer verify against Ri is the guard.
+      //    BYTE-IDENTICAL to the P2 shipped path. ──
       // Split the outer member's NET diff into the managed gitlink hunk vs source
-      // (fail-open null ⇒ keep the legacy rebase). The strip decision is PURELY
-      // structural — no ancestry gate here: the inner member DEFINES Ri, step 8
-      // authors the landed gitlink to Ri, and the outer verify against Ri is the
-      // guard. (The ancestry gate + diverged/unreachable legibility live on the
-      // P4 lone-outer path, where there is no inner member to define Ri.)
+      // (fail-open null ⇒ keep the legacy rebase).
       const detectRef = await resolveDetectRef(outerGitOps, deps.outerRef, deps.gitRemote);
       if (detectRef !== null) {
         const managedPaths = new Set([deps.gitlinkPath]);
@@ -259,6 +292,69 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
             outerGitlinkNormalized = true;
           }
         }
+      }
+    } else if (deps.outerRef !== null) {
+      // ── LONE-OUTER arm (SYNTHETIC inner, campaign umbrella-widening P4): there
+      //    is NO real inner to define Ri, so Ri = live inner main — the gitlink
+      //    the outer bumps to MUST be an ancestor of it. The ANCESTRY-GATED
+      //    classifier decides: ancestor→normalize/pure-bump+land; present-but-not-
+      //    ancestor→gitlink_diverged; absent-after-all-refs-fetch→gitlink_
+      //    unreachable. Both Tier-2 rejects are AssembledGroupErr → return BEFORE
+      //    any push (safety invariant 5). ──
+      const detectRef = await resolveDetectRef(outerGitOps, deps.outerRef, deps.gitRemote);
+      if (detectRef !== null) {
+        const managedPaths = new Set([deps.gitlinkPath]);
+        const cls = await classifyOuterGitlinkDiff({
+          outerGitOps,
+          innerGitOps,
+          outerRef: detectRef,
+          baseOuterSha,
+          innerLandingSha: Ri,
+          managedGitlinkPaths: managedPaths,
+          gitRemote: deps.gitRemote,
+        });
+        if (cls.kind === "diverged") {
+          return {
+            ok: false,
+            reason: "gitlink_diverged",
+            detail: `managed gitlink ${cls.path} targets ${cls.target}, not an ancestor of the landing inner ${Ri}`,
+            release,
+          };
+        }
+        if (cls.kind === "unreachable") {
+          return {
+            ok: false,
+            reason: "gitlink_unreachable",
+            detail: `managed gitlink ${cls.path} target ${cls.target} is unreachable (absent after an all-refs fetch)`,
+            release,
+          };
+        }
+        if (cls.kind === "pure_bump") {
+          // Pure gitlink bump to an ancestor of Ri — skip the rebase, synthesize
+          // the outer candidate on live main (step 8 authors gitlink→Ri).
+          skipOuterRebase = true;
+          outerConverted = true;
+        } else if (cls.kind === "normalize") {
+          // Ancestor gitlink alongside real source — strip the gitlink hunk,
+          // synthesize the source-only net patch onto live outer main. A SOURCE
+          // conflict still rejects outer_conflict; the gitlink hunk is excluded.
+          const applied = await outerGitOps.applyExcludingGitlink(
+            baseOuterSha,
+            detectRef,
+            managedPaths,
+          );
+          if (!applied.ok) {
+            return {
+              ok: false,
+              reason: "outer_conflict",
+              detail: applied.conflictingFiles.join(", "),
+              release,
+            };
+          }
+          skipOuterRebase = true;
+          outerGitlinkNormalized = true;
+        }
+        // cls.kind === "legacy" ⇒ fail-open: fall through to the rebase below.
       }
     }
     if (deps.outerRef !== null && !skipOuterRebase) {
