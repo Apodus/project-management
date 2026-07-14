@@ -231,4 +231,22 @@ invents inner state, safety invariant 2).
 - Tier-2 must not double-fire with `outer_conflict` (a mixed member whose SOURCE
   conflicts rejects `outer_conflict`, orthogonal to the gitlink category).
 
-## Close-out (to be filled by the campaign)
+## Close-out (executed 2026-07-13→14, branch `campaign-xrepo-gitlink-umbrella-widening`, base 7e300c5)
+
+**Shipped in full (P0–P6), maximal-autonomy scope, NOT yet merged/pushed.** 7 commits:
+
+- **P0** `e86d633` — design-lock (docs). Settled the strip mechanic + the ancestor invariant + the three-way fail-open/closed split.
+- **P1** `c6b092f` — `classifyOuterGitlinkDiff` + `splitGitlinkDiff` + `objectPresent` (git-ops.ts); 12 real-git unit cases. Present-probe is the BARE `git cat-file -e <G>` (0/1/else), never `^{commit}` (128 on absent).
+- **P2** `c153e53` — split-gated normalization arm. A MIXED two-member outer member has its managed gitlink hunk stripped (no ancestry gate — the inner member defines Ri; verify is the guard) and its source-only net patch synthesized onto live main via `applyExcludingGitlink`. Pure-bump arm unchanged.
+- **P3** `e398042` — legibility. Durable `outer_gitlink_normalized` audit row; new reject categories `gitlink_unreachable`/`gitlink_diverged` (no migration — plain text columns); single `rejectGroupLegibly` choke-point posts a `merge_rejection` task comment on every group reject (kills the P6-v1 silent drain).
+- **P4** `388392b` — lone-outer autonomy. `synthesizeInner` PM flag (mirror of `synthesize_outer`); real→outer/synthetic→inner bind; no-op inner (Ri = live inner main, inner verify short-circuited); ancestry-gated (ancestor→normalize+land; diverged/unreachable→legible reject). Two-member + `synthesize_outer` paths byte-identical.
+- **P5** `df721f3` — 3 spawn-built-integrator e2e seals: (k) lone-outer normalize LANDS with byte-stable inner main; (l) unreachable→`gitlink_unreachable` reject + task comment (the P6-v1 anti-silent-drain proof); (m) diverged→`gitlink_diverged` reject + comment.
+- **P6** `a7f4c2b` — docs (integrator-deployment.md §14.11 + §14.7 worker flow; CLAUDE.md capability index; ops handoff).
+
+**Diff:** 27 files, +4489/−187.
+
+**Two decisive adversarial-verify saves.** (1) The P2 plan's original "gate every case on `isAncestor(G,Ri)`" would have **regressed the shipped pure-bump grass-stability fix** (verified against `group-convert` case 4) — corrected to the split-gated design (ancestry gate reserved for the lone-outer path). (2) P4 surfaced a scope discovery — lone-outer needs the new `synthesizeInner` PM submission surface (the design-lock had assumed integrator-only) — **escalated to the director, who ratified full P4.**
+
+**Verification.** Full monorepo `build` + `lint` + `typecheck` green. `@pm/shared` 564, `@pm/server` 1848, `@urtela/pm-integrator` **372 passed / 1 skipped** standalone (3× clean). NO DB migration. The one integrator failure seen in a single full-turbo run was a known environmental flake in the port-binding spawn-daemon e2e seals under concurrent build+test load — green in isolation every standalone run.
+
+**Remaining (ops handoff, NOT executed by the campaign — see the Ops handoff section):** merge → main; `pnpm build` + `node scripts/distribute.mjs` to redistribute the game_one daemon bundle; **PM-server redeploy** (new reject categories + `outer_gitlink_normalized` audit action/route + `synthesizeInner` schema — no migration); daemon restart; then re-drive the stuck `g1-p6-placement-v3` (it should normalize+land, or reject legibly with a clear category on its task).
