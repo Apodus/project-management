@@ -82,8 +82,27 @@ const mergeRequestDetailSchema = mergeRequestSchema
   .extend({ attempts: z.array(mergeAttemptSchema) })
   .openapi("MergeRequestDetail");
 
+// Zod-4 mirror of @pm/shared integratorLivenessSchema (campaign: integrator
+// liveness legibility). Redeclared with the @hono/zod-openapi `z` for the same
+// reason the request bodies are (zod 3 vs zod 4 don't unify) — the shared schema
+// stays the single runtime source of truth. Attached as an ENVELOPE SIBLING on
+// merge-request reads (never a field on mergeRequestSchema, which stays
+// byte-identical). See design-lock C.
+const integratorLivenessMirror = z
+  .object({
+    status: z.enum(["alive", "stale", "down"]),
+    last_heartbeat_age_sec: z.number().nullable(),
+    lane_status: z.enum(["idle", "integrating"]).nullable(),
+    version: z.string().nullable(),
+    stall: z.literal("integrator_down").nullable(),
+  })
+  .openapi("IntegratorLiveness");
+
 const mergeRequestDataEnvelope = z.object({ data: mergeRequestSchema });
-const mergeRequestDetailEnvelope = z.object({ data: mergeRequestDetailSchema });
+const mergeRequestDetailEnvelope = z.object({
+  data: mergeRequestDetailSchema,
+  integrator: integratorLivenessMirror.optional(),
+});
 const mergeAttemptDataEnvelope = z.object({ data: mergeAttemptSchema });
 
 // ─── Timeline schemas (design §5.7 / §8.3) ────────────────────────
@@ -174,6 +193,9 @@ const mergeRequestListEnvelope = z.object({
     page: z.number().int(),
     perPage: z.number().int(),
   }),
+  // Integrator liveness for the listed lane (campaign: integrator liveness
+  // legibility). Envelope sibling — NOT a field on any row of `data`.
+  integrator: integratorLivenessMirror.optional(),
 });
 
 const errorEnvelope = z.object({
@@ -888,8 +910,10 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
   router.openapi(getRoute, (c) => {
     const { id } = c.req.valid("param");
     requireUser(c.get("currentUser") as AuthUser | null);
+    // getById returns `{ data: request+attempts, integrator }` — the integrator
+    // liveness block is an envelope sibling, so pass the result through as-is.
     const detail = requestSvc.getById(id);
-    return c.json({ data: detail }, 200);
+    return c.json(detail, 200);
   });
 
   router.openapi(timelineRoute, (c) => {

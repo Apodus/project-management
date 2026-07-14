@@ -235,3 +235,78 @@ describe("integrator liveness — attached to the merge-lock read", () => {
     expect(list[0].integrator?.lane_status).toBe("integrating");
   });
 });
+
+describe("integrator liveness — attached to the merge-request reads", () => {
+  let testApp: TestApp;
+
+  beforeEach(() => {
+    testApp = createTestApp();
+  });
+
+  afterEach(() => {
+    testApp.cleanup();
+  });
+
+  // The merge-request service derives liveness with the REAL wall clock (no
+  // injectable `now` on list/getById), so staleness is driven by the heartbeat's
+  // STORED timestamp: a long-past heartbeat is unambiguously stale; a just-now
+  // heartbeat is fresh.
+  const LONG_AGO = "2020-01-01T00:00:00.000Z";
+
+  it("LIST: stale heartbeat + queued 0-attempt request → integrator sibling stall=integrator_down", () => {
+    const project = createTestProject(testApp.db);
+    const agent = createTestAiAgent(testApp.db);
+    healthSvc.recordHeartbeat(project.id, "main", agent.user.id, makePayload(), LONG_AGO);
+    mergeRequestSvc.submit({
+      projectId: project.id,
+      submittedBy: agent.user.id,
+      branch: "feat/stuck",
+    });
+
+    const result = mergeRequestSvc.list(project.id, {});
+    expect(result.integrator).toBeDefined();
+    expect(result.integrator.status).toBe("stale");
+    expect(result.integrator.stall).toBe("integrator_down");
+    // Envelope sibling — no row in `data` carries an integrator field.
+    expect(result.data.length).toBeGreaterThan(0);
+    for (const row of result.data) expect(row).not.toHaveProperty("integrator");
+  });
+
+  it("LIST: alive + integrating → integrator.status alive, stall null", () => {
+    const project = createTestProject(testApp.db);
+    const agent = createTestAiAgent(testApp.db);
+    healthSvc.recordHeartbeat(
+      project.id,
+      "main",
+      agent.user.id,
+      makePayload({ status: "integrating" }),
+      new Date().toISOString(),
+    );
+
+    const result = mergeRequestSvc.list(project.id, {});
+    expect(result.integrator.status).toBe("alive");
+    expect(result.integrator.lane_status).toBe("integrating");
+    expect(result.integrator.stall).toBeNull();
+  });
+
+  it("GET/detail: liveness sibling present + correct; base request row has no integrator field", () => {
+    const project = createTestProject(testApp.db);
+    const agent = createTestAiAgent(testApp.db);
+    healthSvc.recordHeartbeat(project.id, "main", agent.user.id, makePayload(), LONG_AGO);
+    const req = mergeRequestSvc.submit({
+      projectId: project.id,
+      submittedBy: agent.user.id,
+      branch: "feat/stuck",
+    });
+
+    const detail = mergeRequestSvc.getById(req.id);
+    // Sibling present + correct (stale + queued 0-attempt → stall).
+    expect(detail.integrator).toBeDefined();
+    expect(detail.integrator.status).toBe("stale");
+    expect(detail.integrator.stall).toBe("integrator_down");
+    // Base request row is byte-identical: integrator is NOT a field on it.
+    expect(detail.data.id).toBe(req.id);
+    expect(detail.data).not.toHaveProperty("integrator");
+    expect(detail.data.attempts).toEqual([]);
+  });
+});

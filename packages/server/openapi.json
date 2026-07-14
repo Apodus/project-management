@@ -5656,6 +5656,50 @@
           "landedSha"
         ]
       },
+      "IntegratorLiveness": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "alive",
+              "stale",
+              "down"
+            ]
+          },
+          "last_heartbeat_age_sec": {
+            "type": "number",
+            "nullable": true
+          },
+          "lane_status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "idle",
+              "integrating",
+              null
+            ]
+          },
+          "version": {
+            "type": "string",
+            "nullable": true
+          },
+          "stall": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "integrator_down"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "last_heartbeat_age_sec",
+          "lane_status",
+          "version",
+          "stall"
+        ]
+      },
       "MergeRequestDetail": {
         "allOf": [
           {
@@ -24590,6 +24634,9 @@
                         "page",
                         "perPage"
                       ]
+                    },
+                    "integrator": {
+                      "$ref": "#/components/schemas/IntegratorLiveness"
                     }
                   },
                   "required": [
@@ -24833,6 +24880,9 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/MergeRequestDetail"
+                    },
+                    "integrator": {
+                      "$ref": "#/components/schemas/IntegratorLiveness"
                     }
                   },
                   "required": [

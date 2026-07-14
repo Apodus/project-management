@@ -2,6 +2,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import type {
   AuditAction,
+  IntegratorLiveness,
   MergeAttemptView,
   MergeEscalationTarget,
   MergeRequestLand,
@@ -33,6 +34,7 @@ import {
 import { list as listIncidents } from "./merge-incident.service.js";
 import { listByOriginRequest } from "./merge-resolution.service.js";
 import * as escalationService from "./escalation.service.js";
+import { deriveLiveness } from "./integrator-liveness.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -97,10 +99,29 @@ export interface ListParams {
 export interface ListResult {
   data: MergeRequestView[];
   pagination: { total: number; page: number; perPage: number };
+  /**
+   * Integrator liveness for the listed lane, derived on-read (campaign:
+   * integrator liveness legibility). An ENVELOPE SIBLING of `data` — deliberately
+   * NOT a field on any `MergeRequestView` row, so the per-request wire row stays
+   * byte-identical. Reuses the P1 `deriveLiveness` helper. Resource defaults to
+   * "main" when the list is not filtered by resource.
+   */
+  integrator: IntegratorLiveness;
 }
 
 export interface MergeRequestWithAttempts extends MergeRequestView {
   attempts: MergeAttemptView[];
+}
+
+/**
+ * Detail read result: the request (with its attempts) as `data`, plus the
+ * integrator liveness block as an ENVELOPE SIBLING (campaign: integrator
+ * liveness legibility). `integrator` is a sibling of `data`, NOT a field on the
+ * request row — the base row stays byte-identical.
+ */
+export interface MergeRequestDetailResult {
+  data: MergeRequestWithAttempts;
+  integrator: IntegratorLiveness;
 }
 
 // ─── Internal row shape ───────────────────────────────────────────
@@ -662,6 +683,9 @@ export function list(projectId: string, params: ListParams = {}): ListResult {
   return {
     data: rows.map(toView),
     pagination: { total, page, perPage },
+    // Integrator liveness for this lane, derived on-read (additive envelope
+    // sibling). Defaults to the "main" lane when the list is not resource-scoped.
+    integrator: deriveLiveness(projectId, params.resource ?? "main", new Date().toISOString()),
   };
 }
 
@@ -672,7 +696,7 @@ export function list(projectId: string, params: ListParams = {}): ListResult {
  * Step 5 will insert attempt rows; this projection is already
  * forward-compatible.
  */
-export function getById(id: string): MergeRequestWithAttempts {
+export function getById(id: string): MergeRequestDetailResult {
   const row = readRequestOrThrow(id);
   const db = getDb();
   const attemptRows = db
@@ -699,7 +723,12 @@ export function getById(id: string): MergeRequestWithAttempts {
     steps: a.steps ?? null,
     createdAt: a.createdAt,
   }));
-  return { ...toView(row), attempts };
+  // `integrator` is an ENVELOPE SIBLING of `data` — never a field on the request
+  // row, so the base row stays byte-identical everywhere it is consumed.
+  return {
+    data: { ...toView(row), attempts },
+    integrator: deriveLiveness(row.projectId, row.resource, new Date().toISOString()),
+  };
 }
 
 // ─── Timeline (design §5.7 / §8.3) ────────────────────────────────

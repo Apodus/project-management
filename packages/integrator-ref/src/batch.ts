@@ -574,6 +574,36 @@ interface BatchCtx {
 }
 
 /**
+ * The lane-lock abandon reason when a batch drains with NO land (design-lock G,
+ * campaign: integrator liveness legibility). Names the count-level cause so the
+ * lock's `Last abandon:` explains why main didn't move.
+ *
+ * A real failure cause (rejected / re-queued) is named BEFORE the empty-batch
+ * message: a request rejected at admit-time (conflict / lost pickup) never gets
+ * pushed into `batch.members`, so `admittedCount` can be 0 while `rejected > 0`.
+ * Checking the ctx accumulators first reports that as a rejection rather than
+ * mis-labeling a real rejection an "empty batch" — the accumulators are the
+ * authoritative, push-only record of what actually happened. When nothing was
+ * processed at all (no land / reject / requeue) AND nothing was ever admitted,
+ * it is a genuinely empty batch (the FIFO head had no admittable request).
+ */
+export function composeAbandonReason(
+  ctx: Pick<BatchCtx, "rejected" | "requeued">,
+  admittedCount: number,
+): string {
+  if (ctx.rejected.length > 0) {
+    return `batch drained with no land: ${ctx.rejected.length} member(s) rejected at verify/conflict`;
+  }
+  if (ctx.requeued.length > 0) {
+    return `batch drained with no land: ${ctx.requeued.length} member(s) re-queued (drift/push-race), none landed`;
+  }
+  if (admittedCount === 0) {
+    return "batch drained with no land: no admittable request at the FIFO head (empty batch)";
+  }
+  return "batch drained with no land";
+}
+
+/**
  * The PM-recorded / rebase base SHA for a speculative base: the last chain
  * entry's rebased tree (member K chains onto K-1's rebased tree) or `liveMainSha`
  * for the prefix anchor. Passed to BOTH `startAttempt` and `rebaseOnto`, which
@@ -1374,7 +1404,12 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
         batch.members.find((m) => m.request.id === lastLanded)?.landedSha ?? undefined;
       await releaseLock({ landedSha });
     } else {
-      await releaseLock({ reason: "batch drained with no land" });
+      // Name WHY the batch drained with no land (design-lock G) so the lock's
+      // `Last abandon:` is legible: rejected-at-verify/conflict vs re-queued
+      // (drift/push-race) vs a genuinely empty FIFO head. `batch.members` only
+      // ever grows (admitted members are never spliced out), so its length is
+      // the count of members admitted this drain.
+      await releaseLock({ reason: composeAbandonReason(ctx, batch.members.length) });
     }
 
     // STEP-7 SEAM (§13.2): emit `completed`. Counts come from the FINAL member

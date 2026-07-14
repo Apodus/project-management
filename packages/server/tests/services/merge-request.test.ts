@@ -75,9 +75,10 @@ describe("merge-request service", () => {
       });
       expect(resolved.resolvedFrom).toBe(origin.id);
 
-      // Round-trips on the GET view.
+      // Round-trips on the GET view (request row lives under `data`; integrator
+      // liveness is an envelope sibling).
       const view = svc.getById(resolved.id);
-      expect(view.resolvedFrom).toBe(origin.id);
+      expect(view.data.resolvedFrom).toBe(origin.id);
 
       // A normal request defaults to null.
       expect(origin.resolvedFrom).toBeNull();
@@ -175,8 +176,12 @@ describe("merge-request service", () => {
       const u = createTestUser(testApp.db);
       const r = svc.submit({ projectId: project.id, submittedBy: u.id });
       const got = svc.getById(r.id);
-      expect(got.id).toBe(r.id);
-      expect(got.attempts).toEqual([]);
+      expect(got.data.id).toBe(r.id);
+      expect(got.data.attempts).toEqual([]);
+      // Base request row is byte-identical — integrator is an envelope sibling,
+      // NOT a field on the row.
+      expect(got.data).not.toHaveProperty("integrator");
+      expect(got.integrator).toBeDefined();
     });
 
     it("throws 404 for unknown id", () => {
