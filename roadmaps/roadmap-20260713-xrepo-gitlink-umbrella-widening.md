@@ -82,10 +82,10 @@ Grounded in the real code (no memory-trust — assert byte-identity where "untou
 
 1. Merge `campaign-xrepo-gitlink-umbrella-widening` → `main` (full gate green; one commit per phase).
 2. Rebuild + redistribute the bundle to game_one: `pnpm build`, then `node scripts/distribute.mjs`.
-3. **PM-server redeploy** (`run.bat`) — required for the new reject categories + audit action/route (else legibility is log-only / best-effort POST 404s).
+3. **PM-server redeploy** (`run.bat`) — required for the new reject categories (`gitlink_unreachable` / `gitlink_diverged`) + the `outer_gitlink_normalized` audit action/route + the `synthesizeInner` submission schema (else the legibility comment POSTs 404, and `synthesizeInner` groups 400). **NO DB migration** — the new reject categories are plain text columns, so no schema change ships; the redeploy is purely the new server code.
 4. Restart the integrator daemon (`run_daemon.bat`). Gotcha: launch from a plain shell where `NoDefaultCurrentDirectoryInExePath` is NOT set (a Claude-spawned shell sets it; the daemon's children then fail bare `pm-verify.bat`).
 5. **Re-drive P6 on the live train:** the stuck `g1-p6-placement-v3` should now normalize and land on the next assembly cycle (no worker resubmit needed). Confirm on `/projects/{id}/train`: `outer_gitlink_normalized` audit row, member `synthetic:false`.
-6. Broadcast to game_one workers: "the train now tolerates stale-but-reachable gitlinks automatically; unreachable/diverged inner pins now reject **with a clear reason on your task** — push inner first or submit as a group. Inner-only `synthesize_outer` remains the clean form."
+6. Broadcast to game_one workers: "the train now tolerates stale-but-reachable gitlinks automatically (a mixed feature branch with a landed-ancestor gitlink lands with no hand-fix); an outer-only change can be submitted via `synthesize_inner: true` (no need to mint a matching inner member); unreachable/diverged inner pins now reject **with a clear reason on your task** — push inner first or submit as a group. Inner-only `synthesize_outer` remains the clean form."
 
 ## P0 Findings — Design-lock (settled 2026-07-13)
 

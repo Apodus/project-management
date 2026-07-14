@@ -625,11 +625,14 @@ Every row preserves the prime invariant: **outer `main` is never advanced to a g
 
 ### 14.7 Worker flow (MCP)
 
-`pm_request_merge_group` accepts **exactly one of two top-level forms** (the server enforces the exclusivity), and the `members` form has an inner-only variant. Three shapes:
+`pm_request_merge_group` accepts **exactly one of two top-level forms** (the server enforces the exclusivity), and the `members` form has inner-only and outer-only variants. Four shapes:
 
 - **INNER-ONLY: exactly ONE member spec + `synthesize_outer: true` — RECOMMENDED for any change that lives entirely in the inner repo.** PM submits the real inner member and records a **synthetic** outer member in the same transaction; at integration the integrator synthesizes the outer candidate against **live outer `main`** (gitlink commit → the rebased inner SHA) and fills the synthetic member's `landedSha` at land. There is no worker-minted bump branch to go stale, so the stale-bump `outer_conflict` rejection class is **structurally impossible** for this form — see §14.9. The flag is strict: it must be exactly `true` (a 1-member array without it stays a 400), the topology must declare exactly one inner + one outer in `linked_repos` (else 400), and it cannot combine with `member_request_ids`.
-- **MULTI-MEMBER `members` (≥2 specs) — the atomic form for REAL outer content changes.** Pass ≥2 member specs (each `{ branch and/or commit_sha, verify_cmd?, task_id? }`); PM **submits and groups them in a single transaction**, so every member is **born group-bound**. This closes the submit→group window entirely: a freshly-submitted member can never be grabbed by a single-repo pickup mid-grouping. Use it when the outer member carries real outer-repo content; an outer member that would be nothing but a gitlink bump should be the inner-only form instead. That said, the train now **auto-converts** a pure gitlink-bump outer member — it recognizes the member as content-free and synthesizes the outer candidate on live main (§14.10) instead of ping-ponging `outer_conflict` on drift — so a stale bump branch is no longer fatal; inner-only is still preferred.
-- **`member_request_ids` — the legacy two-step form.** Submit each repo's change as a normal merge request first (`pm_request_merge`, giving each member a `branch`/`commit_sha` and `verify_cmd`), then bind ≥2 already-queued, ungrouped request ids into the group. Cannot combine with `synthesize_outer`.
+- **OUTER-ONLY: exactly ONE member spec + `synthesize_inner: true` — for an outer change that just needs current inner (the common "my outer needs current rynx" case).** The mirror of `synthesize_outer` (mutually exclusive with it): PM submits the real outer member and records a **synthetic** inner member; at integration the integrator lands the outer with inner as a **no-op** (`Ri` = live inner `main`; inner main never advances). You do **not** have to mint a matching inner member. It is ancestry-gated — the outer's gitlink must be an ancestor of live inner `main` (i.e. the inner state you pin is already landed); a diverged/unreachable gitlink rejects legibly (see §14.11). Same strictness as `synthesize_outer` (exactly `true`, one inner + one outer in `linked_repos`, no `member_request_ids`).
+- **MULTI-MEMBER `members` (≥2 specs) — the atomic form for REAL outer content changes.** Pass ≥2 member specs (each `{ branch and/or commit_sha, verify_cmd?, task_id? }`); PM **submits and groups them in a single transaction**, so every member is **born group-bound**. This closes the submit→group window entirely: a freshly-submitted member can never be grabbed by a single-repo pickup mid-grouping. Use it when the outer member carries real outer-repo content. **You no longer need to hand-fix a stale gitlink on the outer branch:** a mixed feature branch (real source + a gitlink pinned to an inner commit that is already landed / an ancestor of the landing inner) now **lands automatically** — the train strips the stale gitlink hunk and authors the gitlink to the landing inner (§14.11). A pure gitlink-bump outer member is likewise auto-converted (§14.10). Inner-only is still preferred when the change is inner-only.
+- **`member_request_ids` — the legacy two-step form.** Submit each repo's change as a normal merge request first (`pm_request_merge`, giving each member a `branch`/`commit_sha` and `verify_cmd`), then bind ≥2 already-queued, ungrouped request ids into the group. Cannot combine with `synthesize_outer` / `synthesize_inner`.
+
+**When a gitlink IS rejected, the reason is now on your task.** An unpushed or diverged inner gitlink no longer stalls silently — you get a structured `merge_rejection` comment on the linked task with a clear category: `gitlink_unreachable` (the pinned inner commit was never pushed to the inner origin → push inner first, or submit the inner change as a group member) or `gitlink_diverged` (the pinned inner state is not contained in the landing inner → submit the matching inner change, or ensure the gitlink is an ancestor of inner `main`). See §14.11.
 
 Either way, a **grouped member is structurally guarded from single-repo pickup**: when a member's `group_id` is set, `transitionToIntegrating` returns **`409 GROUPED_MEMBER`** — independent of the client's list query and of serial vs. parallel mode (the query filter is a fast-path optimization, the 409 is the hard guard; honest dual-mechanism). The group lands or fails atomically; the worker subscribes to `merge.group.landed` / `merge.group.rejected` with the returned group id. `pm_get_merge_group` reports the group + member statuses.
 
@@ -760,6 +763,82 @@ is **structurally unreachable** for that member even when outer main's gitlink a
 - **Relationship to §14.9.** Inner-only `synthesize_outer` remains **RECOMMENDED** — it never
   mints a bump branch in the first place. Auto-convert is a **safety net** that makes the legacy
   bump-branch pattern non-fatal on drift, not a replacement for the inner-only form.
+
+### 14.11 Cross-repo gitlink normalization umbrella (operator view)
+
+§14.10 auto-converts an outer member whose net diff is **exactly** the one declared gitlink path.
+This section generalizes that special case to any outer member whose gitlink merely
+fast-forwards-or-behind the inner that is landing, and makes every residual gitlink failure
+**legible**. The root license is unchanged from §14.10: step 8 (`updateSubmoduleGitlink`)
+authors the committed gitlink to the landing inner SHA `Ri` in **every** arm, so the outer
+branch's own gitlink value is dead ceremony by construction — the umbrella just strips it in
+more shapes and refuses to guess when it can't.
+
+**The ancestry gate (the sole gate).** Let **G** = the inner commit an outer gitlink hunk
+targets and **Ri** = the inner SHA that will land. At assembly, **before** the outer rebase, the
+integrator classifies the outer member's net diff (over `merge-base(outerRef, live outer main)`)
+into the managed **gitlink hunk** vs **source hunks**, and resolves G against the inner clone:
+
+- **G is an ancestor of `Ri` (or `G === Ri`) → NORMALIZE.** The gitlink is stale-but-reachable
+  and step 8 will overwrite it to `Ri` regardless — so the integrator strips the gitlink hunk,
+  and never moves the submodule pointer backward, sideways, or to an unlanded commit.
+- **G resolves but is NOT an ancestor of `Ri` → `gitlink_diverged` reject.** The outer pins inner
+  state not contained in the landing inner (this is a deliberate autonomy trade-off — more
+  conservative than a raw rebase, and always safe).
+- **G is absent after an all-refs `git fetch origin` → `gitlink_unreachable` reject.** The commit
+  was never pushed to the inner remote (the live `bb057666` case). The fetch is an ordinary
+  all-refs fetch, **not** `git fetch origin <sha>` — servers commonly reject arbitrary-SHA wants,
+  which would false-flag the happy path.
+
+**The three behaviors:**
+
+1. **Mixed two-member normalize.** A **real** outer member carrying source **alongside** a
+   stale-but-reachable gitlink (the live `g1-p6-placement-v3` shape: outer source + a `rynx`
+   gitlink whose target is an ancestor of the landing rynx) is no longer rejected. The managed
+   gitlink hunk is **stripped** (purely from the diff split — no ancestry gate is needed for the
+   strip decision itself: the inner member defines `Ri` and step 8 authors it), the **source-only**
+   net patch is synthesized onto live outer `main` via `applyExcludingGitlink`, and step 8 authors
+   the gitlink → `Ri`. `outer_conflict` on the gitlink entry is unreachable; a **source** conflict
+   still rejects `outer_conflict` normally (this case is NOT byte-identical to the legacy per-commit
+   rebase — a squashed `apply --3way` can differ in conflicting-file incidence — but it still
+   rejects). The §14.10 pure-bump arm is unchanged.
+2. **Lone-outer autonomy (`synthesizeInner: true`).** An outer feature branch with **no** real
+   inner member lands with **inner treated as a no-op**: `Ri` = live inner `main`, inner main never
+   advances, the inner verify is short-circuited, and the inner push is an up-to-date no-op. This is
+   the mirror of §14.9's `synthesize_outer`: PM records the real outer member plus a **synthetic
+   inner** member (mutually exclusive with `synthesize_outer`; role-agnostic mint). It is
+   **ancestry-gated** exactly as above — an ancestor gitlink normalizes and lands; a not-ancestor
+   or unreachable gitlink rejects legibly; Tier-3 never invents inner state.
+3. **Legible gitlink rejects.** A single `rejectGroupLegibly` choke-point posts a structured
+   `merge_rejection` task comment (with the matching `category`) on **every** group reject — this
+   kills the silent 0-attempt drain that previously afflicted binding failures ("ref resolves in
+   neither repo") and lone-outer/unreachable cases (the P6-v1 silent-stall failure mode). The new
+   categories are `gitlink_unreachable` and `gitlink_diverged`; existing categories
+   (`outer_conflict`, `inner_conflict`, …) are unchanged and additive on the wire.
+
+**Always-on / fail-open.** Like §14.10 there is no setting or flag. Detection is **stateless** —
+re-derived every attempt, so a drift-requeue re-classifies correctly with zero persisted state.
+Any spawn/parse/merge-base/`isAncestor` error routes to the **legacy rebase** (today's behavior);
+no detection error can *cause* a land, and a transient fetch/transport error never mints a terminal
+reject. The DB `synthetic` flag is **never** flipped — normalization is an integration-time
+interpretation surfaced via a **best-effort** `outer_gitlink_normalized` audit row on the outer
+member's timeline (mirrors §14.10's `outer_converted`).
+
+**Verify contract (unchanged).** The outer verify command **MUST NOT**
+`git submodule update --init` the gitlink path — see **§14.8**. Normalization is verify-equivalent
+to the shipped legacy path (the outer verify builds outer-source-against-`Ri` in every arm today),
+and the tree-keyed verify cache cannot manufacture a false pass.
+
+**Scope limits.** Exactly ONE managed gitlink lane exists today (`linked_repos.gitlink_path`, a
+single path); an **unmanaged** `160000` change rides in the source patch and lands/conflicts exactly
+as a legacy rebase would (game_one's second gitlink `tools/rynx-treegen` is not managed). A true
+two-managed-gitlink topology is out of scope.
+
+**Deployment note.** There is **NO DB migration** (the new reject categories are plain text
+columns). A **PM-server redeploy IS required** — the new `gitlink_unreachable` / `gitlink_diverged`
+categories, the `outer_gitlink_normalized` audit action/route, and the `synthesizeInner` submission
+schema all live in the server; without the redeploy the legibility comment POSTs 404 and
+`synthesizeInner` groups 400.
 
 ---
 

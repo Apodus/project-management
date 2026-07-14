@@ -160,6 +160,18 @@ linked_repos` (`[]` = single-repo). Orphaned-inner → durable incident +
   outer synthesized on live main) — always-on/fail-open, so bump-branch drift
   can't `outer_conflict`, and inner-only stays preferred (deployment guide
   §14.10 / `roadmaps/roadmap-20260710-xrepo-gitlink-bump-autoconvert.md`).
+  **Gitlink normalization umbrella** generalizes that pure-bump case: a MIXED
+  outer member (real source + a stale-but-reachable gitlink) has its managed
+  gitlink hunk **stripped** at assembly (source-only patch applied onto live
+  main, gitlink authored to the landing inner) so stale gitlinks can't
+  `outer_conflict`; a lone outer change lands with inner as a no-op via
+  **`synthesizeInner: true`** (the mirror of `synthesize_outer`); the sole gate
+  is **ancestry** (gitlink target ancestor-of-landing-inner → normalize;
+  diverged/unreachable → legible `gitlink_diverged`/`gitlink_unreachable` reject
+  with a `merge_rejection` task comment, never a silent stall). Always-on/
+  fail-open; new `outer_gitlink_normalized` audit action; no migration but a
+  PM-server redeploy is required (deployment guide §14.11 /
+  `roadmaps/roadmap-20260713-xrepo-gitlink-umbrella-widening.md`).
   **Verify contract:** the outer verify must NOT
   `submodule update --init` the gitlink path (see deployment guide §14.8).
 - **7.4 Observability + break-glass** — train dashboard / per-request timeline /
