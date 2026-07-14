@@ -842,6 +842,64 @@ schema all live in the server; without the redeploy the legibility comment POSTs
 
 ---
 
+### 14.12 Integrator liveness on the agent-facing views
+
+When a worker submits a merge request and the queue does not move, the first
+question is **why**. This section surfaces the answer directly on the reads an
+agent already hits — the merge-lock view and the merge-request list/detail — so a
+stalled train is self-diagnosing without opening the §15 dashboard.
+
+**The `integrator` block.** The merge-lock read (`GET …/merge-locks/{resource}`,
+`data.integrator`) and the merge-request list/detail reads (`GET …/merge-requests`
+and `GET /merge-requests/{id}`, where `integrator` is an **envelope sibling** —
+carried alongside `data`, never on an individual row) now carry a small liveness
+block derived from the same `integrator_health` heartbeat the §15 dashboard reads:
+
+- `status` — `alive` (a heartbeat landed within the staleness cutoff), `stale`
+  (a heartbeat exists but is older than the cutoff), or `down` (never seen).
+- `last_heartbeat_age_sec` — seconds since the last beat (`null` when never seen).
+- `lane_status` — the integrator's self-reported lane state at the last beat
+  (`idle` / `integrating` / …; `null` when never seen).
+- `version` — the integrator version at the last beat.
+- `stall` — `"integrator_down"` **only** when the lane looks genuinely stuck:
+  the integrator is not `alive` **and** there is at least one `queued` request
+  with **zero attempts of any status** on the lane. Otherwise `null`. This
+  predicate is deliberately conservative — a fresh heartbeat, an empty queue, or a
+  request that already has an attempt row (e.g. a re-queued one) all read
+  `stall: null`, so a slow verify never produces a false "down".
+
+**Staleness cutoff: 90s.** A heartbeat older than 90s reads `stale`; the daemon
+beats well inside that window, so `stale`/`down` on a live-looking queue is a real
+signal, not clock jitter.
+
+**Reading it to triage a stalled train.** When you see a `queued` request that
+isn't moving, the block distinguishes the three causes an agent otherwise can't
+tell apart:
+
+- **`stall: "integrator_down"`** (status `stale`/`down`) → the daemon is not
+  running (or crashed / lost its host). **Tell the operator to restart the
+  integrator daemon** — the queue will drain once it beats again. Nothing is lost;
+  the request stays `queued`.
+- **`status: "alive"`, `lane_status: "integrating"`, `stall: null`** → the daemon
+  is up and actively verifying. This is a **slow verify** (a long `cargo test`,
+  a big cross-repo materialize). **Wait** — do not re-submit.
+- **A gitlink / cross-repo `outer_conflict`-shaped stall** is a different failure
+  class entirely (a rejected member, not a dead daemon); it is handled by the
+  normalization umbrella — **fix the branch** per **§14.11**, not restart.
+
+**`pm_get_integrator_health`.** The MCP server exposes the full health view as a
+dedicated tool (`pm_get_integrator_health`, project + optional `resource`), and
+renders the same stall hint inline in `pm_get_merge_lock`,
+`pm_list_merge_requests`, and `pm_get_merge_request`. An agent (or the responder)
+can call it directly to decide restart-vs-wait without scraping a read envelope.
+
+**Enriched abandon reason.** When a batch member is abandoned because a peer in
+its speculative batch failed, the recorded `abandon_reason` now names the peer and
+cause (rather than a bare "batch failed"), so the timeline reads why a request that
+never itself failed was returned to the queue.
+
+---
+
 ## 15. Observability + Break-glass (Phase 7.4)
 
 Phase 7.4 makes the train **legible** (a dashboard that answers "what's wrong" in 60 seconds), **recoverable** by a human via the UI (five break-glass overrides — no DB surgery, no SSH), **accountable** (a dedicated audit log), and **self-alerting** (three `train.*` alerts delivered both in-app and out-of-band to Discord). This section is the operator-facing summary; the authoritative spec is `docs/design/phase-7.4-design.md` (incl. §14 implementation deviations). Three new PM-owned tables back it: `audit_log`, `integrator_health`, and `train_state` (all one-row-per-`(project, resource)`-lane except `audit_log`, which is append-only rows).

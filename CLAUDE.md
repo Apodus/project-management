@@ -185,6 +185,12 @@ verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   bounded headless Claude session (`settings.integrator.resolver`, **default
   off**) reconciles + re-verifies + resubmits as a linked new MR; the **train
   re-verify is the sole landing gate**. Never discards proven work.
+- **Integrator liveness (agent-facing)** — the merge-lock + merge-request reads
+  now carry an `integrator` liveness block (alive/stale/down + `stall:
+"integrator_down"` when the daemon is silent >90s and a queued 0-attempt request
+  waits) plus a `pm_get_integrator_health` MCP tool, so an agent distinguishes
+  daemon-down (restart) from slow-verify (wait) from gitlink-drain (fix branch,
+  §14.11). Deployment guide §14.12 / `roadmaps/roadmap-20260714-integrator-liveness-legibility.md`.
 
 **Claim liveness (Campaigns C1–C3)** — `docs/design/phase-c*.md`.
 

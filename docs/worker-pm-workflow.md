@@ -238,6 +238,25 @@ A rejection is **ordinary new work**, not a failure state to halt on. It arrives
 - **Two real reasons a merge rejects** (the "moving main" race is NOT one of them anymore): a **textual conflict** (you and another agent edited the same lines) or a **verify failure** (rebased clean but broke a test/build). Both are genuine and worth your attention — but only when the rejection comes back, not as a thing you wait for.
 - _(An automated conflict resolver has SHIPPED behind the opt-in `resolver.enabled` flag: when enabled, the train may reconcile a textual conflict for you and resubmit the result as a linked new request, so many conflict rejections resolve without ever reaching you. It's opt-in and verify-gated — if it can't land a clean tree within its budget, the conflict is handed back to you as a normal `merge_rejection` with the original commit intact. Treat any `merge_rejection` that does reach you as a normal ticket.)_
 
+### Is the integrator alive? (a queued request that isn't moving)
+
+Normally you submit and walk away — but if you _do_ look and a `queued` request
+is sitting still, don't assume the worst or re-submit. Check whether the daemon is
+even running: the merge-lock and merge-request reads now carry an `integrator`
+block (`status` alive/stale/down + `stall`), and `pm_get_integrator_health(project_id, resource?)`
+returns it directly. `pm_get_merge_lock` / `pm_list_merge_requests` / `pm_get_merge_request`
+also render the hint inline. Three cases:
+
+- **`stall: "integrator_down"`** (status stale/down — no heartbeat within 90s) → the
+  **integrator daemon is not running.** Nothing is wrong with your request; it just
+  has nothing picking it up. **Tell the operator to restart the daemon** (an
+  escalation / needs-human), then move on — it drains when the daemon beats again.
+- **`status: alive`, `lane_status: integrating`** → the daemon is up and **verifying
+  right now.** This is a slow verify (long tests, big cross-repo materialize).
+  **Just wait** — do not cancel or re-submit.
+- **A `merge_rejection` on a cross-repo gitlink** is not a dead daemon — fix the
+  branch per the merge-group guidance below, don't ask for a restart.
+
 ## Cross-repo changes: merge groups (rynx inner + outer)
 
 game_one is a cross-repo setup: the **rynx** inner Rust workspace is embedded in the outer game repo as a gitlink (submodule). A change that spans repos must land as a unit or not at all — otherwise the outer gitlink points at an inner SHA that isn't on inner's main. Use a **merge group**, and pick the form by where your change actually lives. The takeaway up front: **never mint gitlink-bump-only outer branches** — the train synthesizes the bump for you (and if one is minted anyway, the train now tolerates it by auto-converting on drift — tolerated, not the supported path).
