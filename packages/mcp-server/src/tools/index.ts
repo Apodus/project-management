@@ -13,6 +13,7 @@ import { registerAgentTools } from "./agent.js";
 import { registerMergeLockTools } from "./merge-locks.js";
 import { registerMergeRequestTools } from "./merge-requests.js";
 import { registerMergeGroupTools } from "./merge-groups.js";
+import { registerIntegratorHealthTools } from "./integrator-health.js";
 import { registerNoteTools } from "./notes.js";
 import { registerEscalationTools } from "./escalations.js";
 import { registerCheckMessagesTool } from "./check-messages.js";
@@ -35,6 +36,7 @@ export function registerAllTools(server: McpServer): void {
   registerMergeLockTools(server);
   registerMergeRequestTools(server);
   registerMergeGroupTools(server);
+  registerIntegratorHealthTools(server);
   registerNoteTools(server);
   registerEscalationTools(server);
   registerCheckMessagesTool(server);

@@ -9751,6 +9751,7 @@ export interface paths {
                 page: number;
                 perPage: number;
               };
+              integrator?: components["schemas"]["IntegratorLiveness"];
             };
           };
         };
@@ -9984,6 +9985,7 @@ export interface paths {
           content: {
             "application/json": {
               data: components["schemas"]["MergeRequestDetail"];
+              integrator?: components["schemas"]["IntegratorLiveness"];
             };
           };
         };
@@ -16100,6 +16102,7 @@ export interface components {
       abandonReason: string | null;
       queueLength: number;
       yourPosition: number | null;
+      integrator?: components["schemas"]["IntegratorLiveness"];
       createdAt: string;
       updatedAt: string;
     };
@@ -16159,6 +16162,16 @@ export interface components {
       resource: string;
       reason?: string;
       escalationId?: string | null;
+    };
+    IntegratorLiveness: {
+      /** @enum {string} */
+      status: "alive" | "stale" | "down";
+      last_heartbeat_age_sec: number | null;
+      /** @enum {string|null} */
+      lane_status: "idle" | "integrating" | null;
+      version: string | null;
+      /** @enum {string|null} */
+      stall: "integrator_down" | null;
     };
     MergeRequestDetail: components["schemas"]["MergeRequest"] & {
       attempts: components["schemas"]["MergeAttempt"][];

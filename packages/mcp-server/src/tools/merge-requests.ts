@@ -10,6 +10,7 @@ import {
   type MergeRequestView,
   type MergeRequestDetailView,
 } from "../api-client.js";
+import { renderIntegratorLiveness } from "../liveness.js";
 
 const resourceDesc =
   "Lock resource name (default: 'main'). Names the train lane. Use 'main' unless told otherwise.";
@@ -73,7 +74,7 @@ export function registerMergeRequestTools(server: McpServer): void {
       let position: number | null = null;
       let total = 0;
       try {
-        const queued = await listMergeRequests(project_id, {
+        const { requests: queued } = await listMergeRequests(project_id, {
           resource: resolvedResource,
           status: "queued",
         });
@@ -108,7 +109,7 @@ export function registerMergeRequestTools(server: McpServer): void {
 
   server.tool(
     "pm_list_merge_requests",
-    `List merge requests for a project. Optional filters: resource (lane), status (queued/integrating/landed/rejected/abandoned/all), task_id. Returns id, status, branch/commit, submitter, and queue position for queued entries. ${integratorOwnedNote}`,
+    `List merge requests for a project. Optional filters: resource (lane), status (queued/integrating/landed/rejected/abandoned/all), task_id. Returns id, status, branch/commit, submitter, and queue position for queued entries, plus a lane liveness banner (a DOWN hint when the queue is stalled on a dead integrator). For the full health snapshot use pm_get_integrator_health. ${integratorOwnedNote}`,
     {
       project_id: z.string().describe("The project ID."),
       resource: z.string().optional().describe(resourceDesc),
@@ -125,19 +126,22 @@ export function registerMergeRequestTools(server: McpServer): void {
       const statusFilter: MergeRequestStatus | undefined =
         status === "all" || status === undefined ? undefined : (status as MergeRequestStatus);
 
-      const rows = await listMergeRequests(project_id, {
+      const { requests: rows, integrator } = await listMergeRequests(project_id, {
         resource,
         status: statusFilter,
         taskId: task_id,
       });
+      const livenessBanner = renderIntegratorLiveness(integrator);
 
       if (rows.length === 0) {
         const filterDesc = resource ? ` (${resource} lane)` : "";
+        const emptyLines = [`No merge requests in ${project_id}${filterDesc}.`];
+        if (livenessBanner) emptyLines.push(livenessBanner);
         return {
           content: [
             {
               type: "text" as const,
-              text: `No merge requests in ${project_id}${filterDesc}.`,
+              text: emptyLines.join("\n"),
             },
           ],
         };
@@ -154,7 +158,9 @@ export function registerMergeRequestTools(server: McpServer): void {
       }
 
       const laneLabel = resource ? ` (${resource} lane)` : "";
-      const out: string[] = [`${rows.length} merge request(s) in ${project_id}${laneLabel}:`, ""];
+      const out: string[] = [`${rows.length} merge request(s) in ${project_id}${laneLabel}:`];
+      if (livenessBanner) out.push(livenessBanner);
+      out.push("");
       rows.forEach((r, i) => {
         const pos = queuePositions.get(r.id);
         const statusLabel =
@@ -181,12 +187,12 @@ export function registerMergeRequestTools(server: McpServer): void {
 
   server.tool(
     "pm_get_merge_request",
-    `Get full detail for a merge request including all attempts (most-recent first). For rejected requests, the structured rejection envelope (category, reason, failed files, log URL) is surfaced prominently at the top so you can see why without scrolling. ${integratorOwnedNote}`,
+    `Get full detail for a merge request including all attempts (most-recent first). For rejected requests, the structured rejection envelope (category, reason, failed files, log URL) is surfaced prominently at the top so you can see why without scrolling. A trailing lane-liveness line flags a DOWN integrator (why a queued request isn't moving); for the full health snapshot use pm_get_integrator_health. ${integratorOwnedNote}`,
     {
       request_id: z.string().describe("The merge request ID."),
     },
     async ({ request_id }) => {
-      const detail = await getMergeRequest(request_id);
+      const { request: detail, integrator } = await getMergeRequest(request_id);
       const lines: string[] = [];
 
       const headerStatus = detail.status.toUpperCase();
@@ -237,6 +243,11 @@ export function registerMergeRequestTools(server: McpServer): void {
         for (const a of detail.attempts) {
           lines.push(...formatAttempt(a));
         }
+      }
+
+      const liveness = renderIntegratorLiveness(integrator);
+      if (liveness) {
+        lines.push("", liveness);
       }
 
       return {

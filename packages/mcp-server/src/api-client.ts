@@ -1242,6 +1242,9 @@ export interface MergeLockView {
   abandonReason: string | null;
   queueLength: number;
   yourPosition: number | null;
+  // Integrator liveness for this lane, derived on-read (additive; absent on
+  // locks read without a liveness derivation). See @pm/shared integratorLivenessSchema.
+  integrator?: IntegratorLiveness;
   createdAt: string;
   updatedAt: string;
 }
@@ -1312,6 +1315,7 @@ import type {
   MergeRequestStatus,
   MergeRequestGroupView,
   MergeIncidentView,
+  IntegratorLiveness,
   ClaimState,
   Note,
   NoteKind,
@@ -1332,6 +1336,7 @@ export type {
   MergeAttemptView,
   MergeRequestStatus,
   MergeRejectCategory,
+  IntegratorLiveness,
   ClaimState,
 } from "@pm/shared";
 
@@ -1370,33 +1375,76 @@ export async function submitMergeRequest(
   );
 }
 
+export interface ListMergeRequestsResult {
+  requests: MergeRequestView[];
+  pagination: { total: number; page: number; perPage: number };
+  // Integrator liveness for the listed lane — an ENVELOPE SIBLING of `data`,
+  // never a field on a row. Absent on older servers. See design-lock C/F.
+  integrator?: IntegratorLiveness;
+}
+
+export interface GetMergeRequestResult {
+  request: MergeRequestDetailView;
+  // Envelope sibling (see above). Absent on older servers.
+  integrator?: IntegratorLiveness;
+}
+
 /**
- * List merge requests for a project. apiRequest extracts .data; pagination is dropped.
+ * List merge requests for a project. Envelope-preserving (mirrors createNote):
+ * apiRequest would unwrap `.data` and drop the `pagination` + `integrator`
+ * siblings, so this reads the raw envelope directly. The row array is exposed
+ * as `.requests`.
  */
 export async function listMergeRequests(
   projectId: string,
   filters?: MergeRequestListFilters,
-): Promise<MergeRequestView[]> {
+): Promise<ListMergeRequestsResult> {
   const params: Record<string, string | number | boolean | undefined> = {};
   if (filters?.resource) params.resource = filters.resource;
   if (filters?.status) params.status = filters.status;
   if (filters?.taskId) params.taskId = filters.taskId;
   if (filters?.page) params.page = filters.page;
   if (filters?.perPage) params.perPage = filters.perPage;
-  return apiRequest<MergeRequestView[]>(
-    "GET",
-    `/projects/${encodeURIComponent(projectId)}/merge-requests${qs(params)}`,
-  );
+
+  const url = `${getBaseUrl()}/api/v1/projects/${encodeURIComponent(projectId)}/merge-requests${qs(params)}`;
+  const token = getToken();
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+  });
+  if (!res.ok) {
+    const { code, message } = await readErrorBody(res);
+    throw new ApiError(res.status, code, message);
+  }
+  const json = (await res.json()) as {
+    data: MergeRequestView[];
+    pagination: { total: number; page: number; perPage: number };
+    integrator?: IntegratorLiveness;
+  };
+  return { requests: json.data, pagination: json.pagination, integrator: json.integrator };
 }
 
 /**
  * Get a single merge request with its attempts (most-recent first).
+ * Envelope-preserving: the `integrator` liveness sibling rides alongside `.data`
+ * (apiRequest would drop it). The request row is exposed as `.request`.
  */
-export async function getMergeRequest(requestId: string): Promise<MergeRequestDetailView> {
-  return apiRequest<MergeRequestDetailView>(
-    "GET",
-    `/merge-requests/${encodeURIComponent(requestId)}`,
-  );
+export async function getMergeRequest(requestId: string): Promise<GetMergeRequestResult> {
+  const url = `${getBaseUrl()}/api/v1/merge-requests/${encodeURIComponent(requestId)}`;
+  const token = getToken();
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+  });
+  if (!res.ok) {
+    const { code, message } = await readErrorBody(res);
+    throw new ApiError(res.status, code, message);
+  }
+  const json = (await res.json()) as {
+    data: MergeRequestDetailView;
+    integrator?: IntegratorLiveness;
+  };
+  return { request: json.data, integrator: json.integrator };
 }
 
 /**
@@ -1422,6 +1470,44 @@ export async function pickupMergeRequest(requestId: string): Promise<MergeReques
   return apiRequest<MergeRequestView>(
     "POST",
     `/merge-requests/${encodeURIComponent(requestId)}/pickup`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Typed API functions — Integrator health (Phase 7.4 heartbeat, read surface)
+// ---------------------------------------------------------------------------
+//
+// On-read view of a lane's integrator health. snake_case on the wire (the
+// integrator mints the heartbeat payload; PM denormalizes it). Reading this
+// fires the train.integrator_unhealthy edge server-side when the lane is stale.
+
+export interface IntegratorHealthView {
+  resource: string;
+  status: string;
+  healthy: boolean;
+  last_seen_at: string | null;
+  staleness_ms: number | null;
+  pool_size: number | null;
+  pool_leased: number | null;
+  in_flight_requests: number;
+  in_flight_batches: number;
+  in_flight_groups: number;
+  version: string | null;
+  integrator_id: string | null;
+  last_release_failure: { at: string; message: string } | null;
+}
+
+/**
+ * Read a lane's integrator health (any authenticated user). Wraps the existing
+ * GET /projects/{projectId}/integrator/health?resource= endpoint.
+ */
+export async function getIntegratorHealth(
+  projectId: string,
+  resource = "main",
+): Promise<IntegratorHealthView> {
+  return apiRequest<IntegratorHealthView>(
+    "GET",
+    `/projects/${encodeURIComponent(projectId)}/integrator/health${qs({ resource })}`,
   );
 }
 

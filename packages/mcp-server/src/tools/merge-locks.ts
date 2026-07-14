@@ -7,6 +7,7 @@ import {
   listMergeLocks,
   releaseMergeLock,
 } from "../api-client.js";
+import { renderIntegratorLiveness } from "../liveness.js";
 
 const resourceDesc =
   "Lock resource name (default: 'main'). Lets a project carry more than one lock stream if needed (e.g. 'release-branch'). Use 'main' unless told otherwise.";
@@ -151,7 +152,7 @@ export function registerMergeLockTools(server: McpServer): void {
 
   server.tool(
     "pm_get_merge_lock",
-    "Inspect a merge lock. Reports who holds it relative to you ('you' / 'someone_else' / 'none'), queue length, your position if queued, lease expiry, and the last landed SHA. Other holders' identities are not leaked.",
+    "Inspect a merge lock. Reports who holds it relative to you ('you' / 'someone_else' / 'none'), queue length, your position if queued, lease expiry, the last landed SHA, and the lane's integrator liveness (a DOWN hint when the queue is stalled on a dead daemon). Other holders' identities are not leaked. For the full health snapshot use pm_get_integrator_health.",
     {
       project_id: z.string().describe("The project ID."),
       resource: z.string().optional().default("main").describe(resourceDesc),
@@ -166,6 +167,8 @@ export function registerMergeLockTools(server: McpServer): void {
       if (view.yourPosition !== null) {
         lines.push(`Your position in queue: ${view.yourPosition}`);
       }
+      const liveness = renderIntegratorLiveness(view.integrator);
+      if (liveness) lines.push(liveness);
       if (view.expiresAt) lines.push(`Lease expires: ${view.expiresAt}`);
       // Landing intent — what the holder is trying to land. Available
       // to every observer; useful for "who's about to land what."
@@ -198,14 +201,15 @@ export function registerMergeLockTools(server: McpServer): void {
         };
       }
       const text = list
-        .map(
-          (l) =>
-            `- **${l.resource}** — holder: ${l.holder}, queue: ${l.queueLength}${
-              l.yourPosition !== null ? ` (you @ ${l.yourPosition})` : ""
-            }${l.branch ? `, branch ${l.branch}` : ""}${
-              l.landedSha ? `, last landed ${l.landedSha}` : ""
-            }${l.abandonReason ? `, last abandoned: ${l.abandonReason}` : ""}`,
-        )
+        .map((l) => {
+          const head = `- **${l.resource}** — holder: ${l.holder}, queue: ${l.queueLength}${
+            l.yourPosition !== null ? ` (you @ ${l.yourPosition})` : ""
+          }${l.branch ? `, branch ${l.branch}` : ""}${
+            l.landedSha ? `, last landed ${l.landedSha}` : ""
+          }${l.abandonReason ? `, last abandoned: ${l.abandonReason}` : ""}`;
+          const liveness = renderIntegratorLiveness(l.integrator);
+          return liveness ? `${head}\n  ${liveness}` : head;
+        })
         .join("\n");
       return { content: [{ type: "text" as const, text }] };
     },

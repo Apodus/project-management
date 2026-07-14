@@ -73,6 +73,7 @@ vi.mock("../src/api-client.js", () => ({
   getMergeGroup: vi.fn(),
   listMergeIncidents: vi.fn(),
   getMergeIncident: vi.fn(),
+  getIntegratorHealth: vi.fn(),
   createNote: vi.fn(),
   listNotes: vi.fn(),
   getNote: vi.fn(),
@@ -152,6 +153,7 @@ const mockRequestMergeGroup = vi.mocked(apiClient.requestMergeGroup);
 const mockGetMergeGroup = vi.mocked(apiClient.getMergeGroup);
 const mockListMergeIncidents = vi.mocked(apiClient.listMergeIncidents);
 const mockGetMergeIncident = vi.mocked(apiClient.getMergeIncident);
+const mockGetIntegratorHealth = vi.mocked(apiClient.getIntegratorHealth);
 const mockCreateNote = vi.mocked(apiClient.createNote);
 const mockListNotes = vi.mocked(apiClient.listNotes);
 const mockGetNote = vi.mocked(apiClient.getNote);
@@ -282,6 +284,29 @@ const sampleMergeRequest = {
   logUrl: null,
   createdAt: "2026-05-29T14:21:03.412Z",
   updatedAt: "2026-05-29T14:21:03.412Z",
+};
+
+const sampleMergeLock = {
+  id: "L1",
+  projectId: "P1",
+  resource: "main",
+  holder: "someone_else" as const,
+  holderId: null,
+  acquiredAt: "2026-05-29T11:00:00.000Z",
+  heartbeatAt: "2026-05-29T11:01:00.000Z",
+  expiresAt: "2026-05-29T11:06:00.000Z",
+  landedSha: null,
+  landedAt: null,
+  taskId: null,
+  branch: null,
+  commitSha: null,
+  verifyCmd: null,
+  worktreePath: null,
+  abandonReason: null,
+  queueLength: 1,
+  yourPosition: 1,
+  createdAt: "2026-05-29T10:00:00.000Z",
+  updatedAt: "2026-05-29T11:01:00.000Z",
 };
 
 // ---------------------------------------------------------------------------
@@ -3061,13 +3086,78 @@ describe("MCP Tools", () => {
       expect(text).toContain("main");
       expect(text).toContain("abc");
     });
+
+    it("pm_get_merge_lock renders the integrator DOWN hint when the lane is stalled", async () => {
+      mockGetMergeLock.mockResolvedValue({
+        ...sampleMergeLock,
+        integrator: {
+          status: "down",
+          last_heartbeat_age_sec: 43200,
+          lane_status: null,
+          version: null,
+          stall: "integrator_down",
+        },
+      });
+      const result = await client.callTool({
+        name: "pm_get_merge_lock",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("integrator appears DOWN");
+      expect(text).toContain("no heartbeat for 43200s");
+      expect(text).toContain("restart the daemon");
+    });
+
+    it("pm_get_merge_lock renders healthy-integrating (wait, don't restart)", async () => {
+      mockGetMergeLock.mockResolvedValue({
+        ...sampleMergeLock,
+        integrator: {
+          status: "alive",
+          last_heartbeat_age_sec: 3,
+          lane_status: "integrating",
+          version: "1.2.3",
+          stall: null,
+        },
+      });
+      const result = await client.callTool({
+        name: "pm_get_merge_lock",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("integrator: healthy, actively integrating (verify in progress)");
+    });
+
+    it("pm_list_merge_locks renders per-lane liveness", async () => {
+      mockListMergeLocks.mockResolvedValue([
+        {
+          ...sampleMergeLock,
+          integrator: {
+            status: "stale",
+            last_heartbeat_age_sec: 120,
+            lane_status: "idle",
+            version: "1.2.3",
+            stall: null,
+          },
+        },
+      ]);
+      const result = await client.callTool({
+        name: "pm_list_merge_locks",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("integrator: stale (last heartbeat 120s ago)");
+    });
   });
 
   // ── Merge request tools (Stage 2) ───────────────────────────────
   describe("merge request tools", () => {
     it("pm_request_merge submits and reports queue position", async () => {
       mockSubmitMergeRequest.mockResolvedValue(sampleMergeRequest);
-      mockListMergeRequests.mockResolvedValue([sampleMergeRequest]);
+      mockListMergeRequests.mockResolvedValue({
+        requests: [sampleMergeRequest],
+        pagination: { total: 1, page: 1, perPage: 50 },
+        integrator: undefined,
+      });
 
       const result = await client.callTool({
         name: "pm_request_merge",
@@ -3099,11 +3189,15 @@ describe("MCP Tools", () => {
     });
 
     it("pm_list_merge_requests renders rows with queue positions", async () => {
-      mockListMergeRequests.mockResolvedValue([
-        { ...sampleMergeRequest, id: "mreq_A", status: "integrating" },
-        { ...sampleMergeRequest, id: "mreq_B", status: "queued" },
-        { ...sampleMergeRequest, id: "mreq_C", status: "queued" },
-      ]);
+      mockListMergeRequests.mockResolvedValue({
+        requests: [
+          { ...sampleMergeRequest, id: "mreq_A", status: "integrating" },
+          { ...sampleMergeRequest, id: "mreq_B", status: "queued" },
+          { ...sampleMergeRequest, id: "mreq_C", status: "queued" },
+        ],
+        pagination: { total: 3, page: 1, perPage: 50 },
+        integrator: undefined,
+      });
 
       const result = await client.callTool({
         name: "pm_list_merge_requests",
@@ -3125,33 +3219,36 @@ describe("MCP Tools", () => {
 
     it("pm_get_merge_request surfaces rejection envelope prominently", async () => {
       mockGetMergeRequest.mockResolvedValue({
-        ...sampleMergeRequest,
-        status: "rejected",
-        resolvedAt: "2026-05-29T14:24:48.902Z",
-        rejectCategory: "build_failed",
-        rejectReason: "cargo build --workspace failed: 3 errors\nin crates/renderer",
-        failedFiles: ["crates/renderer/src/skinned.rs", "crates/renderer/src/lib.rs"],
-        logExcerpt: "error[E0599]: ...",
-        logUrl: "file:///tmp/logs/attempt01.log",
-        attempts: [
-          {
-            id: "att_1",
-            requestId: "mreq_001",
-            attemptNumber: 1,
-            baseSha: "2c8f1d9",
-            treeSha: null,
-            status: "failed",
-            startedAt: "2026-05-29T14:21:05Z",
-            completedAt: "2026-05-29T14:24:48Z",
-            verifyDurationMs: 223000,
-            failureCategory: "build_failed",
-            failureReason: "cargo build --workspace failed: 3 errors",
-            failedFiles: ["crates/renderer/src/skinned.rs"],
-            logExcerpt: null,
-            logUrl: "file:///tmp/logs/attempt01.log",
-            createdAt: "2026-05-29T14:21:05Z",
-          },
-        ],
+        request: {
+          ...sampleMergeRequest,
+          status: "rejected",
+          resolvedAt: "2026-05-29T14:24:48.902Z",
+          rejectCategory: "build_failed",
+          rejectReason: "cargo build --workspace failed: 3 errors\nin crates/renderer",
+          failedFiles: ["crates/renderer/src/skinned.rs", "crates/renderer/src/lib.rs"],
+          logExcerpt: "error[E0599]: ...",
+          logUrl: "file:///tmp/logs/attempt01.log",
+          attempts: [
+            {
+              id: "att_1",
+              requestId: "mreq_001",
+              attemptNumber: 1,
+              baseSha: "2c8f1d9",
+              treeSha: null,
+              status: "failed",
+              startedAt: "2026-05-29T14:21:05Z",
+              completedAt: "2026-05-29T14:24:48Z",
+              verifyDurationMs: 223000,
+              failureCategory: "build_failed",
+              failureReason: "cargo build --workspace failed: 3 errors",
+              failedFiles: ["crates/renderer/src/skinned.rs"],
+              logExcerpt: null,
+              logUrl: "file:///tmp/logs/attempt01.log",
+              createdAt: "2026-05-29T14:21:05Z",
+            },
+          ],
+        },
+        integrator: undefined,
       });
 
       const result = await client.callTool({
@@ -3204,6 +3301,127 @@ describe("MCP Tools", () => {
       });
 
       expect(mockCancelMergeRequest).toHaveBeenCalledWith("mreq_001", "superseded by newer branch");
+    });
+
+    it("pm_list_merge_requests renders the lane liveness banner above the list", async () => {
+      mockListMergeRequests.mockResolvedValue({
+        requests: [{ ...sampleMergeRequest, id: "mreq_B", status: "queued" }],
+        pagination: { total: 1, page: 1, perPage: 50 },
+        integrator: {
+          status: "down",
+          last_heartbeat_age_sec: 43200,
+          lane_status: null,
+          version: null,
+          stall: "integrator_down",
+        },
+      });
+
+      const result = await client.callTool({
+        name: "pm_list_merge_requests",
+        arguments: { project_id: "P1", resource: "main" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      // Banner is above the first row.
+      const bannerIdx = text.indexOf("integrator appears DOWN");
+      const rowIdx = text.indexOf("mreq_B");
+      expect(bannerIdx).toBeGreaterThanOrEqual(0);
+      expect(rowIdx).toBeGreaterThan(bannerIdx);
+      expect(text).toContain("no heartbeat for 43200s");
+    });
+
+    it("pm_get_merge_request appends the liveness line", async () => {
+      mockGetMergeRequest.mockResolvedValue({
+        request: { ...sampleMergeRequest, attempts: [] },
+        integrator: {
+          status: "alive",
+          last_heartbeat_age_sec: 4,
+          lane_status: "integrating",
+          version: "1.2.3",
+          stall: null,
+        },
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_request",
+        arguments: { request_id: "mreq_001" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("mreq_001");
+      expect(text).toContain("integrator: healthy, actively integrating (verify in progress)");
+    });
+  });
+
+  // ── Integrator health tool (liveness legibility) ─────────────────
+  describe("pm_get_integrator_health", () => {
+    const baseHealth = {
+      resource: "main",
+      status: "idle",
+      healthy: true,
+      last_seen_at: "2026-07-14T12:00:00.000Z",
+      staleness_ms: 5000,
+      pool_size: 4,
+      pool_leased: 1,
+      in_flight_requests: 0,
+      in_flight_batches: 0,
+      in_flight_groups: 0,
+      version: "1.2.3",
+      integrator_id: "U_INT",
+      last_release_failure: null,
+    };
+
+    it("renders ALIVE with age, pool, and in-flight counts", async () => {
+      mockGetIntegratorHealth.mockResolvedValue({ ...baseHealth });
+      const result = await client.callTool({
+        name: "pm_get_integrator_health",
+        arguments: { project_id: "P1" },
+      });
+      expect(mockGetIntegratorHealth).toHaveBeenCalledWith("P1", "main");
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("State: ALIVE");
+      expect(text).toContain("Last heartbeat: 5s ago");
+      expect(text).toContain("Lane status: idle");
+      expect(text).toContain("Version: 1.2.3");
+      expect(text).toContain("Pool: 1/4 leased");
+      expect(text).toContain("In-flight: requests=0, batches=0, groups=0");
+    });
+
+    it("renders DOWN when never seen (fail-safe)", async () => {
+      mockGetIntegratorHealth.mockResolvedValue({
+        ...baseHealth,
+        status: "never_seen",
+        healthy: false,
+        last_seen_at: null,
+        staleness_ms: null,
+        pool_size: null,
+        pool_leased: null,
+        version: null,
+        integrator_id: null,
+      });
+      const result = await client.callTool({
+        name: "pm_get_integrator_health",
+        arguments: { project_id: "P1", resource: "main" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("State: DOWN");
+      expect(text).toContain("Last heartbeat: never heartbeated");
+      expect(text).toContain("restart the integrator daemon");
+    });
+
+    it("renders STALE and surfaces last_release_failure", async () => {
+      mockGetIntegratorHealth.mockResolvedValue({
+        ...baseHealth,
+        healthy: false,
+        staleness_ms: 120000,
+        last_release_failure: { at: "2026-07-14T11:00:00.000Z", message: "push rejected" },
+      });
+      const result = await client.callTool({
+        name: "pm_get_integrator_health",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("State: STALE");
+      expect(text).toContain("Last heartbeat: 120s ago");
+      expect(text).toContain("Last release failure: 2026-07-14T11:00:00.000Z — push rejected");
     });
   });
 
