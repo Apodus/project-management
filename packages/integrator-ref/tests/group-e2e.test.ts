@@ -126,6 +126,17 @@ interface MergeRequest {
   branch: string | null;
   commitSha: string | null;
   rejectReason: string | null;
+  // Seals (l)/(m): the Tier-2 gitlink reject category propagated to every
+  // non-terminal member by rejectGroup (server merge-group.service).
+  rejectCategory: string | null;
+}
+
+// Seals (l)/(m): the merge_rejection legibility proof — the shape the real
+// comments route (GET /api/v1/tasks/{id}/comments) returns per comment.
+interface TaskComment {
+  body: string;
+  commentType: string;
+  metadata: unknown;
 }
 
 interface MergeGroup {
@@ -180,6 +191,14 @@ interface Harness {
     innerCommit: string,
     opts?: { verifyCmd?: string; taskId?: string },
   ) => Promise<{ group: MergeGroup; members: MergeRequest[] }>;
+  /** Seals (k)-(m): the lone-outer synthesizeInner mirror of submitInnerOnlyGroup.
+   *  ONE atomic POST, NO retry loop. The outer member carries the taskId. */
+  submitOuterOnlyGroup: (
+    outerCommit: string,
+    opts?: { verifyCmd?: string; taskId?: string },
+  ) => Promise<{ group: MergeGroup; members: MergeRequest[] }>;
+  /** Seals (l)/(m): a task's comments (worker token) — the merge_rejection proof. */
+  getTaskComments: (taskId: string) => Promise<TaskComment[]>;
   getGroup: (id: string) => Promise<MergeGroup>;
   /** Same GET as getGroup, wider cast — includes the members array. */
   getGroupDetail: (id: string) => Promise<MergeGroupDetail>;
@@ -494,6 +513,53 @@ async function makeGroupHarness(
     return { group: detail, members: detail.members };
   }
 
+  // Seals (k)-(m): the lone-outer synthesizeInner submit-and-group form (the
+  // mirror of submitInnerOnlyGroup). ONE atomic POST, NO retry loop — the
+  // members are born group-bound in one txn, so the single-repo drain can never
+  // claim one in a window. The outer member MUST carry a taskId:
+  // rejectGroupLegibly targets only REAL members with a non-null taskId (the
+  // synthetic inner's taskId is null), so the merge_rejection comment lands on
+  // the outer author's task.
+  async function submitOuterOnlyGroup(
+    outerCommit: string,
+    opts: { verifyCmd?: string; taskId?: string } = {},
+  ): Promise<{ group: MergeGroup; members: MergeRequest[] }> {
+    const res = await fetch(`${baseUrl}/api/v1/projects/${project.id}/merge-groups`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${workerToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        resource: "main",
+        synthesizeInner: true,
+        members: [
+          {
+            commitSha: outerCommit,
+            verifyCmd: opts.verifyCmd ?? "exit 0",
+            // taskId OMITTED when absent (never null): the route Zod is
+            // z.string().min(1).optional() — an explicit null → 400.
+            ...(opts.taskId ? { taskId: opts.taskId } : {}),
+          },
+        ],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const detail = (await res.json()).data as MergeGroupDetail;
+    return { group: detail, members: detail.members };
+  }
+
+  // Seals (l)/(m): read a task's comments through the REAL comments route (the
+  // same path the integrator posts merge_rejection to) — the anti-silent-drain
+  // legibility proof.
+  async function getTaskComments(taskId: string): Promise<TaskComment[]> {
+    const res = await fetch(`${baseUrl}/api/v1/tasks/${taskId}/comments`, {
+      headers: { Authorization: `Bearer ${workerToken}` },
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()).data as TaskComment[];
+  }
+
   async function getGroup(id: string): Promise<MergeGroup> {
     const res = await fetch(`${baseUrl}/api/v1/merge-groups/${id}`, {
       headers: { Authorization: `Bearer ${workerToken}` },
@@ -614,6 +680,8 @@ async function makeGroupHarness(
     createGroup,
     submitGroup,
     submitInnerOnlyGroup,
+    submitOuterOnlyGroup,
+    getTaskComments,
     getGroup,
     getGroupDetail,
     pollGroup,
@@ -1478,6 +1546,108 @@ function outerConvertedRows(h: Harness, outerMemberId: string) {
     .all();
 }
 
+// ─── Lone-outer (synthesizeInner) seal helpers (k)/(l)/(m) — siblings of the
+//     above; the pure-bump helpers (mintOuterBumpBranch/driftOuterGitlink/
+//     outerConvertedRows) stay untouched. ────────────────────────────────────
+
+// Read the `outer_gitlink_normalized` audit rows for a specific outer member
+// (the seal (k) normalize discriminator — a clone of outerConvertedRows with the
+// normalize action). Presence proves the NORMALIZE arm ran; outerConvertedRows
+// staying empty proves it was NOT the pure-bump convert arm.
+function outerGitlinkNormalizedRows(h: Harness, outerMemberId: string) {
+  return h.db
+    .select()
+    .from(auditLog)
+    .where(
+      and(eq(auditLog.action, "outer_gitlink_normalized"), eq(auditLog.targetId, outerMemberId)),
+    )
+    .all();
+}
+
+// Advance inner main by ONE commit (bump a file) and push origin main — makes
+// the prior main an ANCESTOR of the returned new inner main B (= Ri for a
+// lone-outer group, since the synthetic inner is a no-op landing at live main).
+async function advanceInnerMain(h: Harness, suffix: string): Promise<string> {
+  const wk = path.join(h.tmpRoot, `inner-advance-${suffix}`);
+  await simpleGit().clone(h.innerBare, wk);
+  const ig = simpleGit(wk);
+  await configIdentity(ig);
+  await ig.checkout("main");
+  writeFileSync(path.join(wk, `advance-${suffix}.txt`), `advance ${suffix}\n`);
+  await ig.add([`advance-${suffix}.txt`]);
+  await ig.commit(`inner main advance ${suffix} (B)`);
+  await ig.push(["origin", "main"]);
+  return (await ig.revparse(["HEAD"])).trim();
+}
+
+// Seed a DIVERGED inner commit D: branch off `baseSha` (the fixture base A),
+// one commit, and PUSH the branch. D is present on the inner remote (fetchable
+// by an all-refs fetch) but is NOT an ancestor of the landing inner B →
+// classifyOuterGitlinkDiff returns `diverged`. Mirrors group-synthetic's D.
+// (baseSha is passed explicitly — a module-level helper has no `refs` scope, and
+// after advanceInnerMain the live inner main is B, so D must fork off A.)
+async function seedInnerDiverged(h: Harness, suffix: string, baseSha: string): Promise<string> {
+  const wk = path.join(h.tmpRoot, `inner-diverged-${suffix}`);
+  await simpleGit().clone(h.innerBare, wk);
+  const ig = simpleGit(wk);
+  await configIdentity(ig);
+  await ig.checkout(baseSha);
+  await ig.checkoutLocalBranch(`diverged-${suffix}`);
+  writeFileSync(path.join(wk, `diverged-${suffix}.txt`), `divergent ${suffix}\n`);
+  await ig.add([`diverged-${suffix}.txt`]);
+  await ig.commit(`inner diverged commit ${suffix} (D)`);
+  await ig.push(["-u", "origin", `diverged-${suffix}`]);
+  return (await ig.revparse(["HEAD"])).trim();
+}
+
+// Seed an UNREACHABLE inner commit U: branch off `baseSha`, one commit, do NOT
+// push. U never reaches the inner bare — absent even after an all-refs fetch →
+// classifyOuterGitlinkDiff returns `unreachable`. Mirrors group-synthetic's U.
+async function seedInnerUnreachable(h: Harness, suffix: string, baseSha: string): Promise<string> {
+  const wk = path.join(h.tmpRoot, `inner-unreachable-${suffix}`);
+  await simpleGit().clone(h.innerBare, wk);
+  const ig = simpleGit(wk);
+  await configIdentity(ig);
+  await ig.checkout(baseSha);
+  await ig.checkoutLocalBranch(`unpushed-${suffix}`);
+  writeFileSync(path.join(wk, `ghost-${suffix}.txt`), `never pushed ${suffix}\n`);
+  await ig.add([`ghost-${suffix}.txt`]);
+  await ig.commit(`inner unreachable commit ${suffix} (U)`);
+  // DELIBERATELY NOT pushed — U stays local to this throwaway clone.
+  return (await ig.revparse(["HEAD"])).trim();
+}
+
+// Mint + push an OUTER-only branch off live outer main whose managed gitlink
+// bumps to an EXPLICIT target (update-index --add --cacheinfo 160000,<target>,
+// vendor/rynx), optionally alongside a real source file (→ normalize vs
+// pure_bump). Returns the pushed branch-tip SHA (the lone-outer seals submit by
+// commitSha). Sibling of mintOuterBumpBranch, which always targets
+// refs.innerFeatureSha and never carries an arbitrary gitlink target.
+async function mintOuterOnlyBranch(
+  outerBareUrl: string,
+  opts: { workDir: string; branch: string; gitlinkTarget: string; withSource?: boolean },
+): Promise<string> {
+  await simpleGit().clone(outerBareUrl, opts.workDir);
+  const og = simpleGit(opts.workDir);
+  await configIdentity(og);
+  await og.checkout("main");
+  await og.checkoutLocalBranch(opts.branch);
+  if (opts.withSource) {
+    mkdirSync(path.join(opts.workDir, "src"), { recursive: true });
+    writeFileSync(path.join(opts.workDir, "src", "foo.txt"), "outer source change\n");
+    await og.add(["src/foo.txt"]);
+  }
+  await og.raw([
+    "update-index",
+    "--add",
+    "--cacheinfo",
+    `160000,${opts.gitlinkTarget},${GITLINK_PATH}`,
+  ]);
+  await og.commit(`outer gitlink bump -> ${opts.gitlinkTarget.slice(0, 8)}`);
+  await og.push(["-u", "origin", opts.branch]);
+  return (await og.revparse(["HEAD"])).trim();
+}
+
 // ─── Seal (h): campaign seal — drift-immune converted land ─────────
 describe.skipIf(!RUN)(
   "group E2E (h) — two-member pure-bump group: drift-immune converted land (campaign seal P3)",
@@ -1555,55 +1725,58 @@ describe.skipIf(!RUN)(
 // gitlink drift can no longer mint outer_conflict. This is the live P6 scenario.
 // (The negative case — a mixed member whose SOURCE genuinely conflicts still
 // rejects outer_conflict — is sealed by group-normalize.test.ts case iii.)
-describe.skipIf(!RUN)("group E2E (i) — mixed bump+source normalizes + lands on gitlink drift", () => {
-  let h: Harness;
-  let refs: FixtureRefs;
-  beforeAll(async () => {
-    ({ h, refs } = await makeGroupHarness());
-  }, 90_000);
-  afterAll(async () => {
-    if (h) await h.teardown();
-  });
-
-  it("mixed bump+source (diff >1 path) strips the stale gitlink on drift → source applies → group LANDS, gitlink === Ri", async () => {
-    // Bump the gitlink AND edit src/foo.txt → 2-path diff (mixed member).
-    const outerBumpSha = await mintOuterBumpBranch(h.outerBare, refs, {
-      workDir: path.join(h.tmpRoot, "outer-bump-i"),
-      branch: "bump/outer-i",
-      bumpEditsSource: true,
-    });
-    const { group, outer } = await h.submitGroup(refs.innerFeatureSha, outerBumpSha, {
-      innerVerify: "exit 0",
-      outerVerify: "exit 0",
+describe.skipIf(!RUN)(
+  "group E2E (i) — mixed bump+source normalizes + lands on gitlink drift",
+  () => {
+    let h: Harness;
+    let refs: FixtureRefs;
+    beforeAll(async () => {
+      ({ h, refs } = await makeGroupHarness());
+    }, 90_000);
+    afterAll(async () => {
+      if (h) await h.teardown();
     });
 
-    // Drift outer main's gitlink to a divergent inner sha → under LEGACY this
-    // both-sides-modifies vendor/rynx (outer_conflict). Under the umbrella the
-    // gitlink hunk is stripped and only the source (src/foo.txt) is applied,
-    // which does not conflict with the gitlink-only drift → the group LANDS.
-    await driftOuterGitlink(
-      h,
-      path.join(h.tmpRoot, "inner-drift-i"),
-      path.join(h.tmpRoot, "outer-drift-i"),
-    );
+    it("mixed bump+source (diff >1 path) strips the stale gitlink on drift → source applies → group LANDS, gitlink === Ri", async () => {
+      // Bump the gitlink AND edit src/foo.txt → 2-path diff (mixed member).
+      const outerBumpSha = await mintOuterBumpBranch(h.outerBare, refs, {
+        workDir: path.join(h.tmpRoot, "outer-bump-i"),
+        branch: "bump/outer-i",
+        bumpEditsSource: true,
+      });
+      const { group, outer } = await h.submitGroup(refs.innerFeatureSha, outerBumpSha, {
+        innerVerify: "exit 0",
+        outerVerify: "exit 0",
+      });
 
-    await h.spawnIntegrator();
-    const final = await h.pollGroup(group.id, 90_000);
+      // Drift outer main's gitlink to a divergent inner sha → under LEGACY this
+      // both-sides-modifies vendor/rynx (outer_conflict). Under the umbrella the
+      // gitlink hunk is stripped and only the source (src/foo.txt) is applied,
+      // which does not conflict with the gitlink-only drift → the group LANDS.
+      await driftOuterGitlink(
+        h,
+        path.join(h.tmpRoot, "inner-drift-i"),
+        path.join(h.tmpRoot, "outer-drift-i"),
+      );
 
-    expect(final.state).toBe("landed");
-    // Outer bare main's gitlink now points at the landed inner (Ri) — step 8
-    // authored it, not the branch's stale bump value.
-    const Ri = await h.innerBareMainSha();
-    expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
+      await h.spawnIntegrator();
+      const final = await h.pollGroup(group.id, 90_000);
 
-    // NOT a pure-bump conversion — the mixed member took the NORMALIZE arm.
-    // (The durable outer_gitlink_normalized audit row is added in P3; here we
-    // only assert the pure-bump convert row is absent.)
-    expect(outerConvertedRows(h, outer.id)).toHaveLength(0);
+      expect(final.state).toBe("landed");
+      // Outer bare main's gitlink now points at the landed inner (Ri) — step 8
+      // authored it, not the branch's stale bump value.
+      const Ri = await h.innerBareMainSha();
+      expect(await h.gitlinkOnOuterBareMain()).toBe(Ri);
 
-    expect(await h.listOpenIncidents()).toHaveLength(0);
-  }, 120_000);
-});
+      // NOT a pure-bump conversion — the mixed member took the NORMALIZE arm.
+      // (The durable outer_gitlink_normalized audit row is added in P3; here we
+      // only assert the pure-bump convert row is absent.)
+      expect(outerConvertedRows(h, outer.id)).toHaveLength(0);
+
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+    }, 120_000);
+  },
+);
 
 // ─── Seal (j): happy-path equivalence — converted land, gitlink === Ri ──
 describe.skipIf(!RUN)(
@@ -1641,6 +1814,205 @@ describe.skipIf(!RUN)(
       const rows = outerConvertedRows(h, outer.id);
       expect(rows).toHaveLength(1);
       expect(rows[0].reason).toBe(CONVERT_REASON);
+
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+    }, 120_000);
+  },
+);
+
+// ─── Lone-outer (synthesizeInner) e2e seals (k)/(l)/(m) — umbrella widening P4/P5 ──
+//
+// The mirror of the inner-only synthesizeOuter arc (flow (g)): a REAL OUTER
+// member with a SYNTHETIC inner. There is no real inner to define Ri, so
+// Ri = live inner main (the no-op inner) and the ancestry-gated classifier
+// decides the outer gitlink's fate at assembly — ancestor→normalize/pure-bump+
+// land; present-but-not-ancestor→gitlink_diverged; absent-after-all-refs→
+// gitlink_unreachable (both Tier-2 rejects BEFORE any push). These seals spawn
+// the BUILT integrator against the real in-process PM server (deferred spawn,
+// mirroring flow (g)/(h): the classifier's first sight of the group is after
+// the fixture is fully seeded). The classify/assembly unit matrix lives in
+// group-synthetic.test.ts; these prove the whole path through the daemon →
+// PM HTTP → SQLite → bare git. (Multi-gitlink / source-conflict / lone-outer
+// pure-bump e2e are DELIBERATELY omitted — unit/integration-covered.)
+
+// ─── Seal (k): lone-outer normalize LANDS with a no-op inner ──────────
+describe.skipIf(!RUN)(
+  "group E2E (k) — lone-outer normalize: ancestor gitlink + source LANDS, inner byte-stable",
+  () => {
+    let h: Harness;
+    beforeAll(async () => {
+      ({ h } = await makeGroupHarness());
+    }, 90_000);
+    afterAll(async () => {
+      if (h) await h.teardown();
+    });
+
+    it("lone-outer group (synthetic inner) with an ancestor gitlink + source normalizes + LANDS; inner main unchanged, gitlink === Ri, outer_gitlink_normalized row (zero convert rows)", async () => {
+      // Advance inner main → B (= Ri for the no-op inner). The outer branch's
+      // gitlink bumps to B (an ANCESTOR of Ri) ALONGSIDE real source → NORMALIZE.
+      const B = await advanceInnerMain(h, "k");
+      const outerSha = await mintOuterOnlyBranch(h.outerBare, {
+        workDir: path.join(h.tmpRoot, "outer-only-k"),
+        branch: "lone/outer-k",
+        gitlinkTarget: B,
+        withSource: true,
+      });
+      const outerTask = createTestTask(h.db, { projectId: h.project.id });
+
+      const { group, members } = await h.submitOuterOnlyGroup(outerSha, { taskId: outerTask.id });
+      // Birth shape: one real outer (carries the commit), one synthetic inner.
+      expect(members).toHaveLength(2);
+      const realOuter = members.find((m) => !m.synthetic)!;
+      const synthInner = members.find((m) => m.synthetic)!;
+      expect(realOuter.commitSha).toBe(outerSha);
+      expect(synthInner.commitSha).toBeNull();
+
+      await h.spawnIntegrator();
+      const final = await h.pollGroup(group.id, 90_000);
+      expect(final.state).toBe("landed");
+
+      // Inner main UNCHANGED (no-op inner): still B, === Ri.
+      expect(await h.innerBareMainSha()).toBe(B);
+      expect(await h.gitlinkOnOuterBareMain()).toBe(B);
+      // Outer main advanced + the outer source landed (step 8 authored gitlink→Ri,
+      // the source-only net patch applied onto live main).
+      expect(h.outerFileOnMain("src/foo.txt")).toBe(true);
+
+      // ── PM member shape: real outer landed (synthetic=false), synthetic inner
+      //    landed at B (synthetic=true, no-op no-advance). ──
+      const detail = await h.getGroupDetail(group.id);
+      const outerFinal = detail.members.find((m) => m.id === realOuter.id)!;
+      const innerFinal = detail.members.find((m) => m.id === synthInner.id)!;
+      expect(outerFinal.synthetic).toBe(false);
+      expect(outerFinal.status).toBe("landed");
+      expect(outerFinal.landedSha).toBe(await h.outerBareMainSha());
+      expect(innerFinal.synthetic).toBe(true);
+      expect(innerFinal.status).toBe("landed");
+      expect(innerFinal.landedSha).toBe(B);
+
+      // ── Discriminator: the NORMALIZE arm ran (exactly one
+      //    outer_gitlink_normalized row) and NOT the pure-bump convert arm
+      //    (zero outer_converted rows). ──
+      expect(outerGitlinkNormalizedRows(h, realOuter.id)).toHaveLength(1);
+      expect(outerConvertedRows(h, realOuter.id)).toHaveLength(0);
+
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+    }, 120_000);
+  },
+);
+
+// ─── Seal (l): lone-outer unreachable → gitlink_unreachable legible reject ──
+describe.skipIf(!RUN)(
+  "group E2E (l) — lone-outer unreachable gitlink → gitlink_unreachable legible reject (P6-v1)",
+  () => {
+    let h: Harness;
+    let refs: FixtureRefs;
+    beforeAll(async () => {
+      ({ h, refs } = await makeGroupHarness());
+    }, 90_000);
+    afterAll(async () => {
+      if (h) await h.teardown();
+    });
+
+    it("lone-outer group whose gitlink targets an UNPUSHED inner commit rejects gitlink_unreachable + posts a merge_rejection task comment; nothing pushed", async () => {
+      // U: an inner commit that NEVER reaches the inner bare (absent after an
+      // all-refs fetch) → classifier `unreachable`. Live inner main stays A
+      // (= refs.innerMainSha = Ri) — no advance.
+      const U = await seedInnerUnreachable(h, "l", refs.innerMainSha);
+      const outerSha = await mintOuterOnlyBranch(h.outerBare, {
+        workDir: path.join(h.tmpRoot, "outer-only-l"),
+        branch: "lone/outer-l",
+        gitlinkTarget: U,
+      });
+      const outerTask = createTestTask(h.db, { projectId: h.project.id });
+
+      // Capture before-shas: a pre-push reject must move NOTHING.
+      const innerBefore = await h.innerBareMainSha();
+      const outerBefore = await h.outerBareMainSha();
+      const gitlinkBefore = await h.gitlinkOnOuterBareMain();
+
+      const { group, members } = await h.submitOuterOnlyGroup(outerSha, { taskId: outerTask.id });
+      const realOuter = members.find((m) => !m.synthetic)!;
+
+      await h.spawnIntegrator();
+      const final = await h.pollGroup(group.id, 90_000);
+      expect(final.state).toBe("rejected");
+
+      // Pre-push reject → inner + outer bare mains AND the gitlink all UNCHANGED.
+      expect(await h.innerBareMainSha()).toBe(innerBefore);
+      expect(await h.outerBareMainSha()).toBe(outerBefore);
+      expect(await h.gitlinkOnOuterBareMain()).toBe(gitlinkBefore);
+
+      // ── The real outer member carries the gitlink_unreachable category (NOT
+      //    collapsed to "other" — the classify→category map is exercised). ──
+      const detail = await h.getGroupDetail(group.id);
+      const outerFinal = detail.members.find((m) => m.id === realOuter.id)!;
+      expect(outerFinal.rejectCategory).toBe("gitlink_unreachable");
+
+      // ── Anti-silent-drain (the P6-v1 proof): the outer author's task got a
+      //    merge_rejection comment whose metadata.category === the classifier
+      //    outcome — end-to-end through the REAL comments route + the
+      //    rejectCategory DB column. ──
+      const comments = await h.getTaskComments(outerTask.id);
+      const rej = comments.find((c) => c.commentType === "merge_rejection");
+      expect(rej).toBeDefined();
+      expect((rej!.metadata as { category?: string } | null)?.category).toBe("gitlink_unreachable");
+
+      expect(await h.listOpenIncidents()).toHaveLength(0);
+    }, 120_000);
+  },
+);
+
+// ─── Seal (m): lone-outer diverged → gitlink_diverged legible reject ──
+describe.skipIf(!RUN)(
+  "group E2E (m) — lone-outer diverged gitlink → gitlink_diverged legible reject",
+  () => {
+    let h: Harness;
+    let refs: FixtureRefs;
+    beforeAll(async () => {
+      ({ h, refs } = await makeGroupHarness());
+    }, 90_000);
+    afterAll(async () => {
+      if (h) await h.teardown();
+    });
+
+    it("lone-outer group whose gitlink targets a DIVERGED inner commit (present, NOT an ancestor of Ri) rejects gitlink_diverged + posts a merge_rejection task comment; nothing pushed", async () => {
+      // B = the landing inner (Ri); D = a divergent sibling forked off base A —
+      // present on the inner remote but NOT an ancestor of B → `diverged`.
+      const B = await advanceInnerMain(h, "m");
+      const D = await seedInnerDiverged(h, "m", refs.innerMainSha);
+      expect(D).not.toBe(B);
+      const outerSha = await mintOuterOnlyBranch(h.outerBare, {
+        workDir: path.join(h.tmpRoot, "outer-only-m"),
+        branch: "lone/outer-m",
+        gitlinkTarget: D,
+      });
+      const outerTask = createTestTask(h.db, { projectId: h.project.id });
+
+      const innerBefore = await h.innerBareMainSha(); // = B
+      const outerBefore = await h.outerBareMainSha();
+      const gitlinkBefore = await h.gitlinkOnOuterBareMain();
+
+      const { group, members } = await h.submitOuterOnlyGroup(outerSha, { taskId: outerTask.id });
+      const realOuter = members.find((m) => !m.synthetic)!;
+
+      await h.spawnIntegrator();
+      const final = await h.pollGroup(group.id, 90_000);
+      expect(final.state).toBe("rejected");
+
+      // Neither main advanced; gitlink unchanged (pre-push reject).
+      expect(await h.innerBareMainSha()).toBe(innerBefore);
+      expect(await h.outerBareMainSha()).toBe(outerBefore);
+      expect(await h.gitlinkOnOuterBareMain()).toBe(gitlinkBefore);
+
+      const detail = await h.getGroupDetail(group.id);
+      const outerFinal = detail.members.find((m) => m.id === realOuter.id)!;
+      expect(outerFinal.rejectCategory).toBe("gitlink_diverged");
+
+      const comments = await h.getTaskComments(outerTask.id);
+      const rej = comments.find((c) => c.commentType === "merge_rejection");
+      expect(rej).toBeDefined();
+      expect((rej!.metadata as { category?: string } | null)?.category).toBe("gitlink_diverged");
 
       expect(await h.listOpenIncidents()).toHaveLength(0);
     }, 120_000);
