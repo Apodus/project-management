@@ -113,4 +113,20 @@ Optional stretch (P2): carry reject category on `ctx.rejected` for category-leve
 ### H. No migration / regeneration
 `integrator_health` (+ `unhealthy_notified` since `0013`, `last_release_failure` since `0028`) fully exists; campaign READS only, adds zero columns. **openapi/web regeneration IS required in P3** — the REST response schemas gain the additive `integrator` block (`mergeLockSchema`, merge-request detail schema, list envelope); base `mergeRequestSchema` + all request bodies stay byte-identical.
 
-## Close-out (to be filled by the campaign)
+## Close-out (executed 2026-07-14, branch `campaign-integrator-liveness-legibility`, base 3a92a0c)
+
+**Shipped in full (P0–P4), NOT yet merged/pushed.** 6 commits (P0–P4 + this close-out), 23 files, +1510/−72.
+
+- **P0** `a255050` — design-lock (docs). Reuse `getHealth` + `HEALTH_STALE_MS = 90_000` (single source of truth); field-on-`MergeLockView` vs envelope-sibling-on-merge-request asymmetry; stall predicate; no migration.
+- **P1** `589c33c` — `deriveLiveness` helper (`integrator-liveness.service.ts`) reusing `getHealth`; `integrator` block on `MergeLockView`; `stall = !alive && queued-with-ZERO-(any-status)-attempts`. 10 unit tests.
+- **P2** `ffc5a6e` — liveness envelope-sibling on the merge-request list + detail reads (base `mergeRequestSchema` byte-identical); `batch.ts` enriched abandon reason (`composeAbandonReason` — empty-batch / N-rejected / M-requeued).
+- **P3** `9a00609` — MCP: `renderIntegratorLiveness` in `pm_get_merge_lock` / `pm_list_merge_requests` / `pm_get_merge_request`; new `pm_get_integrator_health` tool; both merge-request clients converted envelope-preserving (the P0-flagged risk — clean); web api-types +13.
+- **P4** `b85dbaa` — route-level end-to-end seal (a stalled queue surfaces `integrator.stall="integrator_down"` through the HTTP read) + docs (deployment §14.12 + worker guide + CLAUDE.md).
+
+**Adversarial-verify result.** P0 design-lock **APPROVED** after attack — the two load-bearing mechanisms held: the `train.integrator_unhealthy` alert edge is genuinely once-per-episode (latched, self-resetting) so surfacing `getHealth` on frequent agent reads does NOT spam alerts; and the stall predicate fires on the real overnight incident (12h down + queued 0-attempt) without false-positiving on a slow verify (the daemon heartbeats independent of lock-holding) or a healthy-idle empty queue. Three amendments folded in (count ALL attempt rows incl. cancelled; convert both merge-request clients; state the field-vs-sibling asymmetry).
+
+**Verification.** Full `build` + `lint` + `typecheck` green (all packages). `@pm/server` 1866, `@urtela/pm-mcp-server` 231, `@pm/shared` green, integrator `batch.ts` unit-covered (abandon-reason 6/6, batch 51/51 isolated). NO migration. The one full-turbo test failure was `@urtela/pm-responder` — a package this campaign never touched (206/206 isolated), a known concurrent-load flake.
+
+**What this fixes.** An agent looking at a stalled train now **self-diagnoses**: `pm_get_merge_lock` / the merge-request reads / `pm_get_integrator_health` show `integrator: DOWN (no heartbeat for Ns) — restart the daemon` vs `healthy, actively integrating — verify in progress`, and the abandon reason names *why* a batch drained. The exact three-way confusion (down vs slow-verify vs gitlink-drain) that cost human relays is now legible from the tools agents already call.
+
+**Remaining (ops handoff, NOT executed):** merge → main; `pnpm build` + `node scripts/distribute.mjs` (ships the updated MCP bundle so agents get `pm_get_integrator_health` + the richer outputs); PM-server redeploy (new read fields + tool — no migration); restart game_one Claude sessions to pick up the new MCP bundle. Separately (out of scope): a daemon supervisor/auto-restart on the game_one host so a crash no longer means a silent overnight stall.
