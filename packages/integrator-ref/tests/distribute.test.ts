@@ -134,41 +134,58 @@ describe("renderDaemonLauncher", () => {
     pmUrl: "http://localhost:3000",
   };
 
-  it("renders a .bat that runs the local bundle (no dev-repo path) with CRLF", () => {
+  it("renders a .bat that invokes the supervised .ps1 (no dev-repo path) with CRLF", () => {
     const bat = renderDaemonLauncher("bat", opts);
+    // The .bat is a thin invoker; supervision lives in run_daemon_supervised.ps1.
     expect(bat).toContain(
-      'node "%~dp0pm-integrator.mjs" --project 01PROJECT --resource main --pm-url http://localhost:3000 %*',
+      'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_daemon_supervised.ps1" %*',
     );
-    // Loads token from the gitignored sibling file, never references the monorepo.
-    expect(bat).toContain('set /p PM_API_TOKEN=<"%~dp0pm_token.txt"');
     expect(bat).not.toMatch(/project-management|integrator-ref|dist[\\/]index/);
     expect(bat).toContain("\r\n");
   });
 
-  it("renders a .sh that runs the local bundle with LF line endings", () => {
+  it("renders a supervised .ps1 that runs the local bundle, with a single-instance mutex, CRLF", () => {
+    const ps1 = renderDaemonLauncher("ps1", opts);
+    // Launches the bundle with the templated daemon args.
+    expect(ps1).toContain(
+      "$psi.Arguments = '\"' + $bundle + '\" --project 01PROJECT --resource main --pm-url http://localhost:3000'",
+    );
+    expect(ps1).toContain("$BundleName = 'pm-integrator.mjs'");
+    // Single-instance guard + token load from the gitignored sibling, never the monorepo.
+    expect(ps1).toContain('New-Object System.Threading.Mutex($false, "Global\\pm-integrator-');
+    expect(ps1).toContain("$env:PM_API_TOKEN = (Get-Content -Raw $tokenFile).Trim()");
+    expect(ps1).not.toMatch(/project-management|integrator-ref|dist[\\/]index/);
+    expect(ps1).toContain("\r\n");
+  });
+
+  it("renders a supervised .sh (flock single-instance, restart loop) with LF line endings", () => {
     const sh = renderDaemonLauncher("sh", opts);
     expect(sh).toContain(
-      'exec node "$DIR/pm-integrator.mjs" --project 01PROJECT --resource main --pm-url http://localhost:3000 "$@"',
+      'node "$BUNDLE" --project 01PROJECT --resource main --pm-url http://localhost:3000 "$@" &',
     );
     expect(sh).toContain('export PM_API_TOKEN="$(cat "$DIR/pm_token.txt")"');
+    expect(sh).toContain("flock -n 9"); // single-instance guard
+    expect(sh).toContain("while true; do"); // supervised restart loop
     expect(sh).not.toContain("\r\n");
   });
 
-  it("references the bundle by its actual basename", () => {
-    const bat = renderDaemonLauncher("bat", { ...opts, bundleName: "custom-daemon.mjs" });
-    expect(bat).toContain('node "%~dp0custom-daemon.mjs"');
+  it("references the bundle by its actual basename (in the .ps1 and .sh)", () => {
+    const ps1 = renderDaemonLauncher("ps1", { ...opts, bundleName: "custom-daemon.mjs" });
+    expect(ps1).toContain("$BundleName = 'custom-daemon.mjs'");
+    const sh = renderDaemonLauncher("sh", { ...opts, bundleName: "custom-daemon.mjs" });
+    expect(sh).toContain('BUNDLE="$DIR/custom-daemon.mjs"');
   });
 
   it("defaults resource to main and pmUrl to localhost:3000 when omitted", () => {
-    const bat = renderDaemonLauncher("bat", {
+    const ps1 = renderDaemonLauncher("ps1", {
       bundleName: "pm-integrator.mjs",
       projectId: "01PROJECT",
     });
-    expect(bat).toContain("--resource main --pm-url http://localhost:3000");
+    expect(ps1).toContain("--resource main --pm-url http://localhost:3000");
   });
 
   it("throws on an unknown kind", () => {
-    expect(() => renderDaemonLauncher("ps1", opts)).toThrow(/Unknown launcher kind/);
+    expect(() => renderDaemonLauncher("exe", opts)).toThrow(/Unknown launcher kind/);
   });
 });
 
@@ -188,7 +205,7 @@ describe("distribute — daemon launcher emission", () => {
     };
   }
 
-  it("emits run_daemon.bat/.sh + pm_token.txt.template next to the bundle when projectId is set", () => {
+  it("emits run_daemon.bat + run_daemon_supervised.ps1 + .sh + pm_token.txt.template next to the bundle when projectId is set", () => {
     seedSources(fakeRepoRoot);
     const targetDir = join(workDir, "target");
     const config = launcherConfig(targetDir, {
@@ -201,9 +218,10 @@ describe("distribute — daemon launcher emission", () => {
 
     const launcherDir = join(targetDir, "tools", "pm-integrator");
     const bat = readFileSync(join(launcherDir, "run_daemon.bat"), "utf8");
-    expect(bat).toContain(
-      'node "%~dp0pm-integrator.mjs" --project 01KSMSZVN87QWZZBY7AR7QV149 --resource main',
-    );
+    expect(bat).toContain("run_daemon_supervised.ps1");
+    // The supervised .ps1 carries the daemon args.
+    const ps1 = readFileSync(join(launcherDir, "run_daemon_supervised.ps1"), "utf8");
+    expect(ps1).toContain("--project 01KSMSZVN87QWZZBY7AR7QV149 --resource main");
     expect(existsSync(join(launcherDir, "run_daemon.sh"))).toBe(true);
     expect(readFileSync(join(launcherDir, "pm_token.txt.template"), "utf8")).toContain(
       "paste-your-pm-api-token-here",
