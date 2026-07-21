@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { categorize, type CategorizeInput } from "../src/categorize.js";
+import {
+  categorize,
+  lastMeaningfulErrorLine,
+  tailExcerpt,
+  type CategorizeInput,
+} from "../src/categorize.js";
 
 function input(overrides: Partial<CategorizeInput>): CategorizeInput {
   return {
@@ -152,8 +157,56 @@ describe("categorize", () => {
     expect(r.reason).toContain("exit code 3");
   });
 
+  it("other — surfaces the tail error line, not a bare exit code (codegen abort)", () => {
+    // The real game_one bite: a from-scratch shader codegen aborts on a UBO
+    // layout drift. Matches no known toolchain signature, so it lands in `other`
+    // — but the reason must carry the actual abort line, not just "exit code 1",
+    // or agents misread a legitimate reject as an integrator fault.
+    const stdout = [
+      "compiling shaders...",
+      "[1/412] dynamic_vegetation_shadow_full.comp",
+      "rynx-codegen: layout drift on 'DynamicVegetationShadowFrame' between dynamic_vegetation_shadow_full and dynamic_vegetation_shadow_update (sizes 96 vs 80) -- aborting due to cross-shader block layout drift",
+    ].join("\n");
+    const r = categorize(input({ exitCode: 1, stdout }));
+    expect(r.category).toBe("other");
+    expect(r.reason).toContain("exit code 1");
+    expect(r.reason).toContain("layout drift on 'DynamicVegetationShadowFrame'");
+  });
+
+  it("other — falls back to the last non-empty line when nothing looks error-ish", () => {
+    const r = categorize(input({ exitCode: 2, stdout: "step one\nstep two\nstep three" }));
+    expect(r.category).toBe("other");
+    expect(r.reason).toContain("step three");
+  });
+
   it("build_failed takes precedence over plain non-zero exit", () => {
     const r = categorize(input({ exitCode: 1, stderr: "error[E0001]: x\n  --> a.rs:1:1" }));
     expect(r.category).toBe("build_failed");
+  });
+});
+
+describe("lastMeaningfulErrorLine", () => {
+  it("scans from the tail for the last error-ish line", () => {
+    const text = "error: early transient\nlots of normal output\nfatal: the real reason\ndone.";
+    expect(lastMeaningfulErrorLine(text)).toBe("fatal: the real reason");
+  });
+
+  it("empty input yields empty string", () => {
+    expect(lastMeaningfulErrorLine("   \n  \n")).toBe("");
+  });
+});
+
+describe("tailExcerpt", () => {
+  it("returns the input unchanged when under the cap", () => {
+    expect(tailExcerpt("short log", 4096)).toBe("short log");
+  });
+
+  it("keeps the TAIL (where the error is), flagging the elided head", () => {
+    const body = "x".repeat(5000) + "\nFATAL: the actual error at the end";
+    const out = tailExcerpt(body, 4096);
+    expect(out).toContain("FATAL: the actual error at the end");
+    expect(out).toContain("earlier chars omitted");
+    // The head noise is dropped; only ~cap chars survive.
+    expect(out.length).toBeLessThan(4200);
   });
 });

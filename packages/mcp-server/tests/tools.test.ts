@@ -3269,6 +3269,59 @@ describe("MCP Tools", () => {
       expect(text).toContain("base=2c8f1d9");
     });
 
+    it("pm_get_merge_request renders the failing attempt's log tail for a group reject", async () => {
+      // Cross-repo group reject: no request-level logExcerpt/logUrl (rejectGroup
+      // sets neither) — the failing member's ATTEMPT excerpt is the only carrier.
+      // It must render the actual error tail, not vanish.
+      mockGetMergeRequest.mockResolvedValue({
+        request: {
+          ...sampleMergeRequest,
+          status: "rejected",
+          resolvedAt: "2026-07-20T13:14:49.623Z",
+          rejectCategory: "other",
+          rejectReason:
+            "assembled verify failed: outer verify failed with exit code 1: rynx-codegen: layout drift on 'DynamicVegetationShadowFrame'",
+          failedFiles: null,
+          logExcerpt: null,
+          logUrl: null,
+          attempts: [
+            {
+              id: "att_1",
+              requestId: "mreq_001",
+              attemptNumber: 1,
+              baseSha: "ae4d3aa7",
+              treeSha: null,
+              status: "failed",
+              startedAt: "2026-07-20T13:12:03Z",
+              completedAt: "2026-07-20T13:14:49Z",
+              verifyDurationMs: 161000,
+              failureCategory: "other",
+              failureReason: "verify failed with exit code 1",
+              failedFiles: null,
+              logExcerpt:
+                "compiling shaders...\n[1/412] dynamic_vegetation_shadow_full.comp\nrynx-codegen: layout drift on 'DynamicVegetationShadowFrame' (sizes 96 vs 80) -- aborting due to cross-shader block layout drift",
+              logUrl: null,
+              createdAt: "2026-07-20T13:12:03Z",
+            },
+          ],
+        },
+        integrator: undefined,
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_request",
+        arguments: { request_id: "mreq_001" },
+      });
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("REJECTION (other)");
+      // The reason line carries the real error (categorize fix)…
+      expect(text).toContain("layout drift on 'DynamicVegetationShadowFrame'");
+      // …and the attempt's log tail is surfaced (render fix), not hidden.
+      expect(text).toContain("log (tail):");
+      expect(text).toContain("aborting due to cross-shader block layout drift");
+    });
+
     it("pm_cancel_merge_request reports new status", async () => {
       mockCancelMergeRequest.mockResolvedValue({
         ...sampleMergeRequest,

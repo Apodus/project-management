@@ -39,7 +39,7 @@ import type { Worktree } from "./worktree.js";
 import type { MergeRequestView } from "@pm/shared";
 import type { PmClient, RejectCategory } from "./pm-client.js";
 import { assembleGroup, type AssembledGroupOk, type AssembleGroupDeps } from "./group-assembly.js";
-import { categorize } from "./categorize.js";
+import { categorize, tailExcerpt } from "./categorize.js";
 import { chaosCrashPoint } from "./chaos.js";
 import {
   runPipeline,
@@ -813,7 +813,7 @@ export async function runGroupIntegration(
         timedOut: res.timedOut,
       });
       const reason = cat.reason || summaryLine(res.stderr || res.stdout) || "verify failed";
-      const excerpt = `${res.stdout}\n${res.stderr}`.slice(0, LOG_EXCERPT_CAP);
+      const excerpt = tailExcerpt(`${res.stdout}\n${res.stderr}`, LOG_EXCERPT_CAP);
       await pmClient.completeAttempt(attemptId, {
         status: "failed",
         failureCategory: cat.category,

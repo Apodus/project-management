@@ -230,8 +230,15 @@ export function registerMergeRequestTools(server: McpServer): void {
         }
         if (detail.logUrl) {
           lines.push(`    Log: ${detail.logUrl}`);
-        } else if (detail.logExcerpt) {
-          lines.push(`    Log excerpt: (${detail.logExcerpt.length} chars — no logUrl)`);
+        }
+        // Show the tail of the captured log — this is where the actual error /
+        // abort / test summary lives. (Group rejects carry no request-level
+        // excerpt; the per-attempt excerpt below is the carrier there.)
+        if (detail.logExcerpt) {
+          lines.push(`    Log excerpt (tail):`);
+          for (const l of excerptTailLines(detail.logExcerpt, 12)) {
+            lines.push(`      ${l}`);
+          }
         }
       }
 
@@ -301,7 +308,30 @@ function formatAttempt(a: MergeAttemptView): string[] {
     const firstLine = a.failureReason.split("\n", 1)[0] ?? "";
     parts.push(`        "${firstLine}"`);
   }
+  // For a group reject the failing member's attempt is the ONLY place the verify
+  // log survives (the request-level envelope has none) — surface its tail so an
+  // agent can see WHY without hunting for a logUrl that cross-repo groups lack.
+  if (a.status === "failed" && a.logExcerpt) {
+    parts.push(`        log (tail):`);
+    for (const l of excerptTailLines(a.logExcerpt, 6)) {
+      parts.push(`          ${l}`);
+    }
+  }
   return parts;
+}
+
+/**
+ * The last `maxLines` non-empty lines of a stored log excerpt, each width-capped.
+ * The excerpt is already a bounded tail slice integrator-side; a merge-request
+ * read shouldn't dump the whole 4KB, so show the final lines where the actual
+ * error / abort / summary lives.
+ */
+function excerptTailLines(excerpt: string, maxLines: number): string[] {
+  const lines = excerpt
+    .split("\n")
+    .map((l) => l.replace(/\s+$/, ""))
+    .filter((l) => l.trim().length > 0);
+  return lines.slice(-maxLines).map((l) => (l.length > 200 ? l.slice(0, 197) + "…" : l));
 }
 
 function formatDuration(ms: number): string {

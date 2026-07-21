@@ -898,6 +898,39 @@ its speculative batch failed, the recorded `abandon_reason` now names the peer a
 cause (rather than a bare "batch failed"), so the timeline reads why a request that
 never itself failed was returned to the queue.
 
+### 14.13 Verify-failure legibility (why a reject is not an integrator fault)
+
+A rejected merge request must say **why** in terms an agent can act on. The
+failure mode this closes: a verify that runs a bespoke or unrecognized toolchain
+step (a codegen pass, a project `verify` script) fails, and the reject surfaces
+only `verify failed with exit code 1`. Because the same step passes on the
+worker's own machine (stale cached artifacts mask a from-scratch break), the
+worker reads the generic "exit 1" as the **integrator** malfunctioning and
+re-submits the same content — repeatedly. It is not a train bug; the tree really
+does fail a clean verify. (The live bite: a cross-shader UBO layout drift aborted
+`rynx-codegen` only on the daemon's from-scratch regen; three cross-repo groups
+were rejected before the real cause was found.)
+
+Two changes make the real error travel with the reject:
+
+- **Reason carries the error line.** When a verify failure matches no known
+  toolchain signature (the `other` category), the categorizer now scans the FULL
+  verify output from the tail for the last error/abort/failure line and appends
+  it: `verify failed with exit code 1: rynx-codegen: layout drift on
+  'DynamicVegetationShadowFrame' … aborting`. This flows unchanged into the
+  request `rejectReason`, the failing attempt's `failureReason`, and the
+  `merge_rejection` task comment — everywhere the reason already appears.
+- **The stored `logExcerpt` is a TAIL slice.** A verify's diagnostic prints at
+  the END of a multi-minute build; the excerpt was a head slice that truncated it
+  away. It now keeps the last ~4 KB (flagging the elided head), so the excerpt
+  contains the actual failure.
+
+`pm_get_merge_request` renders both: the rejection envelope shows the log-excerpt
+tail, and each failing attempt shows its own `log (tail):` — which for a
+**cross-repo group reject is the only carrier**, since the group-level reject sets
+no request-level excerpt or `logUrl`. Net: an agent sees the real reason on the
+read it already makes, instead of guessing at "exit 1".
+
 ---
 
 ## 15. Observability + Break-glass (Phase 7.4)

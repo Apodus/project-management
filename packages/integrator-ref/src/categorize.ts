@@ -19,6 +19,46 @@ function firstLineMatching(text: string, re: RegExp): string {
   return m ? m[0].split("\n")[0].trim() : "";
 }
 
+// Words that mark a line as the "why did this fail" line for an otherwise
+// unrecognized verify failure. Diagnostics/summaries live at the TAIL of a log
+// (a build aborts, a test summary prints, a script echoes its error last), so
+// `lastMeaningfulErrorLine` scans from the end for the last match.
+const ERRISH_LINE =
+  /\b(?:errored|error|fatal|abort(?:ing|ed)?|panic(?:ked)?|fail(?:ed|ure|ing)?|exception|traceback|unresolved|undefined reference|not found|no such file|cannot\b)/i;
+
+/**
+ * Best-effort one-line explanation for a verify failure that matched no known
+ * toolchain signature. Without this, a real error (e.g. a codegen step aborting
+ * with `layout drift ... aborting`) collapses to a bare "exit code N" and agents
+ * misread a legitimate reject as an integrator fault. Operates on the FULL log
+ * (not the capped excerpt), scanning from the tail so the actual abort/summary
+ * line is found even after a multi-minute build. Length-capped so a pathological
+ * single-line log can't blow the reason field.
+ */
+export function lastMeaningfulErrorLine(text: string): string {
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (lines.length === 0) return "";
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (ERRISH_LINE.test(lines[i])) return lines[i].slice(0, 500);
+  }
+  return lines[lines.length - 1].slice(0, 500);
+}
+
+/**
+ * A TAIL slice of a verify log for the persisted `logExcerpt`. A head slice
+ * (`.slice(0, cap)`) of a multi-minute build truncates the actual error — which
+ * prints at the END — away entirely, leaving a stored excerpt of compiler banner
+ * noise. Take the last `cap` chars instead, flagging the elided head so a reader
+ * knows it's a tail.
+ */
+export function tailExcerpt(text: string, cap: number): string {
+  if (text.length <= cap) return text;
+  return `…[${text.length - cap} earlier chars omitted]\n${text.slice(-cap)}`;
+}
+
 function parseRustcFiles(text: string): string[] {
   const out = new Set<string>();
   const re = /\s-->\s([^\s:]+):\d+:\d+/g;
@@ -139,7 +179,18 @@ export function categorize(input: CategorizeInput): CategorizeResult {
     };
   }
 
-  return { category: "other", reason: `verify failed with exit code ${exitCode}`, failedFiles: [] };
+  // Matched no known toolchain signature. Don't discard the log — surface the
+  // most informative tail line so the reason is legible (bespoke verify scripts,
+  // codegen steps, an unknown build tool aborting). Keep the "exit code N" prefix
+  // so callers/tests that key on it still match.
+  const detail = lastMeaningfulErrorLine(combined);
+  return {
+    category: "other",
+    reason: detail
+      ? `verify failed with exit code ${exitCode}: ${detail}`
+      : `verify failed with exit code ${exitCode}`,
+    failedFiles: [],
+  };
 }
 
 // ─── Verify retry disposition (phase 7.2 Step 8, design §10) ──────────────────
