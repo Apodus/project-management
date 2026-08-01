@@ -8,6 +8,7 @@ import {
   releaseMergeLock,
 } from "../api-client.js";
 import { renderIntegratorLiveness } from "../liveness.js";
+import { formatInstant, renderClockLine } from "../time.js";
 
 const resourceDesc =
   "Lock resource name (default: 'main'). Lets a project carry more than one lock stream if needed (e.g. 'release-branch'). Use 'main' unless told otherwise.";
@@ -63,13 +64,13 @@ export function registerMergeLockTools(server: McpServer): void {
       const lines: string[] = [];
       if (result.status === "held") {
         lines.push(`Acquired ${resource ?? "main"} — you are the holder.`);
-        if (result.expiresAt) lines.push(`Lease expires at ${result.expiresAt}.`);
+        if (result.expiresAt) lines.push(`Lease expires at ${formatInstant(result.expiresAt)}.`);
         lines.push(
           "Now: rebase onto live main, run verify, land, then call pm_release_merge_lock (pass landed_sha if you advanced main, or reason if you abandon).",
         );
       } else if (result.status === "already_held") {
         lines.push("You already hold this lock.");
-        if (result.expiresAt) lines.push(`Lease expires at ${result.expiresAt}.`);
+        if (result.expiresAt) lines.push(`Lease expires at ${formatInstant(result.expiresAt)}.`);
       } else {
         lines.push(
           `Queued behind ${result.position ?? "?"} other holder(s) on ${resource ?? "main"}.`,
@@ -95,7 +96,7 @@ export function registerMergeLockTools(server: McpServer): void {
       const result = await heartbeatMergeLock(project_id, resource ?? "main");
       const text =
         result.status === "refreshed"
-          ? `Lease refreshed${result.expiresAt ? ` — expires at ${result.expiresAt}` : ""}.`
+          ? `Lease refreshed${result.expiresAt ? ` — expires at ${formatInstant(result.expiresAt)}` : ""}.`
           : "You no longer hold this lock — it was swept or granted to someone else. Re-acquire to rejoin the queue.";
       return { content: [{ type: "text" as const, text }] };
     },
@@ -161,6 +162,7 @@ export function registerMergeLockTools(server: McpServer): void {
       const view = await getMergeLock(project_id, resource ?? "main");
       const lines: string[] = [
         `Resource: ${view.resource}`,
+        renderClockLine(),
         `Holder: ${view.holder}`,
         `Queue length: ${view.queueLength}`,
       ];
@@ -169,7 +171,7 @@ export function registerMergeLockTools(server: McpServer): void {
       }
       const liveness = renderIntegratorLiveness(view.integrator);
       if (liveness) lines.push(liveness);
-      if (view.expiresAt) lines.push(`Lease expires: ${view.expiresAt}`);
+      if (view.expiresAt) lines.push(`Lease expires: ${formatInstant(view.expiresAt)}`);
       // Landing intent — what the holder is trying to land. Available
       // to every observer; useful for "who's about to land what."
       if (view.branch) lines.push(`Branch: ${view.branch}`);
@@ -181,7 +183,8 @@ export function registerMergeLockTools(server: McpServer): void {
         lines.push(`Last abandon: ${view.abandonReason}`);
       }
       if (view.landedSha) {
-        lines.push(`Last landed: ${view.landedSha} at ${view.landedAt ?? "?"}`);
+        const at = view.landedAt ? formatInstant(view.landedAt) : "?";
+        lines.push(`Last landed: ${view.landedSha} at ${at}`);
       }
       return { content: [{ type: "text" as const, text: lines.join("\n") }] };
     },

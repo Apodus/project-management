@@ -931,6 +931,60 @@ tail, and each failing attempt shows its own `log (tail):` — which for a
 no request-level excerpt or `logUrl`. Net: an agent sees the real reason on the
 read it already makes, instead of guessing at "exit 1".
 
+### 14.14 Clock legibility (why elapsed time is never derived by hand)
+
+Every timestamp PM stores and returns is **UTC** (`…Z`). Agents repeatedly turned
+that into a phantom stall by measuring one against their shell's **local** clock.
+The live bite: on a UTC+3 host an agent read `08:26` off `date`, measured it
+against a `05:00:19Z` landing, and concluded the train had been wedged for three
+hours. The group was **~26 minutes** into a normal two-repo verify. The agent then
+read `Pool: 0/1 leased` as corroboration and recommended rejecting and
+resubmitting a perfectly healthy in-flight group. The three hours were the
+timezone offset.
+
+Nothing about the train was wrong, so the fix is entirely in how the reads
+present time. The merge-train MCP reads (`pm_get_merge_request`,
+`pm_list_merge_requests`, `pm_get_merge_group`, `pm_get_merge_lock`,
+`pm_get_integrator_health`, the merge-incident reads) now:
+
+- **Carry a clock anchor line** — `⏱ now: 2026-08-01T05:26:41Z · local
+  2026-08-01 08:26:41 (UTC+03:00)`. UTC-now and the reader's own local-now are
+  stated side by side, so the offset is named up front instead of being
+  discovered as a delay. On a non-UTC host a second line spells out the trap
+  ("do NOT subtract a Z timestamp from local `date` output"); on a UTC host,
+  where the trap does not exist, it is omitted.
+- **Render every instant with a pre-computed age** — `2026-08-01T05:00:19.000Z
+  (26m ago)`. The UTC instant is never dropped; the age rides alongside it, so
+  the useful number is already on the page.
+- **State the in-flight / waiting duration outright** — `In flight: 26m (since
+  pickup) — verify is running` on a request, `In flight: 26m (since first member
+  pickup) — verify runs across ALL members before any lands` on a group (a group
+  has no pickup time of its own; the earliest member pickup is when its clock
+  started), `Waiting: 12m in the queue` on a queued request, and `running for
+  26m` on an attempt that has no `verifyDurationMs` yet.
+
+Ages are computed from instants, so they are **offset-proof by construction** — a
+`Z` timestamp parses to an absolute epoch whatever the host's zone. They are
+computed MCP-side (on the agent's own machine), which is why this is a
+**bundle-only change**: no PM-server redeploy, no migration, no daemon restart.
+
+**`Pool: N/M leased` was the second half of the misread**, so it is now labelled
+`Verify worktree pool: N/M leased (single-repo lane only)`. That counter is minted
+from the **single-repo batch `WorktreePool`** (`integrator-ref/heartbeat.ts`); a
+cross-repo group leases from the separate **per-repo** pools, which it does not
+track. `0 leased` while a group verifies is therefore **expected**, not evidence
+of an idle integrator — and `pm_get_integrator_health` now says so inline whenever
+`in_flight_groups > 0` and `pool_leased == 0`.
+
+**The rule for agents: elapsed wall-clock time is not evidence of a stall.** A
+cross-repo group verifying two repos routinely runs for tens of minutes. The
+evidence is **heartbeat freshness** (§14.12) — so `pm_get_integrator_health` now
+states the positive verdict too, not just the DOWN hint: on ALIVE + `integrating`
+it renders `✓ Heartbeat is live and the lane is INTEGRATING — verify is running.
+Wait; do not cancel or resubmit on elapsed time alone.` Reach for
+`pm_cancel_merge_request` on the basis of a **dead heartbeat** or a **structured
+reject**, never a big number.
+
 ---
 
 ## 15. Observability + Break-glass (Phase 7.4)

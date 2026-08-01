@@ -257,6 +257,34 @@ also render the hint inline. Three cases:
 - **A `merge_rejection` on a cross-repo gitlink** is not a dead daemon — fix the
   branch per the merge-group guidance below, don't ask for a restart.
 
+### Never diff a `Z` timestamp against your shell clock
+
+PM timestamps are **UTC** (`…Z`); your shell's `date` is **local**. Subtracting one
+from the other invents a stall exactly the size of your timezone offset. This has
+happened: on a UTC+3 host, `08:26` local measured against a `05:00:19Z` landing
+read as a 3-hour wedge — the group was 26 minutes into a normal two-repo verify,
+and the next step recommended was rejecting and resubmitting a perfectly healthy
+in-flight group.
+
+You never need to do that arithmetic. Every merge-train read gives you:
+
+- a clock line — `⏱ now: 2026-08-01T05:26:41Z · local 08:26:41 (UTC+03:00)` — so
+  the offset is stated, not inferred;
+- a **pre-computed age** on every timestamp — `2026-08-01T05:00:19Z (26m ago)`;
+- the elapsed number outright — `In flight: 26m (since pickup)`, `Waiting: 12m in
+  the queue`, `running for 26m`.
+
+**Read those. And note that elapsed time is not evidence of a stall** — a
+cross-repo group verifies BOTH repos before anything lands and routinely runs for
+tens of minutes. The evidence is **heartbeat freshness** (`pm_get_integrator_health`:
+ALIVE + `integrating` means wait). Two related traps:
+
+- `Verify worktree pool: 0/1 leased` does **not** mean an idle integrator. That
+  counter tracks the single-repo lane only; a cross-repo group leases from
+  separate per-repo pools, so `0` is expected while one verifies.
+- Cancel or resubmit on a **dead heartbeat** or a **structured reject** — never on
+  a big number.
+
 ## Cross-repo changes: merge groups (rynx inner + outer)
 
 game_one is a cross-repo setup: the **rynx** inner Rust workspace is embedded in the outer game repo as a gitlink (submodule). A change that spans repos must land as a unit or not at all — otherwise the outer gitlink points at an inner SHA that isn't on inner's main. Use a **merge group**, and pick the form by where your change actually lives. The takeaway up front: **never mint gitlink-bump-only outer branches** — the train synthesizes the bump for you (and if one is minted anyway, the train now tolerates it by auto-converting on drift — tolerated, not the supported path).

@@ -11,6 +11,7 @@ import {
   type MergeRequestDetailView,
 } from "../api-client.js";
 import { renderIntegratorLiveness } from "../liveness.js";
+import { elapsedSince, formatInstant, renderClockLine } from "../time.js";
 
 const resourceDesc =
   "Lock resource name (default: 'main'). Names the train lane. Use 'main' unless told otherwise.";
@@ -19,6 +20,13 @@ const resourceDesc =
 // claim system, and agents should never reach for claim-style tools on them.
 const integratorOwnedNote =
   "Merge requests are integrator-owned: there is no claim to take or release on them — never try claim-style tools; to stop one, use pm_cancel_merge_request.";
+
+// Appended to the merge-train READ descriptions. Agents have repeatedly turned
+// a timezone offset into a phantom stall by measuring a `Z` timestamp against
+// their shell's local `date`; the output already carries the ages, so the
+// description points at them instead of at the raw instants.
+const clockNote =
+  "All timestamps are UTC (Z) and every one is rendered with a pre-computed age, alongside a clock line giving UTC-now and your local-now — read the ages; never diff a Z timestamp against local `date` output. Elapsed time alone is not evidence of a stall: a cross-repo group verifying two repos routinely runs for tens of minutes. To judge a stall use the liveness banner / pm_get_integrator_health, not the clock.";
 
 const STATUS_FILTER_VALUES = [...MERGE_REQUEST_STATUSES, "all"] as const;
 
@@ -109,7 +117,7 @@ export function registerMergeRequestTools(server: McpServer): void {
 
   server.tool(
     "pm_list_merge_requests",
-    `List merge requests for a project. Optional filters: resource (lane), status (queued/integrating/landed/rejected/abandoned/all), task_id. Returns id, status, branch/commit, submitter, and queue position for queued entries, plus a lane liveness banner (a DOWN hint when the queue is stalled on a dead integrator). For the full health snapshot use pm_get_integrator_health. ${integratorOwnedNote}`,
+    `List merge requests for a project. Optional filters: resource (lane), status (queued/integrating/landed/rejected/abandoned/all), task_id. Returns id, status, branch/commit, submitter, and queue position for queued entries, plus a lane liveness banner (a DOWN hint when the queue is stalled on a dead integrator). For the full health snapshot use pm_get_integrator_health. ${clockNote} ${integratorOwnedNote}`,
     {
       project_id: z.string().describe("The project ID."),
       resource: z.string().optional().describe(resourceDesc),
@@ -159,6 +167,7 @@ export function registerMergeRequestTools(server: McpServer): void {
 
       const laneLabel = resource ? ` (${resource} lane)` : "";
       const out: string[] = [`${rows.length} merge request(s) in ${project_id}${laneLabel}:`];
+      out.push(renderClockLine());
       if (livenessBanner) out.push(livenessBanner);
       out.push("");
       rows.forEach((r, i) => {
@@ -174,8 +183,13 @@ export function registerMergeRequestTools(server: McpServer): void {
               : r.commitSha
                 ? `     ${r.commitSha}`
                 : "     (no branch/commit recorded)";
-        const byLine = `     by ${r.submittedBy}   enqueued ${r.enqueuedAt}`;
-        out.push(idLine, refLine, byLine, "");
+        const byLine = `     by ${r.submittedBy}   enqueued ${formatInstant(r.enqueuedAt)}`;
+        out.push(idLine, refLine, byLine);
+        // The number an agent actually needs on a queue read: how long this one
+        // has been under the integrator. Stated, never left to be derived.
+        const inFlight = r.status === "integrating" ? elapsedSince(r.pickedUpAt) : null;
+        if (inFlight) out.push(`     in flight ${inFlight} (since pickup)`);
+        out.push("");
       });
       return {
         content: [{ type: "text" as const, text: out.join("\n").trimEnd() }],
@@ -187,7 +201,7 @@ export function registerMergeRequestTools(server: McpServer): void {
 
   server.tool(
     "pm_get_merge_request",
-    `Get full detail for a merge request including all attempts (most-recent first). For rejected requests, the structured rejection envelope (category, reason, failed files, log URL) is surfaced prominently at the top so you can see why without scrolling. A trailing lane-liveness line flags a DOWN integrator (why a queued request isn't moving); for the full health snapshot use pm_get_integrator_health. ${integratorOwnedNote}`,
+    `Get full detail for a merge request including all attempts (most-recent first). For rejected requests, the structured rejection envelope (category, reason, failed files, log URL) is surfaced prominently at the top so you can see why without scrolling. A trailing lane-liveness line flags a DOWN integrator (why a queued request isn't moving); for the full health snapshot use pm_get_integrator_health. ${clockNote} ${integratorOwnedNote}`,
     {
       request_id: z.string().describe("The merge request ID."),
     },
@@ -197,6 +211,7 @@ export function registerMergeRequestTools(server: McpServer): void {
 
       const headerStatus = detail.status.toUpperCase();
       lines.push(`Merge request ${detail.id}  ${headerStatus}`);
+      lines.push(renderClockLine());
       lines.push("");
       lines.push(`  Project:  ${detail.projectId}`);
       lines.push(`  Resource: ${detail.resource}`);
@@ -207,9 +222,21 @@ export function registerMergeRequestTools(server: McpServer): void {
         lines.push(`  Branch:   ${ref}${arrow}`);
       }
       if (detail.landedSha) lines.push(`  Landed SHA: ${detail.landedSha}`);
-      lines.push(`  Submitted by: ${detail.submittedBy}   ${detail.enqueuedAt}`);
-      if (detail.pickedUpAt) lines.push(`  Picked up at: ${detail.pickedUpAt}`);
-      if (detail.resolvedAt) lines.push(`  Resolved at:  ${detail.resolvedAt}`);
+      lines.push(`  Submitted by: ${detail.submittedBy}   ${formatInstant(detail.enqueuedAt)}`);
+      if (detail.pickedUpAt) lines.push(`  Picked up at: ${formatInstant(detail.pickedUpAt)}`);
+      if (detail.resolvedAt) lines.push(`  Resolved at:  ${formatInstant(detail.resolvedAt)}`);
+
+      // "How long has this been where it is" — spelled out for the two states
+      // where the answer drives a decision (wait vs. intervene). A cross-repo
+      // group verifying two repos routinely sits in flight for tens of minutes;
+      // elapsed time alone is NOT evidence of a stall, so say so here rather
+      // than let a reader infer wedged-ness from a big number.
+      const waiting = detail.status === "queued" ? elapsedSince(detail.enqueuedAt) : null;
+      if (waiting) lines.push(`  Waiting:      ${waiting} in the queue`);
+      const inFlight = detail.status === "integrating" ? elapsedSince(detail.pickedUpAt) : null;
+      if (inFlight) {
+        lines.push(`  In flight:    ${inFlight} (since pickup) — verify is running`);
+      }
 
       if (detail.status === "rejected") {
         lines.push("");
@@ -284,7 +311,7 @@ export function registerMergeRequestTools(server: McpServer): void {
       lines.push("");
       lines.push(`  Status: ${updated.status}`);
       if (updated.resolvedAt) {
-        lines.push(`  Resolved at: ${updated.resolvedAt}`);
+        lines.push(`  Resolved at: ${formatInstant(updated.resolvedAt)}`);
       }
       lines.push("");
       lines.push("Use pm_list_merge_requests to see remaining queue.");
@@ -304,6 +331,17 @@ function formatAttempt(a: MergeAttemptView): string[] {
   const durStr = a.verifyDurationMs ? `  duration=${formatDuration(a.verifyDurationMs)}` : "";
   const catStr = a.status === "failed" && a.failureCategory ? `  ${a.failureCategory}` : "";
   parts.push(`${head}${treeStr}${durStr}${catStr}`);
+  // A STILL-RUNNING attempt has no verifyDurationMs — without this line the
+  // only clue to how far along verify is would be a bare `Z` start time, which
+  // is exactly what gets mis-subtracted against a local clock.
+  if (a.startedAt) {
+    const running = a.status === "running" ? elapsedSince(a.startedAt) : null;
+    parts.push(
+      running
+        ? `        started ${formatInstant(a.startedAt)} — running for ${running}`
+        : `        started ${formatInstant(a.startedAt)}`,
+    );
+  }
   if (a.status === "failed" && a.failureReason) {
     const firstLine = a.failureReason.split("\n", 1)[0] ?? "";
     parts.push(`        "${firstLine}"`);

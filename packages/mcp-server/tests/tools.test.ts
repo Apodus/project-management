@@ -3217,6 +3217,105 @@ describe("MCP Tools", () => {
       expect(text).toContain("by U_AGENT");
     });
 
+    // ── Clock legibility ────────────────────────────────────────────
+    // An agent on a UTC+3 host measured a `Z` landing time against its shell's
+    // local `date` and manufactured a 3-hour stall out of the offset, then
+    // nearly rejected a healthy 26-minute-old cross-repo group. These reads
+    // must hand over the elapsed time so nobody derives it.
+
+    it("pm_get_merge_request states in-flight elapsed time and anchors the clock", async () => {
+      mockGetMergeRequest.mockResolvedValue({
+        request: {
+          ...sampleMergeRequest,
+          status: "integrating",
+          pickedUpAt: "2026-05-29T14:22:00.000Z",
+          attempts: [
+            {
+              id: "att_1",
+              requestId: "mreq_001",
+              attemptNumber: 1,
+              baseSha: "2c8f1d9",
+              treeSha: null,
+              status: "running",
+              startedAt: "2026-05-29T14:22:05Z",
+              completedAt: null,
+              verifyDurationMs: null,
+              failureCategory: null,
+              failureReason: null,
+              failedFiles: null,
+              logExcerpt: null,
+              logUrl: null,
+              createdAt: "2026-05-29T14:22:05Z",
+            },
+          ],
+        },
+        integrator: undefined,
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_request",
+        arguments: { request_id: "mreq_001" },
+      });
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      // The clock anchor: UTC-now and local-now stated together.
+      expect(text).toContain("⏱ now:");
+      expect(text).toContain("local ");
+      // Every instant keeps its UTC form AND carries a pre-computed age.
+      expect(text).toContain("2026-05-29T14:21:03.412Z");
+      expect(text).toMatch(/2026-05-29T14:21:03\.412Z \(.+ ago\)/);
+      // The decision-grade number, stated outright.
+      expect(text).toContain("In flight:");
+      expect(text).toContain("(since pickup) — verify is running");
+      // A running attempt has no duration — its elapsed time must be shown.
+      expect(text).toContain("running for");
+    });
+
+    it("pm_get_merge_request states queue wait time for a queued request", async () => {
+      mockGetMergeRequest.mockResolvedValue({
+        request: { ...sampleMergeRequest, status: "queued", attempts: [] },
+        integrator: undefined,
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_request",
+        arguments: { request_id: "mreq_001" },
+      });
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Waiting:");
+      expect(text).toContain("in the queue");
+      // Not yet picked up ⇒ no in-flight claim.
+      expect(text).not.toContain("In flight:");
+    });
+
+    it("pm_list_merge_requests ages every enqueue time and flags in-flight rows", async () => {
+      mockListMergeRequests.mockResolvedValue({
+        requests: [
+          {
+            ...sampleMergeRequest,
+            id: "mreq_A",
+            status: "integrating",
+            pickedUpAt: "2026-05-29T14:22:00.000Z",
+          },
+          { ...sampleMergeRequest, id: "mreq_B", status: "queued" },
+        ],
+        pagination: { total: 2, page: 1, perPage: 50 },
+        integrator: undefined,
+      });
+
+      const result = await client.callTool({
+        name: "pm_list_merge_requests",
+        arguments: { project_id: "P1", resource: "main" },
+      });
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("⏱ now:");
+      expect(text).toMatch(/enqueued 2026-05-29T14:21:03\.412Z \(.+ ago\)/);
+      expect(text).toContain("in flight");
+      expect(text).toContain("(since pickup)");
+    });
+
     it("pm_get_merge_request surfaces rejection envelope prominently", async () => {
       mockGetMergeRequest.mockResolvedValue({
         request: {
@@ -3434,8 +3533,48 @@ describe("MCP Tools", () => {
       expect(text).toContain("Last heartbeat: 5s ago");
       expect(text).toContain("Lane status: idle");
       expect(text).toContain("Version: 1.2.3");
-      expect(text).toContain("Pool: 1/4 leased");
+      expect(text).toContain("Verify worktree pool: 1/4 leased");
       expect(text).toContain("In-flight: requests=0, batches=0, groups=0");
+      // The absolute instant trails the age (which stays seconds-precision —
+      // the 90s staleness cutoff needs it).
+      expect(text).toContain("2026-07-14T12:00:00.000Z");
+    });
+
+    it("explains a 0-leased pool while a cross-repo group is in flight", async () => {
+      // "Pool: 0/1 leased" was once read as corroboration that a healthy
+      // in-flight group was wedged. The counter is the SINGLE-REPO batch pool;
+      // a group leases from the per-repo pools, which it does not track.
+      mockGetIntegratorHealth.mockResolvedValue({
+        ...baseHealth,
+        status: "integrating",
+        pool_size: 1,
+        pool_leased: 0,
+        in_flight_groups: 1,
+      });
+      const result = await client.callTool({
+        name: "pm_get_integrator_health",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("0 leased is EXPECTED here");
+      expect(text).toContain("not an idle integrator");
+      // ALIVE + integrating gets the positive "wait" verdict, not just silence.
+      expect(text).toContain("Heartbeat is live and the lane is INTEGRATING");
+      expect(text).toContain("do not cancel or resubmit on elapsed time alone");
+    });
+
+    it("omits the pool-zero explainer when no group is in flight", async () => {
+      mockGetIntegratorHealth.mockResolvedValue({
+        ...baseHealth,
+        pool_leased: 0,
+        in_flight_groups: 0,
+      });
+      const result = await client.callTool({
+        name: "pm_get_integrator_health",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).not.toContain("0 leased is EXPECTED here");
     });
 
     it("renders DOWN when never seen (fail-safe)", async () => {
@@ -3474,7 +3613,8 @@ describe("MCP Tools", () => {
       const text = (result.content as Array<{ text: string }>)[0].text;
       expect(text).toContain("State: STALE");
       expect(text).toContain("Last heartbeat: 120s ago");
-      expect(text).toContain("Last release failure: 2026-07-14T11:00:00.000Z — push rejected");
+      expect(text).toContain("Last release failure: 2026-07-14T11:00:00.000Z");
+      expect(text).toContain("— push rejected");
     });
   });
 
@@ -3866,6 +4006,62 @@ describe("MCP Tools", () => {
       expect(text).toContain("LANDED");
       expect(text).toContain("mreq_A");
       expect(text).toContain("land-mreq_A");
+    });
+
+    it("pm_get_merge_group states in-flight elapsed time from the earliest member pickup", async () => {
+      // The exact incident shape: a cross-repo group mid-verify. The read must
+      // hand over "how long" so nobody derives it against a local clock — and
+      // must say verify spans ALL members, which is why the number is large.
+      mockGetMergeGroup.mockResolvedValue({
+        ...sampleGroupDetail,
+        state: "integrating",
+        members: [
+          {
+            ...sampleMergeRequest,
+            id: "mreq_inner",
+            status: "integrating",
+            pickedUpAt: "2026-05-29T15:00:00.000Z",
+          },
+          {
+            ...sampleMergeRequest,
+            id: "mreq_outer",
+            status: "integrating",
+            // Later pickup — the EARLIEST is the group's clock start.
+            pickedUpAt: "2026-05-29T15:04:00.000Z",
+          },
+        ],
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_group",
+        arguments: { group_id: "grp_001" },
+      });
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("⏱ now:");
+      expect(text).toContain("In flight:");
+      expect(text).toContain("(since first member pickup)");
+      expect(text).toContain("verify runs across ALL members before any lands");
+    });
+
+    it("pm_get_merge_group omits the in-flight line when the group is not integrating", async () => {
+      mockGetMergeGroup.mockResolvedValue({
+        ...sampleGroupDetail,
+        state: "landed",
+        members: sampleGroupDetail.members.map((m) => ({
+          ...m,
+          status: "landed",
+          pickedUpAt: "2026-05-29T15:00:00.000Z",
+        })),
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_group",
+        arguments: { group_id: "grp_001" },
+      });
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).not.toContain("In flight:");
     });
 
     it("pm_get_merge_group renders a synthetic member distinctly and stays undefined-tolerant on legacy members", async () => {

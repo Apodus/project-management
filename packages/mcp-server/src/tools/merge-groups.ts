@@ -9,11 +9,17 @@ import {
   type MergeRequestGroupView,
   type MergeIncidentView,
 } from "../api-client.js";
+import { elapsedSince, formatInstant, renderClockLine } from "../time.js";
 
 const resourceDesc =
   "Lock resource name (default: 'main'). Names the train lane. Use 'main' unless told otherwise.";
 
 const INCIDENT_STATE_FILTER_VALUES = [...MERGE_INCIDENT_STATES, "all"] as const;
+
+// See merge-requests.ts §clockNote — a group verifying two repos is the exact
+// case where a mis-subtracted timezone offset got read as a wedged train.
+const clockNote =
+  "All timestamps are UTC (Z), each rendered with a pre-computed age, alongside a clock line giving UTC-now and your local-now — read the ages; never diff a Z timestamp against local `date` output. A cross-repo group verifies BOTH repos before landing and routinely runs for tens of minutes: elapsed time alone is not evidence of a stall. Check the integrator (pm_get_integrator_health) before concluding a group is wedged.";
 
 /**
  * Render a member's landable ref for the group views. A SYNTHETIC member
@@ -137,7 +143,7 @@ export function registerMergeGroupTools(server: McpServer): void {
 
   server.tool(
     "pm_get_merge_group",
-    "Get full detail for a merge group including its member requests and their current statuses. Use this to check whether a group has landed, been rejected, or is still forming/integrating.",
+    `Get full detail for a merge group including its member requests and their current statuses, plus how long an integrating group has been in flight. Use this to check whether a group has landed, been rejected, or is still forming/integrating. ${clockNote}`,
     {
       group_id: z.string().describe("The merge group ID."),
     },
@@ -147,17 +153,36 @@ export function registerMergeGroupTools(server: McpServer): void {
 
       const headerState = group.state.toUpperCase();
       lines.push(`Merge group ${group.id}  ${headerState}`);
+      lines.push(renderClockLine());
       lines.push("");
       lines.push(`  Project:  ${group.projectId}`);
       lines.push(`  Resource: ${group.resource}`);
-      lines.push(`  Submitted by: ${group.submittedBy}   ${group.createdAt}`);
+      lines.push(`  Submitted by: ${group.submittedBy}   ${formatInstant(group.createdAt)}`);
       if (group.integratorId) {
         lines.push(`  Integrator: ${group.integratorId}`);
       }
-      if (group.resolvedAt) lines.push(`  Resolved at: ${group.resolvedAt}`);
+      if (group.resolvedAt) lines.push(`  Resolved at: ${formatInstant(group.resolvedAt)}`);
       if (group.resolutionReason) {
         lines.push(`  Resolution: ${group.resolutionReason}`);
       }
+
+      // In-flight age from the EARLIEST member pickup — a group has no pickup
+      // timestamp of its own, and the first member under the integrator is when
+      // the group's clock actually started. Stated explicitly (with the "both
+      // repos" reminder) because this is the number that gets mis-derived.
+      if (group.state === "integrating") {
+        const pickups = group.members
+          .map((m) => m.pickedUpAt)
+          .filter((p): p is string => typeof p === "string" && !Number.isNaN(Date.parse(p)))
+          .sort();
+        const inFlight = elapsedSince(pickups[0]);
+        if (inFlight) {
+          lines.push(
+            `  In flight:  ${inFlight} (since first member pickup) — verify runs across ALL members before any lands`,
+          );
+        }
+      }
+
       lines.push("");
       lines.push(`  Members (${group.members.length}):`);
       for (const m of group.members) {
@@ -200,12 +225,16 @@ export function registerMergeGroupTools(server: McpServer): void {
         };
       }
 
-      const out: string[] = [`${rows.length} merge incident(s) in ${project_id}:`, ""];
+      const out: string[] = [
+        `${rows.length} merge incident(s) in ${project_id}:`,
+        renderClockLine(),
+        "",
+      ];
       rows.forEach((r, i) => {
         out.push(
           `  ${i + 1}. ${r.id}   ${r.state}`,
           `     ${r.innerRepo}@${r.orphanedSha} -> ${r.outerRepo}`,
-          `     opened ${r.openedAt}`,
+          `     opened ${formatInstant(r.openedAt)}`,
           "",
         );
       });
@@ -229,6 +258,7 @@ export function registerMergeGroupTools(server: McpServer): void {
 
       const headerState = incident.state.toUpperCase();
       lines.push(`Merge incident ${incident.id}  ${headerState}`);
+      lines.push(renderClockLine());
       lines.push("");
       lines.push(`  Project:  ${incident.projectId}`);
       lines.push(`  Type:     ${incident.type}`);
@@ -236,9 +266,9 @@ export function registerMergeGroupTools(server: McpServer): void {
       lines.push(`  Outer:    ${incident.outerRepo}`);
       if (incident.groupId) lines.push(`  Group:    ${incident.groupId}`);
       if (incident.taskId) lines.push(`  Task:     ${incident.taskId}`);
-      lines.push(`  Opened at: ${incident.openedAt}`);
+      lines.push(`  Opened at: ${formatInstant(incident.openedAt)}`);
       if (incident.resolvedAt) {
-        lines.push(`  Resolved at: ${incident.resolvedAt}`);
+        lines.push(`  Resolved at: ${formatInstant(incident.resolvedAt)}`);
       }
       if (incident.resolution) {
         lines.push("");
