@@ -1085,13 +1085,36 @@ Each alert is delivered **two ways**, both firing once per episode in lockstep:
   "settings": {
     "webhooks": {
       "discord_url": "https://discord.com/api/webhooks/.../...",
-      "alerts_enabled": true
+      "alerts_enabled": true,
+      "train_events_enabled": true
     }
   }
 }
 ```
 
-`discord_url` is the Discord webhook URL the three alerts POST to (a non-Discord endpoint that accepts the same `{ content }` shape works too, but Discord is the documented default). `alerts_enabled` defaults to on — set it `false` to silence the outbound POST without removing the URL. With no `discord_url` configured, only the in-app (SSE/banner) half fires.
+`discord_url` is the Discord webhook URL the three alerts POST to (a non-Discord endpoint that accepts the same `{ content }` shape works too, but Discord is the documented default). `alerts_enabled` defaults to on — set it `false` to silence the outbound POST without removing the URL. With no `discord_url` configured, only the in-app (SSE/banner) half fires. `train_events_enabled` (also default on) gates the **event feed** of §15.4a; `alerts_enabled: false` is the master mute for both channels. Both are editable in the admin **Notifications** settings page (`/projects/{id}/settings/notifications`).
+
+### 15.4a Event feed — the train narrated to Discord
+
+The alerts above only fire when something is **wrong**. The event feed is the second channel on the **same** webhook: the train's ordinary lifecycle, so an operator watching one Discord channel sees the stream itself rather than inferring it from silence. Per-event (no latch, no on-read evaluation) — each event POSTs exactly one line as its emitting transaction commits.
+
+| Event                                                | Line                                                                                          |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `merge.request.integrating`                          | `▶️ **Integrating** on \`main\` — "<task title>" (\`branch\`) · waited 12m in queue · queue depth now 2 · id \`…\`` |
+| `merge.group.started`                                | `▶️ **Integrating group** on \`main\` — "<task title>" (\`branch\`) · 2 members (cross-repo) · queue depth now 1 · group \`…\`` |
+| `merge.request.landed`                               | `✅ **Landed** … · sha \`abc1234d\` · 26m since pickup`                                       |
+| `merge.group.landed`                                 | `✅ **Group landed** … · inner \`abc1234d\` + outer \`def5678a\` · 26m since pickup`          |
+| `merge.request.rejected`                             | `❌ **Rejected** … · [verify_failed] <the real reason> · 5m since pickup · id \`…\``           |
+| `merge.group.rejected`                               | `❌ **Group rejected** … · <reason> · group \`…\`` — or `🚨 **Group PARTIALLY landed**` on the `partially_landed` outcome (inner landed, outer did not) |
+| `merge.request.requeued` / `merge.request.abandoned` | `🔄 **Re-queued**` / `🚫 **Abandoned**`, each with its reason                                 |
+| `merge.incident.opened`                              | `🚨 **Merge incident opened** — orphaned_inner · \`inner\` main landed \`sha\` but the \`outer\` gitlink did NOT follow` |
+| `train.paused` / `train.resumed`                     | `⏸️ **Train paused**` / `▶️ **Train resumed**`, with reason + operator name                   |
+
+Deliberately **not** narrated (noise without decision value): `merge.request.queued` (a worker submitting), per-attempt start/complete, the Phase-7.2 speculative batch markers, and per-member group landings — the single `merge.group.landed` line already names every member.
+
+Naming: a merge request has no name of its own, so it is named by its **linked task's title**, falling back to the branch, then the id; a group is named by its real (non-synthetic) members. Elapsed times are **pre-computed** (`26m since pickup`) — never two timestamps for the reader to subtract (§14.14).
+
+Resilience mirrors the alert path exactly: the enrichment reads (task title, group members, queue depth) and the formatting are fully guarded, and the POST is un-awaited — a Discord outage, a deleted task, or a misshapen settings row can never fail a pickup, a land, or a reject.
 
 > **Escalation `needs_human` (Campaign C2).** The escalation channel's `escalation.needs_human` event rides this same outbound Discord path as the **one out-of-band escalation notification**. Unlike the masked aggregate alerts above, it is **per-event** (NOT latched / no on-read evaluation — it fires once when an escalation is escalated to a human) and **intentionally specific** — it carries the escalation id, title, kind, and origin (`repo/worker_key`) so a human can re-enter the exact thread for approval or awareness. The human re-enters for the **decision**, never as message transport (transport is the wake daemon / piggyback / drain — see §19).
 

@@ -196,6 +196,7 @@ const integratorSettingsSchema = z
 const webhooksSettingsSchema = z.object({
   discord_url: z.string().url().optional(),
   alerts_enabled: z.boolean().optional(),
+  train_events_enabled: z.boolean().optional(),
 });
 
 // Zod-4 mirror of @pm/shared/autoImplementSettingsSchema — keep in lockstep.

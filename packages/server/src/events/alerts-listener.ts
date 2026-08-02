@@ -18,10 +18,21 @@ import { EVENT_NAMES, getEventBus, type EventName, type EventPayload } from "./e
 // an un-awaited promise with a .catch — so a Discord POST failure can never
 // block or break computeMetrics, and there is no unhandled rejection.
 
-interface WebhookSettings {
+export interface WebhookSettings {
   discord_url?: string;
   alerts_enabled?: boolean;
+  /**
+   * Train EVENT-FEED opt-out (merge-train lifecycle narration — pickup / land /
+   * reject / incident / pause, see train-feed-listener.ts). Defaults to ON when
+   * omitted, exactly like alerts_enabled; set false to keep the threshold
+   * ALERTS while silencing the per-merge narration. `alerts_enabled: false`
+   * remains the master mute — it silences BOTH channels.
+   */
+  train_events_enabled?: boolean;
 }
+
+/** Discord hard-caps a webhook `content` at 2000 chars — stay under it. */
+const DISCORD_CONTENT_LIMIT = 1900;
 
 /**
  * Read projects.settings.webhooks for a project, defensively. Returns null if
@@ -138,21 +149,39 @@ function formatAlert(event: EventName, payload: EventPayload): string {
 }
 
 /**
- * POST the formatted alert to the project's Discord webhook URL. Returns
- * early (no-op) when there is no configured URL or alerts are explicitly
- * disabled. The settings read is sync; the fetch is awaited only INSIDE this
- * async function (the caller does NOT await it).
+ * The shared outbound Discord POST. Two channels ride it:
+ *
+ *   - "alert"      — the threshold/edge alerts formatted above.
+ *   - "train_feed" — the merge-train lifecycle narration
+ *                    (events/train-feed-listener.ts).
+ *
+ * Returns early (no-op) when there is no configured URL, when alerts are
+ * explicitly disabled (the master mute), or — for the feed channel only — when
+ * train_events_enabled is explicitly false. The settings read is sync; the
+ * fetch is awaited only INSIDE this async function (callers do NOT await it).
  */
-async function deliverDiscordAlert(event: EventName, payload: EventPayload): Promise<void> {
-  const settings = readWebhookSettings(payload.projectId);
+export async function postDiscord(
+  projectId: string | null,
+  content: string,
+  channel: "alert" | "train_feed" = "alert",
+): Promise<void> {
+  const settings = readWebhookSettings(projectId);
   const url = settings?.discord_url;
   if (!url || settings?.alerts_enabled === false) return;
+  if (channel === "train_feed" && settings?.train_events_enabled === false) return;
 
   await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ content: formatAlert(event, payload) }),
+    body: JSON.stringify({ content: content.slice(0, DISCORD_CONTENT_LIMIT) }),
   });
+}
+
+/**
+ * POST the formatted alert to the project's Discord webhook URL.
+ */
+async function deliverDiscordAlert(event: EventName, payload: EventPayload): Promise<void> {
+  await postDiscord(payload.projectId, formatAlert(event, payload), "alert");
 }
 
 /**

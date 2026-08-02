@@ -18,6 +18,7 @@ import { useProjectStore } from "@/stores/project-store";
 interface WebhooksSettings {
   discord_url?: string;
   alerts_enabled?: boolean;
+  train_events_enabled?: boolean;
 }
 
 export function NotificationsPage() {
@@ -31,6 +32,7 @@ export function NotificationsPage() {
 
   const [discordUrl, setDiscordUrl] = useState("");
   const [alertsEnabled, setAlertsEnabled] = useState(true);
+  const [trainEventsEnabled, setTrainEventsEnabled] = useState(true);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -41,8 +43,10 @@ export function NotificationsPage() {
     const settings = (project.settings ?? {}) as { webhooks?: WebhooksSettings };
     const webhooks = settings.webhooks ?? {};
     setDiscordUrl(webhooks.discord_url ?? "");
-    // alerts_enabled defaults to "on" when omitted (matches the server).
+    // alerts_enabled / train_events_enabled default to "on" when omitted
+    // (matches the server).
     setAlertsEnabled(webhooks.alerts_enabled !== false);
+    setTrainEventsEnabled(webhooks.train_events_enabled !== false);
     setUrlError(null);
     setSaved(false);
   }, [project]);
@@ -63,7 +67,10 @@ export function NotificationsPage() {
     }
     setUrlError(null);
 
-    const webhooks: WebhooksSettings = { alerts_enabled: alertsEnabled };
+    const webhooks: WebhooksSettings = {
+      alerts_enabled: alertsEnabled,
+      train_events_enabled: trainEventsEnabled,
+    };
     if (trimmed) webhooks.discord_url = trimmed;
 
     // Replace-wholesale: spread the existing settings so we don't drop
@@ -160,8 +167,9 @@ export function NotificationsPage() {
               Merge-train alerts ( <code className="text-xs">train.stuck</code>,{" "}
               <code className="text-xs">train.abandon_rate_high</code>,{" "}
               <code className="text-xs">train.integrator_unhealthy</code>) are POSTed to this
-              Discord webhook, in addition to the in-app banner. Leave the URL blank to receive
-              in-app alerts only.
+              Discord webhook, in addition to the in-app banner. The same webhook also carries the
+              merge-train <strong>event feed</strong> — pickup, land, reject, incident, pause —
+              unless you turn it off below. Leave the URL blank to receive in-app alerts only.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -200,6 +208,25 @@ export function NotificationsPage() {
                 checked={alertsEnabled}
                 onCheckedChange={(checked) => {
                   setAlertsEnabled(checked);
+                  if (saved) setSaved(false);
+                }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-md border px-4 py-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="train-events-enabled">Send the merge-train event feed</Label>
+                <p className="text-muted-foreground text-xs">
+                  Narrates every pickup, land, reject, incident and pause to the same channel (queue
+                  submissions are never sent). Turn off to keep threshold alerts only.
+                </p>
+              </div>
+              <Switch
+                id="train-events-enabled"
+                checked={trainEventsEnabled}
+                disabled={!alertsEnabled}
+                onCheckedChange={(checked) => {
+                  setTrainEventsEnabled(checked);
                   if (saved) setSaved(false);
                 }}
               />

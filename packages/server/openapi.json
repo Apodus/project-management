@@ -482,6 +482,9 @@
                   },
                   "alerts_enabled": {
                     "type": "boolean"
+                  },
+                  "train_events_enabled": {
+                    "type": "boolean"
                   }
                 }
               },
@@ -847,6 +850,9 @@
                     "format": "uri"
                   },
                   "alerts_enabled": {
+                    "type": "boolean"
+                  },
+                  "train_events_enabled": {
                     "type": "boolean"
                   }
                 }

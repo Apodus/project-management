@@ -14826,6 +14826,7 @@ export interface components {
           /** Format: uri */
           discord_url?: string;
           alerts_enabled?: boolean;
+          train_events_enabled?: boolean;
         };
         autoImplement?: {
           /** @default false */
@@ -14942,6 +14943,7 @@ export interface components {
           /** Format: uri */
           discord_url?: string;
           alerts_enabled?: boolean;
+          train_events_enabled?: boolean;
         };
         autoImplement?: {
           /** @default false */
@@ -16102,7 +16104,6 @@ export interface components {
       abandonReason: string | null;
       queueLength: number;
       yourPosition: number | null;
-      integrator?: components["schemas"]["IntegratorLiveness"];
       createdAt: string;
       updatedAt: string;
     };

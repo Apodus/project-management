@@ -13,7 +13,8 @@ export {
   registerAutomationListener,
   registerProposalAutoTransitionListener,
 } from "./automation-listener.js";
-export { registerWebhookAlertListener } from "./alerts-listener.js";
+export { registerWebhookAlertListener, postDiscord } from "./alerts-listener.js";
+export { registerTrainFeedListener } from "./train-feed-listener.js";
 
 import { registerActivityLogListener } from "./listeners.js";
 import {
@@ -21,6 +22,7 @@ import {
   registerProposalAutoTransitionListener,
 } from "./automation-listener.js";
 import { registerWebhookAlertListener } from "./alerts-listener.js";
+import { registerTrainFeedListener } from "./train-feed-listener.js";
 
 /**
  * Initialize all event listeners.
@@ -31,4 +33,5 @@ export function initializeEventListeners(): void {
   registerAutomationListener();
   registerProposalAutoTransitionListener();
   registerWebhookAlertListener();
+  registerTrainFeedListener();
 }

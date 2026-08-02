@@ -177,7 +177,12 @@ linked_repos` (`[]` = single-repo). Orphaned-inner → durable incident +
 - **7.4 Observability + break-glass** — train dashboard / per-request timeline /
   audit; on-read metrics + SLO; 5 admin-only overrides (pause/resume/
   force-release-lock/**force-land**/force-reject), each one audit row; integrator
-  heartbeat; dual (SSE + Discord) alerts.
+  heartbeat; dual (SSE + Discord) alerts. The same Discord webhook also carries
+  the **train event feed** — one line per pickup / land / reject / requeue /
+  abandon / incident / pause, named by the linked task title with queue depth
+  and pre-computed elapsed times (submits and per-attempt noise are excluded).
+  Gated by `settings.webhooks.train_events_enabled` (**default on**;
+  `alerts_enabled: false` mutes both). Deployment guide §15.4a.
 - **7.5 Smart verification** — multi-step verify DAG (`settings.integrator.
 verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   `cache_mode off|on|shadow` **default off**). Discipline: shadow → on.

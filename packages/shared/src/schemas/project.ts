@@ -304,9 +304,16 @@ export const integratorSettingsSchema = z
 // webhook URL the three train.* alerts are POSTed to (half (b) of dual
 // delivery). alerts_enabled defaults to "on" — set false to silence the
 // outbound POST without removing the URL.
+//
+// train_events_enabled (also default "on") gates the SECOND channel on the same
+// URL: the merge-train EVENT FEED — ordinary lifecycle narration (pickup /
+// land / reject / incident / pause), not just threshold alerts. Set false to
+// keep the alerts and silence the per-merge stream. alerts_enabled: false stays
+// the master mute for both.
 export const webhooksSettingsSchema = z.object({
   discord_url: z.string().url().optional(),
   alerts_enabled: z.boolean().optional(),
+  train_events_enabled: z.boolean().optional(),
 });
 
 // Per-project responder auto-implement enablement (campaign — per-project
