@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   useTrainHealth: vi.fn(),
   useTrainState: vi.fn(),
   useMergeRequestPhases: vi.fn(),
+  useTrainTrace: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-train", () => mocks);
@@ -418,6 +419,15 @@ beforeEach(() => {
   // return, destructuring `{ data }` off undefined crashes every test that
   // renders a member. Empty trace = the neutral "—" cell.
   mocks.useMergeRequestPhases.mockReturnValue(q([]));
+  // Same reason: the trace card is on the page, so its hook must always answer.
+  mocks.useTrainTrace.mockReturnValue(
+    q({
+      data: [],
+      window: { from: "2026-08-02T12:00:00.000Z", to: "2026-08-03T12:00:00.000Z" },
+      limit: 50,
+      truncated: false,
+    }),
+  );
   authMocks.useCurrentUser.mockReturnValue({ data: { role: "admin" } });
   projectMocks.useProject.mockReturnValue(projectWithResolver(false));
   projectMocks.useUpdateResolverConfig.mockReturnValue({
@@ -918,5 +928,20 @@ describe("TrainDashboardPage — per-member phase progress", () => {
     renderPage();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.queryByText(/unrecorded/)).toBeNull();
+  });
+});
+
+// ── Recent-event trace placement (campaign 2026-08-03 §P5) ───────
+
+describe("TrainDashboardPage — recent-event trace", () => {
+  it("renders the trace card AFTER In Flight", () => {
+    renderPage();
+    // The page reads aggregate → now → recently. "What is integrating" sitting
+    // directly above "what just happened" is what answers "wedged, or slow
+    // verify?" at a glance — so the ORDER is the feature, not the presence.
+    const headings = screen
+      .getAllByText(/^(Where the time goes|In Flight|Recent events)$/)
+      .map((el) => el.textContent);
+    expect(headings).toEqual(["Where the time goes", "In Flight", "Recent events"]);
   });
 });

@@ -635,6 +635,124 @@ export function samples(
 }
 
 /**
+ * The derived `queue_wait` entry for each of the given requests, keyed by
+ * request id (absent when the request was never picked up — a half-open wait is
+ * not a completed phase, exactly as {@link derivedSamples} treats it).
+ *
+ * WHY THIS EXISTS RATHER THAN A SECOND DERIVATION IN THE CALLER: the
+ * anchor-correctness rule above ("evidence must mark where a prior integration
+ * ENDED, never where it began") is long, subtle and load-bearing — a re-derived
+ * copy that reached for `merge_attempts.created_at` would silently charge a
+ * whole prior verify to queue wait. One copy, batched, no per-entity N+1.
+ *
+ * NOT `derivedSamples`: that projection drops `originDurationMs` and `basis`,
+ * which are precisely the requeue honesty P4/P5 surface.
+ */
+export function queueWaitsForRequests(requestIds: string[]): Map<string, DerivedPhaseEntry> {
+  const out = new Map<string, DerivedPhaseEntry>();
+  if (requestIds.length === 0) return out;
+
+  const requests = getDb()
+    .select({
+      id: mergeRequests.id,
+      projectId: mergeRequests.projectId,
+      resource: mergeRequests.resource,
+      enqueuedAt: mergeRequests.enqueuedAt,
+      pickedUpAt: mergeRequests.pickedUpAt,
+    })
+    .from(mergeRequests)
+    .where(inArray(mergeRequests.id, requestIds))
+    .all();
+
+  const evidence = integrationEndsByRequest(requests.map((r) => r.id));
+  for (const request of requests) {
+    const entry = deriveQueueWait({
+      projectId: request.projectId,
+      resource: request.resource,
+      requestId: request.id,
+      enqueuedAt: request.enqueuedAt,
+      pickedUpAt: request.pickedUpAt,
+      priorIntegrationAt: latestBefore(evidence.get(request.id), request.pickedUpAt),
+    });
+    if (entry) out.set(request.id, entry);
+  }
+  return out;
+}
+
+/**
+ * The derived `forming` entry for each of the given groups, keyed by group id
+ * (absent when no member has been picked up yet). The window ends at the
+ * EARLIEST member pickup — the group is assembled the moment integration
+ * begins — matching {@link listForGroup} and the Discord feed's group anchor.
+ */
+export function formingForGroups(groupIds: string[]): Map<string, DerivedPhaseEntry> {
+  const out = new Map<string, DerivedPhaseEntry>();
+  if (groupIds.length === 0) return out;
+  const db = getDb();
+
+  const groups = db
+    .select({
+      id: mergeRequestGroups.id,
+      projectId: mergeRequestGroups.projectId,
+      resource: mergeRequestGroups.resource,
+      createdAt: mergeRequestGroups.createdAt,
+    })
+    .from(mergeRequestGroups)
+    .where(inArray(mergeRequestGroups.id, groupIds))
+    .all();
+  if (groups.length === 0) return out;
+
+  const members = db
+    .select({
+      id: mergeRequests.id,
+      groupId: mergeRequests.groupId,
+      pickedUpAt: mergeRequests.pickedUpAt,
+    })
+    .from(mergeRequests)
+    .where(
+      inArray(
+        mergeRequests.groupId,
+        groups.map((g) => g.id),
+      ),
+    )
+    .all();
+
+  const memberIdsByGroup = new Map<string, string[]>();
+  const firstPickupByGroup = new Map<string, string>();
+  for (const member of members) {
+    if (member.groupId === null) continue;
+    const list = memberIdsByGroup.get(member.groupId);
+    if (list) list.push(member.id);
+    else memberIdsByGroup.set(member.groupId, [member.id]);
+    if (member.pickedUpAt === null) continue;
+    const earliest = firstPickupByGroup.get(member.groupId);
+    // ISO-8601 UTC strings compare lexicographically as instants (every writer
+    // here is toISOString), so this is a plain min without a parse.
+    if (earliest === undefined || member.pickedUpAt < earliest) {
+      firstPickupByGroup.set(member.groupId, member.pickedUpAt);
+    }
+  }
+
+  const evidence = integrationEndsByRequest(members.map((m) => m.id));
+  for (const group of groups) {
+    const firstPickup = firstPickupByGroup.get(group.id) ?? null;
+    const entry = deriveForming({
+      projectId: group.projectId,
+      resource: group.resource,
+      groupId: group.id,
+      groupCreatedAt: group.createdAt,
+      firstMemberPickupAt: firstPickup,
+      priorIntegrationAt: latestBefore(
+        (memberIdsByGroup.get(group.id) ?? []).flatMap((id) => evidence.get(id) ?? []),
+        firstPickup,
+      ),
+    });
+    if (entry) out.set(group.id, entry);
+  }
+  return out;
+}
+
+/**
  * DERIVED samples (`queue_wait` + `forming`) for a lane window, so the
  * aggregation concatenates instead of hand-rolling SQL over merge_requests.
  *

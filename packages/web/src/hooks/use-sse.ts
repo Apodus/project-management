@@ -30,6 +30,16 @@ interface SSEPayload {
 // ─── Query key invalidation map ──────────────────────────────────
 
 export function getInvalidationKeys(eventType: string): readonly (readonly unknown[])[] {
+  // merge.phase.recorded fires SEVERAL times per trip (once per ingest batch,
+  // and a speculative batch ingests repeatedly), so it gets an exact-match
+  // early return instead of falling into the `merge` prefix. trainKeys.all
+  // would refetch metrics + in-flight + state + health + audit + the
+  // break-glass request pickers on every phase boundary; only three keys
+  // actually depend on a phase row. trainKeys.phases is a PREFIX key, so §P4's
+  // per-member cell still refreshes.
+  if (eventType === "merge.phase.recorded") {
+    return [trainKeys.metricsAll, trainKeys.phasesAll, trainKeys.traceAll];
+  }
   const prefix = eventType.split(".")[0];
   switch (prefix) {
     case "project":
@@ -283,18 +293,33 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       "comment.created",
       "comment.updated",
       "comment.deleted",
-      // Merge train — lifecycle (queue / in-flight composition changes)
+      // Merge train — lifecycle (queue / in-flight composition changes).
+      // EVERY NAME HERE MUST EXIST IN THE SERVER'S EVENT_NAMES: EventSource
+      // subscribes by exact name, so a typo is a listener that never fires —
+      // silently, with no error anywhere. server tests/events/
+      // sse-subscription-parity.test.ts pins the whole list against EVENT_NAMES.
+      // (It was added after three dead `merge.batch.formed/landed/rejected`
+      // subscriptions were found here; the real batch markers are
+      // started/member_landed/member_invalidated/completed, and they are NOT
+      // subscribed — they are integrator-relayed noise, deliberately excluded
+      // from the train narrative on every surface.)
+      "merge.request.integrating",
       "merge.request.landed",
       "merge.request.rejected",
+      "merge.request.abandoned",
       // A re-queue (integrating → queued: land-time drift / push race / suffix
       // invalidation / crash recovery) moves the in-flight composition back to
       // the queue — refresh the train view so the request doesn't appear stuck.
       "merge.request.requeued",
-      "merge.batch.formed",
-      "merge.batch.landed",
-      "merge.batch.rejected",
+      "merge.group.started",
       "merge.group.landed",
       "merge.group.rejected",
+      "merge.incident.opened",
+      // Phase timings (campaign 2026-08-03 §P5) — the ONLY event that fires
+      // while a request is still integrating, and so the only thing that can
+      // move the phase panel / trace card mid-trip. Narrowly invalidated (see
+      // getInvalidationKeys).
+      "merge.phase.recorded",
       // Merge train — observability alerts
       "train.paused",
       "train.resumed",

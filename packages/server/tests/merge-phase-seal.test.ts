@@ -28,6 +28,7 @@ import * as svc from "../src/services/merge-phase.service.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src");
 const PHASE_SERVICE = path.join(SRC, "services/merge-phase.service.ts");
+const TRACE_SERVICE = path.join(SRC, "services/train-trace.service.ts");
 
 /** The merge-path services the telemetry store must stay disjoint from. */
 const MERGE_PATH_SERVICES = [
@@ -84,15 +85,23 @@ describe("merge-phase seal — no import edge with the merge path", () => {
     }
   });
 
-  it("metrics.service is the ONLY service allowed to import it (P3 aggregates these rows)", () => {
+  it("only metrics.service + train-trace.service may import it (the request-path whitelist)", () => {
     // Scans every service, not just the merge path: the allowance is a
     // WHITELIST, so a new consumer has to come here and justify itself.
+    //
+    // metrics.service.ts — P3 aggregates these rows.
+    // train-trace.service.ts — P5 merges them into the lane's event feed. It is
+    // admitted because its edge is REQUEST-PATH: it runs inside a GET handler,
+    // where a throw costs one 500 on an observability read. That is the whole
+    // distinction this whitelist encodes, and it is why the events-layer scans
+    // below are separate and stricter — a listener runs synchronously inside
+    // the emitting service's COMMIT path, where a throw breaks a land.
     const dir = path.join(SRC, "services");
     const importers = readdirSync(dir)
       .filter((f) => f.endsWith(".service.ts") || f.endsWith(".ts"))
       .filter((f) => f !== "merge-phase.service.ts")
       .filter((f) => read(path.join(dir, f)).includes("merge-phase.service.js"));
-    expect(importers.filter((f) => f !== "metrics.service.ts")).toEqual([]);
+    expect(importers.sort()).toEqual(["metrics.service.ts", "train-trace.service.ts"]);
   });
 
   it("phase-line.ts is the ONLY events-layer importer (P6 renders these rows to Discord)", () => {
@@ -114,6 +123,45 @@ describe("merge-phase seal — no import edge with the merge path", () => {
       .filter((f) => f.endsWith(".ts"))
       .filter((f) => read(path.join(dir, f)).includes("merge-phase.service.js"));
     expect(importers).toEqual(["phase-line.ts"]);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// The TRANSITIVE seal (§P5). train-trace.service imports merge-phase.service,
+// so from the moment it exists the whitelists above are reachable through it:
+// an events-layer listener that imported train-trace.service would touch the
+// telemetry store while passing BOTH prior seals, because neither of them names
+// the new file. These assertions close that laundering path — the reachability
+// rule is "no commit-path code reaches telemetry", not "no commit-path code
+// imports one particular filename".
+// ══════════════════════════════════════════════════════════════════
+
+describe("train-trace seal — a read that can never write, and can never run in a commit path", () => {
+  it("the trace service performs NO write of any kind", () => {
+    const source = read(TRACE_SERVICE);
+    // Orthogonal to the import seals and deliberately blunter: those constrain
+    // WHO may reach the store, this constrains what this file may do to any
+    // table at all. A merged read feed has no business owning a write.
+    expect(source).not.toContain(".insert(");
+    expect(source).not.toContain(".update(");
+    expect(source).not.toContain(".delete(");
+  });
+
+  it("no events-layer file imports the trace service", () => {
+    const dir = path.join(SRC, "events");
+    const importers = readdirSync(dir)
+      .filter((f) => f.endsWith(".ts"))
+      .filter((f) => read(path.join(dir, f)).includes("train-trace.service.js"));
+    expect(importers).toEqual([]);
+  });
+
+  it("no merge-path service imports the trace service", () => {
+    for (const name of MERGE_PATH_SERVICES) {
+      const source = read(path.join(SRC, `services/${name}.service.ts`));
+      expect(source, `${name}.service.ts must not import train-trace.service`).not.toContain(
+        "train-trace.service.js",
+      );
+    }
   });
 });
 

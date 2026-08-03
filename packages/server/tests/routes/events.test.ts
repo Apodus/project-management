@@ -329,6 +329,97 @@ describe("SSE Events API", () => {
     });
   });
 
+  // ── Phase-timing frames (campaign 2026-08-03 §P5) ─────────────
+
+  describe("merge.phase.recorded over SSE", () => {
+    it("projects resource/request_id/group_id and NOT the phase list", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(testApp.app, "GET", "/api/v1/events");
+      const bus = getEventBus();
+
+      setTimeout(() => {
+        const payload: EventPayload = {
+          entity: {
+            projectId: project.id,
+            resource: "main",
+            requestId: "req_001",
+            groupId: "grp_001",
+            attemptId: "att_001",
+            recorded: 3,
+            adjusted: 0,
+            phases: ["assemble", "rebase", "verify"],
+          },
+          entityType: "merge_phase",
+          entityId: "req_001",
+          projectId: project.id,
+          actorId: testApp.testUser.id,
+          timestamp: new Date().toISOString(),
+        };
+        bus.emit(EVENT_NAMES.MERGE_PHASE_RECORDED, payload);
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 2, timeoutMs: 2000 });
+      const events = parseSSEEvents(text);
+
+      const frame = events.find((e) => e.event === "merge.phase.recorded");
+      expect(frame).toBeDefined();
+
+      const data = JSON.parse(frame!.data!);
+      expect(data.entity_type).toBe("merge_phase");
+      expect(data.action).toBe("phase.recorded");
+      expect(data.resource).toBe("main");
+      expect(data.request_id).toBe("req_001");
+      // group_id rides the generic read, not the gated arm.
+      expect(data.group_id).toBe("grp_001");
+      // The frame is a refresh SIGNAL, not a second copy of the store: a client
+      // that rendered `phases` would render a lossy duplicate of what the trace
+      // endpoint returns authoritatively.
+      expect("phases" in data).toBe(false);
+      expect("recorded" in data).toBe(false);
+      expect("adjusted" in data).toBe(false);
+    });
+
+    it("byte-identical: a task.updated frame carries no resource/request_id", async () => {
+      const project = createTestProject(testApp.db);
+
+      const res = await authRequest(testApp.app, "GET", "/api/v1/events");
+      const bus = getEventBus();
+
+      setTimeout(() => {
+        const payload: EventPayload = {
+          entity: { id: "task_9", title: "Ship the trace card" },
+          entityType: "task",
+          entityId: "task_9",
+          projectId: project.id,
+          actorId: testApp.testUser.id,
+          timestamp: new Date().toISOString(),
+          changes: { status: { from: "ready", to: "in_progress" } },
+        };
+        bus.emit(EVENT_NAMES.TASK_UPDATED, payload);
+      }, 50);
+
+      const text = await readSSEStream(res, { maxEvents: 2, timeoutMs: 2000 });
+      const events = parseSSEEvents(text);
+
+      const frame = events.find((e) => e.event === "task.updated");
+      expect(frame).toBeDefined();
+
+      const data = JSON.parse(frame!.data!);
+      expect(Object.keys(data).sort()).toEqual(
+        [
+          "actor",
+          "action",
+          "changes",
+          "entity_id",
+          "entity_title",
+          "entity_type",
+          "timestamp",
+        ].sort(),
+      );
+    });
+  });
+
   // ── Project filter ───────────────────────────────────────────
 
   describe("Project filter", () => {

@@ -44,6 +44,14 @@ export type PhaseWindow = PhaseTiming["window"];
 export type PhaseStat = PhaseWindow["phases"][number];
 export type PhaseLabelStat = PhaseStat["labels"][number];
 export type PhaseTraceEntry = components["schemas"]["PhaseTraceEntry"];
+// The lane event trace (§P5). `TrainTraceElapsed` is a UNION discriminated on a
+// literal `basis`; a renderer MUST switch on it rather than reach for `.ms`,
+// because the four members mean four different things ("took 26m" vs "waited
+// 12m in queue" vs "42m after pickup"). See formatElapsed in
+// components/train-trace.tsx — the one place that turns one into a sentence.
+export type TrainTraceEntry = components["schemas"]["TrainTraceEntry"];
+export type TrainTraceElapsed = components["schemas"]["TrainTraceElapsed"];
+export type TrainTrace = components["schemas"]["TrainTrace"];
 export type ResolverDefaults = components["schemas"]["ResolverDefaults"];
 export type Note = components["schemas"]["Note"];
 export type NotesHealth = components["schemas"]["NotesHealth"];
@@ -1247,6 +1255,27 @@ export async function getMergeRequestTimeline(id: string): Promise<MergeRequestT
  */
 export async function getMergeRequestPhases(id: string): Promise<PhaseTraceEntry[]> {
   return apiFetch<PhaseTraceEntry[]>(`/merge-requests/${id}/phases`);
+}
+
+/**
+ * The lane's recent-event trace (campaign 2026-08-03 §P5), newest first.
+ *
+ * `rawResponse` because the envelope carries `window`/`limit`/`truncated`
+ * beside `data` — the truncation flag is not decoration, it is the difference
+ * between "that is everything" and "there is more you cannot see here".
+ */
+export async function getTrainTrace(
+  projectId: string,
+  opts?: { resource?: string; since?: string; limit?: number },
+): Promise<TrainTrace> {
+  const params = new URLSearchParams();
+  if (opts?.resource) params.set("resource", opts.resource);
+  if (opts?.since) params.set("since", opts.since);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const query = params.toString();
+  return apiFetch<TrainTrace>(`/projects/${projectId}/train/trace${query ? `?${query}` : ""}`, {
+    rawResponse: true,
+  });
 }
 
 // ---- Break-glass / Audit API (admin R1-override surface) ----

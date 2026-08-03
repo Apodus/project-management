@@ -14006,6 +14006,79 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{projectId}/train/trace": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the recent-event trace for a lane
+     * @description The lane's recent events, newest first, merged from TWO stores plus the entity tables: `merge_phase_timings` (campaign 2026-08-03 §P1) and `audit_log`, plus group/incident/pickup facts read straight off `merge_request_groups` / `merge_incidents` / `merge_requests`. Any authenticated user (read-only observability — matches train/metrics, train/in-flight and the per-request timeline). Window: `since` (ISO) to now, defaulting to the last 24 h; `limit` defaults to 50 and is CLAMPED to 200 (never rejected). `truncated` is true when the merged union exceeded `limit` or any single source hit its internal row cap. There is NO offset paging: an offset over a merged, live-invalidated feed both duplicates and drops rows — the audit log is the browsable surface of record, and this feed is deliberately lossy. ORDERING is (at DESC, source, id DESC); a PHASE entry's `at` is its END (started_at + duration_ms), because §P1 records a phase only once it completes. DURATIONS are pre-computed and self-describing: `elapsed` is a union carrying a literal `basis` (`phase` = the entry IS that interval; `queue_wait`/`forming` = a wait BEFORE pickup, whose `ms` is the last segment and `sinceSubmitMs` the total since submit, differing exactly when `requeued`; `since_pickup` = an INSTANT that occurred `ms` after its trip started — render it as "42m after pickup", NEVER as "took 42m"). `elapsed` is null for an instant with no anchor; it is never zero-filled. INCLUDED kinds: phase, picked_up, group_started, landed, rejected, group_landed, group_rejected, group_partially_landed, requeued, cancelled, incident_opened, paused, resumed, lock_force_released, force_landed, force_rejected, force_cancelled, outer_converted, outer_gitlink_normalized. EXCLUDED, deliberately, and matching the Discord train feed exactly so the two surfaces tell one story: per-attempt start/complete, the Phase-7.2 batch markers, `merge.resolution.*` (its own dashboard card), and the `train.*` threshold alerts (edge-triggered aggregates that live on the health card). A grouped member's own natural `land`/`reject` is COLLAPSED into its group's single entry (a 2-member group land writes two audit rows); a break-glass force_* on a member is never collapsed, because it is a separate human decision that no group entry accounts for. `picked_up` is sourced from `merge_requests.picked_up_at`, which a re-queue NULLS — so it reports each request's CURRENT pickup only, and a repeat pickup has overwritten its predecessor. `reason` is carried VERBATIM, matching the per-request timeline any authenticated user can already read.
+     */
+    get: {
+      parameters: {
+        query?: {
+          resource?: string;
+          since?: string;
+          limit?: number | null;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The lane's recent-event trace */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["TrainTrace"];
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{projectId}/claims-health": {
     parameters: {
       query?: never;
@@ -17206,6 +17279,97 @@ export interface components {
         } | null;
       }[];
     };
+    TrainTrace: {
+      data: components["schemas"]["TrainTraceEntry"][];
+      window: {
+        from: string;
+        to: string;
+      };
+      limit: number;
+      truncated: boolean;
+    };
+    TrainTraceEntry: {
+      id: string;
+      /** @enum {string} */
+      source: "phase" | "audit" | "entity";
+      /** @enum {string} */
+      kind:
+        | "phase"
+        | "picked_up"
+        | "group_started"
+        | "landed"
+        | "rejected"
+        | "group_landed"
+        | "group_rejected"
+        | "group_partially_landed"
+        | "requeued"
+        | "cancelled"
+        | "incident_opened"
+        | "paused"
+        | "resumed"
+        | "lock_force_released"
+        | "force_landed"
+        | "force_rejected"
+        | "force_cancelled"
+        | "outer_converted"
+        | "outer_gitlink_normalized";
+      at: string;
+      resource: string;
+      /** @enum {string|null} */
+      phase:
+        | "forming"
+        | "queue_wait"
+        | "assemble"
+        | "materialize"
+        | "rebase"
+        | "verify"
+        | "land"
+        | null;
+      label: string | null;
+      subject: {
+        /** @enum {string} */
+        type: "request" | "group" | "incident" | "lane";
+        id: string;
+        name: string;
+      };
+      actor: {
+        id: string;
+        name: string;
+      } | null;
+      reason: string | null;
+      overridden: boolean;
+      detail: string | null;
+      elapsed: components["schemas"]["TrainTraceElapsed"];
+    };
+    TrainTraceElapsed:
+      | {
+          /** @enum {string} */
+          basis: "phase";
+          ms: number;
+        }
+      | {
+          /** @enum {string} */
+          basis: "queue_wait";
+          ms: number;
+          sinceSubmitMs: number;
+          requeued: boolean;
+        }
+      | {
+          /** @enum {string} */
+          basis: "forming";
+          ms: number;
+          sinceSubmitMs: number;
+          requeued: boolean;
+        }
+      | {
+          /** @enum {string} */
+          basis: "since_pickup";
+          ms: number;
+        }
+      | {
+          /** @enum {string} */
+          basis: "none";
+        };
     ClaimsHealth: {
       stale_count: number;
       oldest_stale_age_ms: number | null;

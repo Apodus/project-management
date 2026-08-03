@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { getInvalidationKeys, maybeShowToast } from "./use-sse";
 import { trainKeys } from "./use-train";
@@ -30,12 +32,83 @@ describe("getInvalidationKeys — merge-train wiring", () => {
   it("invalidates trainKeys on merge.* lifecycle events (queue/in-flight moved)", () => {
     expect(getInvalidationKeys("merge.request.landed")).toEqual([trainKeys.all]);
     expect(getInvalidationKeys("merge.request.rejected")).toEqual([trainKeys.all]);
+    expect(getInvalidationKeys("merge.request.integrating")).toEqual([trainKeys.all]);
     expect(getInvalidationKeys("merge.group.landed")).toEqual([trainKeys.all]);
-    expect(getInvalidationKeys("merge.batch.formed")).toEqual([trainKeys.all]);
+    expect(getInvalidationKeys("merge.group.started")).toEqual([trainKeys.all]);
+    expect(getInvalidationKeys("merge.incident.opened")).toEqual([trainKeys.all]);
+    // trainKeys.all is a PREFIX of the trace key, so every lifecycle event
+    // refreshes the §P5 feed with no further wiring.
+    expect(trainKeys.traceAll.slice(0, trainKeys.all.length)).toEqual([...trainKeys.all]);
+  });
+
+  // Campaign 2026-08-03 §P5 — merge.phase.recorded fires SEVERAL times per
+  // trip, so it must NOT drag the whole train namespace with it (metrics,
+  // in-flight, state, health, audit, break-glass pickers). Only the three
+  // phase-bearing families depend on a phase row.
+  it("narrows merge.phase.recorded to the three phase-bearing key prefixes", () => {
+    expect(getInvalidationKeys("merge.phase.recorded")).toEqual([
+      trainKeys.metricsAll,
+      trainKeys.phasesAll,
+      trainKeys.traceAll,
+    ]);
+    expect(getInvalidationKeys("merge.phase.recorded")).not.toContainEqual(trainKeys.all);
+  });
+
+  it("keeps each narrowed key a real PREFIX of the query it must invalidate", () => {
+    // A prefix key that has drifted from the key it prefixes invalidates
+    // nothing, silently — which is indistinguishable from "no event fired".
+    const metrics = trainKeys.metrics("proj-1", "main");
+    const phases = trainKeys.phases("mr-1");
+    const trace = trainKeys.trace("proj-1", "main");
+    expect(metrics.slice(0, trainKeys.metricsAll.length)).toEqual([...trainKeys.metricsAll]);
+    expect(phases.slice(0, trainKeys.phasesAll.length)).toEqual([...trainKeys.phasesAll]);
+    expect(trace.slice(0, trainKeys.traceAll.length)).toEqual([...trainKeys.traceAll]);
   });
 
   it("leaves unrelated event prefixes untouched", () => {
     expect(getInvalidationKeys("unknown.thing")).toEqual([]);
+  });
+
+  // The subscription list is an ARRAY OF LITERALS inside the hook body, so it
+  // cannot be imported — it is read from the source, the same technique the
+  // server-side sse-subscription-parity test uses (that one is the authority on
+  // whether a name can ever fire; this one pins WHICH names we chose).
+  describe("the subscribed event list", () => {
+    const subscribed = (): string[] => {
+      // cwd, not import.meta.url: under the jsdom environment import.meta.url
+      // is not a file: URL, and vitest runs with the package root as cwd.
+      const source = readFileSync(resolve(process.cwd(), "src/hooks/use-sse.ts"), "utf8");
+      const start = source.indexOf("const eventTypes = [");
+      const body = source.slice(start, source.indexOf("];", start)).replace(/\/\/[^\n]*/g, "");
+      return [...body.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
+    };
+
+    it("subscribes the five events the trace card needs to go live", () => {
+      const names = subscribed();
+      for (const name of [
+        "merge.phase.recorded",
+        "merge.request.integrating",
+        "merge.group.started",
+        "merge.incident.opened",
+        "merge.request.abandoned",
+      ]) {
+        expect(names, `${name} must be subscribed`).toContain(name);
+      }
+    });
+
+    it("no longer subscribes the three batch names no emitter ever emits", () => {
+      // merge.batch.formed/landed/rejected never existed: the real markers are
+      // started/member_landed/member_invalidated/completed. Removing dead
+      // listeners is behaviour-neutral — and they are NOT renamed to the real
+      // names, because newly subscribing batch markers is a behaviour change
+      // outside this campaign (and they are excluded from every train
+      // narrative surface on purpose).
+      const names = subscribed();
+      expect(names).not.toContain("merge.batch.formed");
+      expect(names).not.toContain("merge.batch.landed");
+      expect(names).not.toContain("merge.batch.rejected");
+      expect(names.filter((n) => n.startsWith("merge.batch."))).toEqual([]);
+    });
   });
 
   // Campaign C3 §P5a — the stale-claim alert is a toast-only banner event (no

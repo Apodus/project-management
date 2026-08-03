@@ -106,6 +106,11 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
         // all prior frames stay byte-identical.
         let escalationId: string | undefined;
         let originWorkerKey: string | undefined;
+        // Campaign 2026-08-03 (§P5): merge.phase.recorded identifying fields,
+        // read additively inside the gated `case "merge_phase":` arm below so
+        // every other frame stays byte-identical. Absent → omitted.
+        let resource: string | undefined;
+        let phaseRequestId: string | undefined;
         if (payload.entity && typeof payload.entity === "object") {
           const entity = payload.entity as Record<string, unknown>;
           switch (payload.entityType) {
@@ -128,6 +133,26 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
               if (typeof entity.originWorkerKey === "string") {
                 originWorkerKey = entity.originWorkerKey;
               }
+              break;
+            case "merge_phase":
+              // Campaign 2026-08-03 (§P5): the trace card's live refresh
+              // signal. Project ONLY the two routing fields a client needs to
+              // decide whether the frame concerns it — `group_id` already rides
+              // the generic read below.
+              //
+              // Deliberately NOT projected: `phases[]` (§P1's own words: this
+              // frame is a refresh SIGNAL, not a data channel — a client that
+              // rendered it would be rendering a second, lossy copy of the
+              // store) and `recorded`/`adjusted` (ingest bookkeeping, whose
+              // audience is the operator reading the POST's ack).
+              //
+              // NOTE that for a MIXED batch (phases spanning several requests)
+              // §P1 sets entityId to the synthetic `"${projectId}:${resource}"`
+              // — so on these frames `entity_id` is NOT always an id, which is
+              // exactly why request_id is projected separately rather than
+              // inferred from it.
+              if (typeof entity.resource === "string") resource = entity.resource;
+              if (typeof entity.requestId === "string") phaseRequestId = entity.requestId;
               break;
             // comments have no title — omit
           }
@@ -177,6 +202,8 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
           ...(resolvedRequestId ? { resolved_request_id: resolvedRequestId } : {}),
           ...(escalationId ? { escalation_id: escalationId } : {}),
           ...(originWorkerKey ? { origin_worker_key: originWorkerKey } : {}),
+          ...(resource ? { resource } : {}),
+          ...(phaseRequestId ? { request_id: phaseRequestId } : {}),
         };
 
         stream

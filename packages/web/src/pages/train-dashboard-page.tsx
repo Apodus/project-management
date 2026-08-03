@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PhaseChip, PhaseShareBar, PhaseSpreadMark } from "@/components/phase-breakdown";
+import { TrainTraceSection } from "@/components/train-trace";
 import {
   useMergeRequestPhases,
   useTrainHealth,
@@ -1152,6 +1153,12 @@ export function TrainDashboardPage() {
 
       {/* In-flight table */}
       <InFlightSection projectId={projectId} />
+
+      {/* Recent events — LAST, and directly under In Flight on purpose: the page
+          reads aggregate → now → recently, and the juxtaposition of "what is
+          integrating" with "what just happened" is the actual answer to
+          "is this wedged, or is verify simply slow?". */}
+      <TrainTraceSection projectId={projectId} />
     </div>
   );
 }

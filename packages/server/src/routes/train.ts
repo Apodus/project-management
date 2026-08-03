@@ -1,8 +1,14 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { MERGE_PHASES } from "@pm/shared";
+import {
+  MERGE_PHASES,
+  TRAIN_TRACE_KINDS,
+  TRAIN_TRACE_SOURCES,
+  TRAIN_TRACE_SUBJECT_TYPES,
+} from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import { AppError } from "../types.js";
 import * as trainService from "../services/train.service.js";
+import * as trainTraceService from "../services/train-trace.service.js";
 import * as metricsService from "../services/metrics.service.js";
 import type {
   InFlightBundle,
@@ -351,6 +357,78 @@ const claimsHealthSchema = z
   })
   .openapi("ClaimsHealth");
 
+// ─── Event trace (campaign 2026-08-03 §P5) ────────────────────────
+//
+// camelCase on the wire, DELIBERATELY, in a file whose other responses are
+// snake_case: an entry is a member of the phase-timing contract family
+// (routes/merge-phases.ts, whose PhaseTraceEntry / DerivedPhaseEntry are
+// camelCase) and it is a structural mirror of @pm/shared's trainTraceEntry
+// schema. One family, one casing, beats one file, one casing.
+
+// A PLAIN union with a literal STRING discriminator, and NEVER `.nullable()`.
+// `.nullable()` on a union emits an anyOf whose last branch is the bare
+// `{"nullable": true}`, which openapi-typescript renders as `unknown` — and
+// `A | B | unknown` IS `unknown`, so the whole union collapses and the web-side
+// exhaustive `never` stops proving anything. Naming the union does not save it:
+// the nullable branch is folded into the NAMED component. Hence `basis:"none"`
+// as a real member (see @pm/shared schemas/train-trace.ts).
+const trainTraceElapsedSchema = z
+  .union([
+    // The entry IS this interval → "took 26m".
+    z.object({ basis: z.literal("phase"), ms: z.number() }),
+    // A wait BEFORE pickup. `ms` is the last queue segment, `sinceSubmitMs` the
+    // total since submit / group creation; they differ exactly when `requeued`.
+    z.object({
+      basis: z.literal("queue_wait"),
+      ms: z.number(),
+      sinceSubmitMs: z.number(),
+      requeued: z.boolean(),
+    }),
+    z.object({
+      basis: z.literal("forming"),
+      ms: z.number(),
+      sinceSubmitMs: z.number(),
+      requeued: z.boolean(),
+    }),
+    // An INSTANT that happened `ms` after its trip started → "42m after
+    // pickup", never "took 42m".
+    z.object({ basis: z.literal("since_pickup"), ms: z.number() }),
+    // No anchored duration — carries no `ms` at all, so it cannot be a zero.
+    z.object({ basis: z.literal("none") }),
+  ])
+  .openapi("TrainTraceElapsed");
+
+const trainTraceEntrySchema = z
+  .object({
+    id: z.string(),
+    source: z.enum(TRAIN_TRACE_SOURCES),
+    kind: z.enum(TRAIN_TRACE_KINDS),
+    at: z.string(),
+    resource: z.string(),
+    phase: z.enum(MERGE_PHASES).nullable(),
+    label: z.string().nullable(),
+    subject: z.object({
+      type: z.enum(TRAIN_TRACE_SUBJECT_TYPES),
+      id: z.string(),
+      name: z.string(),
+    }),
+    actor: z.object({ id: z.string(), name: z.string() }).nullable(),
+    reason: z.string().nullable(),
+    overridden: z.boolean(),
+    detail: z.string().nullable(),
+    elapsed: trainTraceElapsedSchema,
+  })
+  .openapi("TrainTraceEntry");
+
+const trainTraceEnvelope = z
+  .object({
+    data: z.array(trainTraceEntrySchema),
+    window: z.object({ from: z.string(), to: z.string() }),
+    limit: z.number(),
+    truncated: z.boolean(),
+  })
+  .openapi("TrainTrace");
+
 const metricsEnvelope = z.object({ data: metricsBundleSchema });
 const inFlightEnvelope = z.object({ data: inFlightSchema });
 const claimsHealthEnvelope = z.object({ data: claimsHealthSchema });
@@ -582,6 +660,48 @@ const getInFlightRoute = createRoute({
     200: {
       description: "The in-flight composition",
       content: { "application/json": { schema: inFlightEnvelope } },
+    },
+    401: {
+      description: "Authentication required",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+    404: {
+      description: "Project not found",
+      content: { "application/json": { schema: errorEnvelope } },
+    },
+  },
+});
+
+const getTraceRoute = createRoute({
+  method: "get",
+  path: "/api/v1/projects/{projectId}/train/trace",
+  tags: ["Merge Train"],
+  summary: "Read the recent-event trace for a lane",
+  description:
+    "The lane's recent events, newest first, merged from TWO stores plus the entity tables: `merge_phase_timings` (campaign 2026-08-03 §P1) and `audit_log`, plus group/incident/pickup facts read straight off `merge_request_groups` / `merge_incidents` / `merge_requests`. Any authenticated user (read-only observability — matches train/metrics, train/in-flight and the per-request timeline). Window: `since` (ISO) to now, defaulting to the last 24 h; `limit` defaults to 50 and is CLAMPED to 200 (never rejected). `truncated` is true when the merged union exceeded `limit` or any single source hit its internal row cap. There is NO offset paging: an offset over a merged, live-invalidated feed both duplicates and drops rows — the audit log is the browsable surface of record, and this feed is deliberately lossy. ORDERING is (at DESC, source, id DESC); a PHASE entry's `at` is its END (started_at + duration_ms), because §P1 records a phase only once it completes. DURATIONS are pre-computed and self-describing: `elapsed` is a union carrying a literal `basis` (`phase` = the entry IS that interval; `queue_wait`/`forming` = a wait BEFORE pickup, whose `ms` is the last segment and `sinceSubmitMs` the total since submit, differing exactly when `requeued`; `since_pickup` = an INSTANT that occurred `ms` after its trip started — render it as \"42m after pickup\", NEVER as \"took 42m\"). `elapsed` is null for an instant with no anchor; it is never zero-filled. INCLUDED kinds: phase, picked_up, group_started, landed, rejected, group_landed, group_rejected, group_partially_landed, requeued, cancelled, incident_opened, paused, resumed, lock_force_released, force_landed, force_rejected, force_cancelled, outer_converted, outer_gitlink_normalized. EXCLUDED, deliberately, and matching the Discord train feed exactly so the two surfaces tell one story: per-attempt start/complete, the Phase-7.2 batch markers, `merge.resolution.*` (its own dashboard card), and the `train.*` threshold alerts (edge-triggered aggregates that live on the health card). A grouped member's own natural `land`/`reject` is COLLAPSED into its group's single entry (a 2-member group land writes two audit rows); a break-glass force_* on a member is never collapsed, because it is a separate human decision that no group entry accounts for. `picked_up` is sourced from `merge_requests.picked_up_at`, which a re-queue NULLS — so it reports each request's CURRENT pickup only, and a repeat pickup has overwritten its predecessor. `reason` is carried VERBATIM, matching the per-request timeline any authenticated user can already read.",
+  request: {
+    params: z.object({ projectId: projectIdParam }),
+    query: z.object({
+      resource: resourceQuery,
+      since: z
+        .string()
+        .min(1)
+        .optional()
+        .openapi({ param: { name: "since", in: "query" }, example: "2026-08-03T00:00:00.000Z" }),
+      // No .max() here on purpose — an over-large limit is CLAMPED in the
+      // handler, not 400'd. A dashboard poll asking for too much should get
+      // the most it may have, not an error.
+      limit: z.coerce
+        .number()
+        .int()
+        .optional()
+        .openapi({ param: { name: "limit", in: "query" }, example: 50 }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "The lane's recent-event trace",
+      content: { "application/json": { schema: trainTraceEnvelope } },
     },
     401: {
       description: "Authentication required",
@@ -932,6 +1052,27 @@ export function createTrainRoutes(): OpenAPIHono<{ Variables: AppVariables }> {
     requireUser(c.get("currentUser") as AuthUser | null);
     const bundle = metricsService.getInFlight(projectId, resource ?? "main");
     return c.json({ data: inFlightToResponse(bundle) }, 200);
+  });
+
+  router.openapi(getTraceRoute, (c) => {
+    const { projectId } = c.req.valid("param");
+    const { resource, since, limit } = c.req.valid("query");
+    requireUser(c.get("currentUser") as AuthUser | null);
+    const clamped = Math.min(200, Math.max(1, limit ?? 50));
+    const result = trainTraceService.list(projectId, {
+      resource: resource ?? "main",
+      since: since ?? null,
+      limit: clamped,
+    });
+    return c.json(
+      {
+        data: result.entries,
+        window: { from: result.from, to: result.to },
+        limit: clamped,
+        truncated: result.truncated,
+      },
+      200,
+    );
   });
 
   router.openapi(getClaimsHealthRoute, (c) => {

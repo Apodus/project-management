@@ -223,6 +223,72 @@ export type MergePhase = (typeof MERGE_PHASES)[number];
 export const MERGE_PHASE_BASES = ["exact", "requeued"] as const;
 export type MergePhaseBasis = (typeof MERGE_PHASE_BASES)[number];
 
+// Train event-trace taxonomy (campaign 2026-08-03 §P5 — "what happened lately
+// and what took how long"). One vocabulary shared by the merged feed's three
+// producers, so a reader never has to know which table an entry came from.
+//
+// SOURCE is provenance, not meaning: `phase` = a merge_phase_timings row,
+// `audit` = an audit_log row, `entity` = a fact read straight off an entity
+// table (a pickup timestamp, a group's terminal state, an incident's opened_at).
+// It exists for two reasons only: composite-id uniqueness and a deterministic
+// tiebreak when two entries share an instant.
+export const TRAIN_TRACE_SOURCES = ["phase", "audit", "entity"] as const;
+export type TrainTraceSource = (typeof TRAIN_TRACE_SOURCES)[number];
+
+// KIND is what happened. Deliberately EXCLUDED, and the exclusion list is the
+// same one the Discord train feed uses (events/train-feed-listener.ts) because
+// the two surfaces must tell ONE story: attempt start/complete, the Phase-7.2
+// batch markers, `merge.resolution.*` (its own dashboard card) and the `train.*`
+// threshold alerts (edge-triggered aggregates that live on the health card).
+export const TRAIN_TRACE_KINDS = [
+  // Telemetry — one completed phase of a trip.
+  "phase",
+  // Trip starts.
+  "picked_up",
+  "group_started",
+  // Trip outcomes.
+  "landed",
+  "rejected",
+  "group_landed",
+  "group_rejected",
+  "group_partially_landed",
+  "requeued",
+  "cancelled",
+  // Cross-repo incidents.
+  "incident_opened",
+  // Lane control + break-glass (every one of these is an operator act).
+  "paused",
+  "resumed",
+  "lock_force_released",
+  "force_landed",
+  "force_rejected",
+  "force_cancelled",
+  // Assembly-time interpretations of a cross-repo outer member.
+  "outer_converted",
+  "outer_gitlink_normalized",
+] as const;
+export type TrainTraceKind = (typeof TRAIN_TRACE_KINDS)[number];
+
+// What an entry is ABOUT. `lane` covers the lane-level acts (pause / resume /
+// force-release) whose "subject" is the resource name, not a row id.
+export const TRAIN_TRACE_SUBJECT_TYPES = ["request", "group", "incident", "lane"] as const;
+export type TrainTraceSubjectType = (typeof TRAIN_TRACE_SUBJECT_TYPES)[number];
+
+// How an entry's `elapsed` number was obtained — the discriminator that stops a
+// renderer printing "took 42m" over a number that is not a duration OF the
+// event. See schemas/train-trace.ts for the full contract; the two derived
+// bases are exactly MERGE_PHASES_DERIVED, so a derived elapsed always says
+// WHICH wait it measured, and `none` is the explicit "this event has no
+// anchored duration" case (it carries NO number at all — never a zero).
+export const TRAIN_TRACE_ELAPSED_BASES = [
+  "phase",
+  "forming",
+  "queue_wait",
+  "since_pickup",
+  "none",
+] as const;
+export type TrainTraceElapsedBasis = (typeof TRAIN_TRACE_ELAPSED_BASES)[number];
+
 export const GIT_REF_TYPES = ["branch", "commit", "pull_request", "landed_sha"] as const;
 export type GitRefType = (typeof GIT_REF_TYPES)[number];
 

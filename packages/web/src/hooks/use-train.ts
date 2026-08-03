@@ -8,6 +8,7 @@ import {
   getTrainState,
   getMergeRequestTimeline,
   getMergeRequestPhases,
+  getTrainTrace,
   getAuditLog,
   pauseTrain,
   resumeTrain,
@@ -19,10 +20,19 @@ import {
   type AuditFilters,
 } from "@/lib/api";
 
+const TRAIN_ROOT = ["train"] as const;
+
 export const trainKeys = {
-  all: ["train"] as const,
+  all: TRAIN_ROOT,
+  // The three FAMILY prefixes a phase-boundary event invalidates (§P5). Named
+  // constants rather than `[...all, "metrics"]` spelled at each call site: a
+  // prefix key that drifts from the key it is meant to prefix invalidates
+  // nothing, silently.
+  metricsAll: [...TRAIN_ROOT, "metrics"] as const,
+  phasesAll: [...TRAIN_ROOT, "phases"] as const,
+  traceAll: [...TRAIN_ROOT, "trace"] as const,
   metrics: (projectId: string, resource?: string) =>
-    [...trainKeys.all, "metrics", projectId, { resource }] as const,
+    [...trainKeys.metricsAll, projectId, { resource }] as const,
   inFlight: (projectId: string, resource?: string) =>
     [...trainKeys.all, "in-flight", projectId, { resource }] as const,
   health: (projectId: string, resource?: string) =>
@@ -32,7 +42,9 @@ export const trainKeys = {
   timeline: (requestId: string) => [...trainKeys.all, "timeline", requestId] as const,
   // Under trainKeys.all like the rest, so a lifecycle event (or a force-*
   // mutation) refreshes the trace along with everything else on the page.
-  phases: (requestId: string) => [...trainKeys.all, "phases", requestId] as const,
+  phases: (requestId: string) => [...trainKeys.phasesAll, requestId] as const,
+  trace: (projectId: string, resource?: string, limit?: number) =>
+    [...trainKeys.traceAll, projectId, { resource, limit }] as const,
   // Lives UNDER trainKeys.all so the shipped useSSE audit.recorded / train.* /
   // merge.* invalidation refreshes the audit log live.
   audit: (projectId: string, filters?: AuditFilters) =>
@@ -110,19 +122,35 @@ export function useMergeRequestTimeline(requestId: string | undefined) {
 /**
  * The completed-phase trace for one merge request (campaign 2026-08-03 §P4).
  *
- * The 10s poll is not belt-and-braces, it is the ONLY way a phase completing
- * mid-flight reaches the screen. The server does emit `merge.phase.recorded`,
- * but this client's SSE subscription is an explicit event list that does not
- * include it (the phases projection arm is §P5's), so nothing invalidates this
- * key when a phase ends — only the lifecycle events do, which is far too late
- * for a request that is still integrating. Cadence matches useTrainMetrics /
- * useTrainHealth so the whole page refreshes on one beat.
+ * SSE is now the primary path: §P5 subscribed `merge.phase.recorded` and mapped
+ * it to the three phase-bearing key prefixes, so a phase completing mid-flight
+ * reaches the screen immediately. The 10s poll stays as the DROPPED-CONNECTION
+ * FLOOR — an EventSource that is reconnecting delivers nothing, and a request
+ * still integrating is exactly when an operator is watching. Cadence matches
+ * useTrainMetrics / useTrainHealth so the page refreshes on one beat.
  */
 export function useMergeRequestPhases(requestId: string | undefined) {
   return useQuery({
     queryKey: trainKeys.phases(requestId!),
     queryFn: () => getMergeRequestPhases(requestId!),
     enabled: !!requestId,
+    refetchInterval: 10_000,
+  });
+}
+
+/**
+ * The lane's recent-event trace (campaign 2026-08-03 §P5) — what happened
+ * lately and what took how long.
+ *
+ * Live via SSE like the phase trace above: `merge.phase.recorded` refreshes it
+ * directly, and every merge/train lifecycle event already invalidates
+ * trainKeys.all, which contains this key. The poll is the same reconnect floor.
+ */
+export function useTrainTrace(projectId: string | undefined, resource?: string, limit?: number) {
+  return useQuery({
+    queryKey: trainKeys.trace(projectId!, resource, limit),
+    queryFn: () => getTrainTrace(projectId!, { resource, limit }),
+    enabled: !!projectId,
     refetchInterval: 10_000,
   });
 }
