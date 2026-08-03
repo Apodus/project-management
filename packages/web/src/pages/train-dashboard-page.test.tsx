@@ -132,6 +132,75 @@ function seededMetrics(): TrainMetrics {
         budget_sec: 600,
       },
     },
+    // §P3 phase timing. Note what is NOT here: the five phases with no samples
+    // are ABSENT, not zero-filled — the payload never offers a 0 ms bar to
+    // render (P4 must show only what was measured).
+    phase_timing: {
+      window: {
+        phases: [
+          {
+            phase: "queue_wait",
+            count: 20,
+            p50_ms: 300_000,
+            p95_ms: 660_000,
+            max_ms: 720_000,
+            total_ms: 6_000_000,
+            share: 0.4,
+            labels: [],
+          },
+          {
+            phase: "verify",
+            count: 10,
+            p50_ms: 1_200_000,
+            p95_ms: 1_560_000,
+            max_ms: 1_800_000,
+            total_ms: 9_000_000,
+            share: 0.6,
+            labels: [
+              {
+                label: "build",
+                count: 10,
+                p50_ms: 900_000,
+                p95_ms: 1_100_000,
+                max_ms: 1_200_000,
+                total_ms: 7_000_000,
+                share: 7 / 9,
+              },
+              {
+                label: "test",
+                count: 10,
+                p50_ms: 200_000,
+                p95_ms: 260_000,
+                max_ms: 300_000,
+                total_ms: 2_000_000,
+                share: 2 / 9,
+              },
+            ],
+          },
+        ],
+        total_measured_ms: 15_000_000,
+        sample_size: 30,
+        entity_count: 20,
+      },
+      recent: {
+        phases: [
+          {
+            phase: "verify",
+            count: 5,
+            p50_ms: 1_260_000,
+            p95_ms: 1_560_000,
+            max_ms: 1_800_000,
+            total_ms: 6_300_000,
+            share: 1,
+            labels: [],
+          },
+        ],
+        total_measured_ms: 6_300_000,
+        sample_size: 5,
+        entity_count: 5,
+      },
+      recent_limit: 20,
+    },
     window_hours: 24,
     computed_at: new Date().toISOString(),
   };
@@ -187,6 +256,13 @@ function nullMetrics(): TrainMetrics {
         mean_consumed_sec: null,
         budget_sec: 600,
       },
+    },
+    // Nothing measured: `phases: []` and sample_size 0 IS the no-data-yet
+    // predicate — there is no zero-valued phase to accidentally render.
+    phase_timing: {
+      window: { phases: [], total_measured_ms: 0, sample_size: 0, entity_count: 0 },
+      recent: { phases: [], total_measured_ms: 0, sample_size: 0, entity_count: 0 },
+      recent_limit: 20,
     },
     window_hours: 24,
     computed_at: new Date().toISOString(),

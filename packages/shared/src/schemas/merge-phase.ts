@@ -131,6 +131,13 @@ export type PhaseTraceEntry = z.infer<typeof phaseTraceEntrySchema>;
  * phase and percentile the durations, nothing more. Stored and derived samples
  * share this shape (and are disjoint by `phase`), so P3 concatenates the two
  * sources instead of hand-rolling SQL over merge_requests.
+ *
+ * `label` is REQUIRED-but-nullable, never `.optional()`: a derived phase has no
+ * label and must SAY null rather than omit the key, so "this phase carries no
+ * sub-step name" and "this producer forgot the field" can never be the same
+ * value. P3 splits a phase into per-label stats only when some sample in it is
+ * labelled — with game_one's one opaque `pm-verify.bat` every verify sample is
+ * `label: null` and the breakdown correctly does not exist (design lock 3).
  */
 export const mergePhaseSampleSchema = z.object({
   phase: z.enum(MERGE_PHASES),
@@ -138,5 +145,6 @@ export const mergePhaseSampleSchema = z.object({
   startedAt: z.string(),
   requestId: z.string().nullable(),
   groupId: z.string().nullable(),
+  label: z.string().nullable(),
 });
 export type MergePhaseSample = z.infer<typeof mergePhaseSampleSchema>;

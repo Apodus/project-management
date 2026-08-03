@@ -13869,7 +13869,7 @@ export interface paths {
     };
     /**
      * Read the on-read metric bundle for a lane
-     * @description Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability).
+     * @description Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability). `phase_timing` (campaign 2026-08-03 §P3) breaks the lane's wall clock down per phase — p50/p95/max/total/share over the 24h `window` plus the newest `recent_limit` TRIPS (a cross-repo group counts once) — in pipeline order. A phase with NO samples is ABSENT from `phases`, never zero-filled: absence is the honest signal that the phase was not observed, so never render a missing phase as 0 ms. `share`'s denominator (`total_measured_ms`) is SUMMED MEASURED PHASE TIME, not elapsed wall clock: it double-counts overlapping intervals both from concurrent verification and, structurally, from a group's `forming` covering the same pre-pickup interval as each member's `queue_wait`. `labels` is empty unless the integrator labelled its verify steps.
      */
     get: {
       parameters: {
@@ -17107,6 +17107,71 @@ export interface components {
           mean_consumed_sec: number | null;
           budget_sec: number;
         };
+      };
+      phase_timing: {
+        window: {
+          phases: {
+            /** @enum {string} */
+            phase:
+              | "forming"
+              | "queue_wait"
+              | "assemble"
+              | "materialize"
+              | "rebase"
+              | "verify"
+              | "land";
+            count: number;
+            p50_ms: number;
+            p95_ms: number;
+            max_ms: number;
+            total_ms: number;
+            share: number | null;
+            labels: {
+              label: string | null;
+              count: number;
+              p50_ms: number;
+              p95_ms: number;
+              max_ms: number;
+              total_ms: number;
+              share: number | null;
+            }[];
+          }[];
+          total_measured_ms: number;
+          sample_size: number;
+          entity_count: number;
+        };
+        recent: {
+          phases: {
+            /** @enum {string} */
+            phase:
+              | "forming"
+              | "queue_wait"
+              | "assemble"
+              | "materialize"
+              | "rebase"
+              | "verify"
+              | "land";
+            count: number;
+            p50_ms: number;
+            p95_ms: number;
+            max_ms: number;
+            total_ms: number;
+            share: number | null;
+            labels: {
+              label: string | null;
+              count: number;
+              p50_ms: number;
+              p95_ms: number;
+              max_ms: number;
+              total_ms: number;
+              share: number | null;
+            }[];
+          }[];
+          total_measured_ms: number;
+          sample_size: number;
+          entity_count: number;
+        };
+        recent_limit: number;
       };
       window_hours: number;
       computed_at: string;

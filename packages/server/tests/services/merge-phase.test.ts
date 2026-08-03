@@ -676,6 +676,37 @@ describe("merge-phase service", () => {
       expect(derived.find((d) => d.phase === "forming")!.durationMs).toBe(5 * MIN);
     });
 
+    it("carries the stored label through, and states null for a derived phase", () => {
+      // The aggregation splits a phase by label; a derived phase has no
+      // sub-step, so it must SAY null rather than omit the field (P3).
+      const { projectId, integrator, submitterId } = lane();
+      const requestId = seedRequest(projectId, submitterId, {
+        enqueuedAt: iso(-30 * MIN),
+        pickedUpAt: iso(-25 * MIN),
+      });
+      svc.record(
+        projectId,
+        {
+          resource: "main",
+          phases: [
+            entry({ requestId, phase: "verify", startedAt: iso(-20 * MIN), label: "build" }),
+            entry({ requestId, phase: "land", startedAt: iso(-10 * MIN) }),
+          ],
+        },
+        integrator,
+        new Date().toISOString(),
+      );
+
+      const from = iso(-60 * MIN);
+      const to = iso(MIN);
+      const stored = svc.samples(projectId, "main", from, to);
+      expect(stored.find((s) => s.phase === "verify")!.label).toBe("build");
+      expect(stored.find((s) => s.phase === "land")!.label).toBeNull();
+      for (const derived of svc.derivedSamples(projectId, "main", from, to)) {
+        expect(derived).toHaveProperty("label", null);
+      }
+    });
+
     it("honors the lane and the window on both sides", () => {
       const { projectId, integrator, submitterId } = lane();
       seedRequest(projectId, submitterId, {

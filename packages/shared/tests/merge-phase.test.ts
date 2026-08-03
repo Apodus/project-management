@@ -188,9 +188,26 @@ describe("phase trace union", () => {
           startedAt: "2026-08-03T10:00:00.000Z",
           requestId: null,
           groupId: null,
+          label: null,
         }).success,
       ).toBe(true);
     }
+  });
+
+  it("a sample must STATE its label — required-but-nullable, never omitted", () => {
+    // P3 buckets a phase by label. Were `label` optional, a producer that forgot
+    // the field and a genuinely unlabelled phase would parse to the same value,
+    // and the aggregate could not tell "one opaque verify step" from "the
+    // integrator dropped the step name".
+    const base = {
+      phase: "verify" as const,
+      durationMs: 1,
+      startedAt: "2026-08-03T10:00:00.000Z",
+      requestId: null,
+      groupId: null,
+    };
+    expect(mergePhaseSampleSchema.safeParse(base).success).toBe(false);
+    expect(mergePhaseSampleSchema.safeParse({ ...base, label: "build" }).success).toBe(true);
   });
 });
 

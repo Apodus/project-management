@@ -618,6 +618,7 @@ export function samples(
       startedAt: mergePhaseTimings.startedAt,
       requestId: mergePhaseTimings.requestId,
       groupId: mergePhaseTimings.groupId,
+      label: mergePhaseTimings.label,
     })
     .from(mergePhaseTimings)
     .where(
@@ -687,6 +688,9 @@ export function derivedSamples(
         startedAt: entry.startedAt,
         requestId: entry.requestId,
         groupId: entry.groupId,
+        // A derived phase has no sub-step: it is one interval PM computed, not
+        // a labelled step an integrator ran. Stated, never omitted.
+        label: null,
       });
     }
   }
@@ -737,6 +741,7 @@ export function derivedSamples(
         startedAt: entry.startedAt,
         requestId: entry.requestId,
         groupId: entry.groupId,
+        label: null,
       });
     }
   }

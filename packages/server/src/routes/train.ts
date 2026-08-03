@@ -1,9 +1,14 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { MERGE_PHASES } from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import { AppError } from "../types.js";
 import * as trainService from "../services/train.service.js";
 import * as metricsService from "../services/metrics.service.js";
-import type { InFlightBundle, MetricsBundle } from "../services/metrics.service.js";
+import type {
+  InFlightBundle,
+  MetricsBundle,
+  PhaseWindowMetric,
+} from "../services/metrics.service.js";
 import * as claimsHealthService from "../services/claims-health.service.js";
 
 // ─── Param + query schemas ────────────────────────────────────────
@@ -150,6 +155,45 @@ const sloDimensionSchema = z.object({
   compliant: z.boolean(),
 });
 
+// Phase timing (campaign 2026-08-03 §P3). Declared ONCE and reused for both the
+// `window` and `recent` blocks — two hand-copied mirrors is how they drift.
+//
+// EVERY NUMERIC IS BARE (`z.number()`), and `.nullable()` appears on `share`
+// alone. That is load-bearing: a phase with no samples is ABSENT from the array,
+// so an `.optional()` here would become a `?:` in api-types.d.ts and a `?? 0` in
+// a renderer — re-introducing the "never measured" / "took 0 ms" confusion the
+// service type exists to make unrepresentable.
+const phaseLabelStatSchema = z.object({
+  label: z.string().nullable(),
+  count: z.number(),
+  p50_ms: z.number(),
+  p95_ms: z.number(),
+  max_ms: z.number(),
+  total_ms: z.number(),
+  share: z.number().nullable(),
+});
+
+const phaseStatSchema = z.object({
+  phase: z.enum(MERGE_PHASES),
+  count: z.number(),
+  p50_ms: z.number(),
+  p95_ms: z.number(),
+  max_ms: z.number(),
+  total_ms: z.number(),
+  share: z.number().nullable(),
+  // [] unless some sample in the phase was labelled — never a synthetic
+  // "unnamed step" restating the phase totals.
+  labels: z.array(phaseLabelStatSchema),
+});
+
+const phaseWindowSchema = z.object({
+  // Pipeline order (forming → … → land), phases with no samples omitted.
+  phases: z.array(phaseStatSchema),
+  total_measured_ms: z.number(),
+  sample_size: z.number(),
+  entity_count: z.number(),
+});
+
 const metricsBundleSchema = z
   .object({
     resource: z.string(),
@@ -242,6 +286,14 @@ const metricsBundleSchema = z
         mean_consumed_sec: z.number().nullable(),
         budget_sec: z.number(),
       }),
+    }),
+    // Campaign 2026-08-03 §P3 — the additive phase-timing sub-block ("where did
+    // the 39 minutes go"). `recent` covers the newest `recent_limit` TRIPS
+    // (a cross-repo group counts once), not the newest N entities.
+    phase_timing: z.object({
+      window: phaseWindowSchema,
+      recent: phaseWindowSchema,
+      recent_limit: z.number(),
     }),
     window_hours: z.number(),
     computed_at: z.string(),
@@ -494,7 +546,7 @@ const getMetricsRoute = createRoute({
   tags: ["Merge Train"],
   summary: "Read the on-read metric bundle for a lane",
   description:
-    "Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability).",
+    "Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability). `phase_timing` (campaign 2026-08-03 §P3) breaks the lane's wall clock down per phase — p50/p95/max/total/share over the 24h `window` plus the newest `recent_limit` TRIPS (a cross-repo group counts once) — in pipeline order. A phase with NO samples is ABSENT from `phases`, never zero-filled: absence is the honest signal that the phase was not observed, so never render a missing phase as 0 ms. `share`'s denominator (`total_measured_ms`) is SUMMED MEASURED PHASE TIME, not elapsed wall clock: it double-counts overlapping intervals both from concurrent verification and, structurally, from a group's `forming` covering the same pre-pickup interval as each member's `queue_wait`. `labels` is empty unless the integrator labelled its verify steps.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     query: z.object({ resource: resourceQuery }),
@@ -590,6 +642,33 @@ function requireAdmin(user: AuthUser): void {
   if (user.role !== "admin") {
     throw new AppError(403, "FORBIDDEN", "Admin role required for this operation.");
   }
+}
+
+/** camelCase phase block → snake_case wire block (§P3). */
+function phaseWindowToResponse(block: PhaseWindowMetric): z.infer<typeof phaseWindowSchema> {
+  return {
+    phases: block.phases.map((p) => ({
+      phase: p.phase,
+      count: p.count,
+      p50_ms: p.p50Ms,
+      p95_ms: p.p95Ms,
+      max_ms: p.maxMs,
+      total_ms: p.totalMs,
+      share: p.share,
+      labels: p.labels.map((l) => ({
+        label: l.label,
+        count: l.count,
+        p50_ms: l.p50Ms,
+        p95_ms: l.p95Ms,
+        max_ms: l.maxMs,
+        total_ms: l.totalMs,
+        share: l.share,
+      })),
+    })),
+    total_measured_ms: block.totalMeasuredMs,
+    sample_size: block.sampleSize,
+    entity_count: block.entityCount,
+  };
 }
 
 /** camelCase metric bundle → snake_case wire response (§5.6). */
@@ -699,6 +778,11 @@ function metricsToResponse(bundle: MetricsBundle): z.infer<typeof metricsBundleS
         mean_consumed_sec: bundle.resolution.budgetUtilization.meanConsumedSec,
         budget_sec: bundle.resolution.budgetUtilization.budgetSec,
       },
+    },
+    phase_timing: {
+      window: phaseWindowToResponse(bundle.phaseTiming.window),
+      recent: phaseWindowToResponse(bundle.phaseTiming.recent),
+      recent_limit: bundle.phaseTiming.recentLimit,
     },
     window_hours: bundle.windowHours,
     computed_at: bundle.computedAt,

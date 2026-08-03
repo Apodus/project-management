@@ -9,7 +9,13 @@ import {
   createTestUser,
   type TestApp,
 } from "../utils.js";
-import { integratorHealth, mergeRequests, users, verifyCache } from "../../src/db/index.js";
+import {
+  integratorHealth,
+  mergePhaseTimings,
+  mergeRequests,
+  users,
+  verifyCache,
+} from "../../src/db/index.js";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -68,6 +74,37 @@ function seedRequest(
     })
     .run();
   return id;
+}
+
+function seedPhase(
+  testApp: TestApp,
+  args: {
+    projectId: string;
+    phase: string;
+    durationMs: number;
+    label?: string | null;
+    minutesAgo?: number;
+  },
+): void {
+  const startedAt = new Date(Date.now() - (args.minutesAgo ?? 30) * 60_000).toISOString();
+  testApp.db
+    .insert(mergePhaseTimings)
+    .values({
+      id: createId(),
+      projectId: args.projectId,
+      resource: "main",
+      requestId: null,
+      groupId: null,
+      attemptId: null,
+      phase: args.phase,
+      label: args.label ?? null,
+      startedAt,
+      durationMs: args.durationMs,
+      detail: null,
+      recordedBy: null,
+      createdAt: startedAt,
+    })
+    .run();
 }
 
 describe("Train metrics + in-flight routes", () => {
@@ -340,6 +377,130 @@ describe("Train metrics + in-flight routes", () => {
     });
     // cache_mismatches surfaced 0 (the non-persisted relay, §9).
     expect(verify.cache_mismatches).toBe(0);
+  });
+
+  it("GET /train/metrics carries the phase_timing block additively (empty lane)", async () => {
+    const project = createTestProject(testApp.db);
+
+    const res = await authRequest(
+      testApp.app,
+      "GET",
+      `/api/v1/projects/${project.id}/train/metrics`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: Record<string, unknown> };
+
+    const pt = body.data.phase_timing as {
+      window: { phases: unknown[]; total_measured_ms: number; sample_size: number };
+      recent: { phases: unknown[]; entity_count: number };
+      recent_limit: number;
+    };
+    // No rows and no traffic ⇒ no phases at all, NOT seven zeroed bars.
+    expect(pt.window.phases).toEqual([]);
+    expect(pt.window.total_measured_ms).toBe(0);
+    expect(pt.window.sample_size).toBe(0);
+    expect(pt.recent.phases).toEqual([]);
+    expect(pt.recent.entity_count).toBe(0);
+    expect(pt.recent_limit).toBeGreaterThan(0);
+
+    // ADDITIVE: every pre-existing field is unchanged.
+    expect(body.data.window_hours).toBe(24);
+    expect(body.data).toHaveProperty("verify");
+    expect(body.data).toHaveProperty("resolution");
+    expect(body.data).toHaveProperty("slo");
+    expect(body.data).toHaveProperty("health");
+  });
+
+  it("GET /train/metrics renders seeded phases in snake_case with nested labels", async () => {
+    const project = createTestProject(testApp.db);
+    seedPhase(testApp, { projectId: project.id, phase: "verify", durationMs: 18 * 60_000 });
+    seedPhase(testApp, {
+      projectId: project.id,
+      phase: "verify",
+      durationMs: 6 * 60_000,
+      label: "build",
+    });
+    seedPhase(testApp, { projectId: project.id, phase: "land", durationMs: 6_000 });
+
+    const res = await authRequest(
+      testApp.app,
+      "GET",
+      `/api/v1/projects/${project.id}/train/metrics`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: {
+        phase_timing: {
+          window: {
+            phases: {
+              phase: string;
+              count: number;
+              p50_ms: number;
+              p95_ms: number;
+              max_ms: number;
+              total_ms: number;
+              share: number | null;
+              labels: { label: string | null; total_ms: number; share: number | null }[];
+            }[];
+            total_measured_ms: number;
+            sample_size: number;
+            entity_count: number;
+          };
+          recent_limit: number;
+        };
+      };
+    };
+    const w = body.data.phase_timing.window;
+    // Pipeline order survives the wire mapping.
+    expect(w.phases.map((p) => p.phase)).toEqual(["verify", "land"]);
+    expect(w.total_measured_ms).toBe(24 * 60_000 + 6_000);
+    expect(w.sample_size).toBe(3);
+    // Lane-level rows (no request, no group) belong to no trip.
+    expect(w.entity_count).toBe(0);
+
+    const verify = w.phases[0];
+    expect(verify.count).toBe(2);
+    expect(verify.max_ms).toBe(18 * 60_000);
+    expect(verify.total_ms).toBe(24 * 60_000);
+    // Mixed labelling ⇒ a null bucket keeps the split whole.
+    expect(verify.labels.map((l) => l.label)).toEqual([null, "build"]);
+    expect(verify.labels.reduce((s, l) => s + l.total_ms, 0)).toBe(verify.total_ms);
+    // The unlabelled `land` phase carries no synthetic step.
+    expect(w.phases[1].labels).toEqual([]);
+    expect(body.data.phase_timing.recent_limit).toBe(20);
+  });
+
+  it("GET /train/metrics: a measured phase has PRESENT numerics; an unmeasured one is ABSENT", async () => {
+    // The wire half of absent-not-zero. It holds at the service type, but only
+    // survives the hand-written Zod mirror if every numeric is a bare
+    // z.number(): an `.optional()` slip becomes `?:` in api-types.d.ts and then
+    // `?? 0` in a renderer, resurrecting "never measured" as "instant".
+    const project = createTestProject(testApp.db);
+    seedPhase(testApp, { projectId: project.id, phase: "verify", durationMs: 90_000 });
+
+    const res = await authRequest(
+      testApp.app,
+      "GET",
+      `/api/v1/projects/${project.id}/train/metrics`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { phase_timing: { window: { phases: Record<string, unknown>[] } } };
+    };
+    const phases = body.data.phase_timing.window.phases;
+
+    const verify = phases.find((p) => p.phase === "verify")!;
+    for (const key of ["count", "p50_ms", "p95_ms", "max_ms", "total_ms"]) {
+      expect(typeof verify[key], `${key} must be a present number`).toBe("number");
+    }
+    expect(verify.share).toBe(1);
+    expect(verify.labels).toEqual([]);
+
+    // Every other phase is MISSING from the array — not present with zeros.
+    expect(phases).toHaveLength(1);
+    for (const absent of ["forming", "queue_wait", "assemble", "materialize", "rebase", "land"]) {
+      expect(phases.some((p) => p.phase === absent)).toBe(false);
+    }
   });
 
   it("GET /train/in-flight returns { groups, members }", async () => {

@@ -8,11 +8,13 @@ import {
   projects,
   tasks,
 } from "../db/index.js";
+import { MERGE_PHASES, type MergePhase, type MergePhaseSample } from "@pm/shared";
 import type { MergeResolutionDetail } from "@pm/shared";
 import { AppError } from "../types.js";
 import { getHealth, type IntegratorHealthView } from "./health.service.js";
 import { readAlertLatch, setAlertLatch } from "./train.service.js";
 import * as mergeGroupService from "./merge-group.service.js";
+import * as mergePhaseService from "./merge-phase.service.js";
 import * as verifyCacheService from "./verify-cache.service.js";
 import type { CacheHitRate, PerStepMetric } from "./verify-cache.service.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
@@ -37,6 +39,11 @@ const ABANDON_MIN_SAMPLE = 5; // don't alert on a tiny sample (1-of-1).
 // long verify never trips it; the threshold scales with verify_timeout_sec.
 const STALL_FLOOR_MS = 1_200_000; // 20 min — minimum stall age before firing.
 const STALL_GRACE_SEC = 600; // 10 min added atop verify_timeout_sec.
+
+// Phase timing (§P3): how many recent TRIPS the `recent` block covers, beside
+// the 24h `window` block. Trips, not rows and not requests — a cross-repo group
+// and its members are one trip (see computePhaseTiming).
+const RECENT_TRIP_LIMIT = 20;
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -151,6 +158,94 @@ export interface ResolutionMetric {
   budgetUtilization: ResolutionBudgetMetric;
 }
 
+/**
+ * The campaign-2026-08-03 §P3 phase-timing sub-block: where the wall clock of a
+ * merge trip actually went. ADDITIVE — a NEW field on the bundle; every existing
+ * field is unchanged.
+ *
+ * ABSENT ≠ ZERO, AND THAT IS A TYPE PROPERTY, NOT A RENDERER'S `if`. A phase
+ * with no samples is OMITTED from `phases`; a PhaseStat is only constructible
+ * from ≥1 sample, so its numerics are non-nullable and "never measured" can
+ * never be encoded as "took 0 ms". That is design lock 3 enforced by the shape:
+ * before P2 deploys, a live lane reports `[forming, queue_wait]` and the five
+ * observed phases are simply ABSENT — the honest "not instrumented yet" signal,
+ * the opposite of five 0 ms bars implying instant work.
+ *
+ * `labels` is `[]` unless some sample in the phase carried one — never a
+ * synthetic "unnamed step" bucket restating the phase totals. game_one's single
+ * opaque pm-verify.bat therefore yields exactly ONE `verify` stat with no
+ * breakdown; PM cannot see inside one shell command and does not pretend to.
+ * When labelling is MIXED within a phase, the unlabelled samples form a
+ * `label: null` bucket, so Σ labels.totalMs === phase.totalMs whenever `labels`
+ * is non-empty.
+ */
+export interface PhaseLabelStat {
+  label: string | null;
+  count: number;
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+  totalMs: number;
+  /** totalMs / the parent phase's totalMs; null iff that denominator is 0. */
+  share: number | null;
+}
+
+export interface PhaseStat {
+  phase: MergePhase;
+  count: number;
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+  totalMs: number;
+  /** totalMs / totalMeasuredMs; null iff that denominator is 0. */
+  share: number | null;
+  labels: PhaseLabelStat[];
+}
+
+/**
+ * One aggregation block.
+ *
+ * `totalMeasuredMs` — Σ durationMs over EVERY sample in the block, i.e. SUMMED
+ * MEASURED PHASE TIME, NOT ELAPSED WALL CLOCK, and the share denominator. It
+ * double-counts overlapping intervals from two distinct sources, both
+ * deliberate:
+ *   1. CONCURRENCY — at parallelism > 1 (or across a group's two repos) two
+ *      verifies genuinely run at once and both are charged in full.
+ *   2. THE QUEUE SIDE, STRUCTURALLY — a group emits one `forming` (creation →
+ *      first member pickup) AND one `queue_wait` per member, and those cover the
+ *      same pre-pickup interval by construction, so it is counted 1 + members
+ *      times. Not a bug to fix: `forming` answers "how long until the train
+ *      touched this group" and `queue_wait` answers "how long did THIS member
+ *      wait", and collapsing them would delete one of the two answers.
+ * So a share reads as "of the work the train did, this phase was X%" — never as
+ * "X% of the clock on the wall". DELIBERATELY NOT COMPUTED: a wall-clock
+ * coverage denominator with an "unaccounted" remainder. With legitimate overlap
+ * a coverage ratio > 1 reads as a bug, and an interval-union would erase both
+ * facts above. A candidate for a later step if the panel needs "how much of the
+ * elapsed time is explained" — it is a SECOND number, never a replacement.
+ *
+ * `entityCount` is trips, not rows: a cross-repo group and its members are ONE
+ * subject (see computePhaseTiming).
+ */
+export interface PhaseWindowMetric {
+  phases: PhaseStat[];
+  totalMeasuredMs: number;
+  sampleSize: number;
+  entityCount: number;
+}
+
+/**
+ * `window` = the whole 24h lane; `recent` = the newest `recentLimit` TRIPS
+ * (a cross-repo group counts once). `sampleSize === 0` is the "no data yet"
+ * predicate — with zero rows and zero requests the block is `phases: []` and
+ * every total 0.
+ */
+export interface PhaseTimingMetric {
+  window: PhaseWindowMetric;
+  recent: PhaseWindowMetric;
+  recentLimit: number;
+}
+
 export interface MetricsBundle {
   resource: string;
   queueDepth: number;
@@ -163,6 +258,7 @@ export interface MetricsBundle {
   slo: SloBlock;
   verify: VerifyMetric;
   resolution: ResolutionMetric;
+  phaseTiming: PhaseTimingMetric;
   windowHours: number;
   computedAt: string;
 }
@@ -761,6 +857,197 @@ function computeResolution(projectId: string, resource: string, cutoff: string):
   };
 }
 
+// ─── Phase timing (§P3) ───────────────────────────────────────────
+
+/**
+ * The p50/p95/max/total of ONE non-empty duration bucket.
+ *
+ * Only ever called with ≥1 sample (both callers skip empty buckets), which is
+ * precisely why PhaseStat's numerics are non-nullable: absent-not-zero is
+ * enforced by never constructing a stat there is no evidence for.
+ *
+ * `percentile` gets a sorted COPY — the caller's array is the bucket itself and
+ * sorting it in place would silently reorder shared state.
+ */
+function summarize(durationsMs: number[]): {
+  count: number;
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+  totalMs: number;
+} {
+  const sorted = [...durationsMs].sort((a, b) => a - b);
+  return {
+    count: sorted.length,
+    p50Ms: percentile(sorted, 50)!,
+    p95Ms: percentile(sorted, 95)!,
+    maxMs: sorted[sorted.length - 1]!,
+    totalMs: sorted.reduce((a, b) => a + b, 0),
+  };
+}
+
+/**
+ * The per-label split of ONE phase's samples, biggest contributor first.
+ *
+ * `[]` when nothing in the phase is labelled — a synthetic "unnamed step" entry
+ * would just restate the phase totals one level down and read as a real
+ * sub-step. When labelling is mixed, the unlabelled samples get their own
+ * `label: null` bucket, so the integer invariant Σ labels.totalMs ===
+ * phase.totalMs holds whenever the array is non-empty.
+ */
+function labelStats(bucket: MergePhaseSample[], phaseTotalMs: number): PhaseLabelStat[] {
+  if (!bucket.some((s) => s.label !== null)) return [];
+
+  const byLabel = new Map<string | null, number[]>();
+  for (const sample of bucket) {
+    const list = byLabel.get(sample.label);
+    if (list) list.push(sample.durationMs);
+    else byLabel.set(sample.label, [sample.durationMs]);
+  }
+
+  return [...byLabel.entries()]
+    .map(([label, durations]) => {
+      const stat = summarize(durations);
+      return {
+        label,
+        ...stat,
+        share: phaseTotalMs === 0 ? null : stat.totalMs / phaseTotalMs,
+      };
+    })
+    .sort((a, b) => {
+      if (b.totalMs !== a.totalMs) return b.totalMs - a.totalMs;
+      // Deterministic tiebreak; the unlabelled remainder sorts last so a real
+      // step never hides behind it.
+      if (a.label === null) return 1;
+      if (b.label === null) return -1;
+      return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
+    });
+}
+
+/**
+ * Bucket samples into one aggregation block.
+ *
+ * `phases` is built by ITERATING MERGE_PHASES and skipping empty buckets, so
+ * pipeline render order (forming → queue_wait → assemble → materialize → rebase
+ * → verify → land) is a property of construction — not of a sort a later edit
+ * could alphabetise, and not of the order rows happened to arrive in.
+ */
+function aggregatePhases(
+  samples: MergePhaseSample[],
+  subjectOf: (sample: MergePhaseSample) => string | null,
+): PhaseWindowMetric {
+  const totalMeasuredMs = samples.reduce((sum, s) => sum + s.durationMs, 0);
+
+  const byPhase = new Map<MergePhase, MergePhaseSample[]>();
+  for (const sample of samples) {
+    const list = byPhase.get(sample.phase);
+    if (list) list.push(sample);
+    else byPhase.set(sample.phase, [sample]);
+  }
+
+  const phases: PhaseStat[] = [];
+  for (const phase of MERGE_PHASES) {
+    const bucket = byPhase.get(phase);
+    if (bucket === undefined) continue; // ABSENT, never zero-filled.
+    const stat = summarize(bucket.map((s) => s.durationMs));
+    phases.push({
+      phase,
+      ...stat,
+      share: totalMeasuredMs === 0 ? null : stat.totalMs / totalMeasuredMs,
+      labels: labelStats(bucket, stat.totalMs),
+    });
+  }
+
+  const subjects = new Set(samples.map(subjectOf).filter((key): key is string => key !== null));
+  return { phases, totalMeasuredMs, sampleSize: samples.length, entityCount: subjects.size };
+}
+
+/**
+ * The §P3 phase-timing sub-block, over the same [cutoff, nowIso] window as the
+ * rest of the bundle.
+ *
+ * THE ONLY PLACE THAT TOUCHES mergePhaseService, and it only reads: the two
+ * sample sources are CONCATENATED, never joined or reconciled, because the phase
+ * enum is partitioned into derived (`forming`/`queue_wait`, computed here) and
+ * observed (ingested from the integrator) — disjoint by construction, so
+ * concatenation cannot double-count a phase. This adds no write and no alert:
+ * checkAlerts is deliberately untouched, so reading the dashboard still has
+ * exactly the side effects it had before.
+ *
+ * It aggregates `durationMs` — the honest LAST queue segment of a re-queued
+ * request. `originDurationMs` ("waiting since submit") is DELIBERATELY NOT
+ * aggregated: it re-includes a prior 39-minute verify inside "queue wait", which
+ * is the exact dishonesty this campaign exists to remove. It is P5/P6's number
+ * to render per request, never a statistic. `basis` likewise stays per-entry —
+ * an aggregate of exact-vs-requeued would describe the sample, not the lane.
+ *
+ * SUBJECT = A TRIP, NOT AN ENTITY. A grouped member is folded into its group via
+ * merge_requests (the same table computeTimeToLand / computeVerifySuccessRate /
+ * computeResolution already join), so a 2-member cross-repo group is ONE subject
+ * — the honest reading of "the newest N requests". Keyed on the entity id, a
+ * `recent` of 20 would cover ~6 real merges on a cross-repo lane while being
+ * read as "the last 20": exactly the misleading number this campaign removes.
+ * A sample with no request and no group (a lane-level observation, e.g. one
+ * whose ids were normalized away at ingest) belongs to no trip: it counts in
+ * `window`, and is out of `recent` because there is no trip to be recent about.
+ */
+function computePhaseTiming(
+  projectId: string,
+  resource: string,
+  cutoff: string,
+  nowIso: string,
+): PhaseTimingMetric {
+  const samples = [
+    ...mergePhaseService.samples(projectId, resource, cutoff, nowIso),
+    ...mergePhaseService.derivedSamples(projectId, resource, cutoff, nowIso),
+  ];
+
+  const memberIds = [
+    ...new Set(samples.map((s) => s.requestId).filter((id): id is string => id !== null)),
+  ];
+  const groupOfRequest = new Map<string, string>();
+  if (memberIds.length > 0) {
+    for (const row of getDb()
+      .select({ id: mergeRequests.id, groupId: mergeRequests.groupId })
+      .from(mergeRequests)
+      .where(and(inArray(mergeRequests.id, memberIds), eq(mergeRequests.projectId, projectId)))
+      .all()) {
+      if (row.groupId !== null) groupOfRequest.set(row.id, row.groupId);
+    }
+  }
+  const subjectOf = (sample: MergePhaseSample): string | null =>
+    sample.groupId ??
+    (sample.requestId === null ? null : (groupOfRequest.get(sample.requestId) ?? sample.requestId));
+
+  // The newest trips by their most recent activity (the ULID tiebreak keeps the
+  // cut deterministic when two trips share an instant, mirroring listRecent).
+  const latestBySubject = new Map<string, string>();
+  for (const sample of samples) {
+    const key = subjectOf(sample);
+    if (key === null) continue;
+    const seen = latestBySubject.get(key);
+    if (seen === undefined || sample.startedAt > seen) latestBySubject.set(key, sample.startedAt);
+  }
+  const keep = new Set(
+    [...latestBySubject.entries()]
+      .sort((a, b) => (a[1] === b[1] ? (a[0] < b[0] ? 1 : -1) : a[1] < b[1] ? 1 : -1))
+      .slice(0, RECENT_TRIP_LIMIT)
+      .map(([key]) => key),
+  );
+
+  return {
+    window: aggregatePhases(samples, subjectOf),
+    recent: aggregatePhases(
+      samples.filter((s) => {
+        const key = subjectOf(s);
+        return key !== null && keep.has(key);
+      }),
+      subjectOf,
+    ),
+    recentLimit: RECENT_TRIP_LIMIT,
+  };
+}
+
 /**
  * The on-read, edge-triggered alert evaluation (§7.3). Called from
  * computeMetrics AFTER the bundle is assembled. Evaluates two conditions
@@ -923,6 +1210,9 @@ export function computeMetrics(projectId: string, resource = "main", now?: strin
   // §7 resolution sub-block — same 24h window. Additive: inert (zeros/nulls)
   // when the resolver is disabled / no resolutions exist.
   const resolution = computeResolution(projectId, resource, cutoff);
+  // §P3 phase-timing sub-block — same window. Additive and READ-ONLY: it adds no
+  // alert and no on-read side effect (checkAlerts is untouched).
+  const phaseTiming = computePhaseTiming(projectId, resource, cutoff, nowIso);
   const oldestQueuedAt = computeOldestQueuedAt(projectId, resource);
 
   const bundle: MetricsBundle = {
@@ -937,6 +1227,7 @@ export function computeMetrics(projectId: string, resource = "main", now?: strin
     slo,
     verify,
     resolution,
+    phaseTiming,
     windowHours: WINDOW_HOURS,
     computedAt: nowIso,
   };

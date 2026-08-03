@@ -97,6 +97,13 @@ export type SloBlock = z.infer<typeof sloBlockSchema>;
 // ─── Metric bundle (§5.6 — the metrics GET response) ──────────────
 // Computed on-read per (project, resource) lane. The embedded `health` block
 // is the §3.4 view so the dashboard gets metrics + freshness in one request.
+//
+// NOT THE SOURCE OF TRUTH FOR THIS ONE BLOCK — routes/train.ts is. The shipped
+// response has since grown `verify` (7.5), `resolution` (7.6) and `phase_timing`
+// (campaign 2026-08-03 §P3), none of which are mirrored here; this schema's only
+// consumer is its own test, so it has been left as the 7.4 shape rather than
+// half-updated. Build a dashboard against routes/train.ts's metricsBundleSchema
+// (and the generated api-types), never against this.
 export const metricsBundleSchema = z.object({
   resource: z.string(),
   queue_depth: z.number(),

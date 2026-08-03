@@ -8050,6 +8050,237 @@
               "budget_utilization"
             ]
           },
+          "phase_timing": {
+            "type": "object",
+            "properties": {
+              "window": {
+                "type": "object",
+                "properties": {
+                  "phases": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "phase": {
+                          "type": "string",
+                          "enum": [
+                            "forming",
+                            "queue_wait",
+                            "assemble",
+                            "materialize",
+                            "rebase",
+                            "verify",
+                            "land"
+                          ]
+                        },
+                        "count": {
+                          "type": "number"
+                        },
+                        "p50_ms": {
+                          "type": "number"
+                        },
+                        "p95_ms": {
+                          "type": "number"
+                        },
+                        "max_ms": {
+                          "type": "number"
+                        },
+                        "total_ms": {
+                          "type": "number"
+                        },
+                        "share": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "labels": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "count": {
+                                "type": "number"
+                              },
+                              "p50_ms": {
+                                "type": "number"
+                              },
+                              "p95_ms": {
+                                "type": "number"
+                              },
+                              "max_ms": {
+                                "type": "number"
+                              },
+                              "total_ms": {
+                                "type": "number"
+                              },
+                              "share": {
+                                "type": "number",
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "label",
+                              "count",
+                              "p50_ms",
+                              "p95_ms",
+                              "max_ms",
+                              "total_ms",
+                              "share"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "phase",
+                        "count",
+                        "p50_ms",
+                        "p95_ms",
+                        "max_ms",
+                        "total_ms",
+                        "share",
+                        "labels"
+                      ]
+                    }
+                  },
+                  "total_measured_ms": {
+                    "type": "number"
+                  },
+                  "sample_size": {
+                    "type": "number"
+                  },
+                  "entity_count": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "phases",
+                  "total_measured_ms",
+                  "sample_size",
+                  "entity_count"
+                ]
+              },
+              "recent": {
+                "type": "object",
+                "properties": {
+                  "phases": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "phase": {
+                          "type": "string",
+                          "enum": [
+                            "forming",
+                            "queue_wait",
+                            "assemble",
+                            "materialize",
+                            "rebase",
+                            "verify",
+                            "land"
+                          ]
+                        },
+                        "count": {
+                          "type": "number"
+                        },
+                        "p50_ms": {
+                          "type": "number"
+                        },
+                        "p95_ms": {
+                          "type": "number"
+                        },
+                        "max_ms": {
+                          "type": "number"
+                        },
+                        "total_ms": {
+                          "type": "number"
+                        },
+                        "share": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "labels": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "count": {
+                                "type": "number"
+                              },
+                              "p50_ms": {
+                                "type": "number"
+                              },
+                              "p95_ms": {
+                                "type": "number"
+                              },
+                              "max_ms": {
+                                "type": "number"
+                              },
+                              "total_ms": {
+                                "type": "number"
+                              },
+                              "share": {
+                                "type": "number",
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "label",
+                              "count",
+                              "p50_ms",
+                              "p95_ms",
+                              "max_ms",
+                              "total_ms",
+                              "share"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "phase",
+                        "count",
+                        "p50_ms",
+                        "p95_ms",
+                        "max_ms",
+                        "total_ms",
+                        "share",
+                        "labels"
+                      ]
+                    }
+                  },
+                  "total_measured_ms": {
+                    "type": "number"
+                  },
+                  "sample_size": {
+                    "type": "number"
+                  },
+                  "entity_count": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "phases",
+                  "total_measured_ms",
+                  "sample_size",
+                  "entity_count"
+                ]
+              },
+              "recent_limit": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "window",
+              "recent",
+              "recent_limit"
+            ]
+          },
           "window_hours": {
             "type": "number"
           },
@@ -8069,6 +8300,7 @@
           "slo",
           "verify",
           "resolution",
+          "phase_timing",
           "window_hours",
           "computed_at"
         ]
@@ -31645,7 +31877,7 @@
           "Merge Train"
         ],
         "summary": "Read the on-read metric bundle for a lane",
-        "description": "Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability).",
+        "description": "Returns the dashboard metric bundle for a (project, resource) lane: queue depth, in-flight count, 24h time-to-land p50/p95/p99, verify success + abandon rates, pool utilization, the embedded health view, and SLO compliance (design §5.6). The 24h window uses a JS-ISO cutoff. Computing this embeds health.getHealth, so a stale lane fires train.integrator_unhealthy once per episode. Any authenticated user (read-only observability). `phase_timing` (campaign 2026-08-03 §P3) breaks the lane's wall clock down per phase — p50/p95/max/total/share over the 24h `window` plus the newest `recent_limit` TRIPS (a cross-repo group counts once) — in pipeline order. A phase with NO samples is ABSENT from `phases`, never zero-filled: absence is the honest signal that the phase was not observed, so never render a missing phase as 0 ms. `share`'s denominator (`total_measured_ms`) is SUMMED MEASURED PHASE TIME, not elapsed wall clock: it double-counts overlapping intervals both from concurrent verification and, structurally, from a group's `forming` covering the same pre-pickup interval as each member's `queue_wait`. `labels` is empty unless the integrator labelled its verify steps.",
         "parameters": [
           {
             "schema": {
