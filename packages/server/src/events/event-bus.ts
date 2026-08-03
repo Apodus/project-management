@@ -190,6 +190,14 @@ export const EVENT_NAMES = {
   // action becomes "cache_mismatch".
   VERIFY_CACHE_MISMATCH: "verify.cache_mismatch",
 
+  // Train phase timings (campaign 2026-08-03 §P1 — emitted ONCE per ingest
+  // batch by merge-phase.service after the insert commits). Registration here is
+  // REQUIRED, not decorative: onAll iterates Object.values(EVENT_NAMES), so an
+  // unregistered name is invisible to the SSE stream P5 renders. Deliberately
+  // listed in TELEMETRY_EVENTS (events/listeners.ts) so it writes NO activity_log
+  // row — see the WHY there.
+  MERGE_PHASE_RECORDED: "merge.phase.recorded",
+
   // Merge resolution events (Phase 7.6 §7 — PM-owned, emitted by
   // merge-resolution.service after each transition commits). The resolver
   // lifecycle: pending → resolving → resolved | escalated | failed. onAll

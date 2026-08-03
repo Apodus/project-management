@@ -127,16 +127,34 @@ function eventToAction(event: EventName): string {
   }
 }
 
+// ─── Telemetry suppression ──────────────────────────────────────
+
+/**
+ * Events that ride the SSE stream but must NOT enter the activity feed.
+ *
+ * WHY this set has to exist: the listener below is an onAll fan-out, so it
+ * writes an activity_log row for EVERY registered event — an unmapped one lands
+ * as `action: "unknown"`. For a high-volume telemetry event that is wrong twice
+ * over: it pollutes the HUMAN narrative feed with machine measurements, and it
+ * makes P5's three-source trace (merge_phase_timings + activity_log + audit_log)
+ * double-count every phase it renders. The durable record of a phase is its
+ * merge_phase_timings row; the event is a live refresh signal, nothing more.
+ */
+const TELEMETRY_EVENTS: ReadonlySet<EventName> = new Set([EVENT_NAMES.MERGE_PHASE_RECORDED]);
+
 // ─── Activity log listener ──────────────────────────────────────
 
 /**
  * Register the activity log listener on the event bus.
- * This listener writes to the activity_log table for every domain event.
+ * This listener writes to the activity_log table for every domain event
+ * EXCEPT the telemetry events suppressed above.
  */
 export function registerActivityLogListener(): void {
   const bus = getEventBus();
 
   bus.onAll((event: EventName, payload: EventPayload) => {
+    if (TELEMETRY_EVENTS.has(event)) return;
+
     const action = eventToAction(event);
 
     logActivity({

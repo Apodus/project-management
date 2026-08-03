@@ -966,6 +966,70 @@ export const verifyCache = sqliteTable(
   ],
 );
 
+// ─── merge_phase_timings ───────────────────────────────────────────
+// Train phase-timing (campaign 2026-08-03 §P1): an APPEND-ONLY record of where a
+// merge request's wall clock actually went. One row per COMPLETED phase.
+//
+// Why its own table rather than more columns on merge_attempts.steps[]: assembly
+// happens BEFORE an attempt row exists, and group assembly spans BOTH members —
+// there is nothing to hang those on. The same rows back the stats panel (P4) and
+// the event trace (P5), so one store serves both (design lock 2).
+//
+// NO `ended_at`, deliberately: a row is written only once its phase FINISHED, so
+// a crashed daemon strands nothing to reconcile — contrast the stranded verify
+// slot that motivated §14.15. `duration_ms` is the pre-computed truth (design
+// lock 4); a reader never subtracts two timestamps.
+//
+// The FKs are all nullable + ON DELETE SET NULL: a phase observation is a fact
+// about the lane's clock and outlives the request/group/attempt it measured.
+// `phase` is app-validated plain text (MERGE_PHASES_OBSERVED in @pm/shared), no
+// CHECK — the verify_cache.result precedent. `recorded_by` is server-assigned
+// from the authenticated integrator; the wire cannot supply it.
+//
+// Ordering convention EVERYWHERE (reads + pagination): (started_at, id) — the
+// ULID id is the tiebreaker that makes paging stable when a batch lands many
+// rows on the same instant.
+export const mergePhaseTimings = sqliteTable(
+  "merge_phase_timings",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    resource: text("resource").notNull().default("main"),
+    requestId: text("request_id").references(() => mergeRequests.id, {
+      onDelete: "set null",
+    }),
+    groupId: text("group_id").references(() => mergeRequestGroups.id, {
+      onDelete: "set null",
+    }),
+    attemptId: text("attempt_id").references(() => mergeAttempts.id, {
+      onDelete: "set null",
+    }),
+    phase: text("phase").notNull(),
+    // Free-text sub-label (a verify step id, "inner"/"outer", …). Truncated to
+    // 120 chars in the service — SQLite does not enforce text length.
+    label: text("label"),
+    startedAt: text("started_at").notNull(),
+    durationMs: integer("duration_ms").notNull(),
+    // Structured extras (repo role, step id, cached flag, …). Dropped to null by
+    // the service above 4KB — telemetry must never become the biggest column.
+    detail: text("detail", { mode: "json" }).$type<Record<string, unknown>>(),
+    recordedBy: text("recorded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    // The lane window scan (aggregation + the recent list).
+    index("idx_merge_phase_timings_lane").on(table.projectId, table.resource, table.startedAt),
+    // The per-request timeline.
+    index("idx_merge_phase_timings_request").on(table.requestId, table.startedAt),
+    // The per-group timeline (group-level phases; member phases come via request).
+    index("idx_merge_phase_timings_group").on(table.groupId, table.startedAt),
+  ],
+);
+
 // ─── merge_resolutions ─────────────────────────────────────────────
 // Phase 7.6 (§4.2): the durable record of a conflict-resolution attempt.
 // When the integrator hits a RebaseConflict and the resolver is enabled, it

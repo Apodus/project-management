@@ -183,6 +183,46 @@ export const TRIAGE_STALL_THRESHOLD_MS = 6 * 60 * 60 * 1000;
 // lease (its holder possibly mid-action) is never grabbed out from under them.
 export const LEASE_PICK_MARGIN_MS_DEFAULT = 60 * 1000;
 
+// Train phase-timing taxonomy (campaign 2026-08-03 §P1 — "where did the 39
+// minutes go"). The phase set is PARTITIONED into two disjoint halves, and the
+// partition itself is the anti-double-count invariant:
+//   DERIVED  — PM computes these on read from timestamps it already owns
+//              (merge_requests.enqueued_at/picked_up_at, merge_request_groups.
+//              created_at). They are NEVER stored and NEVER ingested: the ingest
+//              schema's phase enum is MERGE_PHASES_OBSERVED, so an over-eager
+//              daemon that also emits `queue_wait` is rejected at the wire (400)
+//              instead of silently double-counting the wait.
+//   OBSERVED — only the integrator can see these (it is the only process inside
+//              the worktree), so they arrive over the ingest route and nowhere
+//              else.
+// MERGE_PHASES is DERIVED ++ OBSERVED in PIPELINE ORDER — forming → queue_wait →
+// assemble → materialize → rebase → verify → land. That order IS the render-order
+// contract the aggregation (P3) and the stacked bar / event trace (P4/P5) read;
+// never sort it alphabetically, and insert a new phase at its real place in the
+// pipeline.
+export const MERGE_PHASES_DERIVED = ["forming", "queue_wait"] as const;
+export type MergeDerivedPhase = (typeof MERGE_PHASES_DERIVED)[number];
+
+export const MERGE_PHASES_OBSERVED = [
+  "assemble",
+  "materialize",
+  "rebase",
+  "verify",
+  "land",
+] as const;
+export type MergeObservedPhase = (typeof MERGE_PHASES_OBSERVED)[number];
+
+export const MERGE_PHASES = [...MERGE_PHASES_DERIVED, ...MERGE_PHASES_OBSERVED] as const;
+export type MergePhase = (typeof MERGE_PHASES)[number];
+
+// How a DERIVED phase's `startedAt` was chosen — the discriminator that keeps a
+// re-queued request honest. `exact` = the window really did start at submit /
+// group creation. `requeued` = a prior integration ended inside the window (the
+// request was put back), so the window was re-anchored to that end and only the
+// LAST queue segment is charged to queue time.
+export const MERGE_PHASE_BASES = ["exact", "requeued"] as const;
+export type MergePhaseBasis = (typeof MERGE_PHASE_BASES)[number];
+
 export const GIT_REF_TYPES = ["branch", "commit", "pull_request", "landed_sha"] as const;
 export type GitRefType = (typeof GIT_REF_TYPES)[number];
 

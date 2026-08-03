@@ -8455,6 +8455,274 @@
           "realResult"
         ]
       },
+      "MergePhaseIngest": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main"
+          },
+          "phases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MergePhaseEntry"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "phases"
+        ]
+      },
+      "MergePhaseEntry": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "assemble",
+              "materialize",
+              "rebase",
+              "verify",
+              "land"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "groupId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "attemptId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "detail": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "phase",
+          "startedAt",
+          "durationMs"
+        ]
+      },
+      "MergePhaseList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MergePhaseRow"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "number"
+              },
+              "page": {
+                "type": "number"
+              },
+              "perPage": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "total",
+              "page",
+              "perPage"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "pagination"
+        ]
+      },
+      "MergePhaseRow": {
+        "type": "object",
+        "properties": {
+          "derived": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "nullable": true
+          },
+          "groupId": {
+            "type": "string",
+            "nullable": true
+          },
+          "attemptId": {
+            "type": "string",
+            "nullable": true
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "assemble",
+              "materialize",
+              "rebase",
+              "verify",
+              "land"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "detail": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "recordedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "derived",
+          "id",
+          "projectId",
+          "resource",
+          "requestId",
+          "groupId",
+          "attemptId",
+          "phase",
+          "label",
+          "startedAt",
+          "durationMs",
+          "detail",
+          "recordedBy",
+          "createdAt"
+        ]
+      },
+      "PhaseTraceEntry": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/MergePhaseRow"
+          },
+          {
+            "$ref": "#/components/schemas/DerivedPhaseEntry"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "derived",
+          "mapping": {
+            "false": "#/components/schemas/MergePhaseRow",
+            "true": "#/components/schemas/DerivedPhaseEntry"
+          }
+        }
+      },
+      "DerivedPhaseEntry": {
+        "type": "object",
+        "properties": {
+          "derived": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "forming",
+              "queue_wait"
+            ]
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "nullable": true
+          },
+          "groupId": {
+            "type": "string",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "originAt": {
+            "type": "string"
+          },
+          "originDurationMs": {
+            "type": "number"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "requeued"
+            ]
+          }
+        },
+        "required": [
+          "derived",
+          "phase",
+          "projectId",
+          "resource",
+          "requestId",
+          "groupId",
+          "startedAt",
+          "durationMs",
+          "originAt",
+          "originDurationMs",
+          "basis"
+        ]
+      },
       "AuditLogList": {
         "type": "object",
         "properties": {
@@ -32335,6 +32603,570 @@
           },
           "404": {
             "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/merge-phases": {
+      "post": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "Integrator records completed phase timings (batch)",
+        "description": "Append-only ingest of up to 100 COMPLETED phases for one lane. DERIVED-INCLUSION: this endpoint accepts OBSERVED phases only (assemble/materialize/rebase/verify/land) — `queue_wait` and `forming` are computed by PM from timestamps it already owns and are rejected here (400), so they can never be double-counted. Values are normalized rather than rejected (duration clamped, label truncated to 120 chars, detail dropped above 4KB, dangling or cross-project ids nulled); the `adjusted` count in the response reports how many rows were touched and is the signal that the emitter is wrong. `recordedBy` is taken from the session, never the body. Integrator (ai_agent) only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergePhaseIngest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted and recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "recorded": {
+                          "type": "number"
+                        },
+                        "adjusted": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "recorded",
+                        "adjusted"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Integrator (ai_agent) only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "List recent phase timings for a lane",
+        "description": "Returns the project's merge_phase_timings rows, newest-first by (started_at, id), paginated (page/perPage, default 1/50, max 200), with optional resource/phase/request_id/group_id/since/until filters. DERIVED-INCLUSION: STORED ROWS ONLY — a derived `queue_wait`/`forming` entry is synthesized after the query and cannot participate in SQL LIMIT/OFFSET, so it is never mixed into this page. Use the per-request / per-group trace endpoints for the derived phases. Any authenticated user.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "main"
+            },
+            "required": false,
+            "name": "resource",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "assemble",
+                "materialize",
+                "rebase",
+                "verify",
+                "land"
+              ]
+            },
+            "required": false,
+            "name": "phase",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "request_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "group_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "2026-08-03T00:00:00.000Z"
+            },
+            "required": false,
+            "name": "since",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "2026-08-04T00:00:00.000Z"
+            },
+            "required": false,
+            "name": "until",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "perPage",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The phase-timing page (stored rows only)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergePhaseList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-requests/{id}/phases": {
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "The phase trace for one merge request",
+        "description": "The request's full phase trace in started_at ASCENDING order, bounded (no pagination). DERIVED-INCLUSION: INCLUDES the derived `queue_wait` entry at the head (derived:true, no id) — its `durationMs` is the last queue segment, `originDurationMs` the total since submit, and `basis` says which of the two applies (`requeued` when a prior integration ended inside the window). Stored rows follow (derived:false). Any authenticated user.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The trace (derived queue_wait + stored rows)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PhaseTraceEntry"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Merge request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/merge-groups/{id}/phases": {
+      "get": {
+        "tags": [
+          "Merge Train"
+        ],
+        "summary": "The phase trace for one merge group",
+        "description": "The group's full phase trace — its own rows AND its members' — in started_at ASCENDING order, bounded (no pagination). DERIVED-INCLUSION: INCLUDES the derived `forming` entry at the head (derived:true, no id), measured from group creation to the EARLIEST member pickup. Stored rows follow (derived:false). Any authenticated user.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The trace (derived forming + stored rows)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PhaseTraceEntry"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Merge group not found",
             "content": {
               "application/json": {
                 "schema": {

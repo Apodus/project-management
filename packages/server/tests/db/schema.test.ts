@@ -21,6 +21,8 @@ import {
   gitRefs,
   mergeRequests,
   mergeRequestGroups,
+  mergeAttempts,
+  mergePhaseTimings,
   mergeIncidents,
   mergeResolutions,
   auditLog,
@@ -53,7 +55,7 @@ describe("Database schema", () => {
 
   // ── Table existence ──────────────────────────────────────────────
   describe("table existence", () => {
-    it("should create all 37 tables", () => {
+    it("should create all 39 tables", () => {
       const db = setupDb();
       const tableNames = db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' AND name NOT LIKE '%_fts%' ORDER BY name`,
@@ -83,6 +85,7 @@ describe("Database schema", () => {
         "merge_incidents",
         "merge_lock_queue",
         "merge_locks",
+        "merge_phase_timings",
         "merge_request_groups",
         "merge_requests",
         "merge_resolutions",
@@ -291,6 +294,9 @@ describe("Database schema", () => {
         "idx_train_state_project_resource",
         "idx_verify_cache_key",
         "idx_verify_cache_project_resource_created",
+        "idx_merge_phase_timings_lane",
+        "idx_merge_phase_timings_request",
+        "idx_merge_phase_timings_group",
         "idx_merge_resolutions_project_state",
         "idx_merge_resolutions_resource_state",
         "idx_merge_resolutions_origin",
@@ -861,6 +867,180 @@ describe("Database schema", () => {
       const request = db.select().from(mergeRequests).where(eq(mergeRequests.id, requestId)).get();
       expect(request).toBeDefined();
       expect(request!.groupId).toBeNull();
+    });
+  });
+
+  // ── Merge phase timings (campaign 2026-08-03 §P1) ────────────────
+  //
+  // The table's whole point is to OUTLIVE what it measured: a phase row is a
+  // fact about the lane's clock, so every entity FK is nullable + ON DELETE SET
+  // NULL. These pin that (per FK) plus the defaults and the JSON round-trip.
+  describe("merge phase timings", () => {
+    let db: AppDatabase;
+    let userId: string;
+    let projectId: string;
+    let requestId: string;
+    let groupId: string;
+    let attemptId: string;
+
+    beforeEach(() => {
+      db = setupDb();
+      const workspaceId = db.select().from(workspaces).all()[0].id;
+      const ts = now();
+
+      userId = createId();
+      db.insert(users)
+        .values({
+          id: userId,
+          username: "phaseop",
+          displayName: "Phase Operator",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      projectId = createId();
+      db.insert(projects)
+        .values({
+          id: projectId,
+          workspaceId,
+          name: "Phase Project",
+          slug: "phase-project",
+          createdAt: ts,
+          updatedAt: ts,
+          createdBy: userId,
+        })
+        .run();
+
+      groupId = createId();
+      db.insert(mergeRequestGroups)
+        .values({ id: groupId, projectId, submittedBy: userId, createdAt: ts, updatedAt: ts })
+        .run();
+
+      requestId = createId();
+      db.insert(mergeRequests)
+        .values({
+          id: requestId,
+          projectId,
+          submittedBy: userId,
+          groupId,
+          enqueuedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      attemptId = createId();
+      db.insert(mergeAttempts)
+        .values({
+          id: attemptId,
+          requestId,
+          attemptNumber: 1,
+          baseSha: "base1",
+          status: "passed",
+          createdAt: ts,
+        })
+        .run();
+    });
+
+    function insertPhase(overrides: Record<string, unknown> = {}): string {
+      const id = createId();
+      const ts = now();
+      db.insert(mergePhaseTimings)
+        .values({
+          id,
+          projectId,
+          phase: "verify",
+          startedAt: ts,
+          durationMs: 1234,
+          createdAt: ts,
+          ...overrides,
+        })
+        .run();
+      return id;
+    }
+
+    it("inserts with default resource=main and every entity link null", () => {
+      const id = insertPhase();
+      const row = db.select().from(mergePhaseTimings).where(eq(mergePhaseTimings.id, id)).get();
+      expect(row).toBeDefined();
+      expect(row!.resource).toBe("main");
+      expect(row!.requestId).toBeNull();
+      expect(row!.groupId).toBeNull();
+      expect(row!.attemptId).toBeNull();
+      expect(row!.label).toBeNull();
+      expect(row!.detail).toBeNull();
+      expect(row!.recordedBy).toBeNull();
+      expect(row!.durationMs).toBe(1234);
+    });
+
+    it("round-trips the detail JSON column as an object", () => {
+      const detail = { repo: "inner", stepId: "build", cached: false, files: ["a.rs"] };
+      const id = insertPhase({ detail, label: "inner" });
+      const row = db.select().from(mergePhaseTimings).where(eq(mergePhaseTimings.id, id)).get();
+      expect(row!.detail).toEqual(detail);
+      expect(row!.label).toBe("inner");
+    });
+
+    it("SET NULL on request_id when the merge request is deleted (the row survives)", () => {
+      const id = insertPhase({ requestId, attemptId });
+      // The attempt FK is ON CASCADE-free too, so delete the attempt first —
+      // merge_attempts.request_id is a plain (non-SET NULL) FK to the request.
+      db.delete(mergeAttempts).where(eq(mergeAttempts.id, attemptId)).run();
+      db.delete(mergeRequests).where(eq(mergeRequests.id, requestId)).run();
+
+      const row = db.select().from(mergePhaseTimings).where(eq(mergePhaseTimings.id, id)).get();
+      expect(row).toBeDefined();
+      expect(row!.requestId).toBeNull();
+      expect(row!.attemptId).toBeNull();
+      expect(row!.durationMs).toBe(1234);
+    });
+
+    it("SET NULL on group_id when the group is deleted (the row survives)", () => {
+      const id = insertPhase({ groupId });
+      db.delete(mergeRequestGroups).where(eq(mergeRequestGroups.id, groupId)).run();
+
+      const row = db.select().from(mergePhaseTimings).where(eq(mergePhaseTimings.id, id)).get();
+      expect(row).toBeDefined();
+      expect(row!.groupId).toBeNull();
+    });
+
+    it("SET NULL on recorded_by when the recording integrator is deleted", () => {
+      const ts = now();
+      const integratorId = createId();
+      db.insert(users)
+        .values({
+          id: integratorId,
+          username: "phase-integrator",
+          displayName: "Phase Integrator",
+          type: "ai_agent",
+          createdAt: ts,
+          updatedAt: ts,
+        })
+        .run();
+
+      const id = insertPhase({ recordedBy: integratorId });
+      db.delete(users).where(eq(users.id, integratorId)).run();
+
+      const row = db.select().from(mergePhaseTimings).where(eq(mergePhaseTimings.id, id)).get();
+      expect(row).toBeDefined();
+      expect(row!.recordedBy).toBeNull();
+    });
+
+    it("rejects a phase row with an invalid project_id (FK enforced)", () => {
+      const ts = now();
+      expect(() => {
+        db.insert(mergePhaseTimings)
+          .values({
+            id: createId(),
+            projectId: "nonexistent",
+            phase: "verify",
+            startedAt: ts,
+            durationMs: 1,
+            createdAt: ts,
+          })
+          .run();
+      }).toThrow();
     });
   });
 

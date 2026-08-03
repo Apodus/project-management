@@ -10,6 +10,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { activityLog, auditLog, epics } from "../../src/db/index.js";
 import * as claimLeaseSvc from "../../src/services/claim-lease.service.js";
+import * as mergePhaseSvc from "../../src/services/merge-phase.service.js";
 import {
   createTestApp,
   createTestAiAgent,
@@ -528,6 +529,52 @@ describe("Event Bus", () => {
       expect(auditRows).toHaveLength(1);
       expect(auditRows[0].action).toBe("claim_reclaimed");
       expect(auditRows[0].targetType).toBe("epic");
+    });
+  });
+
+  // ─── Train phase timings: registration + one-event-per-batch ────
+  //
+  // Registration in EVENT_NAMES is load-bearing (onAll iterates its values, so
+  // an unregistered name is invisible to SSE), and the cardinality is too: a
+  // per-ROW emit would flood the stream P5 renders with one frame per phase.
+
+  describe("merge.phase.recorded", () => {
+    it("MERGE_PHASE_RECORDED = 'merge.phase.recorded' and is registered in EVENT_NAMES", () => {
+      expect(EVENT_NAMES.MERGE_PHASE_RECORDED).toBe("merge.phase.recorded");
+      expect(Object.values(EVENT_NAMES) as string[]).toContain("merge.phase.recorded");
+    });
+
+    it("a 40-row ingest emits EXACTLY ONE event carrying recorded:40 + the distinct phase names", () => {
+      const testApp = createTestApp();
+      try {
+        const project = createTestProject(testApp.db);
+        const integrator = createTestAiAgent(testApp.db);
+
+        const captured: EventPayload[] = [];
+        getEventBus().on(EVENT_NAMES.MERGE_PHASE_RECORDED, (payload) => captured.push(payload));
+
+        const startedAt = new Date().toISOString();
+        mergePhaseSvc.record(
+          project.id,
+          {
+            resource: "main",
+            phases: Array.from({ length: 40 }, (_, i) => ({
+              phase: (i % 2 === 0 ? "verify" : "land") as "verify" | "land",
+              startedAt,
+              durationMs: 1,
+            })),
+          },
+          { id: integrator.user.id },
+          startedAt,
+        );
+
+        expect(captured).toHaveLength(1);
+        const entity = captured[0].entity as { recorded: number; phases: string[] };
+        expect(entity.recorded).toBe(40);
+        expect([...entity.phases].sort()).toEqual(["land", "verify"]);
+      } finally {
+        testApp.cleanup();
+      }
     });
   });
 });

@@ -14463,6 +14463,316 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{projectId}/merge-phases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List recent phase timings for a lane
+     * @description Returns the project's merge_phase_timings rows, newest-first by (started_at, id), paginated (page/perPage, default 1/50, max 200), with optional resource/phase/request_id/group_id/since/until filters. DERIVED-INCLUSION: STORED ROWS ONLY — a derived `queue_wait`/`forming` entry is synthesized after the query and cannot participate in SQL LIMIT/OFFSET, so it is never mixed into this page. Use the per-request / per-group trace endpoints for the derived phases. Any authenticated user.
+     */
+    get: {
+      parameters: {
+        query?: {
+          resource?: string;
+          phase?: "assemble" | "materialize" | "rebase" | "verify" | "land";
+          request_id?: string;
+          group_id?: string;
+          since?: string;
+          until?: string;
+          page?: number;
+          perPage?: number;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The phase-timing page (stored rows only) */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["MergePhaseList"];
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Integrator records completed phase timings (batch)
+     * @description Append-only ingest of up to 100 COMPLETED phases for one lane. DERIVED-INCLUSION: this endpoint accepts OBSERVED phases only (assemble/materialize/rebase/verify/land) — `queue_wait` and `forming` are computed by PM from timestamps it already owns and are rejected here (400), so they can never be double-counted. Values are normalized rather than rejected (duration clamped, label truncated to 120 chars, detail dropped above 4KB, dangling or cross-project ids nulled); the `adjusted` count in the response reports how many rows were touched and is the signal that the emitter is wrong. `recordedBy` is taken from the session, never the body. Integrator (ai_agent) only.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MergePhaseIngest"];
+        };
+      };
+      responses: {
+        /** @description Accepted and recorded */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                recorded: number;
+                adjusted: number;
+              };
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Integrator (ai_agent) only */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-requests/{id}/phases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The phase trace for one merge request
+     * @description The request's full phase trace in started_at ASCENDING order, bounded (no pagination). DERIVED-INCLUSION: INCLUDES the derived `queue_wait` entry at the head (derived:true, no id) — its `durationMs` is the last queue segment, `originDurationMs` the total since submit, and `basis` says which of the two applies (`requeued` when a prior integration ended inside the window). Stored rows follow (derived:false). Any authenticated user.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The trace (derived queue_wait + stored rows) */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["PhaseTraceEntry"][];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Merge request not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/merge-groups/{id}/phases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The phase trace for one merge group
+     * @description The group's full phase trace — its own rows AND its members' — in started_at ASCENDING order, bounded (no pagination). DERIVED-INCLUSION: INCLUDES the derived `forming` entry at the head (derived:true, no id), measured from group creation to the EARLIEST member pickup. Stored rows follow (derived:false). Any authenticated user.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The trace (derived forming + stored rows) */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["PhaseTraceEntry"][];
+            };
+          };
+        };
+        /** @description Authentication required */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Merge group not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{projectId}/audit-log": {
     parameters: {
       query?: never;
@@ -16891,6 +17201,78 @@ export interface components {
       realResult: "pass" | "fail";
       requestId?: string;
       attemptId?: string;
+    };
+    MergePhaseIngest: {
+      /** @default main */
+      resource: string;
+      phases: components["schemas"]["MergePhaseEntry"][];
+    };
+    MergePhaseEntry: {
+      /** @enum {string} */
+      phase: "assemble" | "materialize" | "rebase" | "verify" | "land";
+      /** Format: date-time */
+      startedAt: string;
+      requestId?: string;
+      groupId?: string;
+      attemptId?: string;
+      durationMs: number;
+      label?: string | null;
+      detail?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    MergePhaseList: {
+      data: components["schemas"]["MergePhaseRow"][];
+      pagination: {
+        total: number;
+        page: number;
+        perPage: number;
+      };
+    };
+    MergePhaseRow: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      derived: "false";
+      id: string;
+      projectId: string;
+      resource: string;
+      requestId: string | null;
+      groupId: string | null;
+      attemptId: string | null;
+      /** @enum {string} */
+      phase: "assemble" | "materialize" | "rebase" | "verify" | "land";
+      label: string | null;
+      startedAt: string;
+      durationMs: number;
+      detail: {
+        [key: string]: unknown;
+      } | null;
+      recordedBy: string | null;
+      createdAt: string;
+    };
+    PhaseTraceEntry:
+      | components["schemas"]["MergePhaseRow"]
+      | components["schemas"]["DerivedPhaseEntry"];
+    DerivedPhaseEntry: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      derived: "true";
+      /** @enum {string} */
+      phase: "forming" | "queue_wait";
+      projectId: string;
+      resource: string;
+      requestId: string | null;
+      groupId: string | null;
+      startedAt: string;
+      durationMs: number;
+      originAt: string;
+      originDurationMs: number;
+      /** @enum {string} */
+      basis: "exact" | "requeued";
     };
     AuditLogList: {
       data: components["schemas"]["AuditLogEntry"][];
