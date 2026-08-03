@@ -204,6 +204,30 @@ verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   `finally`, `try/finally` over the admit window, 409-tolerant terminal PM
   writes, no-batch-without-a-free-slot), surfaced as `stall: "pool_stranded"`,
   and alerted by the periodic sweep (`PM_ALERT_SWEEP_SEC`). Guide §14.15.
+- **Phase timing (where the wall clock went)** — a 39-minute verify used to be
+  indistinguishable from a wedge because the only two facts were "picked up" and
+  "landed". `merge_phase_timings` (migration **0038**) records one row per
+  **COMPLETED** phase — `duration_ms` NOT NULL, no `ended_at`, no open-row state,
+  so a crashed daemon strands nothing to reconcile (contrast §14.15). The phase
+  set is PARTITIONED and the partition is enforced as a type: `queue_wait`/
+  `forming` are DERIVED by PM from timestamps it owns (400 if ingested), while
+  `assemble`/`materialize`/`rebase`/`verify`/`land` are OBSERVED (ai_agent-only
+  ingest, 202 `{recorded, adjusted}` — a non-zero `adjusted` means the EMITTER is
+  wrong). Telemetry is never load-bearing: `flush()` is un-awaitable by type, no
+  suspension point inside a lock hold, rows dropped past 4 outstanding POSTs, and
+  no merge-path service imports the store (both sealed by test). Surfaced as a
+  "Where the time goes" dashboard panel (**absent ≠ zero** — an unobserved phase
+  is omitted and listed by name; the denominator is **summed measured phase time,
+  not elapsed**, because forming/queue_wait and cross-repo inner/outer verify
+  genuinely overlap), an In Flight phase-chip column (the RUNNING phase is
+  deliberately unnamed — only completed phases exist), a lane event trace
+  (`GET .../train/trace`, closed `elapsed` union so a renderer can't print "took"
+  over a since-pickup number), and a Discord stopwatch line (a phase figure is
+  the **UNION** of its intervals, scoped to the current trip). Degrades honestly
+  on game_one's one opaque `pm-verify.bat`: exactly one `verify` bar, no
+  fabricated split. No new env vars; needs a PM-server redeploy (0038) AND a
+  bundle redistribute + daemon restart before any observed data exists. Guide
+  §14.16 / `roadmaps/roadmap-20260803-train-phase-timing-legibility.md`.
 
 **Claim liveness (Campaigns C1–C3)** — `docs/design/phase-c*.md`.
 

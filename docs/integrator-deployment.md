@@ -1054,6 +1054,285 @@ stdout — so the evidence survives however it was launched, and a wedge is now 
 Rotation is one generation at 20 MB (`daemon.log` → `daemon.log.1`). An
 unwritable path is not fatal — the daemon falls back to stdout and runs.
 
+### 14.16 Phase timing — where the merge's wall clock went
+
+§14.14 taught agents to stop inventing stalls out of a big number. It did not make
+the number **explicable**. A request would enter the train and nobody — operator or
+agent — learned anything until a result popped out 39 minutes later, and a
+39-minute verify was indistinguishable from a wedge because the only two facts on
+the page were "picked up at T" and "landed at T+39m". Every diagnosis in §14.12,
+§14.14 and §14.15 was made by reasoning around that gap. This section is the gap
+closed: the train now records **where the minutes went**, as they go.
+
+The record is one append-only table, `merge_phase_timings` (migration **0038**),
+one row per **completed** phase.
+
+#### The taxonomy — observed vs derived, and why that split is a type
+
+The seven phases are **partitioned into two disjoint halves**, and the partition
+is the anti-double-count invariant:
+
+| Phase          | Kind         | What it covers                                                                            |
+| -------------- | ------------ | ----------------------------------------------------------------------------------------- |
+| `forming`      | **derived**  | Group created → the train picked up its first member. A group has no pickup of its own.   |
+| `queue_wait`   | **derived**  | Submitted (or re-queued) → picked up by the integrator.                                    |
+| `assemble`     | **observed** | Preparing the candidate: worktree reset, repo binding, speculative base, outer patch.      |
+| `materialize`  | **observed** | Making the candidate real on disk: LFS objects and submodule/gitlink checkout (§14.8).     |
+| `rebase`       | **observed** | Replaying the request's commits onto live main.                                            |
+| `verify`       | **observed** | Running the project's verify command against the candidate tree.                           |
+| `land`         | **observed** | Fetching main and fast-forwarding it — **twice** for a cross-repo group.                   |
+
+**Derived** phases are computed by PM on read, from timestamps it already owns
+(`merge_requests.enqueued_at` / `picked_up_at`, `merge_request_groups.created_at`).
+They are never stored and never ingested. **Observed** phases can only be seen
+from inside the worktree, so the daemon is their only possible source.
+
+That split is enforced as a **type**, not as a convention someone has to
+remember. The ingest body's phase enum is `MERGE_PHASES_OBSERVED`, so an
+over-eager daemon that also emits `queue_wait` gets a **400** at the wire instead
+of silently double-charging the wait to the lane; and the emitter's own span type
+is `MergeObservedPhase`, so writing that daemon is a compile error in the first
+place. The two halves are disjoint by construction, which is why the aggregation
+can simply **concatenate** its two sample sources without a reconciliation pass.
+
+`MERGE_PHASES` is the two halves in **pipeline order** — forming → queue_wait →
+assemble → materialize → rebase → verify → land. That order is the render
+contract shared by the share bar, the value table, the trace and the Discord
+line. It is never sorted alphabetically.
+
+#### Completed phases only — and what that costs
+
+A row carries `started_at` + `duration_ms` (NOT NULL). There is **no `ended_at`
+and no open-row state**: a phase becomes a row at the instant it ends, or never.
+That is deliberate, and it is the direct lesson of §14.15 — a daemon that dies
+mid-verify strands nothing to reconcile, because it never wrote a half-open row
+for a sweep to guess about. There is no "reset stuck phase" break-glass for the
+same reason there is no stuck phase.
+
+**The cost, stated plainly: the phase a member is running RIGHT NOW has no name.**
+The In Flight table's *Phase progress* column shows the phases that have
+completed as chips, and then a dashed `+ 4m unrecorded` chip for the time since
+the last recorded boundary. It does **not** say "currently verifying", and the
+shortcut that looks obvious — inferring `verify` from `attempt.status ===
+"running"` — is wrong: an attempt is equally "running" through assemble,
+materialize, rebase and land, so that inference would mislabel most of the very
+wall clock it claims to explain. `+ 4m unrecorded` is the honest form of the same
+sentence.
+
+#### Telemetry is never load-bearing
+
+No phase write may fail, delay or abort a merge. This is structural, not
+disciplinary:
+
+- The daemon's instrumentation handle (`PhaseSpans`, handed to the batch, group
+  assembly and land paths) **has no flush** — an instrumented module physically
+  cannot ship a POST. Only the pass owner flushes.
+- `flush()` returns `void`, so **`await recorder.flush()` does not type-check**.
+  The lane lock cannot wait on PM.
+- Timing a call adds **no suspension point between a pool acquire and its
+  release, or inside a lock hold** — the two places the 2026-08-02 wedge lived.
+  A source seal test pins that.
+- The buffer batches at **100** rows per POST and **drops** rows past **4**
+  outstanding POSTs. A PM that stops answering — exactly when an operator most
+  wants a running lane — costs bounded memory, bounded sockets, and some
+  telemetry. Never a merge.
+- The ingest is **strict about identity, lenient about values**: a wrong phase
+  name is a 400 (it would corrupt the aggregate), but a fat label, a skewed
+  duration or a dangling id is **normalized** — clamped, truncated to 120 chars,
+  detail dropped above 4 KB, cross-project or dangling ids probed and nulled.
+  The only throw on the write path is an unknown project.
+- **No merge-path service imports the phase store.** A test seals that edge; the
+  one importer outside `src/services` is the Discord line formatter, which is
+  read-only and fully guarded.
+
+`POST /api/v1/projects/{projectId}/merge-phases` answers **202** with
+`{ recorded, adjusted }`. **`adjusted` is the emitter's self-check: a healthy
+integrator reports `adjusted: 0` forever.** A non-zero value does not mean PM is
+unhappy — it means *the daemon sent something it should not have*, and the
+telemetry it sent has already been silently corrected. Treat a persistent
+non-zero `adjusted` as an integrator bug report.
+
+#### How it degrades on game_one's single `pm-verify.bat`
+
+game_one runs **one opaque verify step** (`pm-verify.bat`, ~12 minutes). PM
+cannot see inside one shell command, and no amount of code here can change that.
+So on that lane:
+
+- there is **exactly one `verify` bar**, with real p50/p95/max — the phase-level
+  numbers are fully honest;
+- there is **no breakdown inside it**. The row has no expander (an empty
+  disclosure would promise a split that does not exist) and the panel states the
+  reason outright: *"Verify ran as one unlabelled step in this window, so there is
+  no breakdown inside it."*
+- the Discord stopwatch line prints `verify 12m` with no parenthetical.
+
+**The unlock is config, not code, and it lives in the game_one repo**: splitting
+`pm-verify.bat` into `generate` / `build` / `test` entries in
+`settings.integrator.verify_steps` (§16.1). The moment those steps exist the
+daemon labels each verify row with its step id and the breakdown appears
+everywhere — panel drill-down, trace rows, and `verify 26m (build 18m / test 7m)`
+on Discord — with no PM change at all. Until then the single bar is the correct
+answer, not a degraded one.
+
+Label grammar, for anyone reading rows directly: a **single-repo** verify row's
+label is the bare step id (`build`); a **cross-repo** one is role-prefixed
+(`inner:build` / `outer:build`). A phase whose label is `null` means the phase
+*is* the unit of measurement.
+
+**A phase that ran no operation emits no row.** The pure-gitlink-bump
+auto-convert arm (§14.10) skips the outer rebase, so there is no `rebase/outer`
+row; a lone-outer group's synthetic inner verify (§14.11) never runs, so it emits
+no `verify/inner` row (a 0 ms sample is not a cheap verify — it is a fabricated
+one that would drag the phase's p50 toward zero on every lone-outer group); and
+the worktree pool's `acquire()` is a synchronous non-blocking call, so
+"correlated lease" would be a 0 ms row in every trace. Absence here means
+*nothing happened*, which is the truth. A pass that returns `backpressure`
+without leasing therefore emits **nothing at all** — a known, accepted gap; the
+pool's own exhaustion signal (§14.15) is where that shows up.
+
+#### Reading "Where the time goes" (train dashboard)
+
+The panel carries two share bars as small multiples — **last 24 h** and **last 20
+trips** (`phase_timing.recent_limit`) — over one value table with p50 / p95 / max
+on a **shared** axis, so
+verify's p50 visibly dwarfs land's instead of every phase self-normalizing to
+full width. A cross-repo group counts as **one trip**, not two.
+
+Two rules govern how to read it, and both are printed on the card:
+
+1. **Absent ≠ zero, and that is a type property.** A phase with no samples is
+   **omitted** — it is not a zero row and not a zero-width segment. The phases
+   that were not observed are then listed by name underneath ("Not observed in
+   the last 24 h: Materialize, Land — left out rather than shown as zero"). The
+   aggregate's numerics are non-nullable precisely so "never measured" and "took
+   0 ms" cannot be the same value. **A lane showing only Forming and Queue wait
+   is telling you the daemon is not emitting yet** (see the deploy checklist
+   below), not that the train did nothing.
+2. **The denominator is SUMMED MEASURED PHASE TIME, not elapsed wall clock.**
+   The column is labelled *"Share of measured phase time"* and never "% of
+   elapsed". Shares can exceed a trip's own elapsed time, for **two** reasons:
+   - **structural, always** — a group's `forming` covers the same minutes as each
+     member's `queue_wait`;
+   - **real concurrency** — a cross-repo inner and outer verify genuinely run at
+     the same time, as do members at `parallelism > 1`.
+
+   *"What fraction of a trip is explained by these phases"* is a **different
+   number, and nobody has computed it.** Do not read the share column as if it
+   were that number.
+
+#### The lane event trace ("Recent events")
+
+`GET /api/v1/projects/{projectId}/train/trace` — any authenticated user — is the
+"what happened lately and what took how long" feed under the In Flight table.
+It is **operational, not forensic**, and must never be confused with the
+admin-only audit page (§15.3): the audit log is complete, filterable and
+paginated; this is one lane, 24 h, live, and deliberately lossy. *A surface that
+drops rows on purpose cannot be the surface of record.*
+
+Two arms feed it — the phase rows and the audit log — plus direct entity-table
+reads for pickups, group starts, group outcomes and incidents. **`activity_log`
+is deliberately not a source**: a partially-landed group's discriminator rides on
+an event payload that never reaches an activity row, so that arm would report the
+orphaned-inner case (§14.5) — the one an operator most needs this feed for — as a
+plain "group rejected". The entity tables carry the full retroactive history
+instead, so the feed is populated on day one rather than from the deploy forward.
+
+Operational properties worth knowing before you rely on it:
+
+- A phase entry is placed by its **END** (`started_at + duration_ms`) but belongs
+  to the window by its **START** — matching the aggregation's rule. A phase that
+  started just before the window can therefore be missing even though it ended
+  inside it.
+- Every duration is rendered through a **closed union** of bases — `phase`,
+  `queue_wait`, `forming`, `since_pickup`, `none` — so a renderer can never print
+  "took" over a since-pickup number, and `none` prints **nothing** rather than
+  "0s".
+- `picked_up` is **current-pickup-only**: a re-queue NULLs `picked_up_at`, so a
+  re-picked-up request has overwritten its own predecessor. Prior pickups are not
+  recoverable here.
+- A grouped member's pickup is announced **once, by its group**.
+- Each arm is capped at **500** rows; `truncated` is true when either the cap or
+  the caller's `limit` bit.
+- **A broken feed and a quiet lane never look alike.** A load failure renders red
+  with an explicit *"this feed is unavailable — it is NOT a report that the lane
+  is quiet"*; a genuinely quiet lane renders the muted empty state. And a lane
+  with lifecycle events but no phase rows — the state every deployment is in
+  until the bundle ships — renders normally with a footer explaining the missing
+  durations.
+
+#### The Discord stopwatch line
+
+Land and reject narrations (§15.4a) gain a **second line on the same message**
+(one POST, one `\n` — never a second POST, which would interleave with another
+lane's narration and double the webhook rate budget):
+
+```
+✅ **Group landed** on `main` — "Fix grass placement drift" · inner `abc1234d` + outer `def5678a` · 26m since pickup
+   ⏱ forming 4m · assemble 3m · verify 26m (build 20m + test 8m, concurrent) · land 8s
+```
+
+Three rules make that line trustworthy:
+
+- **A phase figure is the UNION of its intervals**, not the sum and not the max.
+  Summing prints `verify 52m` directly underneath a header that just said `26m
+  since pickup` — the exact incoherence this campaign exists to remove. Max
+  under-reports staggered overlap (0→20m plus 15→30m is 30 minutes of wall clock;
+  max says 20). The union degrades to exactly the sum when the work was
+  sequential, so nothing is lost on a single-repo lane, and it is the only figure
+  that composes with the "since pickup" header.
+- **The separator encodes the timeline.** `a + b, concurrent` means the parts
+  overlapped and do **not** add up to the phase figure; `a / b` means they ran
+  back-to-back and **do** partition it. If the labelled parts do not cover the
+  phase, the breakdown is dropped entirely rather than rendered with a silent
+  residual.
+- **The line is scoped to the CURRENT trip.** Rows from an attempt before a
+  re-queue are dropped, so `queue 12m (48m since submit)` states the total
+  honestly in the parenthetical while charging this trip only 12 minutes.
+
+Two silences are intentional: a **grouped member gets no stopwatch line of its
+own** (the group's line covers the same minutes), and a trip with **only derived
+phases** — a lane whose daemon does not emit yet — gets no line at all rather than
+one that says merely "it queued". The line respects the existing
+`settings.webhooks.train_events_enabled` gate, and its formatter is total: a
+failure inside it costs the stopwatch line, never the land narration.
+
+#### REST surface
+
+| Route                                                | Auth                | Notes                                                          |
+| ---------------------------------------------------- | ------------------- | -------------------------------------------------------------- |
+| `POST /api/v1/projects/{id}/merge-phases`            | **ai_agent only**   | ≤100 completed phases; **202** `{recorded, adjusted}`          |
+| `GET  /api/v1/projects/{id}/merge-phases`            | any authenticated   | Raw lane rows, filterable + paginated                          |
+| `GET  /api/v1/merge-requests/{id}/phases`            | any authenticated   | Derived `queue_wait` head, then stored rows, oldest-first      |
+| `GET  /api/v1/merge-groups/{id}/phases`              | any authenticated   | Derived `forming` head, then stored rows                       |
+| `GET  /api/v1/projects/{id}/train/trace`             | any authenticated   | The lane feed; `?resource=&since=&limit=` (limit 50, clamped to 200, never 400'd) |
+| `GET  /api/v1/projects/{id}/train/metrics`           | any authenticated   | Gains the `phase_timing` sub-block (`window` + `recent`)       |
+
+`recordedBy` is taken from the session and is not expressible on the wire, so the
+recorder identity cannot be spoofed. No new environment variables and no new
+settings keys were added by this work — the whole feature is always-on and inert
+until rows exist.
+
+#### Deploy checklist (order matters)
+
+1. **Redeploy the PM server.** Migration 0038 creates `merge_phase_timings`; it
+   runs on boot. Until this happens the ingest route does not exist and the
+   daemon logs a warning per failed POST — and keeps merging, because the POST is
+   fire-and-forget.
+2. **Redistribute the integrator bundle and restart the daemon.** *Nothing in
+   this section has observed data until this step.* Until then the panel shows
+   only `Queue wait` (and `Forming` on a cross-repo lane), the other five phases
+   listed as not observed, and the trace shows lifecycle rows under the "durations
+   appear once the integrator reports phase boundaries" footer. That state is
+   correct and expected — it is not a bug report.
+3. **Confirm on the dashboard** after one merge: `Where the time goes` shows an
+   `assemble` / `rebase` / `verify` / `land` breakdown, and In Flight shows phase
+   chips.
+4. **Watch `adjusted`** on the daemon's ingest responses for the first day. It
+   must be `0`.
+5. **Optional, game_one-owned:** split `pm-verify.bat` into `verify_steps`
+   (§16.1) to unlock the intra-verify breakdown. Nothing on the PM side needs to
+   change.
+
 ---
 
 ## 15. Observability + Break-glass (Phase 7.4)
@@ -1080,6 +1359,8 @@ All dashboard reads are **read-only observability** (`requireAuth` — any authe
 | GET    | `/api/v1/projects/{projectId}/audit-log` (filters: `userId`, `action`, `targetType`, `targetId`, `from`, `to`, `page`, `perPage`) | `requireAuth && requireAdmin` |
 
 Metrics are computed **on-read** (no rollup table, no background job) — always fresh. The 24h window is a JS-computed ISO cutoff. Reading the metrics or health GET also drives the on-read alert evaluation (§15.4) as a side effect.
+
+> The dashboard also carries the **"Where the time goes"** phase-breakdown panel, a **Phase progress** column on In Flight, and the **"Recent events"** lane trace (`GET /api/v1/projects/{projectId}/train/trace`, `requireAuth`) — all added by the phase-timing work. **Read §14.16 before interpreting any of them**: the share denominator is measured phase time, not elapsed wall clock, and an unobserved phase is absent rather than zero.
 
 ### 15.2 Integrator heartbeat + health channel
 
@@ -1184,6 +1465,8 @@ The alerts above only fire when something is **wrong**. The event feed is the se
 Deliberately **not** narrated (noise without decision value): `merge.request.queued` (a worker submitting), per-attempt start/complete, the Phase-7.2 speculative batch markers, and per-member group landings — the single `merge.group.landed` line already names every member.
 
 Naming: a merge request has no name of its own, so it is named by its **linked task's title**, falling back to the branch, then the id; a group is named by its real (non-synthetic) members. Elapsed times are **pre-computed** (`26m since pickup`) — never two timestamps for the reader to subtract (§14.14).
+
+> **Land and reject lines carry a second `⏱` stopwatch line** breaking that headline duration into phases (`forming 4m · assemble 3m · verify 26m · land 8s`). Same message, same gate. A phase figure is the **UNION** of its intervals, not the sum — see §14.16 for why, and for the two silences (a grouped member gets no line of its own; a lane whose daemon does not emit phases gets none at all).
 
 Resilience mirrors the alert path exactly: the enrichment reads (task title, group members, queue depth) and the formatting are fully guarded, and the POST is un-awaited — a Discord outage, a deleted task, or a misshapen settings row can never fail a pickup, a land, or a reject.
 
