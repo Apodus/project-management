@@ -23,6 +23,7 @@ import type { MergeAttemptView, MergeRequestView } from "@pm/shared";
 import { createGitOps, type GitOps, type VerifyResult } from "../src/git-ops.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { createLogger } from "../src/logger.js";
+import { makePhaseProbe } from "./phase-probe.js";
 import {
   runGroupIntegration,
   type GroupIntegrationDeps,
@@ -775,4 +776,39 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       if (held) innerPool.release(held);
     }
   });
+
+  // ── Campaign 2026-08-03 §P2 ────────────────────────────────────────
+  it("P2: the assembly's materialize rows survive a group REJECTED at verify", async () => {
+    const state = makeGroupState({
+      inner: { verifyCmd: "exit 1" },
+      outer: { verifyCmd: "echo outer-ok" },
+    });
+    const probe = makePhaseProbe();
+    const deps = depsFor(state, { phases: probe.recorder.scope({ groupId: "grp-p2-rej" }) });
+    const outcome = await runGroupIntegration(
+      { id: "grp-p2-rej", members: state.group.members },
+      deps,
+    );
+    expect(outcome.kind).toBe("rejected");
+
+    const labels = probe.labels();
+    // The assembly cost was SPENT regardless of the verdict — binding, both
+    // rebases and the whole materialize. A store that only recorded successful
+    // groups would systematically under-report the expensive failures.
+    expect(labels).toContain("assemble/bind");
+    expect(labels).toContain("materialize/objects");
+    expect(labels).toContain("materialize/gitlink");
+    expect(labels).toContain("materialize/worktree");
+    expect(labels).toContain("verify/inner:verify");
+    expect(labels).toContain("verify/outer:verify");
+
+    const rows = probe.rows();
+    expect(rows.find((r) => r.label === "bind")!.detail).toMatchObject({ ok: true });
+    // Both repos verify concurrently, so their durations OVERLAP and must never
+    // be summed into an elapsed time — the row says so itself.
+    const innerVerify = rows.find((r) => r.phase === "verify" && r.label === "inner:verify")!;
+    expect(innerVerify.detail).toMatchObject({ role: "inner", concurrent: true, outcome: "fail" });
+    expect(innerVerify.requestId).toBe("req-inner");
+    for (const row of rows) expect(row.groupId).toBe("grp-p2-rej");
+  }, 30_000);
 });

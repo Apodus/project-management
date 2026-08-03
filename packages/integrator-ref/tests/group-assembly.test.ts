@@ -7,6 +7,7 @@ import { simpleGit, type SimpleGit } from "simple-git";
 import { createGitOps } from "../src/git-ops.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { assembleGroup } from "../src/group-assembly.js";
+import { makePhaseProbe } from "./phase-probe.js";
 
 function hasGit(): boolean {
   try {
@@ -526,6 +527,128 @@ describe.skipIf(!GIT_AVAILABLE)("assembleGroup (real two-repo)", () => {
       if (heldOuter) outerPool.release(heldOuter);
     }
   });
+
+  // ── Campaign 2026-08-03 §P2: assembly is the cross-repo wall clock ───────
+  //
+  // Binding, two rebases and the LFS/submodule materialize are what nobody
+  // could account for when a group took 40 minutes. These pin that every one of
+  // them now reports, per role, and that reporting changes nothing.
+
+  it("P2: a successful assembly reports every step it took, per role", async () => {
+    const probe = makePhaseProbe();
+    const result = await assembleGroup({
+      acquireInner: () => innerPool.acquire(),
+      releaseInner: (wt) => innerPool.release(wt),
+      acquireOuter: () => outerPool.acquire(),
+      releaseOuter: (wt) => outerPool.release(wt),
+      gitOps: (p) => createGitOps(simpleGit(p)),
+      innerRef: innerFeatureSha,
+      outerRef: outerFeatureSha,
+      gitlinkPath: GITLINK_PATH,
+      gitRemote: "origin",
+      phases: probe.recorder.scope({ groupId: "grp-p2" }),
+      innerRequestId: "req-inner",
+      outerRequestId: "req-outer",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) result.release();
+
+    expect(probe.labels()).toEqual([
+      "assemble/assert",
+      "assemble/inner:reset",
+      "assemble/outer:classify",
+      "assemble/outer:reset",
+      "materialize/gitlink",
+      "materialize/objects",
+      "materialize/worktree",
+      "rebase/inner",
+      "rebase/outer",
+    ]);
+
+    const rows = probe.rows();
+    const by = (label: string) => rows.find((r) => r.label === label)!;
+    // The group id rides every row; the role's own request id names WHOSE work
+    // it was — without which an orphaned inner is two anonymous rows.
+    for (const row of rows) expect(row.groupId).toBe("grp-p2");
+    expect(by("inner:reset").requestId).toBe("req-inner");
+    expect(by("outer:reset").requestId).toBe("req-outer");
+    expect(by("inner").requestId).toBe("req-inner");
+
+    // This outer member is pure source over a gitlink-bearing main, so the
+    // classifier finds no managed hunk and falls open to the LEGACY rebase.
+    expect(by("outer:classify").detail).toMatchObject({ arm: "two_member", kind: "legacy" });
+    expect(by("outer").detail).toMatchObject({ via: "rebase", ok: true, conflicts: 0 });
+    expect(by("inner").detail).toMatchObject({ ok: true, conflicts: 0 });
+    expect(by("assert").detail).toMatchObject({ gitlinkOk: true, populated: true });
+    expect(by("worktree").detail).toMatchObject({ gitlinkPath: GITLINK_PATH });
+
+    // NO lease span: acquireInner/acquireOuter are synchronous non-blocking
+    // pool returns with no wall clock, so measuring them would fabricate a 0 ms
+    // row in every cross-repo trace.
+    expect(probe.labels().some((l) => l.includes("lease"))).toBe(false);
+  }, 40_000);
+
+  it("P2: a backpressure return emits NOTHING (nothing ran — the accepted gap)", async () => {
+    const probe = makePhaseProbe();
+    const held = innerPool.acquire();
+    expect(held).not.toBeNull();
+    try {
+      const result = await assembleGroup({
+        acquireInner: () => innerPool.acquire(), // null now
+        releaseInner: (wt) => innerPool.release(wt),
+        acquireOuter: () => outerPool.acquire(),
+        releaseOuter: (wt) => outerPool.release(wt),
+        gitOps: (p) => createGitOps(simpleGit(p)),
+        innerRef: innerFeatureSha,
+        outerRef: outerFeatureSha,
+        gitlinkPath: GITLINK_PATH,
+        gitRemote: "origin",
+        phases: probe.recorder,
+      });
+      expect(result.ok).toBe(false);
+      // No operation ran, so no row is honest to emit. The pool's own exhaustion
+      // signal is where a backpressured pass is visible.
+      expect(probe.rows()).toEqual([]);
+      expect(probe.postCount()).toBe(0);
+    } finally {
+      if (held) innerPool.release(held);
+    }
+  });
+
+  it("P2: a THROWING ingest leaves the assembly result and the slot accounting identical", async () => {
+    const run = async (behavior: "ok" | "throw") => {
+      const probe = makePhaseProbe(behavior);
+      const result = await assembleGroup({
+        acquireInner: () => innerPool.acquire(),
+        releaseInner: (wt) => innerPool.release(wt),
+        acquireOuter: () => outerPool.acquire(),
+        releaseOuter: (wt) => outerPool.release(wt),
+        gitOps: (p) => createGitOps(simpleGit(p)),
+        innerRef: innerFeatureSha,
+        outerRef: outerFeatureSha,
+        gitlinkPath: GITLINK_PATH,
+        gitRemote: "origin",
+        phases: probe.recorder,
+      });
+      const shape = result.ok
+        ? { ok: true as const, Ri: result.Ri, gitlinkPath: result.gitlinkPath }
+        : { ok: false as const, reason: result.reason };
+      result.release();
+      return shape;
+    };
+
+    const healthy = await run("ok");
+    const broken = await run("throw");
+    // Ri differs only if the assembly itself differed; it must not.
+    expect(broken).toEqual(healthy);
+    // ...and BOTH slots came back, which is the thing a stranded lane dies of.
+    const i = innerPool.acquire();
+    const o = outerPool.acquire();
+    expect(i).not.toBeNull();
+    expect(o).not.toBeNull();
+    if (i) innerPool.release(i);
+    if (o) outerPool.release(o);
+  }, 60_000);
 });
 
 // ─── materialize is LFS-aware (real git + git-lfs, NO network) ─────────

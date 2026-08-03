@@ -388,3 +388,62 @@ describe("PmClient pickup/startAttempt batch tags", () => {
     expect(calls[0].body).toEqual({ baseSha: "base000" });
   });
 });
+
+describe("PmClient.postMergePhases (campaign 2026-08-03 §P2)", () => {
+  it("POSTs the {resource, phases} envelope to the lane's merge-phases endpoint", async () => {
+    const { client, calls } = makeClient();
+    await client.postMergePhases("proj-1", {
+      resource: "main",
+      phases: [
+        {
+          phase: "materialize",
+          startedAt: "2026-08-03T10:00:00.000Z",
+          durationMs: 4200,
+          label: "objects",
+          detail: { gitlinkPath: "vendor/rynx" },
+          groupId: "grp-1",
+        },
+      ],
+    });
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].url).toBe("http://pm.local/api/v1/projects/proj-1/merge-phases");
+    expect(calls[0].body).toEqual({
+      resource: "main",
+      phases: [
+        {
+          phase: "materialize",
+          startedAt: "2026-08-03T10:00:00.000Z",
+          durationMs: 4200,
+          label: "objects",
+          detail: { gitlinkPath: "vendor/rynx" },
+          groupId: "grp-1",
+        },
+      ],
+    });
+  });
+
+  it("unwraps the {recorded, adjusted} ack — the emitter's only self-check", async () => {
+    const calls: CapturedCall[] = [];
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        method: init?.method ?? "GET",
+        url: String(url),
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      return new Response(JSON.stringify({ data: { recorded: 7, adjusted: 2 } }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    const client = new PmClient({ baseUrl: "http://pm.local", token: "tok", fetchImpl });
+
+    // Returned rather than discarded (unlike the Promise<void> relay precedents):
+    // `adjusted > 0` is the ONLY signal that this daemon's rows are malformed.
+    await expect(
+      client.postMergePhases("proj-1", {
+        resource: "main",
+        phases: [{ phase: "land", startedAt: "2026-08-03T10:00:00.000Z", durationMs: 1 }],
+      }),
+    ).resolves.toEqual({ recorded: 7, adjusted: 2 });
+  });
+});

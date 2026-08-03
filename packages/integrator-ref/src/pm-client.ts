@@ -29,6 +29,8 @@ import type {
   MergeResolutionState,
   MergeResolutionDetail,
   CommentType,
+  MergePhaseEntryInput,
+  MergePhaseIngestResult,
 } from "@pm/shared";
 // Type-only import (avoids a runtime circular import with batch.ts).
 import type { BatchEvent } from "./batch.js";
@@ -657,6 +659,30 @@ export class PmClient {
       "POST",
       `/projects/${encodeURIComponent(projectId)}/merge-batches/events`,
       marker,
+    );
+  }
+
+  // ── Train phase timings (campaign 2026-08-03 §P2) ──────────────────
+  /**
+   * POST a batch of COMPLETED phase timings for this lane (≤100; the route
+   * returns 202). Unlike the `Promise<void>` fire-and-forget precedents
+   * (postBatchEvent / emitVerifyCacheMismatch) this RETURNS the ack, because
+   * `adjusted > 0` is the emitter's only self-check that its rows are
+   * well-formed — a value it cannot check if the method throws it away.
+   *
+   * Fire-and-forget is enforced one level up, where it is structural rather
+   * than trusted: `PhaseRecorder.flush()` is `void` and un-awaitable, which is
+   * strictly stronger than a `Promise<void>` a call site is merely expected not
+   * to hold the lane lock open on.
+   */
+  postMergePhases(
+    projectId: string,
+    body: { resource: string; phases: MergePhaseEntryInput[] },
+  ): Promise<MergePhaseIngestResult> {
+    return this.request<MergePhaseIngestResult>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/merge-phases`,
+      body,
     );
   }
 

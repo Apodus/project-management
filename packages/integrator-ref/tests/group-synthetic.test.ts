@@ -43,6 +43,7 @@ import type { MergeAttemptView, MergeRequestView } from "@pm/shared";
 import { createGitOps } from "../src/git-ops.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { createLogger } from "../src/logger.js";
+import { makePhaseProbe } from "./phase-probe.js";
 import {
   runGroupIntegration,
   type GroupIntegrationDeps,
@@ -1533,4 +1534,37 @@ describe.skipIf(!GIT_AVAILABLE)("outer-only (synthetic-inner) groups (own fixtur
     expect(outerComment?.category).toBe("gitlink_unreachable");
     expect(await bareSha(w.innerBare, GIT_MAIN)).toBe(w.innerMainB);
   }, 45_000);
+
+  // ── Campaign 2026-08-03 §P2 ────────────────────────────────────────
+  it("P2: a lone-outer group emits NO inner verify row and NO inner rebase row", async () => {
+    const w = await buildWorld("norm");
+    const state = outerOnlyState(w.featureNormalize);
+    const probe = makePhaseProbe();
+    const deps = {
+      ...worldDeps(w, state),
+      phases: probe.recorder.scope({ groupId: "grp-p2-loneouter" }),
+    };
+    const integ = await runGroupIntegration(
+      { id: "grp-p2-loneouter", members: state.group.members },
+      deps,
+    );
+    expect(integ.kind).toBe("ready_to_land");
+    if (integ.kind !== "ready_to_land") throw new Error(`not ready: ${JSON.stringify(integ)}`);
+
+    const labels = probe.labels();
+    // The inner is a NO-OP: its verify is short-circuited to a synthetic pass
+    // and its rebase never runs. Emitting a 0 ms sample for either would not be
+    // "a cheap verify" — it would be a fabricated one, dragging the phase's p50
+    // toward zero on every lone-outer group (design lock 3).
+    expect(labels).not.toContain("verify/inner:verify");
+    expect(labels).not.toContain("rebase/inner");
+    // The outer — the sole real gate — is fully reported.
+    expect(labels).toContain("verify/outer:verify");
+    expect(labels).toContain("rebase/outer");
+    expect(labels).toContain("assemble/inner:reset");
+    expect(probe.rows().find((r) => r.label === "outer:classify")!.detail).toMatchObject({
+      arm: "lone_outer",
+      kind: "normalize",
+    });
+  }, 40_000);
 });

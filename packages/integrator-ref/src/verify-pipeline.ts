@@ -42,7 +42,32 @@ const SYNTHETIC_STEP_ID = "verify";
 export interface PipelineStepResult {
   stepId: string;
   outcome: "pass" | "fail";
+  /**
+   * The step's REPORTED duration — on a cache HIT this is the ORIGINAL run's
+   * duration (`hit.durationMs`), not this pass's. It is the verify-cache /
+   * `VerifyStepResult` contract and is deliberately left alone; phase timing
+   * uses `wallMs` instead. See `wallMs` for why that distinction is the whole
+   * point of the campaign.
+   */
   durationMs: number;
+  /**
+   * Campaign 2026-08-03 §P2: when THIS pass started this step (epoch ms), and
+   * how long THIS pass actually spent in it. A cache HIT skips the run entirely,
+   * so `durationMs` there is a 26-minute verify recorded weeks ago while the
+   * merge in front of the operator spent 40 milliseconds — emitting `durationMs`
+   * as a phase timing would report exactly the dishonesty this campaign exists
+   * to remove. `toVerifyStepResults` ignores both fields, so the wire shape
+   * `completeAttempt` persists is untouched.
+   */
+  startedAtMs: number;
+  wallMs: number;
+  /**
+   * The topological wave this step ran in. Steps sharing a wave ran CONCURRENTLY
+   * (`Promise.all` over the wave below), so summing their durations as if they
+   * were sequential overstates the verify phase — an aggregate that groups by
+   * this can say so. Always 0 for the synthetic single-step path.
+   */
+  waveIndex: number;
   /**
    * STEP 6: true iff a cache HIT served this verdict (the real run was SKIPPED).
    * false on an off-path run, a MISS, or any shadow run (shadow ALWAYS runs).
@@ -171,6 +196,10 @@ function cycleFailStep(): PipelineStepResult {
     stepId: SYNTHETIC_STEP_ID,
     outcome: "fail",
     durationMs: 0,
+    // No step ran, so no wall clock was spent — a structural escape, not work.
+    startedAtMs: Date.now(),
+    wallMs: 0,
+    waveIndex: 0,
     cached: false,
     treeSha: "",
     stepConfigSha: "",
@@ -311,11 +340,15 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
     }
   };
 
-  const runStep = async (step: VerifyStep): Promise<PipelineStepResult> => {
+  const runStep = async (step: VerifyStep, waveIndex: number): Promise<PipelineStepResult> => {
     const timeoutMs = (step.timeout_sec ?? ctx.verifyTimeoutSec) * 1000;
     const scSha = stepConfigSha(step);
     const tSha = cache?.treeSha ?? "";
     const logPath = logPathForStep(ctx.logsDir, ctx.attemptId, step.id, isSyntheticSingle);
+    // THIS pass's clock, taken before the cache probe: a lookup is I/O and its
+    // cost belongs to the step that made it, on the hit path as much as the miss.
+    const startedAtMs = Date.now();
+    const wall = (): number => Date.now() - startedAtMs;
 
     const runReal = (): Promise<VerifyResult> =>
       ctx.gitOps.runVerify(step.command, timeoutMs, {
@@ -332,6 +365,9 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
         outcome: PASS(v) ? "pass" : "fail",
         cached: false,
         durationMs: v.durationMs,
+        startedAtMs,
+        wallMs: wall(),
+        waveIndex,
         treeSha: tSha,
         stepConfigSha: scSha,
         verify: v,
@@ -350,7 +386,12 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
           stepId: step.id,
           outcome: hit.result,
           cached: true,
+          // durationMs is the ORIGINAL run's; wallMs is what this pass spent
+          // probing the cache. The gap between them is the honesty fix.
           durationMs: hit.durationMs ?? 0,
+          startedAtMs,
+          wallMs: wall(),
+          waveIndex,
           treeSha: tSha,
           stepConfigSha: scSha,
           verify: v,
@@ -369,6 +410,9 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
         outcome: real,
         cached: false,
         durationMs: v.durationMs,
+        startedAtMs,
+        wallMs: wall(),
+        waveIndex,
         treeSha: tSha,
         stepConfigSha: scSha,
         verify: v,
@@ -392,6 +436,9 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
       outcome: real,
       cached: false,
       durationMs: v.durationMs,
+      startedAtMs,
+      wallMs: wall(),
+      waveIndex,
       treeSha: tSha,
       stepConfigSha: scSha,
       verify: v,
@@ -402,6 +449,9 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
   //    depends_on ⊆ passed. Run the wave concurrently; capture the first fail
   //    race-safely; on fail return the captured TRIGGER (discard casualties). ──
   const remaining = new Set<string>(byId.keys());
+  // Which wave each step ran in — carried onto every result so a consumer can
+  // tell "three steps, 6 minutes total" from "three steps, 2 minutes wall".
+  let waveIndex = 0;
 
   while (remaining.size > 0) {
     const wave: VerifyStep[] = [];
@@ -418,8 +468,10 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
 
     for (const s of wave) remaining.delete(s.id);
 
+    const thisWave = waveIndex;
+    waveIndex += 1;
     const wavePromises = wave.map((step) =>
-      runStep(step).then((result) => {
+      runStep(step, thisWave).then((result) => {
         allResults.push(result);
         if (result.outcome === "fail" && !failing) {
           // Race-safe FIRST-fail capture: record the trigger ONCE and abort the

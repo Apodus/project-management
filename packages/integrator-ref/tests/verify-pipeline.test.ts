@@ -678,3 +678,83 @@ describe("runPipeline cache-aware (Phase 7.5 Step 6)", () => {
     expect(classifyVerifyFailure(v)).toBe("real");
   });
 });
+
+// ── Campaign 2026-08-03 §P2: this pass's real wall clock ──────────────
+//
+// `durationMs` keeps its exact meaning (the verify-cache / VerifyStepResult
+// contract). `startedAtMs`/`wallMs` are new and describe THIS pass, which is the
+// only honest thing to charge a merge for.
+
+describe("runPipeline — per-step wall clock (campaign 2026-08-03 §P2)", () => {
+  it("every result on every path carries a monotone startedAtMs + wallMs", async () => {
+    const calls: VerifyCall[] = [];
+    const gitOps = makeFakeGitOps(
+      {
+        "cmd-a": { durationMs: 20, result: okResult("") },
+        "cmd-b": { durationMs: 20, result: realFailResult("") },
+      },
+      calls,
+    );
+    const before = Date.now();
+    const res = await runPipeline([step("a", "cmd-a"), step("b", "cmd-b")], ctxFor(gitOps));
+    const after = Date.now();
+
+    expect(res.steps).toHaveLength(2);
+    for (const s of res.steps) {
+      expect(s.startedAtMs).toBeGreaterThanOrEqual(before);
+      expect(s.startedAtMs).toBeLessThanOrEqual(after);
+      expect(s.wallMs).toBeGreaterThanOrEqual(0);
+      expect(s.startedAtMs + s.wallMs).toBeLessThanOrEqual(after);
+      // A pass AND a fail both spent real time — a rejected step's minutes are
+      // exactly the ones the campaign exists to surface.
+      expect(s.wallMs).toBeGreaterThan(0);
+    }
+  });
+
+  it("waveIndex separates sequential steps from concurrent ones", async () => {
+    const calls: VerifyCall[] = [];
+    const gitOps = makeFakeGitOps(
+      {
+        "cmd-format": { durationMs: 5, result: okResult("") },
+        "cmd-lint": { durationMs: 10, result: okResult("") },
+        "cmd-typecheck": { durationMs: 10, result: okResult("") },
+      },
+      calls,
+    );
+    const res = await runPipeline(
+      [
+        step("format", "cmd-format"),
+        step("lint", "cmd-lint", ["format"]),
+        step("typecheck", "cmd-typecheck", ["format"]),
+      ],
+      ctxFor(gitOps),
+    );
+    const byId = (id: string) => res.steps.find((s) => s.stepId === id)!;
+    expect(byId("format").waveIndex).toBe(0);
+    // Same wave ⇒ CONCURRENT ⇒ their durations must never be summed as elapsed.
+    expect(byId("lint").waveIndex).toBe(1);
+    expect(byId("typecheck").waveIndex).toBe(1);
+  });
+
+  it("a cache HIT's wallMs is this pass's cost, NOT the cached verdict's duration", async () => {
+    const calls: VerifyCall[] = [];
+    const gitOps = makeFakeGitOps({ "cmd-a": { durationMs: 5000, result: okResult("") } }, calls);
+    const { client } = makeFakeCacheClient([
+      // 26 minutes — the original run, recorded who-knows-when.
+      seedRow("a", "cmd-a", "pass", { durationMs: 1_560_000 }),
+    ]);
+    const res = await runPipeline(
+      [step("a", "cmd-a")],
+      ctxFor(gitOps, { cache: cacheCtx(client, "on") }),
+    );
+    expect(calls.length).toBe(0); // the HIT skipped the run entirely
+    const s = res.steps[0];
+    expect(s.cached).toBe(true);
+    // The contract field still reports the cached verdict...
+    expect(s.durationMs).toBe(1_560_000);
+    // ...while the wall clock reports what this merge actually spent. Emitting
+    // `durationMs` as a phase timing would claim a 26-minute verify for a merge
+    // that spent milliseconds on a cache lookup.
+    expect(s.wallMs).toBeLessThan(1000);
+  });
+});

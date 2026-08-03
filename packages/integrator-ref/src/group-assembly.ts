@@ -1,7 +1,12 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { classifyOuterGitlinkDiff, type GitOps } from "./git-ops.js";
+import {
+  classifyOuterGitlinkDiff,
+  type GitOps,
+  type OuterGitlinkClassification,
+} from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
+import { NOOP_PHASE_SPANS, type PhaseSpans } from "./phase-recorder.js";
 
 // ─── Result type (discriminated union, mirrors git-ops RebaseResult) ──
 
@@ -135,6 +140,15 @@ export interface AssembleGroupDeps {
    * performs, so detection sees the exact commit the rebase would.
    */
   gitRemote: string;
+  /**
+   * Campaign 2026-08-03 §P2: phase-timing spans (already scoped to the group).
+   * OPTIONAL and coalesced ONCE at function entry — see GroupIntegrationDeps
+   * for why a non-nullable local rather than `phases?.` at each call site.
+   */
+  phases?: PhaseSpans;
+  /** Request ids so a per-role row names WHICH member's work it measured. */
+  innerRequestId?: string;
+  outerRequestId?: string;
 }
 
 /** Resolve the outer detection ref to a concrete present commit, mirroring the DWIM
@@ -191,15 +205,30 @@ async function resolveDetectRef(
  * Does NOT verify (§5.3 / Step 10) and does NOT push (§6 / Step 11).
  */
 export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledGroup> {
+  const phases = deps.phases ?? NOOP_PHASE_SPANS;
+  const innerSpan = { requestId: deps.innerRequestId };
+  const outerSpan = { requestId: deps.outerRequestId };
+
   // ── §5.1 correlated lease (fixed inner-before-outer; release-on-partial) ──
+  //
+  // DELIBERATELY UNMEASURED (campaign 2026-08-03 §P2). `acquireInner`/
+  // `acquireOuter` are the 7.2 pool contract: synchronous, non-blocking
+  // `pool.acquire()` returns that either hand back a slot or null. There is no
+  // wall clock here to report, so a "correlated lease" span would be a 0 ms row
+  // in every trace — fabricated legibility, and the same reason the synthetic
+  // inner verify emits nothing. If leasing ever learns to WAIT, measure it then.
   const innerWt = deps.acquireInner();
   if (innerWt === null) {
-    // Nothing acquired — release is a no-op.
+    // Nothing acquired — release is a no-op. KNOWN, ACCEPTED GAP: a backpressure
+    // return emits no rows at all, so a pass that could not lease is invisible to
+    // the phase store. Nothing ran, so nothing is mis-reported; the pool's own
+    // exhaustion signal is the right place to see it.
     return { ok: false, reason: "backpressure", release: () => {} };
   }
   const outerWt = deps.acquireOuter();
   if (outerWt === null) {
-    // Partial failure: release the inner slot we already took, then backpressure.
+    // Partial failure: release the inner slot we already took, then backpressure
+    // (again emitting nothing — see above).
     deps.releaseInner(innerWt);
     return { ok: false, reason: "backpressure", release: () => {} };
   }
@@ -218,11 +247,25 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
     const outerGitOps = deps.gitOps(outerWt.path);
 
     // ── steps 1-3: inner reset, base, then rebase (REAL inner member only) ──
-    await innerWt.resetForAttempt();
+    await phases.time({ phase: "assemble", label: "inner:reset", ...innerSpan }, () =>
+      innerWt.resetForAttempt(),
+    );
     const baseInnerSha = await innerGitOps.resolveRef("HEAD"); // = Mi (live inner main)
     let Ri: string;
     if (deps.innerRef !== null) {
-      const innerRebase = await innerGitOps.rebaseOnto(baseInnerSha, deps.innerRef);
+      const innerRef = deps.innerRef;
+      const innerRebase = await phases.time(
+        {
+          phase: "rebase",
+          label: "inner",
+          ...innerSpan,
+          detail: (r) => ({
+            ok: r?.ok ?? false,
+            conflicts: r && !r.ok ? r.conflictingFiles.length : 0,
+          }),
+        },
+        () => innerGitOps.rebaseOnto(baseInnerSha, innerRef),
+      );
       if (!innerRebase.ok) {
         return {
           ok: false,
@@ -237,11 +280,17 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
       // inner is a NO-OP — Ri = live inner main. No rebase ⇒ inner HEAD never
       // moves ⇒ the inner land push is an up-to-date no-op (inner main never
       // advances). `inner_conflict` is structurally unreachable on this arm.
+      //
+      // NO `rebase/"inner"` row is emitted here (campaign 2026-08-03 §P2,
+      // AMENDMENT A3): no rebase runs, and a 0 ms sample would drag the rebase
+      // phase's p50 toward zero on every lone-outer group.
       Ri = baseInnerSha;
     }
 
     // ── steps 4-6: outer reset, base, then rebase (REAL outer member only) ──
-    await outerWt.resetForAttempt();
+    await phases.time({ phase: "assemble", label: "outer:reset", ...outerSpan }, () =>
+      outerWt.resetForAttempt(),
+    );
     const baseOuterSha = await outerGitOps.resolveRef("HEAD"); // = Mo (live outer main)
 
     // Direction-C conversion (campaign xrepo-gitlink-bump-autoconvert): a REAL outer
@@ -253,45 +302,81 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
     let skipOuterRebase = false;
     let outerConverted = false;
     let outerGitlinkNormalized = false;
+    const managedPaths = new Set([deps.gitlinkPath]);
     if (deps.outerRef !== null && deps.innerRef !== null) {
       // ── TWO-MEMBER arm (a REAL inner defines Ri): PURELY STRUCTURAL strip,
       //    no ancestry gate — the inner member DEFINES Ri, step 8 authors the
       //    landed gitlink to Ri, and the outer verify against Ri is the guard.
       //    BYTE-IDENTICAL to the P2 shipped path. ──
       // Split the outer member's NET diff into the managed gitlink hunk vs source
-      // (fail-open null ⇒ keep the legacy rebase).
-      const detectRef = await resolveDetectRef(outerGitOps, deps.outerRef, deps.gitRemote);
-      if (detectRef !== null) {
-        const managedPaths = new Set([deps.gitlinkPath]);
-        const split = await outerGitOps.splitGitlinkDiff(detectRef, baseOuterSha, managedPaths);
-        if (split !== null && split.gitlinkTargets.size > 0) {
-          if (split.sourcePaths.length === 0) {
-            // Pure gitlink bump — the existing skip-rebase synthesize arm.
-            skipOuterRebase = true;
-            outerConverted = true;
-          } else {
-            // Mixed source + managed gitlink: strip the gitlink hunk, synthesize
-            // the source-only net patch onto live outer main. A SOURCE conflict
-            // still rejects outer_conflict (byte-identity NOT claimed — a squashed
-            // apply --3way can differ in conflict incidence from a per-commit
-            // rebase); the gitlink hunk can never conflict (it's excluded).
-            const applied = await outerGitOps.applyExcludingGitlink(
-              baseOuterSha,
-              detectRef,
-              managedPaths,
-            );
-            if (!applied.ok) {
-              return {
-                ok: false,
-                reason: "outer_conflict",
-                detail: applied.conflictingFiles.join(", "),
-                release,
-              };
-            }
-            skipOuterRebase = true;
-            outerGitlinkNormalized = true;
+      // (fail-open null ⇒ keep the legacy rebase). Measured as its own span: the
+      // classification is git READ work that DECIDES which arm runs, and charging
+      // it to whichever arm it picked would misattribute it.
+      const outerRef = deps.outerRef;
+      const cls = await phases.time(
+        {
+          phase: "assemble",
+          label: "outer:classify",
+          ...outerSpan,
+          detail: (c) => ({ arm: "two_member", kind: c?.kind ?? "error" }),
+        },
+        async (): Promise<{
+          kind: "legacy" | "pure_bump" | "normalize";
+          detectRef: string | null;
+        }> => {
+          const detectRef = await resolveDetectRef(outerGitOps, outerRef, deps.gitRemote);
+          if (detectRef === null) return { kind: "legacy", detectRef: null };
+          const split = await outerGitOps.splitGitlinkDiff(detectRef, baseOuterSha, managedPaths);
+          if (split === null || split.gitlinkTargets.size === 0) {
+            return { kind: "legacy", detectRef };
           }
+          return {
+            kind: split.sourcePaths.length === 0 ? "pure_bump" : "normalize",
+            detectRef,
+          };
+        },
+      );
+      if (cls.kind === "pure_bump") {
+        // Pure gitlink bump — the existing skip-rebase synthesize arm. NO
+        // `rebase/"outer"` row (AMENDMENT A3): neither an apply nor a rebase
+        // runs, and this is now the COMMON cross-repo path, so a 0 ms row here
+        // would drag the rebase phase's p50 toward zero on most groups.
+        skipOuterRebase = true;
+        outerConverted = true;
+      } else if (cls.kind === "normalize") {
+        // Mixed source + managed gitlink: strip the gitlink hunk, synthesize
+        // the source-only net patch onto live outer main. A SOURCE conflict
+        // still rejects outer_conflict (byte-identity NOT claimed — a squashed
+        // apply --3way can differ in conflict incidence from a per-commit
+        // rebase); the gitlink hunk can never conflict (it's excluded).
+        const detectRef = cls.detectRef as string;
+        const applied = await phases.time(
+          {
+            phase: "rebase",
+            label: "outer",
+            ...outerSpan,
+            // `via` names WHICH mechanism produced the outer candidate — the
+            // squashed apply and the per-commit rebase have different costs and
+            // different conflict incidence, so an aggregate that silently mixes
+            // them is answering a question nobody asked.
+            detail: (a) => ({
+              via: "apply",
+              ok: a?.ok ?? false,
+              conflicts: a && !a.ok ? a.conflictingFiles.length : 0,
+            }),
+          },
+          () => outerGitOps.applyExcludingGitlink(baseOuterSha, detectRef, managedPaths),
+        );
+        if (!applied.ok) {
+          return {
+            ok: false,
+            reason: "outer_conflict",
+            detail: applied.conflictingFiles.join(", "),
+            release,
+          };
         }
+        skipOuterRebase = true;
+        outerGitlinkNormalized = true;
       }
     } else if (deps.outerRef !== null) {
       // ── LONE-OUTER arm (SYNTHETIC inner, campaign umbrella-widening P4): there
@@ -301,18 +386,43 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
       //    ancestor→gitlink_diverged; absent-after-all-refs-fetch→gitlink_
       //    unreachable. Both Tier-2 rejects are AssembledGroupErr → return BEFORE
       //    any push (safety invariant 5). ──
-      const detectRef = await resolveDetectRef(outerGitOps, deps.outerRef, deps.gitRemote);
+      const outerRef = deps.outerRef;
+      // The same span as the two-member arm, distinguished by `arm`: the
+      // ancestry classifier additionally fetches + probes the inner object
+      // store, making it the most expensive of the three classifications and
+      // the one most worth seeing separately.
+      const classified = await phases.time(
+        {
+          phase: "assemble",
+          label: "outer:classify",
+          ...outerSpan,
+          detail: (c) => ({ arm: "lone_outer", kind: c?.cls.kind ?? "error" }),
+        },
+        async (): Promise<{
+          cls: OuterGitlinkClassification;
+          detectRef: string | null;
+        }> => {
+          const ref = await resolveDetectRef(outerGitOps, outerRef, deps.gitRemote);
+          if (ref === null) {
+            return { cls: { kind: "legacy", reason: "detect ref unresolved" }, detectRef: null };
+          }
+          return {
+            cls: await classifyOuterGitlinkDiff({
+              outerGitOps,
+              innerGitOps,
+              outerRef: ref,
+              baseOuterSha,
+              innerLandingSha: Ri,
+              managedGitlinkPaths: managedPaths,
+              gitRemote: deps.gitRemote,
+            }),
+            detectRef: ref,
+          };
+        },
+      );
+      const detectRef = classified.detectRef;
       if (detectRef !== null) {
-        const managedPaths = new Set([deps.gitlinkPath]);
-        const cls = await classifyOuterGitlinkDiff({
-          outerGitOps,
-          innerGitOps,
-          outerRef: detectRef,
-          baseOuterSha,
-          innerLandingSha: Ri,
-          managedGitlinkPaths: managedPaths,
-          gitRemote: deps.gitRemote,
-        });
+        const cls = classified.cls;
         if (cls.kind === "diverged") {
           return {
             ok: false,
@@ -331,17 +441,26 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
         }
         if (cls.kind === "pure_bump") {
           // Pure gitlink bump to an ancestor of Ri — skip the rebase, synthesize
-          // the outer candidate on live main (step 8 authors gitlink→Ri).
+          // the outer candidate on live main (step 8 authors gitlink→Ri). No
+          // `rebase/"outer"` row: nothing ran (AMENDMENT A3).
           skipOuterRebase = true;
           outerConverted = true;
         } else if (cls.kind === "normalize") {
           // Ancestor gitlink alongside real source — strip the gitlink hunk,
           // synthesize the source-only net patch onto live outer main. A SOURCE
           // conflict still rejects outer_conflict; the gitlink hunk is excluded.
-          const applied = await outerGitOps.applyExcludingGitlink(
-            baseOuterSha,
-            detectRef,
-            managedPaths,
+          const applied = await phases.time(
+            {
+              phase: "rebase",
+              label: "outer",
+              ...outerSpan,
+              detail: (a) => ({
+                via: "apply",
+                ok: a?.ok ?? false,
+                conflicts: a && !a.ok ? a.conflictingFiles.length : 0,
+              }),
+            },
+            () => outerGitOps.applyExcludingGitlink(baseOuterSha, detectRef, managedPaths),
           );
           if (!applied.ok) {
             return {
@@ -358,7 +477,20 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
       }
     }
     if (deps.outerRef !== null && !skipOuterRebase) {
-      const outerRebase = await outerGitOps.rebaseOnto(baseOuterSha, deps.outerRef);
+      const legacyOuterRef = deps.outerRef;
+      const outerRebase = await phases.time(
+        {
+          phase: "rebase",
+          label: "outer",
+          ...outerSpan,
+          detail: (r) => ({
+            via: "rebase",
+            ok: r?.ok ?? false,
+            conflicts: r && !r.ok ? r.conflictingFiles.length : 0,
+          }),
+        },
+        () => outerGitOps.rebaseOnto(baseOuterSha, legacyOuterRef),
+      );
       if (!outerRebase.ok) {
         return {
           ok: false,
@@ -375,21 +507,59 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
     // on this arm.
 
     // ── step 7: copy Ri's objects into the outer clone (for step 9's checkout) ──
-    await outerGitOps.fetchFromPath(innerWt.path, Ri);
+    // MATERIALIZE, split three ways because the three steps cost and fail
+    // differently: the object copy is bulk transfer (inner LFS binaries live
+    // here — the prime suspect for cross-repo wall clock), the gitlink is one
+    // commit, and populating the worktree is disk I/O over the whole inner tree.
+    await phases.time({ phase: "materialize", label: "objects", ...outerSpan }, () =>
+      outerGitOps.fetchFromPath(innerWt.path, Ri),
+    );
 
     // ── step 8: commit the gitlink at gitlinkPath -> Ri ──
-    const Ro = await outerGitOps.updateSubmoduleGitlink(deps.gitlinkPath, Ri);
+    const Ro = await phases.time({ phase: "materialize", label: "gitlink", ...outerSpan }, () =>
+      outerGitOps.updateSubmoduleGitlink(deps.gitlinkPath, Ri),
+    );
 
     // ── step 9: materialize Ri's tree into the outer working tree on disk ──
     // Pass innerWt.path (the inner pool worktree, rebased to Ri) so materialize
     // is LFS-aware: inner LFS files land as real binaries (smudge skipped + real
     // binaries overlaid from the inner worktree) instead of the outer LFS smudge
     // 404'ing on the inner's LFS objects.
-    await outerGitOps.materializeSubmoduleWorktree(deps.gitlinkPath, Ri, innerWt.path);
+    await phases.time(
+      {
+        phase: "materialize",
+        label: "worktree",
+        ...outerSpan,
+        detail: { gitlinkPath: deps.gitlinkPath },
+      },
+      () => outerGitOps.materializeSubmoduleWorktree(deps.gitlinkPath, Ri, innerWt.path),
+    );
 
     // ── §11 post-assembly assertion ──
+    // Both halves in ONE span: they answer a single question ("did the assembly
+    // actually produce what it claims?") and neither half is separately
+    // actionable. `assemble` here is residual assembly work — NOT a parent
+    // wrapping the rebase/materialize spans. No parent span exists anywhere.
+    const assertion = await phases.time(
+      {
+        phase: "assemble",
+        label: "assert",
+        ...outerSpan,
+        detail: (a) => ({ gitlinkOk: a?.gitlinkOk ?? false, populated: a?.populated ?? false }),
+      },
+      async (): Promise<{ committedGitlink: string; gitlinkOk: boolean; populated: boolean }> => {
+        const committed = await outerGitOps.readSubmoduleGitlink(deps.gitlinkPath);
+        const gitlinkOk = committed === Ri;
+        // Short-circuits exactly as the two sequential asserts did: on a gitlink
+        // mismatch the population probe never ran, and must not start now.
+        const populated = gitlinkOk
+          ? await worktreePopulated(outerWt.path, deps.gitlinkPath)
+          : false;
+        return { committedGitlink: committed, gitlinkOk, populated };
+      },
+    );
     // (a) the COMMITTED gitlink references Ri.
-    const committedGitlink = await outerGitOps.readSubmoduleGitlink(deps.gitlinkPath);
+    const committedGitlink = assertion.committedGitlink;
     if (committedGitlink !== Ri) {
       return {
         ok: false,
@@ -400,7 +570,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
     }
     // (b) the WORKING TREE at gitlinkPath is populated (step 9 worked) — the
     // R1-critical proof the outer verify will see the inner sources.
-    if (!(await worktreePopulated(outerWt.path, deps.gitlinkPath))) {
+    if (!assertion.populated) {
       return {
         ok: false,
         reason: "gitlink_mismatch",

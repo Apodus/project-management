@@ -32,6 +32,7 @@ import type { MergeAttemptView, MergeRequestView } from "@pm/shared";
 import { createGitOps } from "../src/git-ops.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { createLogger } from "../src/logger.js";
+import { makePhaseProbe } from "./phase-probe.js";
 import {
   runGroupIntegration,
   type GroupIntegrationDeps,
@@ -401,7 +402,11 @@ function makeState(members: MergeRequestView[]): FakePm {
   return { group: { state: "forming", members }, attempts: [], calls: [], attemptCompletions: [] };
 }
 
-function depsFor(w: World, state: FakePm): GroupIntegrationDeps {
+function depsFor(
+  w: World,
+  state: FakePm,
+  over?: Partial<GroupIntegrationDeps>,
+): GroupIntegrationDeps {
   return {
     pmClient: makeFakePm(state),
     logger,
@@ -410,6 +415,7 @@ function depsFor(w: World, state: FakePm): GroupIntegrationDeps {
     gitRemote: GIT_REMOTE,
     defaultVerifyCommand: "echo verify-ok",
     verifyTimeoutSec: 30,
+    ...over,
   };
 }
 
@@ -613,6 +619,63 @@ describe.skipIf(!GIT_AVAILABLE)("gitlink normalization arm (real two-repo)", () 
     expect(await readGitlinkFromBare(w.outerBare)).toBe(
       `160000 commit ${integ.Ri}\t${GITLINK_PATH}`,
     );
+  }, 40_000);
+
+  // ── Campaign 2026-08-03 §P2, AMENDMENT A3: no row where nothing ran ──
+
+  it("P2: the pure-bump arm emits NO rebase/outer row (nothing ran)", async () => {
+    const w = await world();
+    const state = makeState([
+      makeMember({ id: "req-inner", commitSha: w.innerFeatureSha, verifyCmd: "echo inner-ok" }),
+      makeMember({ id: "req-outer", commitSha: w.outerBumpSha, verifyCmd: "echo outer-ok" }),
+    ]);
+    const probe = makePhaseProbe();
+    const deps = depsFor(w, state, { phases: probe.recorder.scope({ groupId: "grp-p2-bump" }) });
+    const integ = await runGroupIntegration(
+      { id: "grp-p2-bump", members: state.group.members },
+      deps,
+    );
+    expect(integ.kind).toBe("ready_to_land");
+    if (integ.kind !== "ready_to_land") throw new Error("not ready_to_land");
+    expect(integ.assembled.outerConverted).toBe(true);
+
+    const labels = probe.labels();
+    // The classification DID run and says why the rebase did not...
+    expect(labels).toContain("assemble/outer:classify");
+    expect(probe.rows().find((r) => r.label === "outer:classify")!.detail).toMatchObject({
+      arm: "two_member",
+      kind: "pure_bump",
+    });
+    // ...and no `rebase/"outer"` row exists, because neither an apply nor a
+    // rebase executed. This is now the COMMON cross-repo path, so a fabricated
+    // 0 ms row here would drag the rebase phase's p50 toward zero on most
+    // groups — the same reason the correlated lease is unmeasured.
+    expect(labels).not.toContain("rebase/outer");
+    // The inner (a real member) DID rebase, so that row is present.
+    expect(labels).toContain("rebase/inner");
+  }, 40_000);
+
+  it("P2: the normalize arm DOES emit rebase/outer, marked via:apply", async () => {
+    const w = await world({ bumpEditsSource: true, advanceOuterGitlink: true });
+    const state = makeState([
+      makeMember({ id: "req-inner", commitSha: w.innerFeatureSha, verifyCmd: "echo inner-ok" }),
+      makeMember({ id: "req-outer", commitSha: w.outerBumpSha, verifyCmd: "echo outer-ok" }),
+    ]);
+    const probe = makePhaseProbe();
+    const deps = depsFor(w, state, { phases: probe.recorder.scope({ groupId: "grp-p2-norm" }) });
+    const integ = await runGroupIntegration(
+      { id: "grp-p2-norm", members: state.group.members },
+      deps,
+    );
+    expect(integ.kind).toBe("ready_to_land");
+    if (integ.kind !== "ready_to_land") throw new Error("not ready_to_land");
+    expect(integ.assembled.outerGitlinkNormalized).toBe(true);
+
+    const outerRebase = probe.rows().find((r) => r.label === "outer" && r.phase === "rebase")!;
+    // A squashed apply and a per-commit rebase have different costs AND
+    // different conflict incidence; an aggregate that mixed them silently would
+    // be answering a question nobody asked.
+    expect(outerRebase.detail).toMatchObject({ via: "apply", ok: true, conflicts: 0 });
   }, 40_000);
 });
 

@@ -34,6 +34,7 @@ import {
 import { landAssembledGroup, type GroupLandResult } from "./group-land.js";
 import { recoverOrphanedInner, type RecoverResult } from "./group-recovery.js";
 import { reclaimResolvingResolutions } from "./reclaim-resolutions.js";
+import { createPhaseRecorder, type PhaseSpans } from "./phase-recorder.js";
 import type { LaneHealthState } from "./heartbeat.js";
 
 const LOG_EXCERPT_CAP = 4096;
@@ -584,6 +585,13 @@ interface BatchCtx {
   landed: string[];
   rejected: string[];
   requeued: string[];
+  /**
+   * Campaign 2026-08-03 §P2: the drain's phase-timing spans. Deliberately typed
+   * `PhaseSpans` and NOT `PhaseRecorder` — the members' code paths can record
+   * but cannot flush, so the decision to talk to PM stays with `runBatchOnce`,
+   * which owns the lock and knows when a POST is safe to launch.
+   */
+  phases: PhaseSpans;
 }
 
 /**
@@ -1085,9 +1093,21 @@ export async function landMember(
     ? (predecessor.landedSha ?? member.base.liveMainSha)
     : member.base.liveMainSha;
 
-  // Fetch + re-resolve remote main to detect drift before pushing.
-  await gitOps.fetch(gitRemote);
-  const actualMainSha = await gitOps.resolveRef(`${gitRemote}/${gitMainBranch}`);
+  // Campaign 2026-08-03 §P2: land spans. The attempt id is known here, so the
+  // rows join to the attempt the way P5's trace wants them to.
+  const phases = ctx.phases.scope({
+    requestId: member.request.id,
+    attemptId: member.attemptId ?? undefined,
+    detail: { batchId: batch.batchId, speculativePosition: member.speculativePosition },
+  });
+
+  // Fetch + re-resolve remote main to detect drift before pushing. Measured as
+  // ONE span: the fetch is the network cost and the re-resolve is how we read
+  // its result — splitting them would name a sub-step nobody can act on.
+  const actualMainSha = await phases.time({ phase: "land", label: "fetch" }, async () => {
+    await gitOps.fetch(gitRemote);
+    return gitOps.resolveRef(`${gitRemote}/${gitMainBranch}`);
+  });
 
   if (actualMainSha !== expectedMainSha) {
     const res = await onMemberFailed(
@@ -1147,7 +1167,16 @@ export async function landMember(
     return true;
   }
 
-  const push = await gitOps.push(gitRemote, gitMainBranch);
+  // No `land/"push"` row exists on the no-op path above: nothing was pushed, and
+  // a 0 ms row for an operation that did not run is fabricated legibility.
+  const push = await phases.time(
+    {
+      phase: "land",
+      label: "push",
+      detail: (p) => ({ ok: p?.ok ?? false, reason: p && !p.ok ? p.reason : null }),
+    },
+    () => gitOps.push(gitRemote, gitMainBranch),
+  );
   if (!push.ok) {
     if (push.reason === "non_fast_forward") {
       const res = await onMemberFailed(
@@ -1293,6 +1322,17 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     return { kind: "error", message: errMessage(err) };
   }
 
+  // Campaign 2026-08-03 §P2: the pass owner's recorder, minted right after the
+  // lock is held — a pass that never took the lock did no measurable work, and
+  // one that couldn't take it did none of its own. This local is the ONLY thing
+  // in the process that can flush; everything downstream sees `ctx.phases`.
+  const phases = createPhaseRecorder({
+    pmClient,
+    projectId,
+    resource,
+    logger,
+  });
+
   const batch: Batch = {
     batchId: deps.newBatchId?.() ?? randomUUID(),
     projectId,
@@ -1336,7 +1376,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     },
   });
 
-  const ctx: BatchCtx = { landed: [], rejected: [], requeued: [] };
+  const ctx: BatchCtx = { landed: [], rejected: [], requeued: [], phases };
 
   // PHASE 7.4 §3.2 (Step 12): the lock is held → a batch is now in flight. The
   // heartbeat reads these counters to derive status="integrating". `requests`
@@ -1485,6 +1525,14 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
         ).length;
       }
 
+      // Campaign 2026-08-03 §P2: ship what this pass measured BEFORE the
+      // `Promise.race` below parks the loop — a 39-minute verify is exactly when
+      // an operator wants to see that assemble took 3 minutes and rebase took 8,
+      // and holding those rows until the drain ends would surface them only
+      // after the answer stopped being useful. `flush()` is synchronous and
+      // un-awaitable, so this is a buffer handoff, not a wait.
+      phases.flush();
+
       if (inFlight.length === 0) {
         // Nothing is verifying. Loop again only if this pass made forward
         // progress that may have UNBLOCKED more admission — either it admitted
@@ -1511,6 +1559,14 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     logger.error({ err: errMessage(err) }, "Unexpected error draining batch");
     return { kind: "error", message: errMessage(err) };
   } finally {
+    // ── PHASE FLUSH (campaign 2026-08-03 §P2). FIRST in the finally for the
+    //    same reason the slot-leak seal is: nothing downstream can skip it, and
+    //    in particular it does not depend on `releaseLock` never throwing. It
+    //    cannot displace the seal below — `flush()` is synchronous, total (every
+    //    failure mode is swallowed inside), and returns void, so the two are
+    //    both "first" in every sense that matters. ──
+    phases.flush();
+
     // ── SLOT-LEAK SEAL (2026-08-02 lane wedge). FIRST in the finally, before
     //    any await, so nothing downstream can skip it. ──
     //
@@ -1616,6 +1672,16 @@ async function admitAndRebase(
   ctx: BatchCtx,
 ): Promise<Member | null> {
   const { pmClient, logger } = deps;
+  // Campaign 2026-08-03 §P2: every span this member records inherits its request
+  // id and its batch lineage. Carrying `batchId`/`speculativePosition` in the
+  // scope rather than at each call site is what makes "what does speculation
+  // cost?" answerable — the question P3 will be asked the moment position 3
+  // starts getting invalidated. The attempt id is NOT in the scope: it does not
+  // exist until `startAttempt` below, and a scope is fixed at creation.
+  const phases = ctx.phases.scope({
+    requestId: req.id,
+    detail: { batchId: batch.batchId, speculativePosition: position },
+  });
 
   // Pickup (queued → integrating). 409 = lost race; drop the member. Tagged
   // with the batch lineage (Step 7) so PM can correlate the pickup with the
@@ -1680,22 +1746,32 @@ async function admitAndRebase(
   let rebase: Awaited<ReturnType<ReturnType<BatchDeps["gitOps"]>["rebaseOnto"]>> | null = null;
   let ref: string | null;
   try {
-    // Reset the worktree to clean main (with corruption-repair fallback).
-    try {
-      await wt.resetForAttempt();
-    } catch (err) {
-      logger.warn(
-        { requestId: req.id, err: errMessage(err) },
-        "Worktree reset failed; checking for corruption",
-      );
-      if (await wt.detectCorruption()) {
-        logger.warn({ requestId: req.id }, "Worktree corrupt; repairing");
-        await deps.pool.repair(wt);
-        await wt.resetForAttempt();
-      } else {
-        throw err;
-      }
-    }
+    // Reset the worktree to clean main (with corruption-repair fallback). The
+    // whole reset-or-repair is ONE span: a repair is not a separate phase, it is
+    // the reason this reset took two minutes instead of two seconds — which is
+    // what `repaired` says. Recorded on the throw path too; the clock was spent.
+    let repaired = false;
+    await phases.time(
+      { phase: "assemble", label: "reset", detail: () => ({ repaired }) },
+      async () => {
+        try {
+          await wt.resetForAttempt();
+        } catch (err) {
+          logger.warn(
+            { requestId: req.id, err: errMessage(err) },
+            "Worktree reset failed; checking for corruption",
+          );
+          if (await wt.detectCorruption()) {
+            logger.warn({ requestId: req.id }, "Worktree corrupt; repairing");
+            repaired = true;
+            await deps.pool.repair(wt);
+            await wt.resetForAttempt();
+          } else {
+            throw err;
+          }
+        }
+      },
+    );
 
     const gitOps = deps.gitOps(wt.path);
 
@@ -1715,7 +1791,10 @@ async function admitAndRebase(
     // worker-submitted branch.
     if (req.revertOf != null && req.branch == null) {
       const revertSha = req.revertOf;
-      const revertResult = await gitOps.revert(revertSha);
+      const revertResult = await phases.time(
+        { phase: "assemble", label: "revert", detail: (r) => ({ ok: r?.ok ?? false }) },
+        () => gitOps.revert(revertSha),
+      );
       if (!revertResult.ok) {
         const category = revertResult.conflict ? "conflict" : "other";
         const reason = `git revert of ${revertSha} ${
@@ -1756,7 +1835,20 @@ async function admitAndRebase(
       req.branch = revertBranch;
     }
 
-    const base = await computeSpeculativeBase(member, batch, gitOps);
+    const base = await phases.time(
+      {
+        phase: "assemble",
+        label: "base",
+        detail: (b) => ({
+          chained: (b?.predecessorChain.length ?? 0) > 0,
+          chainLength: b?.predecessorChain.length ?? 0,
+        }),
+      },
+      () => computeSpeculativeBase(member, batch, gitOps),
+    );
+    // The tick `time` adds sits BEFORE this assignment, never between it and the
+    // `batch.members.push` below — the empty-chain window the comment there
+    // guards is still closed synchronously.
     member.base = base;
     member.predecessorChain = base.predecessorChain;
     // Chain is now set — publish the member. From here on it is visible to
@@ -1798,7 +1890,23 @@ async function admitAndRebase(
     // bug). The `!ref` and `!rebase.ok` handling happens AFTER the try (below),
     // so `rebase` is only computed when there IS something to integrate.
     ref = req.branch ?? req.commitSha;
-    if (ref) rebase = await gitOps.rebaseOnto(baseSha, ref);
+    if (ref) {
+      const rebaseRef = ref;
+      // `label: null` — for a single-repo member the phase IS the unit; there is
+      // no smaller thing to name. (The cross-repo lane splits it inner/outer.)
+      rebase = await phases.time(
+        {
+          phase: "rebase",
+          label: null,
+          attemptId: member.attemptId ?? undefined,
+          detail: (r) => ({
+            ok: r?.ok ?? false,
+            conflicts: r && !r.ok ? r.conflictingFiles.length : 0,
+          }),
+        },
+        () => gitOps.rebaseOnto(baseSha, rebaseRef),
+      );
+    }
   } catch (err) {
     // 1) Cascade-race guard FIRST: a predecessor invalidated this member during
     //    an await — already handled (attempt cancelled, worktree released, PM
@@ -1927,6 +2035,14 @@ async function runVerifyTask(
       speculativePosition: member.speculativePosition,
     };
 
+    // Campaign 2026-08-03 §P2: verify spans. `attemptId` is passed per-row, NOT
+    // put in the scope — a transient retry starts a FRESH attempt, so a scope
+    // fixed at task start would file the retry's rows under the superseded one.
+    const phases = ctx.phases.scope({
+      requestId: member.request.id,
+      detail: { batchId: batch.batchId, speculativePosition: member.speculativePosition },
+    });
+
     // ── Verify + transient-retry loop (design §10). The loop runs INSIDE the
     //    single runVerifyTask (= member.verify.done), so the handle/controller —
     //    and thus `signal` — is stable across iterations. A transient failure
@@ -2002,6 +2118,40 @@ async function runVerifyTask(
         cache: cacheCtx,
         logger: deps.logger,
       });
+
+      // Campaign 2026-08-03 §P2: record the verify spans BEFORE the bail guard
+      // below. An invalidated member returns from that guard before `member.steps`
+      // is ever set, so its burned minutes would otherwise vanish entirely — and
+      // "what did the speculation cost us?" is exactly the question those minutes
+      // answer. The rows are what the operation SPENT, not what it achieved.
+      for (const step of pipeline.steps) {
+        phases.record({
+          phase: "verify",
+          // The step id is the smallest unit PM can see. With game_one's one
+          // opaque `pm-verify.bat` every row is labelled "verify" and the
+          // breakdown honestly collapses to a single bar (design lock 3).
+          label: step.stepId,
+          attemptId: member.attemptId ?? undefined,
+          // `wallMs`, never `durationMs`: on a cache HIT the latter is the
+          // original run's duration (verify-pipeline.ts), which would report a
+          // 26-minute verify for a merge that spent 40 ms.
+          startedAtMs: step.startedAtMs,
+          durationMs: step.wallMs,
+          detail: {
+            cached: step.cached,
+            outcome: step.outcome,
+            retry: member.retryCount,
+            // AMENDMENT A2: a wave runs CONCURRENTLY (verify-pipeline's
+            // `Promise.all` over the wave), so a lane that configures a parallel
+            // verify_steps DAG — precisely what this campaign unlocks — must not
+            // have its per-step rows summed as though they were sequential.
+            waveIndex: step.waveIndex,
+            // The cached verdict's own duration is a FACT, not a group-by key:
+            // it belongs in detail so nobody mistakes it for this pass's cost.
+            ...(step.cached ? { cachedDurationMs: step.durationMs } : {}),
+          },
+        });
+      }
 
       // BAIL-GUARD (FIX 2): a suffix invalidation may have killed this verify
       // while it ran. If so, state is already "invalidated" (set synchronously
@@ -2237,6 +2387,12 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
     return { kind: "error", message: errMessage(err) };
   }
 
+  // Campaign 2026-08-03 §P2: the cross-repo pass owner's recorder, minted after
+  // the lock exactly like the batch lane's. Cross-repo assembly (binding, two
+  // rebases, the LFS/submodule materialize) is the prime suspect for the wall
+  // clock nobody could account for — it is the reason this campaign exists.
+  const phases = createPhaseRecorder({ pmClient, projectId, resource, logger });
+
   // 4. Single group-lifetime heartbeat (mirrors runBatchOnce §9.2).
   const heartbeat = setInterval(() => {
     void pmClient.heartbeatLock(projectId, resource).catch((err: unknown) => {
@@ -2294,11 +2450,16 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
     // can't leave status stuck "integrating").
     if (deps.inFlight) deps.inFlight.groups = 1;
 
+    // Every group row carries the group id; the per-role sites add the member's
+    // own request/attempt id on top.
+    const groupPhases = phases.scope({ groupId: group.id });
+
     const outcome = await runGroupIntegration(
       { id: group.id, members: group.members },
       {
         pmClient,
         logger,
+        phases: groupPhases,
         innerLane: groupLane.innerLane,
         outerLane: groupLane.outerLane,
         gitRemote: deps.gitRemote,
@@ -2315,6 +2476,11 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
       },
     );
 
+    // Assembly is the long part of a cross-repo pass, and it has just finished —
+    // ship its rows before the land, so an operator watching a group sees where
+    // the minutes went without waiting for the outcome.
+    phases.flush();
+
     if (outcome.kind === "ready_to_land") {
       // STEP 11: the atomic land (inner-then-outer, §6) under THIS lane lock.
       // landAssembledGroup releases the correlated worktrees EXACTLY ONCE in its
@@ -2327,7 +2493,13 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
           innerRepoName: groupLane.innerLane.name,
           outerRepoName: groupLane.outerLane.name,
         },
-        { pmClient, logger, gitRemote: deps.gitRemote, gitMainBranch: deps.gitMainBranch },
+        {
+          pmClient,
+          logger,
+          gitRemote: deps.gitRemote,
+          gitMainBranch: deps.gitMainBranch,
+          phases: groupPhases,
+        },
       );
     }
 
@@ -2339,6 +2511,10 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
     );
     return { kind: "error", message: errMessage(err) };
   } finally {
+    // ── PHASE FLUSH (campaign 2026-08-03 §P2). Synchronous, total and void, so
+    //    it cannot displace the cross-repo slot-leak seal below. ──
+    phases.flush();
+
     // ── SLOT-LEAK SEAL, cross-repo half (§14.15). FIRST in the finally, before
     //    any await. `landAssembledGroup` has already released the correlated
     //    slots in its own finally on the happy path, so this only ever catches a

@@ -123,6 +123,31 @@ interface FakeState {
   }[];
   /** When set, the fake openResolution THROWS — exercises the non-fatal path. */
   openResolutionThrows?: boolean;
+  // ── Campaign 2026-08-03 §P2 phase-timing fakes ──
+  /**
+   * Recorded phase-timing POST bodies. A SEPARATE array, deliberately NOT
+   * `state.calls`: `getTrainState` is pushed there (:278) and then filtered out
+   * of an exact `.toEqual` at :661, and a second such interloper would break
+   * every call-order assertion in this file. Telemetry is not a merge operation
+   * and must not appear in the merge-operation log.
+   */
+  phasePosts?: PhasePost[];
+  /** How the fake postMergePhases behaves — the four ways an ingest can misbehave. */
+  phaseIngest?: "ok" | "reject" | "throw" | "never" | "absent";
+}
+
+interface PhasePost {
+  resource: string;
+  phases: {
+    phase: string;
+    label: string | null;
+    startedAt: string;
+    durationMs: number;
+    detail?: Record<string, unknown> | null;
+    requestId?: string;
+    groupId?: string;
+    attemptId?: string;
+  }[];
 }
 
 interface VerifyCacheRowFake {
@@ -356,6 +381,15 @@ function makeFakeClient(state: FakeState): PmClient {
       if (state.cacheCalls) state.cacheCalls.mismatches += 1;
       state.calls.push("emitVerifyCacheMismatch");
     },
+    // ── Campaign 2026-08-03 §P2 phase timings ──
+    postMergePhases(_projectId: string, body: PhasePost) {
+      state.phasePosts?.push({ resource: body.resource, phases: body.phases });
+      const mode = state.phaseIngest ?? "ok";
+      if (mode === "throw") throw new PmApiError(500, "INTERNAL", "phase ingest exploded");
+      if (mode === "reject") return Promise.reject(new PmApiError(503, "UNAVAILABLE", "no"));
+      if (mode === "never") return new Promise(() => {});
+      return Promise.resolve({ recorded: body.phases.length, adjusted: 0 });
+    },
     // ── Phase 7.6 conflict resolution ──
     async openResolution(
       _projectId: string,
@@ -392,7 +426,21 @@ function makeFakeClient(state: FakeState): PmClient {
       };
     },
   };
+  if (state.phaseIngest === "absent") {
+    // A client that never heard of phase timings — every pre-campaign test fake.
+    delete (fake as { postMergePhases?: unknown }).postMergePhases;
+  }
   return fake as unknown as PmClient;
+}
+
+/** All phase rows across every POST a run produced. */
+function allPhaseRows(state: FakeState): PhasePost["phases"] {
+  return (state.phasePosts ?? []).flatMap((p) => p.phases);
+}
+
+/** The (phase, label) pairs a run emitted, deduped and sorted — the span-coverage view. */
+function phaseLabels(state: FakeState): string[] {
+  return [...new Set(allPhaseRows(state).map((r) => `${r.phase}/${r.label ?? "-"}`))].sort();
 }
 
 function makeRequest(over: Partial<MergeRequestView>): MergeRequestView {
@@ -509,6 +557,16 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     await author.add(["rejectok.txt"]);
     await author.commit("add rejectok feature");
     await author.push(["-u", "origin", "feature/rejectok"]);
+
+    // A dedicated clean branch for the phase-timing span-coverage test: it must
+    // still be UNLANDED when that test runs, so the land actually PUSHES and a
+    // `land/"push"` span exists (a no-op land emits no push row, by design).
+    await author.checkout("main");
+    await author.checkoutLocalBranch("feature/spans");
+    writeFileSync(path.join(authorClone, "spans.txt"), "spans\n");
+    await author.add(["spans.txt"]);
+    await author.commit("add spans feature");
+    await author.push(["-u", "origin", "feature/spans"]);
     await author.checkout("main");
   });
 
@@ -3336,4 +3394,317 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(outcome.kind).toBe("error");
     expect(inFlight).toEqual({ requests: 0, batches: 0, groups: 0 });
   });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Campaign 2026-08-03 §P2 — phase-timing instrumentation.
+  //
+  // Design lock 1 says telemetry is never load-bearing. The recorder unit tests
+  // prove the recorder contains every failure; these prove the CONSEQUENCE, on
+  // a real lane with real git: whatever the ingest does, the merge is the same
+  // merge, down to the exact sequence of PM calls.
+  // ───────────────────────────────────────────────────────────────────
+
+  /** The merge-operation log, with the read-side pause gate filtered out (:661 idiom). */
+  const mergeCalls = (state: FakeState): string[] =>
+    state.calls.filter((c) => c !== "getTrainState");
+
+  it("P2 REQUIRED: a healthy / rejecting / synchronously-throwing / absent ingest all produce the IDENTICAL merge", async () => {
+    const modes = ["ok", "reject", "throw", "absent"] as const;
+    const runs: {
+      mode: string;
+      calls: string[];
+      status: string;
+      leased: number;
+      lockHeld: boolean;
+      outcome: string;
+    }[] = [];
+
+    for (const mode of modes) {
+      const req = makeRequest({
+        id: "req-p2-parity",
+        branch: "feature/clean",
+        verifyCmd: "echo ok",
+      });
+      const state: FakeState = {
+        requests: [req],
+        attempts: [],
+        lockHeld: false,
+        calls: [],
+        phasePosts: [],
+        phaseIngest: mode,
+      };
+      const deps = await depsFor(state, {
+        worktreeRoot: path.join(tmpRoot, `wt-p2-parity-${mode}`),
+      });
+      const outcome = await runBatchOnce(deps);
+      runs.push({
+        mode,
+        calls: mergeCalls(state),
+        status: req.status,
+        leased: deps.pool.leasedCount,
+        lockHeld: state.lockHeld,
+        outcome: outcome.kind,
+      });
+    }
+
+    // The healthy run is the oracle; every broken ingest must match it exactly.
+    const [healthy, ...rest] = runs;
+    expect(healthy.calls).toEqual([
+      "acquireLock",
+      "pickup",
+      "startAttempt",
+      "completeAttempt:passed",
+      "land",
+      "releaseLock",
+    ]);
+    for (const run of rest) {
+      expect(run.calls, `${run.mode}: merge call sequence`).toEqual(healthy.calls);
+      expect(run.status, `${run.mode}: request status`).toBe("landed");
+      expect(run.leased, `${run.mode}: leased slots`).toBe(0);
+      expect(run.lockHeld, `${run.mode}: lock`).toBe(false);
+      expect(run.outcome, `${run.mode}: outcome`).toBe(healthy.outcome);
+    }
+  }, 40_000);
+
+  it("P2: a NEVER-answering ingest cannot wedge a lane (bounded sockets, not backpressure)", async () => {
+    const root = path.join(tmpRoot, "wt-p2-never");
+    const req = makeRequest({ id: "req-p2-never", branch: "feature/clean", verifyCmd: "echo ok" });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      phasePosts: [],
+      phaseIngest: "never",
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+
+    // If `flush()` were awaitable — or awaited — this call would never return.
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(deps.pool.leasedCount).toBe(0);
+    expect(state.lockHeld).toBe(false);
+    // The POSTs were LAUNCHED (so the drop cap is what bounds them, not silence).
+    expect(state.phasePosts!.length).toBeGreaterThan(0);
+    expect(state.phasePosts!.length).toBeLessThanOrEqual(4);
+  }, 20_000);
+
+  it("P2: a landing member emits the full span set, in ≤2 posts, and never a derived phase", async () => {
+    const root = path.join(tmpRoot, "wt-p2-spans");
+    const req = makeRequest({ id: "req-p2-spans", branch: "feature/spans", verifyCmd: "echo ok" });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      phasePosts: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    // Reset + base + rebase + verify + land-fetch + land-push: the whole trip.
+    expect(phaseLabels(state)).toEqual([
+      "assemble/base",
+      "assemble/reset",
+      "land/fetch",
+      "land/push",
+      "rebase/-",
+      "verify/verify",
+    ]);
+
+    // One flush per drain-loop iteration plus the finally: a single-member batch
+    // must not turn into a POST per span.
+    expect(state.phasePosts!.length).toBeLessThanOrEqual(2);
+
+    const rows = allPhaseRows(state);
+    for (const row of rows) {
+      // Only the five OBSERVED phases; PM derives queue_wait/forming itself and
+      // emitting them here would double-count the wait.
+      expect(["assemble", "materialize", "rebase", "verify", "land"]).toContain(row.phase);
+      expect(row.requestId).toBe("req-p2-spans");
+      expect(row.groupId).toBeUndefined();
+      expect(row.durationMs).toBeGreaterThanOrEqual(0);
+      expect(Number.isInteger(row.durationMs)).toBe(true);
+      expect(Number.isNaN(Date.parse(row.startedAt))).toBe(false);
+      // Batch lineage rides every single-repo row (the "what did speculation
+      // cost" axis).
+      expect(row.detail).toMatchObject({ batchId: "batch-test", speculativePosition: 0 });
+    }
+    // The attempt id appears from the rebase onward (it does not exist before).
+    const rebaseRow = rows.find((r) => r.phase === "rebase")!;
+    expect(rebaseRow.attemptId).toBe("att-1");
+    expect(rows.find((r) => r.label === "reset")!.attemptId).toBeUndefined();
+    // A successful land says so.
+    expect(rows.find((r) => r.label === "push")!.detail).toMatchObject({ ok: true, reason: null });
+  }, 20_000);
+
+  it("P2: a cache HIT reports THIS pass's wall clock, with the cached verdict's duration in detail", async () => {
+    const root = path.join(tmpRoot, "wt-p2-cachehit");
+    const cmd = "exit 1"; // would fail if it ran — the HIT says pass.
+    const req = makeRequest({ id: "req-p2-hit", branch: "feature/clean", verifyCmd: cmd });
+    const scSha = stepConfigSha({ command: cmd, cache_key_inputs: [] });
+    const verifyCache = new Map<string, VerifyCacheRowFake>([
+      [
+        ["main", FIXED_TREE, "verify", scSha].join(" "),
+        {
+          resource: "main",
+          treeSha: FIXED_TREE,
+          stepId: "verify",
+          stepConfigSha: scSha,
+          result: "pass",
+          // 26 minutes — recorded who knows when, on some other merge.
+          durationMs: 1_560_000,
+          hitCount: 0,
+        },
+      ],
+    ]);
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      verifyCache,
+      phasePosts: [],
+    };
+    let ran = false;
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      gitOpsFactory: treeStampFactory(() => {
+        ran = true;
+      }),
+      cacheEnabled: true,
+      cacheMode: "on",
+    });
+
+    const outcome = await runBatchOnce(deps);
+    expect(outcome.kind).toBe("drained");
+    expect(ran).toBe(false);
+
+    const verifyRow = allPhaseRows(state).find((r) => r.phase === "verify")!;
+    // THE honesty assertion. Reporting the cached duration here would tell the
+    // operator this merge spent 26 minutes verifying when it spent milliseconds
+    // on a cache lookup — the exact class of lie this campaign exists to remove.
+    expect(verifyRow.durationMs).toBeLessThan(10_000);
+    expect(verifyRow.detail).toMatchObject({ cached: true, cachedDurationMs: 1_560_000 });
+  }, 20_000);
+
+  it("P2: a conflict-rejected member still reports the assemble + rebase clock it burned", async () => {
+    const root = path.join(tmpRoot, "wt-p2-conflict");
+    const reqA = makeRequest({ id: "req-p2-c1", branch: "feature/clean", verifyCmd: "echo ok" });
+    const reqB = makeRequest({
+      id: "req-p2-c2",
+      branch: "feature/collidefeature",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      phasePosts: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, parallelism: 2 });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqB.rejectCategory).toBe("conflict");
+
+    const rejected = allPhaseRows(state).filter((r) => r.requestId === "req-p2-c2");
+    // A member that never reaches verify still cost a reset, a base computation
+    // and a (failed) rebase — time the lane genuinely spent.
+    expect([...new Set(rejected.map((r) => `${r.phase}/${r.label ?? "-"}`))].sort()).toEqual([
+      "assemble/base",
+      "assemble/reset",
+      "rebase/-",
+    ]);
+    const rebase = rejected.find((r) => r.phase === "rebase")!;
+    expect(rebase.detail).toMatchObject({ ok: false });
+    expect((rebase.detail as { conflicts: number }).conflicts).toBeGreaterThan(0);
+  }, 20_000);
+
+  it("P2: a suffix-INVALIDATED member still reports the verify minutes speculation burned", async () => {
+    const root = path.join(tmpRoot, "wt-p2-invalidated");
+    const reqA = makeRequest({
+      id: "req-p2-i1",
+      branch: "feature/clean",
+      verifyCmd: HEAD_FAIL_AFTER_SUFFIX,
+    });
+    const reqB = makeRequest({
+      id: "req-p2-i2",
+      branch: "feature/clean2",
+      verifyCmd: "echo ok-i2",
+    });
+    const state: FakeState = {
+      requests: [reqA, reqB],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      phasePosts: [],
+    };
+    // ONE rendezvous shared by every worktree's GitOps (its gate is stateful).
+    const wrapRendezvous = headFailRendezvous(["echo ok-i2"]);
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      parallelism: 2,
+      gitOpsFactory: (p: string) => wrapRendezvous(createGitOps(simpleGit(p))),
+    });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(reqA.status).toBe("rejected");
+    expect(reqB.status).toBe("landed");
+
+    // The invalidated speculation's verify is recorded BEFORE the bail guard, so
+    // it survives — and it is the whole answer to "what does speculation cost".
+    const verifyRows = allPhaseRows(state).filter(
+      (r) => r.phase === "verify" && r.requestId === "req-p2-i2",
+    );
+    // At least two: the killed speculative pass plus the re-admitted one.
+    expect(verifyRows.length).toBeGreaterThanOrEqual(2);
+    for (const row of verifyRows) {
+      expect(row.detail).toMatchObject({ cached: false, waveIndex: 0 });
+    }
+  }, 30_000);
+
+  it("P2: the §14.15 slot-leak seal still holds when the phase ingest THROWS", async () => {
+    const root = path.join(tmpRoot, "wt-p2-slotleak");
+    const req = makeRequest({
+      id: "req-p2-cancelled",
+      branch: "feature/clean",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      phasePosts: [],
+      phaseIngest: "throw",
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+
+    // The live 2026-08-02 wedge: the worker cancels mid-verify, so the land 409s
+    // out of the drain loop. The seal must free the slot regardless — and a
+    // throwing telemetry POST must not be what stops it.
+    const realComplete = deps.pmClient.completeAttempt.bind(deps.pmClient);
+    (deps.pmClient as { completeAttempt: unknown }).completeAttempt = async (
+      attemptId: string,
+      body: { status: string },
+    ) => {
+      const res = await realComplete(attemptId, body);
+      req.status = "abandoned";
+      return res;
+    };
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    // THE assertion: one leaked slot silently kills the lane forever.
+    expect(deps.pool.leasedCount).toBe(0);
+    expect(state.lockHeld).toBe(false);
+  }, 20_000);
 });

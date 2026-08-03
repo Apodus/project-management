@@ -48,6 +48,7 @@ import {
   type PipelineResult,
 } from "./verify-pipeline.js";
 import type { CacheMode, VerifyStep, VerifyStepResult } from "@pm/shared";
+import { NOOP_PHASE_SPANS, type PhaseSpans } from "./phase-recorder.js";
 
 // ─── Role-bound repo descriptor (config-declared role) ────────────────
 
@@ -109,6 +110,16 @@ export interface GroupIntegrationDeps {
   resource?: string;
   cacheEnabled?: boolean;
   cacheMode?: CacheMode;
+  /**
+   * Campaign 2026-08-03 §P2: phase-timing spans, already scoped to this group's
+   * id by the scheduler. OPTIONAL, and coalesced ONCE at function entry to a
+   * non-nullable local — which is the whole point: `phases?.time(spec, fn)`
+   * would short-circuit the entire call expression and SKIP `fn`, silently
+   * deleting the operation it was meant to measure. With a non-nullable local
+   * that bug is not expressible, and the ~26 test call sites that build these
+   * deps as inline literals need no edit.
+   */
+  phases?: PhaseSpans;
 }
 
 // ─── Outcome union ────────────────────────────────────────────────────
@@ -427,6 +438,13 @@ function syntheticInnerPass(): PipelineResult {
         stepId: "verify",
         outcome: "pass",
         durationMs: 0,
+        // Campaign 2026-08-03 §P2: zeros because NOTHING RAN. The verify-span
+        // emitter skips this pass entirely rather than recording a 0 ms sample —
+        // a fabricated sample would drag the verify phase's p50 toward zero on
+        // every lone-outer group.
+        startedAtMs: Date.now(),
+        wallMs: 0,
+        waveIndex: 0,
         cached: false,
         treeSha: "",
         stepConfigSha: "",
@@ -442,6 +460,46 @@ function syntheticInnerPass(): PipelineResult {
       },
     ],
   };
+}
+
+/**
+ * Campaign 2026-08-03 §P2: record one `verify` span per pipeline step for ONE
+ * repo of an assembled group. The role rides BOTH the label (so P3 can split
+ * inner from outer) and `detail` (so a consumer that groups by step id alone
+ * can still tell them apart).
+ *
+ * `wallMs`, never `durationMs`: on a cache HIT the latter is the ORIGINAL run's
+ * duration, which would report a 26-minute verify for a pass that spent
+ * milliseconds on a lookup.
+ */
+function recordRepoVerify(
+  phases: PhaseSpans,
+  pipeline: PipelineResult,
+  role: "inner" | "outer",
+  requestId: string,
+  attemptId: string,
+): void {
+  for (const step of pipeline.steps) {
+    phases.record({
+      phase: "verify",
+      label: `${role}:${step.stepId}`,
+      requestId,
+      attemptId,
+      startedAtMs: step.startedAtMs,
+      durationMs: step.wallMs,
+      detail: {
+        role,
+        cached: step.cached,
+        outcome: step.outcome,
+        // The two repos verify CONCURRENTLY (the Promise.all below), and within
+        // a repo a wave does too — so these durations OVERLAP and must never be
+        // summed into an elapsed time.
+        concurrent: true,
+        waveIndex: step.waveIndex,
+        ...(step.cached ? { cachedDurationMs: step.durationMs } : {}),
+      },
+    });
+  }
 }
 
 // ─── rejectGroupLegibly (the single group-reject choke-point) ─────────
@@ -490,12 +548,19 @@ export async function runGroupIntegration(
   deps: GroupIntegrationDeps,
 ): Promise<GroupIntegrationOutcome> {
   const { pmClient, logger, innerLane, outerLane } = deps;
+  const phases = deps.phases ?? NOOP_PHASE_SPANS;
 
   // ── 1. Bind members → roles (FIX 1) BEFORE pickup. ──
   // An ambiguous/unresolvable binding is a PRE-PICKUP failure → reject from
   // FORMING (FIX 2: forming→rejected, a legal §3.3 edge; no 409). No worktrees
   // are leased yet, so there is nothing to release.
-  const bound = await bindMembersToRoles(group.members, innerLane, outerLane);
+  // Binding resolves each member's identity ref in BOTH per-repo clones — two
+  // git reads per member against clones that may be cold. It is `assemble` work
+  // that happens before any worktree is leased, so nothing else can report it.
+  const bound = await phases.time(
+    { phase: "assemble", label: "bind", detail: (b) => ({ ok: b?.ok ?? false }) },
+    () => bindMembersToRoles(group.members, innerLane, outerLane),
+  );
   if (!bound.ok) {
     logger.warn(
       { groupId: group.id, reason: bound.reason },
@@ -528,6 +593,10 @@ export async function runGroupIntegration(
     outerRef,
     gitlinkPath,
     gitRemote: deps.gitRemote,
+    phases,
+    // So a per-role assembly row names WHICH member's work it measured.
+    innerRequestId: innerMember.id,
+    outerRequestId: outerMember.id,
   };
   const asm = await assembleGroup(asmDeps);
 
@@ -771,6 +840,15 @@ export async function runGroupIntegration(
       logger: deps.logger,
     }),
   ]);
+
+  // Campaign 2026-08-03 §P2: the assembled verify's spans. The SYNTHETIC inner
+  // pass emits NOTHING — `innerRef === null` means no verify ran at all, and a
+  // 0 ms sample is not a cheap verify, it is a fabricated one that would drag
+  // the phase's p50 toward zero on every lone-outer group (design lock 3).
+  if (innerRef !== null) {
+    recordRepoVerify(phases, pipeI, "inner", innerMember.id, innerAttempt.id);
+  }
+  recordRepoVerify(phases, pipeO, "outer", outerMember.id, outerAttempt.id);
 
   // Extract the per-repo VerifyResult (the failing-step trigger on fail, else the
   // single synthetic step's result) — the SAME shape the VerifyOutcome consumer

@@ -32,6 +32,7 @@ import type { MergeAttemptView, MergeRequestView } from "@pm/shared";
 import { createGitOps, type GitOps, type PushResult } from "../src/git-ops.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { createLogger } from "../src/logger.js";
+import { makePhaseProbe } from "./phase-probe.js";
 import {
   runGroupIntegration,
   type GroupIntegrationDeps,
@@ -800,6 +801,98 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     expect(state.calls).not.toContain("openIncident");
     expect(state.calls).not.toContain("landGroup");
 
+    assertPoolsReacquirable();
+  }, 30_000);
+
+  // ── Campaign 2026-08-03 §P2 ────────────────────────────────────────
+  it("P2: an ORPHANED land is legible in two rows — inner:push ok, outer:push not", async () => {
+    const state = makeGroupState();
+    const deps = depsFor(state, {
+      innerLane: innerLane({
+        gitOps: failingPushGitOps((p) => createGitOps(simpleGit(p)), "non_fast_forward", "outer"),
+      }),
+    });
+    const integ = await runGroupIntegration(
+      { id: "grp-p2-orphan", members: state.group.members },
+      deps,
+    );
+    expect(integ.kind).toBe("ready_to_land");
+    if (integ.kind !== "ready_to_land") throw new Error("not ready");
+
+    const probe = makePhaseProbe();
+    const result = await landAssembledGroup(
+      {
+        groupId: "grp-p2-orphan",
+        projectId: "proj-1",
+        ready: integ,
+        innerRepoName: "rynx-inner",
+        outerRepoName: "app-outer",
+      },
+      {
+        pmClient: deps.pmClient,
+        logger,
+        gitRemote: GIT_REMOTE,
+        gitMainBranch: GIT_MAIN,
+        phases: probe.recorder.scope({ groupId: "grp-p2-orphan" }),
+      },
+    );
+    expect(result.kind).toBe("orphaned");
+
+    const rows = probe.rows();
+    const by = (label: string) => rows.find((r) => r.label === label)!;
+    expect(probe.labels()).toEqual([
+      "land/inner:fetch",
+      "land/inner:push",
+      "land/outer:fetch",
+      "land/outer:push",
+    ]);
+    // THE incident, in two rows: the inner really landed, the outer really did
+    // not, and the reason is named rather than left to a log grep.
+    expect(by("inner:push").detail).toMatchObject({ ok: true, reason: null });
+    expect(by("outer:push").detail).toMatchObject({ ok: false, reason: "non_fast_forward" });
+    // Each row names its own member + attempt, so the trace is per-request.
+    expect(by("inner:push").requestId).toBe("req-inner");
+    expect(by("inner:push").attemptId).toBe(integ.innerAttemptId);
+    expect(by("outer:push").requestId).toBe("req-outer");
+    expect(by("outer:push").attemptId).toBe(integ.outerAttemptId);
+
+    assertPoolsReacquirable();
+  }, 30_000);
+
+  it("P2: a THROWING phase ingest leaves the land outcome and the release accounting identical", async () => {
+    const state = makeGroupState();
+    const deps = depsFor(state);
+    const integ = await runGroupIntegration(
+      { id: "grp-p2-throw", members: state.group.members },
+      deps,
+    );
+    expect(integ.kind).toBe("ready_to_land");
+    if (integ.kind !== "ready_to_land") throw new Error("not ready");
+
+    const probe = makePhaseProbe("throw");
+    const result = await landAssembledGroup(
+      {
+        groupId: "grp-p2-throw",
+        projectId: "proj-1",
+        ready: integ,
+        innerRepoName: "rynx-inner",
+        outerRepoName: "app-outer",
+      },
+      {
+        pmClient: deps.pmClient,
+        logger,
+        gitRemote: GIT_REMOTE,
+        gitMainBranch: GIT_MAIN,
+        phases: probe.recorder,
+      },
+    );
+    // A synchronously-throwing ingest is the nastiest case (a bare .catch would
+    // miss it) — and it changes nothing: both mains advanced, the group landed,
+    // CONSTRAINT D released the worktrees exactly once.
+    expect(result.kind).toBe("landed");
+    expect(await bareMainSha(innerBare)).toBe(integ.Ri);
+    expect(await bareMainSha(outerBare)).toBe(integ.Ro);
+    expect(state.calls).toContain("landGroup");
     assertPoolsReacquirable();
   }, 30_000);
 });

@@ -39,6 +39,7 @@ import type { Logger } from "./logger.js";
 import type { PmClient, RejectCategory } from "./pm-client.js";
 import type { GroupIntegrationOutcome } from "./group-integration.js";
 import { chaosCrashPoint } from "./chaos.js";
+import { NOOP_PHASE_SPANS, type PhaseSpans } from "./phase-recorder.js";
 
 // ─── ready_to_land outcome (narrowed) ─────────────────────────────────
 
@@ -62,6 +63,14 @@ export interface LandAssembledGroupDeps {
   logger: Logger;
   gitRemote: string;
   gitMainBranch: string;
+  /**
+   * Campaign 2026-08-03 §P2: phase-timing spans (already scoped to the group).
+   * OPTIONAL and coalesced ONCE at function entry — the 15 inline-literal call
+   * sites in the group tests therefore need no edit, and the non-nullable local
+   * makes `phases?.time(spec, fn)` — which would short-circuit the whole call
+   * and SKIP the push it was measuring — impossible to write.
+   */
+  phases?: PhaseSpans;
 }
 
 // ─── Result union ─────────────────────────────────────────────────────
@@ -119,13 +128,28 @@ export async function landAssembledGroup(
     ready;
   const Mi = asm.baseInnerSha;
   const Mo = asm.baseOuterSha;
+  // Campaign 2026-08-03 §P2. Per-role scopes so each land row names the member
+  // and attempt it belongs to — which is what makes an ORPHAN legible after the
+  // fact: `inner:push {ok:true}` next to `outer:push {ok:false, reason}` is the
+  // whole incident in two rows.
+  const phases = deps.phases ?? NOOP_PHASE_SPANS;
+  const innerPhases = phases.scope({ requestId: innerMember.id, attemptId: innerAttemptId });
+  const outerPhases = phases.scope({ requestId: outerMember.id, attemptId: outerAttemptId });
 
   try {
     // ── §6.1 drift guard: re-fetch + re-resolve BOTH live mains. ──
-    await asm.innerGitOps.fetch(gitRemote);
-    await asm.outerGitOps.fetch(gitRemote);
-    const liveInner = await asm.innerGitOps.resolveRef(`${gitRemote}/${gitMainBranch}`);
-    const liveOuter = await asm.outerGitOps.resolveRef(`${gitRemote}/${gitMainBranch}`);
+    // One span per repo, each covering its fetch AND its re-resolve: the fetch is
+    // the network cost and the resolve is how we read its result, so splitting
+    // them would name a sub-step nobody can act on. The two are measured
+    // separately because a slow remote is usually slow for ONE of the repos.
+    const liveInner = await innerPhases.time({ phase: "land", label: "inner:fetch" }, async () => {
+      await asm.innerGitOps.fetch(gitRemote);
+      return asm.innerGitOps.resolveRef(`${gitRemote}/${gitMainBranch}`);
+    });
+    const liveOuter = await outerPhases.time({ phase: "land", label: "outer:fetch" }, async () => {
+      await asm.outerGitOps.fetch(gitRemote);
+      return asm.outerGitOps.resolveRef(`${gitRemote}/${gitMainBranch}`);
+    });
 
     if (liveInner !== Mi || liveOuter !== Mo) {
       const reason = "live main drifted before land; re-verify next pass";
@@ -149,7 +173,14 @@ export async function landAssembledGroup(
     // comparison ambiguous, and the FF push already gives the correct outcome.
 
     // ── §6.2 PUSH 1: inner (fast-forwards inner main Mi → Ri). ──
-    const push1 = await asm.innerGitOps.push(gitRemote, gitMainBranch);
+    const push1 = await innerPhases.time(
+      {
+        phase: "land",
+        label: "inner:push",
+        detail: (p) => ({ ok: p?.ok ?? false, reason: p && !p.ok ? p.reason : null }),
+      },
+      () => asm.innerGitOps.push(gitRemote, gitMainBranch),
+    );
     if (!push1.ok) {
       // §6.3 failure point (a): inner push failed. NOTHING landed. Outer NEVER
       // touched. Reject the whole group cleanly. No incident.
@@ -179,7 +210,14 @@ export async function landAssembledGroup(
     chaosCrashPoint("after_inner_push");
 
     // ── §6.2 PUSH 2: outer (fast-forwards outer main Mo → Ro, gitlink → Ri). ──
-    const push2 = await asm.outerGitOps.push(gitRemote, gitMainBranch);
+    const push2 = await outerPhases.time(
+      {
+        phase: "land",
+        label: "outer:push",
+        detail: (p) => ({ ok: p?.ok ?? false, reason: p && !p.ok ? p.reason : null }),
+      },
+      () => asm.outerGitOps.push(gitRemote, gitMainBranch),
+    );
 
     if (push2.ok) {
       // ── §6.7 CLEAN LAND (R1 satisfied — both trees passed §5.3 verify). ──
