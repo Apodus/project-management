@@ -5883,11 +5883,16 @@
             "items": {
               "$ref": "#/components/schemas/MergeRequestTimelineEvent"
             }
+          },
+          "task_title": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
           "request",
-          "events"
+          "events",
+          "task_title"
         ]
       },
       "MergeRequestTimelineEvent": {
@@ -8146,6 +8151,18 @@
                   "type": "string",
                   "nullable": true
                 },
+                "task_id": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "task_title": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "branch": {
+                  "type": "string",
+                  "nullable": true
+                },
                 "attempt": {
                   "type": "object",
                   "nullable": true,
@@ -8179,6 +8196,9 @@
                 "status",
                 "enqueued_at",
                 "picked_up_at",
+                "task_id",
+                "task_title",
+                "branch",
                 "attempt"
               ]
             }

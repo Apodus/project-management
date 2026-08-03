@@ -282,6 +282,16 @@ function memberLane(member: TrainInFlight["members"][number]): string {
   return member.group_id ? `Group ${member.group_id.slice(0, 8)}` : "Batch";
 }
 
+/**
+ * What this member IS, in human terms. A merge request has no name of its own,
+ * so name it by the work: the linked task's title, else the branch, else the id
+ * prefix (the last resort — a ULID tells an operator nothing about what is
+ * currently occupying their train).
+ */
+function memberName(member: TrainInFlight["members"][number]): string {
+  return member.task_title ?? member.branch ?? member.id.slice(0, 8);
+}
+
 function InFlightSection({ projectId }: { projectId: string }) {
   const { data: inFlight, isLoading } = useTrainInFlight(projectId);
   const members = inFlight?.members ?? [];
@@ -320,14 +330,24 @@ function InFlightSection({ projectId }: { projectId: string }) {
             <TableBody>
               {members.map((member) => (
                 <TableRow key={member.id}>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="max-w-[22rem] text-xs">
                     <Link
                       to="/merge-requests/$requestId/timeline"
                       params={{ requestId: member.id }}
                       className="text-blue-600 hover:underline dark:text-blue-400"
                     >
-                      {member.id.slice(0, 8)}
+                      <span className="block truncate font-medium" title={memberName(member)}>
+                        {memberName(member)}
+                      </span>
                     </Link>
+                    {/* The branch stays visible under a task-titled row — it is
+                        what the operator greps for in git; the id is the
+                        last-resort name and never needs repeating. */}
+                    {member.task_title && member.branch && (
+                      <span className="text-muted-foreground block truncate font-mono text-[10px]">
+                        {member.branch}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">
                     {memberLane(member)}

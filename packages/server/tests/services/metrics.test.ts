@@ -13,6 +13,7 @@ import {
   mergeRequestGroups,
   mergeRequests,
   mergeResolutions,
+  tasks,
 } from "../../src/db/index.js";
 import type { MergeResolutionDetail } from "@pm/shared";
 import { EVENT_NAMES, getEventBus } from "../../src/events/event-bus.js";
@@ -42,6 +43,8 @@ function seedRequest(
     landedSha?: string | null;
     groupId?: string | null;
     pickedUpAt?: string | null;
+    taskId?: string | null;
+    branch?: string | null;
   },
 ): string {
   const id = createId();
@@ -52,8 +55,8 @@ function seedRequest(
       projectId: args.projectId,
       resource: args.resource ?? "main",
       submittedBy: args.submittedBy,
-      taskId: null,
-      branch: null,
+      taskId: args.taskId ?? null,
+      branch: args.branch ?? null,
       commitSha: null,
       verifyCmd: null,
       worktreePath: null,
@@ -542,6 +545,75 @@ describe("metrics service", () => {
     // groups: only forming/integrating, NOT the landed one.
     expect(inflight.groups.map((g) => g.id)).toEqual([formingGroup]);
     expect(inflight.groups.map((g) => g.id)).not.toContain(landedGroup);
+  });
+
+  it("getInFlight carries the naming inputs (task title / branch) so the dashboard can say what is integrating", () => {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const taskId = createId();
+    const ts = new Date().toISOString();
+    testApp.db
+      .insert(tasks)
+      .values({
+        id: taskId,
+        projectId: project.id,
+        title: "Fix grass placement drift",
+        reporterId: user.id,
+        createdAt: ts,
+        updatedAt: ts,
+      })
+      .run();
+
+    const named = seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: user.id,
+      status: "integrating",
+      taskId,
+      branch: "fix/grass",
+    });
+    // Task-less: the branch is the name.
+    const branchOnly = seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: user.id,
+      status: "integrating",
+      branch: "chore/no-task",
+    });
+    // Neither: a synthetic member. The renderer falls back to the id.
+    const bare = seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: user.id,
+      status: "integrating",
+    });
+
+    const inflight = metrics.getInFlight(project.id, "main");
+    const byId = new Map(inflight.members.map((m) => [m.id, m]));
+
+    expect(byId.get(named)).toMatchObject({
+      taskId,
+      taskTitle: "Fix grass placement drift",
+      branch: "fix/grass",
+    });
+    expect(byId.get(branchOnly)).toMatchObject({
+      taskId: null,
+      taskTitle: null,
+      branch: "chore/no-task",
+    });
+    expect(byId.get(bare)).toMatchObject({ taskId: null, taskTitle: null, branch: null });
+  });
+
+  it("a task-less member still appears in flight (the LEFT JOIN must not drop it)", () => {
+    // The FK is ON DELETE SET NULL, so a request whose task was deleted
+    // mid-flight has taskId null — an inner join here would make it vanish from
+    // the dashboard exactly when someone is looking for it.
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: user.id,
+      status: "integrating",
+    });
+
+    expect(metrics.getInFlight(project.id, "main").members).toHaveLength(1);
   });
 
   // ── STALE EDGE fires via the metrics read (proves getHealth reuse) ─

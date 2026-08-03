@@ -254,6 +254,11 @@ const inFlightMemberSchema = z.object({
   status: z.string(),
   enqueued_at: z.string(),
   picked_up_at: z.string().nullable(),
+  // Naming inputs for the dashboard (task title → branch → id). Denormalized
+  // on read so "In Flight" can say what is integrating instead of a ULID prefix.
+  task_id: z.string().nullable(),
+  task_title: z.string().nullable(),
+  branch: z.string().nullable(),
   attempt: z
     .object({
       status: z.string(),
@@ -721,6 +726,9 @@ function inFlightToResponse(bundle: InFlightBundle): z.infer<typeof inFlightSche
       status: m.status,
       enqueued_at: m.enqueuedAt,
       picked_up_at: m.pickedUpAt,
+      task_id: m.taskId,
+      task_title: m.taskTitle,
+      branch: m.branch,
       attempt: m.attempt
         ? {
             status: m.attempt.status,

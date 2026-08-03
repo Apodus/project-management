@@ -799,6 +799,17 @@ export interface TimelineEvent {
 export interface TimelineResult {
   request: MergeRequestView;
   events: TimelineEvent[];
+  /**
+   * The linked task's title, as an ENVELOPE SIBLING (never a field on
+   * `MergeRequestView`, which stays byte-identical — same idiom as the
+   * `integrator` liveness block).
+   *
+   * A merge request has no name of its own, so the timeline header used to be a
+   * ULID prefix. This lets it say what the request IS. Read live rather than
+   * denormalized, so a renamed task reads correctly; null when the request has
+   * no task (or the task was deleted — the FK is ON DELETE SET NULL).
+   */
+  taskTitle: string | null;
 }
 
 /**
@@ -950,7 +961,13 @@ export function getTimeline(id: string): TimelineResult {
   // string compare is chronological across the heterogeneous sources.
   events.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 
-  return { request: toView(row), events };
+  const taskTitle =
+    row.taskId === null
+      ? null
+      : (db.select({ title: tasks.title }).from(tasks).where(eq(tasks.id, row.taskId)).get()
+          ?.title ?? null);
+
+  return { request: toView(row), events, taskTitle };
 }
 
 /**

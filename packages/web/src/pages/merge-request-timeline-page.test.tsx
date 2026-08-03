@@ -45,6 +45,8 @@ import { MergeRequestTimelinePage } from "./merge-request-timeline-page";
 function seededTimeline(): MergeRequestTimeline {
   const t = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString();
   return {
+    // The header names the request by its linked task, not by a ULID prefix.
+    task_title: "Fix grass placement drift",
     request: {
       id: "mr-1111-2222",
       projectId: "proj-1",
@@ -130,6 +132,7 @@ function seededTimeline(): MergeRequestTimeline {
 function orphanTimeline(): MergeRequestTimeline {
   const now = new Date().toISOString();
   return {
+    task_title: "Fix grass placement drift",
     request: {
       ...seededTimeline().request,
       status: "orphaned",
@@ -154,6 +157,7 @@ function orphanTimeline(): MergeRequestTimeline {
 function nullSafeTimeline(): MergeRequestTimeline {
   const now = new Date().toISOString();
   return {
+    task_title: null,
     request: {
       ...seededTimeline().request,
       status: "integrating",
@@ -178,6 +182,7 @@ function nullSafeTimeline(): MergeRequestTimeline {
 function resolutionTimeline(): MergeRequestTimeline {
   const now = new Date().toISOString();
   return {
+    task_title: "Fix grass placement drift",
     request: {
       ...seededTimeline().request,
       id: "mr-origin-9999",
@@ -204,6 +209,7 @@ function resolutionTimeline(): MergeRequestTimeline {
 function resolutionOriginTimeline(): MergeRequestTimeline {
   const now = new Date().toISOString();
   return {
+    task_title: null,
     request: {
       ...seededTimeline().request,
       id: "mr-resolved-5555",
@@ -357,6 +363,7 @@ describe("MergeRequestTimelinePage — synthetic member (inner-only groups)", ()
     const base = seededTimeline();
     mocks.useMergeRequestTimeline.mockReturnValue(
       q({
+        task_title: null,
         request: {
           ...base.request,
           synthetic: true,
@@ -391,10 +398,30 @@ describe("MergeRequestTimelinePage — loading / error", () => {
   });
 });
 
-describe("MergeRequestTimelinePage — header back link", () => {
-  it("links back to the project train dashboard", () => {
+describe("MergeRequestTimelinePage — breadcrumb + naming", () => {
+  it("links back to the project train dashboard from the page breadcrumb", () => {
     render(<MergeRequestTimelinePage />);
-    const back = screen.getByRole("link", { name: /back to train/i });
+    const back = screen.getByRole("link", { name: /merge train/i });
     expect(back).toHaveAttribute("href", "/projects/proj-1/train");
+  });
+
+  it("names the request by its linked task, not by a ULID prefix", () => {
+    render(<MergeRequestTimelinePage />);
+    expect(screen.getByText("Fix grass placement drift")).toBeInTheDocument();
+    // The id is still present (you paste it into pm_get_merge_request) but is
+    // no longer the card's name.
+    expect(screen.getByText("mr-1111-2222")).toBeInTheDocument();
+  });
+
+  it("falls back to the branch when the request has no task", () => {
+    mocks.useMergeRequestTimeline.mockReturnValue(
+      q({
+        ...seededTimeline(),
+        task_title: null,
+        request: { ...seededTimeline().request, branch: "chore/no-task" },
+      } satisfies MergeRequestTimeline),
+    );
+    render(<MergeRequestTimelinePage />);
+    expect(screen.getByText("chore/no-task")).toBeInTheDocument();
   });
 });

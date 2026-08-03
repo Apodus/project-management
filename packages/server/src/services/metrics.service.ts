@@ -6,6 +6,7 @@ import {
   mergeRequests,
   mergeResolutions,
   projects,
+  tasks,
 } from "../db/index.js";
 import type { MergeResolutionDetail } from "@pm/shared";
 import { AppError } from "../types.js";
@@ -172,6 +173,15 @@ export interface InFlightMember {
   status: string;
   enqueuedAt: string;
   pickedUpAt: string | null;
+  // ── What this member IS, in human terms ──
+  // A merge request has no name of its own, so the dashboard used to render a
+  // ULID prefix and the operator had no idea what was integrating. These are
+  // the naming inputs, in preference order: the linked task's title, then the
+  // branch, then (the renderer's fallback) the id. Denormalized ON READ — the
+  // title is not copied anywhere, so a renamed task reads correctly next time.
+  taskId: string | null;
+  taskTitle: string | null;
+  branch: string | null;
   attempt: {
     status: string;
     baseSha: string;
@@ -957,8 +967,14 @@ export function getInFlight(projectId: string, resource = "main"): InFlightBundl
       status: mergeRequests.status,
       enqueuedAt: mergeRequests.enqueuedAt,
       pickedUpAt: mergeRequests.pickedUpAt,
+      taskId: mergeRequests.taskId,
+      // LEFT JOIN: taskId is nullable AND its FK is ON DELETE SET NULL, so a
+      // task-less (or since-deleted-task) request must still appear in flight.
+      taskTitle: tasks.title,
+      branch: mergeRequests.branch,
     })
     .from(mergeRequests)
+    .leftJoin(tasks, eq(tasks.id, mergeRequests.taskId))
     .where(
       and(
         eq(mergeRequests.projectId, projectId),
@@ -988,6 +1004,9 @@ export function getInFlight(projectId: string, resource = "main"): InFlightBundl
       status: r.status,
       enqueuedAt: r.enqueuedAt,
       pickedUpAt: r.pickedUpAt,
+      taskId: r.taskId,
+      taskTitle: r.taskTitle,
+      branch: r.branch,
       attempt: latest
         ? {
             status: latest.status,

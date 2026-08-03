@@ -392,6 +392,43 @@ describe("merge-request timeline (design §5.7)", () => {
     expect(timeline.events.some((e) => e.kind === "queued")).toBe(true);
   });
 
+  it("carries the linked task's title as an envelope sibling (the header's name)", () => {
+    // A merge request has no name of its own, so the timeline header used to be
+    // a ULID prefix. The title rides the envelope — NOT MergeRequestView, whose
+    // wire shape stays byte-identical for MCP + every other read.
+    const project = createTestProject(testApp.db);
+    const submitter = createTestUser(testApp.db);
+    const task = createTestTask(testApp.db, {
+      projectId: project.id,
+      title: "Fix grass placement drift",
+      reporterId: submitter.id,
+    });
+
+    const r = requestSvc.submit({
+      projectId: project.id,
+      submittedBy: submitter.id,
+      branch: "fix/grass",
+      taskId: task.id,
+    });
+
+    const timeline = requestSvc.getTimeline(r.id);
+    expect(timeline.taskTitle).toBe("Fix grass placement drift");
+    // The request row itself gained nothing.
+    expect(timeline.request).not.toHaveProperty("taskTitle");
+  });
+
+  it("taskTitle is null for a task-less request", () => {
+    const project = createTestProject(testApp.db);
+    const submitter = createTestUser(testApp.db);
+    const r = requestSvc.submit({
+      projectId: project.id,
+      submittedBy: submitter.id,
+      branch: "chore/no-task",
+    });
+
+    expect(requestSvc.getTimeline(r.id).taskTitle).toBeNull();
+  });
+
   it("404 for an unknown request id", () => {
     expect(() => requestSvc.getTimeline("01UNKNOWNREQUEST000000000000")).toThrowError(
       expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }),

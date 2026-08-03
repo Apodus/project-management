@@ -216,6 +216,9 @@ function seededInFlight(): TrainInFlight {
         status: "integrating",
         enqueued_at: new Date().toISOString(),
         picked_up_at: new Date().toISOString(),
+        task_id: "task-1111",
+        task_title: "Fix grass placement drift",
+        branch: "fix/grass",
         attempt: {
           status: "running",
           base_sha: "abc123",
@@ -224,11 +227,15 @@ function seededInFlight(): TrainInFlight {
         },
       },
       {
+        // Task-less: names itself by branch.
         id: "mr-cccc3333",
         group_id: null,
         status: "integrating",
         enqueued_at: new Date().toISOString(),
         picked_up_at: null,
+        task_id: null,
+        task_title: null,
+        branch: "chore/no-task",
         attempt: null,
       },
     ],
@@ -279,8 +286,14 @@ describe("TrainDashboardPage — seeded data", () => {
 
   it("renders the in-flight table with members + attempt state", () => {
     render(<TrainDashboardPage />);
-    expect(screen.getByText("mr-bbbb2")).toBeInTheDocument();
-    expect(screen.getByText("mr-cccc3")).toBeInTheDocument();
+    // Members are named by their WORK, not their ULID: task title first, and
+    // the branch stays visible underneath it.
+    expect(screen.getByText("Fix grass placement drift")).toBeInTheDocument();
+    expect(screen.getByText("fix/grass")).toBeInTheDocument();
+    // A task-less member falls back to its branch.
+    expect(screen.getByText("chore/no-task")).toBeInTheDocument();
+    // The raw id prefix is no longer the name.
+    expect(screen.queryByText("mr-bbbb2")).not.toBeInTheDocument();
     // grouped lane label vs standalone batch
     expect(screen.getByText(/Group group-aa/)).toBeInTheDocument();
     expect(screen.getByText("Batch")).toBeInTheDocument();
@@ -291,7 +304,7 @@ describe("TrainDashboardPage — seeded data", () => {
 
   it("links each in-flight member to its per-request timeline", () => {
     render(<TrainDashboardPage />);
-    const link = screen.getByRole("link", { name: "mr-bbbb2" });
+    const link = screen.getByRole("link", { name: "Fix grass placement drift" });
     expect(link).toHaveAttribute("href", "/merge-requests/mr-bbbb2222/timeline");
   });
 

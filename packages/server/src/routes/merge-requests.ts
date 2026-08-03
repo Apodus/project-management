@@ -181,6 +181,10 @@ const timelineSchema = z
   .object({
     request: mergeRequestSchema,
     events: z.array(timelineEventSchema),
+    // Envelope sibling (never a field on mergeRequestSchema, which stays
+    // byte-identical): the linked task's title, so the header can name the
+    // request by its work instead of by a ULID prefix. Null when task-less.
+    task_title: z.string().nullable(),
   })
   .openapi("MergeRequestTimeline");
 
@@ -920,7 +924,16 @@ export function createMergeRequestRoutes(): OpenAPIHono<{
     const { id } = c.req.valid("param");
     requireUser(c.get("currentUser") as AuthUser | null);
     const timeline = requestSvc.getTimeline(id);
-    return c.json({ data: timeline }, 200);
+    return c.json(
+      {
+        data: {
+          request: timeline.request,
+          events: timeline.events,
+          task_title: timeline.taskTitle,
+        },
+      },
+      200,
+    );
   });
 
   router.openapi(cancelRoute, (c) => {

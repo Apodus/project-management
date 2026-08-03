@@ -16220,6 +16220,7 @@ export interface components {
     MergeRequestTimeline: {
       request: components["schemas"]["MergeRequest"];
       events: components["schemas"]["MergeRequestTimelineEvent"][];
+      task_title: string | null;
     };
     MergeRequestTimelineEvent: {
       at: string;
@@ -16819,6 +16820,9 @@ export interface components {
         status: string;
         enqueued_at: string;
         picked_up_at: string | null;
+        task_id: string | null;
+        task_title: string | null;
+        branch: string | null;
         attempt: {
           status: string;
           base_sha: string;

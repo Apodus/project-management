@@ -444,13 +444,28 @@ function TimelineRow({ event, isLast }: { event: MergeRequestTimelineEvent; isLa
 
 // ─── Request header ──────────────────────────────────────────────
 
-function RequestHeader({ request, projectId }: { request: MergeRequest; projectId?: string }) {
+function RequestHeader({
+  request,
+  taskTitle,
+}: {
+  request: MergeRequest;
+  taskTitle?: string | null;
+}) {
+  // Name the request by the WORK, not by its ULID: task title → branch → id
+  // prefix. The title rides the timeline envelope (a sibling of `request`, like
+  // `integrator`) rather than being fetched here — no second round-trip, no
+  // loading flicker on the name, and MergeRequest's wire shape stays untouched.
+  const name = taskTitle ?? request.branch ?? request.id.slice(0, 12);
+  const named = Boolean(taskTitle ?? request.branch);
+
   return (
     <Card className="py-4">
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center gap-3">
           <GitMerge className="text-muted-foreground size-5" />
-          <CardTitle className="font-mono text-base">{request.id.slice(0, 12)}</CardTitle>
+          <CardTitle className={cn("text-base", !named && "font-mono")} title={name}>
+            {name}
+          </CardTitle>
           <Badge variant="secondary" className={cn("text-[10px]", getStatusColor(request.status))}>
             {formatStatus(request.status)}
           </Badge>
@@ -479,16 +494,11 @@ function RequestHeader({ request, projectId }: { request: MergeRequest; projectI
           <span className="font-mono">landed {shortSha(request.landedSha)}</span>
         )}
         {request.rejectCategory && <span>rejected: {formatStatus(request.rejectCategory)}</span>}
-        {projectId && (
-          <Link
-            to="/projects/$projectId/train"
-            params={{ projectId }}
-            className="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
-          >
-            <ArrowLeft className="size-3" />
-            Back to train
-          </Link>
-        )}
+        {/* The id moves DOWN here: it is no longer the card's name, but it is
+            still what you paste into pm_get_merge_request. */}
+        <span className="font-mono">{request.id}</span>
+        {/* "Back to train" now lives in the page breadcrumb above, where a
+            reader looks for navigation. */}
       </CardContent>
     </Card>
   );
@@ -529,11 +539,26 @@ export function MergeRequestTimelinePage() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb ABOVE the title. There was already a "Back to train" link,
+          but it sat last in a row of 11px muted metadata inside the header card
+          — present and effectively invisible. Navigation belongs at the top of
+          the page, not in a facts list. */}
+      {projectId && (
+        <Link
+          to="/projects/$projectId/train"
+          params={{ projectId }}
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
+        >
+          <ArrowLeft className="size-4" />
+          Merge train
+        </Link>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold tracking-tight">Request Timeline</h1>
       </div>
 
-      <RequestHeader request={data.request} projectId={projectId} />
+      <RequestHeader request={data.request} taskTitle={data.task_title} />
 
       <Card className="py-4">
         <CardHeader className="pb-2">
