@@ -94,6 +94,27 @@ describe("merge-phase seal — no import edge with the merge path", () => {
       .filter((f) => read(path.join(dir, f)).includes("merge-phase.service.js"));
     expect(importers.filter((f) => f !== "metrics.service.ts")).toEqual([]);
   });
+
+  it("phase-line.ts is the ONLY events-layer importer (P6 renders these rows to Discord)", () => {
+    // The scan above walks src/services ONLY, so an events-layer import would
+    // have escaped it silently — and the events layer is where the risk is: its
+    // listeners run SYNCHRONOUSLY inside the emitting service's commit path, so
+    // a read that throws there is a read that can break a land.
+    //
+    // phase-line.ts is allowed because its edge is read-only, guarded (it returns
+    // "" on any throw, so a formatter fault costs a stopwatch line and never the
+    // narration), and confined to one formatter — design lock 1 survives. A
+    // SECOND events importer must come to this seal and justify itself, exactly
+    // as metrics.service.ts did.
+    //
+    // Scoped to src/events on purpose: src/routes/merge-phases.ts legitimately
+    // imports the service (it IS the ingest/read surface) and is not scanned.
+    const dir = path.join(SRC, "events");
+    const importers = readdirSync(dir)
+      .filter((f) => f.endsWith(".ts"))
+      .filter((f) => read(path.join(dir, f)).includes("merge-phase.service.js"));
+    expect(importers).toEqual(["phase-line.ts"]);
+  });
 });
 
 describe("merge-phase seal — a full ingest touches nothing else", () => {

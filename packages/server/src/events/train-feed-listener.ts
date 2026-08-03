@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { getDb, mergeRequests, tasks, users } from "../db/index.js";
 import { postDiscord } from "./alerts-listener.js";
 import { EVENT_NAMES, getEventBus, type EventName, type EventPayload } from "./event-bus.js";
+import { humanDuration, phaseLineForGroup, phaseLineForRequest } from "./phase-line.js";
 
 // ─── Outbound Discord TRAIN EVENT FEED ────────────────────────────
 //
@@ -10,6 +11,14 @@ import { EVENT_NAMES, getEventBus, type EventName, type EventPayload } from "./e
 // merge-train NARRATION — "the train picked this up", "it landed", "it was
 // rejected and here's why" — so an operator watching a Discord channel sees the
 // event stream itself, not just its failures.
+//
+// Terminal events (land / reject, per request and per group) carry a SECOND
+// line — the stopwatch segment from phase-line.ts, which says where the wall
+// clock the first line reports actually went. One message with a `\n`, never a
+// second POST. Pickup does not carry it (the line already says "waited 12m in
+// queue"), requeue does not (the trip is not over — its minutes are accounted
+// once, at the terminal event), abandon does not (no integration happened), and
+// incident/pause/resume do not (no single subject to time).
 //
 // Deliberately NOT narrated (noise, no decision value): queue/submit
 // (merge.request.queued), per-attempt start/complete, the Phase-7.2 batch
@@ -41,20 +50,6 @@ function truncate(text: string, max: number): string {
 function shortSha(sha: unknown): string {
   const s = String(sha ?? "");
   return s.length > 12 ? s.slice(0, 8) : s;
-}
-
-/**
- * A pre-computed, human-readable age. The merge-train clock-legibility rule
- * (deployment guide §14.14): NEVER hand a reader two timestamps to subtract —
- * state the elapsed time outright.
- */
-function humanDuration(ms: number): string {
-  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))}s`;
-  const min = Math.round(ms / 60_000);
-  if (min < 60) return `${min}m`;
-  const h = Math.floor(min / 60);
-  const rem = min % 60;
-  return rem === 0 ? `${h}h` : `${h}h ${rem}m`;
 }
 
 /** Elapsed time between an ISO instant and the event's own timestamp. */
@@ -169,6 +164,26 @@ function groupPickedUpAt(members: MemberLike[]): string | null {
   return stamps.reduce((a, b) => (Date.parse(a) <= Date.parse(b) ? a : b));
 }
 
+/**
+ * The stopwatch line for a request's OWN outcome — empty for a grouped member,
+ * because the group's line already accounts for the same minutes.
+ *
+ * Mirrors the `if (e.groupId) return null` idiom of the INTEGRATING case, but
+ * suppresses only the phase segment: a grouped member's land is already silent
+ * (landGroup writes members inside the txn and emits the un-narrated
+ * MERGE_GROUP_MEMBER_LANDED), and its ordinary reject is one group-level UPDATE
+ * with no per-member event — but the PARTIALLY-LANDED path is not. There
+ * (group-land.ts, "outer push failed after inner landed") the outer member is
+ * rejected individually, so MERGE_REQUEST_REJECTED fires seconds before
+ * MERGE_GROUP_REJECTED. Two stopwatch lines whose intervals are a strict
+ * superset/subset pair is exactly the double-accounting the union prevents
+ * WITHIN a line — so it must not be reintroduced BETWEEN lines. Same exposure for
+ * an operator's force-land / force-reject of a grouped member.
+ */
+function memberPhaseLine(entity: Record<string, unknown>, requestId: string): string {
+  return entity.groupId ? "" : phaseLineForRequest(requestId);
+}
+
 // ─── Formatter ────────────────────────────────────────────────────
 
 /**
@@ -218,7 +233,7 @@ export function formatTrainFeedEvent(event: EventName, payload: EventPayload): s
     // ── Outcomes ──────────────────────────────────────────────────
     case EVENT_NAMES.MERGE_REQUEST_LANDED: {
       const took = ageSince(e.pickedUpAt, at);
-      return [
+      const base = [
         `:white_check_mark: **Landed** on ${lane} — ${labelRequest(e)}`,
         `sha \`${shortSha(e.landedSha)}\``,
         took ? `${took} since pickup` : null,
@@ -226,12 +241,13 @@ export function formatTrainFeedEvent(event: EventName, payload: EventPayload): s
       ]
         .filter(Boolean)
         .join(" · ");
+      return base + memberPhaseLine(e, payload.entityId);
     }
 
     case EVENT_NAMES.MERGE_REQUEST_REJECTED: {
       const took = ageSince(e.pickedUpAt, at);
       const category = String(e.category ?? e.rejectCategory ?? "unknown");
-      return [
+      const base = [
         `:x: **Rejected** on ${lane} — ${labelRequest(e)}`,
         `[${category}] ${reason(e.reason ?? e.rejectReason)}`,
         took ? `${took} since pickup` : null,
@@ -240,6 +256,7 @@ export function formatTrainFeedEvent(event: EventName, payload: EventPayload): s
       ]
         .filter(Boolean)
         .join(" · ");
+      return base + memberPhaseLine(e, payload.entityId);
     }
 
     case EVENT_NAMES.MERGE_GROUP_LANDED: {
@@ -253,13 +270,14 @@ export function formatTrainFeedEvent(event: EventName, payload: EventPayload): s
           shas.push(`\`${shortSha(m.landedSha)}\``);
         }
       }
-      return [
+      const base = [
         `:white_check_mark: **Group landed** on ${lane} — ${labelGroup(payload.entityId, members)}`,
         shas.length > 0 ? shas.join(" + ") : null,
         took ? `${took} since pickup` : null,
       ]
         .filter(Boolean)
         .join(" · ");
+      return base + phaseLineForGroup(payload.entityId);
     }
 
     case EVENT_NAMES.MERGE_GROUP_REJECTED: {
@@ -269,17 +287,21 @@ export function formatTrainFeedEvent(event: EventName, payload: EventPayload): s
       // (§10.2) — the inner landed and the outer did NOT, which is an incident,
       // not an ordinary reject.
       if (e.outcome === "partially_landed") {
-        return [
-          `:rotating_light: **Group PARTIALLY landed** on ${lane} — ${label}`,
-          `inner landed, outer did NOT: ${reason(e.reason ?? e.resolutionReason)}`,
-          `group \`${payload.entityId}\``,
-        ].join(" · ");
+        return (
+          [
+            `:rotating_light: **Group PARTIALLY landed** on ${lane} — ${label}`,
+            `inner landed, outer did NOT: ${reason(e.reason ?? e.resolutionReason)}`,
+            `group \`${payload.entityId}\``,
+          ].join(" · ") + phaseLineForGroup(payload.entityId)
+        );
       }
-      return [
-        `:x: **Group rejected** on ${lane} — ${label}`,
-        reason(e.reason ?? e.resolutionReason),
-        `group \`${payload.entityId}\``,
-      ].join(" · ");
+      return (
+        [
+          `:x: **Group rejected** on ${lane} — ${label}`,
+          reason(e.reason ?? e.resolutionReason),
+          `group \`${payload.entityId}\``,
+        ].join(" · ") + phaseLineForGroup(payload.entityId)
+      );
     }
 
     case EVENT_NAMES.MERGE_REQUEST_ABANDONED: {
