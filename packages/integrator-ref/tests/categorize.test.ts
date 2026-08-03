@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   categorize,
+  failureExcerpt,
   lastMeaningfulErrorLine,
   tailExcerpt,
   type CategorizeInput,
@@ -208,5 +209,124 @@ describe("tailExcerpt", () => {
     expect(out).toContain("earlier chars omitted");
     // The head noise is dropped; only ~cap chars survive.
     expect(out.length).toBeLessThan(4200);
+  });
+});
+
+// ─── Catch2 (rynx / game_one) ────────────────────────────────────────────────
+
+/** A green Catch2 binary that still prints FAILED: blocks for its [!shouldfail] cases. */
+const CATCH2_GREEN_WITH_SHOULDFAIL = [
+  "-------------------------------------------------------------------------------",
+  "mech kick drift stays inside the authored envelope",
+  "-------------------------------------------------------------------------------",
+  "D:\\wt\\rynx\\src\\test\\tech\\test_collision_response.cpp(880)",
+  "...............................................................................",
+  "",
+  "D:\\wt\\rynx\\src\\test\\tech\\test_collision_response.cpp(890): FAILED:",
+  "  REQUIRE( drift < 6.0f )",
+  "with expansion:",
+  "  7.87f < 6.0f",
+  "",
+  "===============================================================================",
+  "test cases:   1327 |   1324 passed | 3 failed as expected",
+  "assertions: 8171350 | 8171347 passed | 3 failed as expected",
+].join("\n");
+
+/** A red Catch2 binary: the real game_one testgamebehavior failure. */
+const CATCH2_RED = [
+  "-------------------------------------------------------------------------------",
+  "P1 trigger-aware role matrix is deterministic for every fixture and distance",
+  "-------------------------------------------------------------------------------",
+  "D:\\wt\\src\\topdownshooter\\test\\behavior\\test_weapon_definition_matrix.cpp(278)",
+  "...............................................................................",
+  "",
+  "D:\\wt\\src\\topdownshooter\\test\\behavior\\test_weapon_definition_matrix.cpp(307): FAILED:",
+  '  REQUIRE( hex_u64(contract, "scenario_digest") == digest )',
+  "with expansion:",
+  "  10613189815033782153 == 17509516702106595936",
+  "",
+  "===============================================================================",
+  "test cases:    378 |    375 passed | 3 failed",
+  "assertions: 163889 | 163886 passed | 3 failed",
+].join("\n");
+
+/** The teardown chatter that used to hijack every reject reason. */
+const AUDIO_CHATTER = Array.from(
+  { length: 752 },
+  () => "failed to close audio stream: Invalid stream pointer",
+).join("\n");
+
+describe("categorize — Catch2", () => {
+  it("test_failed — names the failing case, file:line and assertion", () => {
+    const r = categorize(input({ exitCode: 1, stdout: CATCH2_RED }));
+    expect(r.category).toBe("test_failed");
+    expect(r.reason).toContain("3 failed");
+    expect(r.reason).toContain("P1 trigger-aware role matrix is deterministic");
+    expect(r.reason).toContain("test_weapon_definition_matrix.cpp:307");
+    expect(r.reason).toContain("scenario_digest");
+    expect(r.failedFiles).toHaveLength(1);
+    expect(r.failedFiles[0]).toContain("test_weapon_definition_matrix.cpp");
+  });
+
+  it("`N failed as expected` is a PASS — [!shouldfail] never reads as a failure", () => {
+    // Catch2 scores [!shouldfail] cases as passes and prints FAILED: blocks for
+    // them anyway. game_one's verify carries three; keying on the block instead
+    // of the summary term would report a green suite as red.
+    const r = categorize(input({ exitCode: 1, stdout: CATCH2_GREEN_WITH_SHOULDFAIL }));
+    expect(r.category).not.toBe("test_failed");
+  });
+
+  it("a mixed summary still matches on the real failures", () => {
+    const stdout = "test cases: 5 | 2 passed | 1 failed | 2 failed as expected";
+    expect(categorize(input({ exitCode: 1, stdout })).category).toBe("test_failed");
+  });
+
+  it("scopes extraction to the binary that failed, not an earlier green one", () => {
+    // One verify log, two binaries: a green suite whose [!shouldfail] blocks come
+    // FIRST, then the red one. The reported failure must be the red binary's.
+    const stdout = `${CATCH2_GREEN_WITH_SHOULDFAIL}\n\n${CATCH2_RED}`;
+    const r = categorize(input({ exitCode: 1, stdout }));
+    expect(r.category).toBe("test_failed");
+    expect(r.reason).toContain("test_weapon_definition_matrix.cpp:307");
+    expect(r.failedFiles.join()).not.toContain("test_collision_response.cpp");
+  });
+
+  it("stderr chatter cannot hijack the reason (the live regression)", () => {
+    // The exact reject that read as integrator flakiness: 752 lines of headless
+    // audio teardown noise on stderr, a real red suite on stdout. It must be
+    // categorized on the tests, and must never quote the chatter.
+    const r = categorize(input({ exitCode: 1, stdout: CATCH2_RED, stderr: AUDIO_CHATTER }));
+    expect(r.category).toBe("test_failed");
+    expect(r.reason).not.toContain("failed to close audio stream");
+    expect(r.reason).toContain("test_weapon_definition_matrix.cpp:307");
+  });
+});
+
+describe("lastMeaningfulErrorLine — repeated chatter", () => {
+  it("skips a line the log repeats, preferring the one-off diagnostic", () => {
+    const text = `${AUDIO_CHATTER}\nrynx-codegen: layout drift -- aborting\n${AUDIO_CHATTER}`;
+    expect(lastMeaningfulErrorLine(text)).toBe("rynx-codegen: layout drift -- aborting");
+  });
+
+  it("falls back to chatter when the log holds nothing else err-ish", () => {
+    expect(lastMeaningfulErrorLine(AUDIO_CHATTER)).toBe(
+      "failed to close audio stream: Invalid stream pointer",
+    );
+  });
+});
+
+describe("failureExcerpt", () => {
+  it("a chatty stderr cannot evict stdout", () => {
+    // 34 KB of stderr noise vs a 4 KB cap: concatenate-then-tail kept ZERO
+    // stdout, so the stored excerpt could not show which tests failed.
+    const out = failureExcerpt(CATCH2_RED, AUDIO_CHATTER, 4096);
+    expect(out).toContain("test_weapon_definition_matrix.cpp(307)");
+    expect(out).toContain("failed to close audio stream");
+    expect(out.length).toBeLessThan(4400);
+  });
+
+  it("gives the whole cap to the only stream that has content", () => {
+    expect(failureExcerpt("", "just stderr", 4096)).toBe("just stderr");
+    expect(failureExcerpt("just stdout", "", 4096)).toBe("just stdout");
   });
 });

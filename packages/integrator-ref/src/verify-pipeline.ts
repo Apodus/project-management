@@ -34,7 +34,7 @@ import type { GitOps, VerifyResult } from "./git-ops.js";
 import type { CacheMode, VerifyStep, VerifyStepResult } from "@pm/shared";
 import type { PmClient } from "./pm-client.js";
 import { stepConfigSha } from "./step-config-sha.js";
-import { classifyVerifyFailure } from "./categorize.js";
+import { classifyVerifyFailure, failureExcerpt } from "./categorize.js";
 
 /** The synthetic single-step id the caller uses for the legacy verify_command. */
 const SYNTHETIC_STEP_ID = "verify";
@@ -236,10 +236,14 @@ function synthesizeCachedVerify(hit: {
   };
 }
 
-/** A short stderr tail to persist as the cache row's logExcerpt (§3.1). */
+/**
+ * A short tail to persist as the cache row's logExcerpt (§3.1). Budgeted across
+ * both streams: `stderr || stdout` discarded stdout OUTRIGHT whenever stderr had
+ * any content at all, so for a test binary that also emits runtime warnings the
+ * excerpt never contained a single test result.
+ */
 function logExcerptOf(v: VerifyResult): string {
-  const tail = (v.stderr || v.stdout || "").slice(-2000);
-  return tail;
+  return failureExcerpt(v.stdout, v.stderr, 2000);
 }
 
 /**

@@ -942,6 +942,51 @@ tail, and each failing attempt shows its own `log (tail):` — which for a
 no request-level excerpt or `logUrl`. Net: an agent sees the real reason on the
 read it already makes, instead of guessing at "exit 1".
 
+#### 14.13.1 Chatter must never outrank the diagnostic
+
+The tail scan above closed the "bare exit 1" case but opened a sharper one: it
+answers with **whatever the log wrote last**, which is not the same thing as what
+went wrong. The live bite ran for weeks — every game_one reject read
+`verify failed with exit code 1: failed to close audio stream: Invalid stream
+pointer`, and was consistently misdiagnosed as integrator flakiness or a crash
+during shutdown. The verify was in fact failing on real Catch2 test failures. The
+audio line came from a headless PortAudio teardown that printed once per test
+case: **752 identical lines, ~34 KB, on stderr, on green runs too.**
+
+Four properties now hold, all toolchain-independent — the point is to close the
+class (any chatty runtime warning, on either stream), not this one instance:
+
+- **Catch2 is a recognized signature.** It is the runner every rynx/game_one test
+  binary uses, and it matched none of the existing arms. Detection keys on the
+  **summary line** (`test cases: 378 | 375 passed | 3 failed`), never on a
+  `FAILED:` assertion block: a `[!shouldfail]` case prints an identical block on a
+  fully green run — game_one's verify carries three — and Catch2 scores those as
+  passes and says so (`3 failed as expected`). Keying on the block would report a
+  green suite as red. Extraction is scoped to the last binary in the log that
+  actually failed, so an earlier green suite's shouldfail blocks are never named
+  as the cause.
+- **Repeated lines are skipped by the tail scan.** A line the log repeats
+  verbatim ≥3× is boilerplate: it is printed on green runs by construction, so it
+  cannot distinguish this failure from a success. It is used only as a last
+  resort, when the log holds nothing else err-ish.
+- **The excerpt is budgeted across streams, not taken from their concatenation.**
+  Tailing `stdout + stderr` puts one whole stream past the cap whenever the other
+  is large — 34 KB of stderr left **zero** stdout in a 4 KB tail, so the stored
+  excerpt could not show which tests failed. `failureExcerpt(stdout, stderr, cap)`
+  gives each stream a share (stdout the larger, since diagnostics land there far
+  more often). Note the asymmetry this fixes: a chatty stream is usually stderr,
+  while the diagnostic is usually on stdout.
+- **Every excerpt call site now uses it.** `verify-pipeline.ts` had
+  `(stderr || stdout)`, which discards stdout *outright* whenever stderr has any
+  content at all; `loop.ts` still took a HEAD slice — the very bug §14.13 was
+  written to fix, which had only been converted in `batch.ts` and
+  `group-integration.ts`. A fix applied at some call sites is a fix that has not
+  been applied.
+
+The general rule, worth stating because it generalizes past logs: **an instrument
+that answers "what went wrong" must not be satisfiable by output that is present
+when nothing went wrong.**
+
 ### 14.14 Clock legibility (why elapsed time is never derived by hand)
 
 Every timestamp PM stores and returns is **UTC** (`…Z`). Agents repeatedly turned

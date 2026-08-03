@@ -4,7 +4,7 @@ import type { Logger } from "./logger.js";
 import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
 import { PmApiError, type PmClient } from "./pm-client.js";
-import { categorize } from "./categorize.js";
+import { categorize, failureExcerpt } from "./categorize.js";
 import { maybeOpenResolution, type BatchDeps } from "./batch.js";
 
 const LOG_EXCERPT_CAP = 4096;
@@ -349,7 +349,7 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
         timedOut: verify.timedOut,
       });
       const reason = cat.reason || summaryLine(verify.stderr || verify.stdout) || "verify failed";
-      const excerpt = `${verify.stdout}\n${verify.stderr}`.slice(0, LOG_EXCERPT_CAP);
+      const excerpt = failureExcerpt(verify.stdout, verify.stderr, LOG_EXCERPT_CAP);
       await pmClient.completeAttempt(attemptId, {
         status: "failed",
         failureCategory: cat.category,

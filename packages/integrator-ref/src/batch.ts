@@ -23,7 +23,7 @@ import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
 import type { CacheMode, MergeRequestView, VerifyStep, VerifyStepResult } from "@pm/shared";
 import { type PmClient } from "./pm-client.js";
-import { categorize, classifyVerifyFailure, tailExcerpt } from "./categorize.js";
+import { categorize, classifyVerifyFailure, failureExcerpt } from "./categorize.js";
 import { runPipeline, toVerifyStepResults } from "./verify-pipeline.js";
 import { isApiError, errMessage } from "./loop.js";
 import {
@@ -870,7 +870,7 @@ export async function onMemberFailed(
       timedOut: failure.timedOut,
     });
     const reason = cat.reason || summaryLine(failure.stderr || failure.stdout) || "verify failed";
-    const excerpt = tailExcerpt(`${failure.stdout}\n${failure.stderr}`, LOG_EXCERPT_CAP);
+    const excerpt = failureExcerpt(failure.stdout, failure.stderr, LOG_EXCERPT_CAP);
     if (attemptId) {
       await pmTerminalWrite(deps, "completeAttempt", requestId, () =>
         pmClient.completeAttempt(attemptId, {
