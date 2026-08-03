@@ -111,6 +111,41 @@ describe.skipIf(!GIT_AVAILABLE)("worktree pool (real git)", () => {
     expect(pool.leasedCount).toBe(3);
   });
 
+  it("reclaimAll frees every stranded slot and reports how many there were", async () => {
+    // The 2026-08-02 lane wedge: a slot left leased with nothing holding it.
+    // Nothing in the pool times out or self-reclaims, so without an explicit
+    // sweep that state survives until the process restarts — and on a
+    // parallelism-1 lane it means the daemon can never admit work again.
+    const pool = makePool("t7", 1);
+    await pool.ensureAll();
+
+    expect(pool.acquire()).not.toBeNull();
+    expect(pool.leasedCount).toBe(1);
+    expect(pool.acquire()).toBeNull(); // the lane is now dead to new work
+
+    expect(pool.reclaimAll()).toBe(1);
+    expect(pool.leasedCount).toBe(0);
+    expect(pool.acquire()).not.toBeNull(); // and alive again
+
+    // Silent + idempotent on the healthy path: the batch-end seal calls this on
+    // EVERY drain, so a non-zero return has to mean a real bug was contained.
+    pool.reclaimAll();
+    expect(pool.reclaimAll()).toBe(0);
+  });
+
+  it("release is keyed by slot path, so a double release cannot free another slot", async () => {
+    const pool = makePool("t8", 2);
+    await pool.ensureAll();
+
+    const a = pool.acquire()!;
+    const b = pool.acquire()!;
+    pool.release(a);
+    pool.release(a); // same slot, twice
+    expect(pool.leasedCount).toBe(1); // b untouched
+    pool.release(b);
+    expect(pool.leasedCount).toBe(0);
+  });
+
   it("release-then-reacquire returns a usable slot", async () => {
     const pool = makePool("t3", 2);
     await pool.ensureAll();

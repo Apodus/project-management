@@ -272,6 +272,104 @@ describe("integrator liveness — attached to the merge-request reads", () => {
     for (const row of result.data) expect(row).not.toHaveProperty("integrator");
   });
 
+  // ── pool_stranded: the ALIVE stall (2026-08-02 lane wedge) ────────
+  //
+  // The daemon heartbeats on time and the lane reads idle, so every liveness
+  // signal says "healthy, be patient" — while it holds every verify worktree
+  // with nothing in flight and can admit nothing. Nine hours of that is what
+  // this stall shape exists to name.
+
+  it("alive + every slot leased + nothing in flight + queued 0-attempt → pool_stranded", () => {
+    const project = createTestProject(testApp.db);
+    const agent = createTestAiAgent(testApp.db);
+    const now = "2026-08-03T04:30:00.000Z";
+    healthSvc.recordHeartbeat(
+      project.id,
+      "main",
+      agent.user.id,
+      makePayload({ status: "idle", poolSize: 1, poolLeased: 1 }),
+      now,
+    );
+    mergeRequestSvc.submit({
+      projectId: project.id,
+      submittedBy: agent.user.id,
+      branch: "codex/build-throughput",
+    });
+
+    const live = deriveLiveness(project.id, "main", now);
+    // Liveness itself is healthy — that is the whole trap.
+    expect(live.status).toBe("alive");
+    expect(live.lane_status).toBe("idle");
+    // …but the queue cannot move. Say so.
+    expect(live.stall).toBe("pool_stranded");
+  });
+
+  it("a pool fully leased DURING a batch is not a stall (in-flight work owns the slots)", () => {
+    const project = createTestProject(testApp.db);
+    const agent = createTestAiAgent(testApp.db);
+    const now = "2026-08-03T04:30:00.000Z";
+    healthSvc.recordHeartbeat(
+      project.id,
+      "main",
+      agent.user.id,
+      makePayload({
+        status: "integrating",
+        poolSize: 1,
+        poolLeased: 1,
+        inFlightRequests: 1,
+        inFlightBatches: 1,
+      }),
+      now,
+    );
+    mergeRequestSvc.submit({
+      projectId: project.id,
+      submittedBy: agent.user.id,
+      branch: "feat/waiting-its-turn",
+    });
+
+    expect(deriveLiveness(project.id, "main", now).stall).toBeNull();
+  });
+
+  it("a saturated pool with NOTHING queued is not a stall", () => {
+    const project = createTestProject(testApp.db);
+    const agent = createTestAiAgent(testApp.db);
+    const now = "2026-08-03T04:30:00.000Z";
+    healthSvc.recordHeartbeat(
+      project.id,
+      "main",
+      agent.user.id,
+      makePayload({ status: "idle", poolSize: 1, poolLeased: 1 }),
+      now,
+    );
+
+    expect(deriveLiveness(project.id, "main", now).stall).toBeNull();
+  });
+
+  it("a stale heartbeat reports integrator_down even when the pool also looks stranded", () => {
+    // Precedence: a dead daemon's pool numbers describe a process that is
+    // already gone — "restart it" is the same advice, but DOWN is the honest
+    // reason, so it must win.
+    const project = createTestProject(testApp.db);
+    const agent = createTestAiAgent(testApp.db);
+    const t0 = "2026-08-03T04:00:00.000Z";
+    healthSvc.recordHeartbeat(
+      project.id,
+      "main",
+      agent.user.id,
+      makePayload({ status: "idle", poolSize: 1, poolLeased: 1 }),
+      t0,
+    );
+    mergeRequestSvc.submit({
+      projectId: project.id,
+      submittedBy: agent.user.id,
+      branch: "feat/stuck",
+    });
+
+    const live = deriveLiveness(project.id, "main", "2026-08-03T04:10:00.000Z");
+    expect(live.status).toBe("stale");
+    expect(live.stall).toBe("integrator_down");
+  });
+
   it("LIST: alive + integrating → integrator.status alive, stall null", () => {
     const project = createTestProject(testApp.db);
     const agent = createTestAiAgent(testApp.db);

@@ -668,6 +668,94 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     ]);
   });
 
+  // ── Slot-leak seal (the 2026-08-02 lane wedge) ────────────────────
+  //
+  // A leased worktree slot is freed ONLY by an explicit release, so any throw
+  // between acquire and release strands it for the life of the process — and
+  // with parallelism 1 that silently kills the lane: the daemon keeps
+  // heartbeating, keeps taking the lane lock, and admits nothing, forever.
+  // These three tests pin the seal at each of the ways it happened / could.
+
+  it("a request cancelled MID-VERIFY drains cleanly and does not strand the slot", async () => {
+    const root = path.join(tmpRoot, "wt-cancel-midverify");
+    const req = makeRequest({ id: "req-cancelled", branch: "feature/clean", verifyCmd: "echo ok" });
+    const state: FakeState = { requests: [req], attempts: [], lockHeld: false, calls: [] };
+    const deps = await depsFor(state, { worktreeRoot: root });
+
+    // The live sequence: the train picks the request up, its verify runs for 39
+    // minutes, and the WORKER cancels it in the meantime (PM → `abandoned`). By
+    // the time the verify passes, the land 409s. Simulate the cancel landing
+    // during the verify window by flipping the row as the attempt completes.
+    const realComplete = deps.pmClient.completeAttempt.bind(deps.pmClient);
+    (deps.pmClient as { completeAttempt: unknown }).completeAttempt = async (
+      attemptId: string,
+      body: { status: string },
+    ) => {
+      const res = await realComplete(attemptId, body);
+      req.status = "abandoned";
+      return res;
+    };
+
+    const outcome = await runBatchOnce(deps);
+
+    // The drain FINISHED — the 409 is an expected outcome, not an error exit.
+    expect(outcome.kind).toBe("drained");
+    // THE POINT: the slot came back. Before the fix this read 1 and the lane
+    // could never admit another request.
+    expect(deps.pool.leasedCount).toBe(0);
+    expect(state.lockHeld).toBe(false);
+    // PM keeps the worker's cancellation — the train does not resurrect it.
+    expect(req.status).toBe("abandoned");
+  });
+
+  it("a throw during the admit re-list does not strand the slot", async () => {
+    const root = path.join(tmpRoot, "wt-admit-throw");
+    const req = makeRequest({ id: "req-admit-throw", branch: "feature/clean" });
+    const state: FakeState = { requests: [req], attempts: [], lockHeld: false, calls: [] };
+    const deps = await depsFor(state, { worktreeRoot: root });
+
+    // The batch lists queued work twice: once to decide whether to start, then
+    // again inside the admit loop WITH a slot already leased. A PM blip on that
+    // second call is the leak window the try/finally now covers.
+    const realList = deps.pmClient.listMergeRequests.bind(deps.pmClient);
+    let calls = 0;
+    (deps.pmClient as { listMergeRequests: unknown }).listMergeRequests = async (
+      projectId: string,
+      opts: unknown,
+    ) => {
+      calls += 1;
+      if (calls > 1) throw new PmApiError(500, "INTERNAL", "PM blip mid-admit");
+      return realList(projectId, opts as Parameters<typeof realList>[1]);
+    };
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("error");
+    expect(deps.pool.leasedCount).toBe(0);
+    expect(state.lockHeld).toBe(false);
+    // Nothing was picked up — the request is untouched and re-competes next pass.
+    expect(req.status).toBe("queued");
+  });
+
+  it("declines to start a batch when no worktree slot is free (no lock churn)", async () => {
+    const root = path.join(tmpRoot, "wt-no-slot");
+    const req = makeRequest({ id: "req-no-slot", branch: "feature/clean" });
+    const state: FakeState = { requests: [req], attempts: [], lockHeld: false, calls: [] };
+    const deps = await depsFor(state, { worktreeRoot: root });
+
+    // Simulate the wedged state directly: the only slot is already leased.
+    expect(deps.pool.acquire()).not.toBeNull();
+
+    const outcome = await runBatchOnce(deps);
+
+    // Idle, NOT a batch: no lock taken, no batch markers emitted. This is the
+    // difference between a quiet lane and the wedge's 4-cycles-per-minute churn.
+    expect(outcome.kind).toBe("idle");
+    expect(state.calls).not.toContain("acquireLock");
+    expect(state.lockHeld).toBe(false);
+    expect(req.status).toBe("queued");
+  });
+
   it("revert: a branchless revertOf member → git-revert produced, pushed, landed (A4 P2 speculative path)", async () => {
     const root = path.join(tmpRoot, "wt-revert");
     // Land a "bad" change on main via the author clone, capture its sha.

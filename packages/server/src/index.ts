@@ -5,6 +5,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { initializeDatabase, closeDb } from "./db/index.js";
 import { createApp } from "./app.js";
+import { startAlertSweep } from "./services/alert-sweep.service.js";
 
 // ── Configuration ─────────────────────────────────────────────────
 const port = parseInt(process.env.PM_PORT || "3000", 10);
@@ -93,6 +94,13 @@ const server = serve({
   hostname: host,
 });
 
+// ── Periodic train-alert sweep ────────────────────────────────────
+// Phase 7.4 evaluates the train alerts on-read only, so a wedged lane stays
+// silent until somebody opens the dashboard (see alert-sweep.service.ts for the
+// 2026-08-02 nine-hour stall this closes). Started HERE, not in createApp() —
+// tests build apps by the hundred and must not spawn timers.
+const stopAlertSweep = startAlertSweep();
+
 server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {
     console.error("");
@@ -114,6 +122,7 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 // ── Graceful shutdown ─────────────────────────────────────────────
 function shutdown() {
   console.log("Shutting down...");
+  stopAlertSweep();
   closeDb();
   process.exit(0);
 }

@@ -126,6 +126,7 @@ A CLI flag always wins over the corresponding environment variable.
 | `PM_API_TOKEN`           | The default token env var (overridable by `--token <envVar>`).               |
 | (var named by `--token`) | If you pass `--token MY_TOKEN`, the integrator reads `process.env.MY_TOKEN`. |
 | `PM_LOG_LEVEL`           | Fallback for `--log-level`.                                                  |
+| `PM_INTEGRATOR_LOG_FILE` | Path for the daemon's own log file (default `daemon.log` beside the bundle; empty string = stdout only). See §14.15. |
 
 ### 4.3 Per-project `settings.integrator` fields
 
@@ -861,12 +862,17 @@ block derived from the same `integrator_health` heartbeat the §15 dashboard rea
 - `lane_status` — the integrator's self-reported lane state at the last beat
   (`idle` / `integrating` / …; `null` when never seen).
 - `version` — the integrator version at the last beat.
-- `stall` — `"integrator_down"` **only** when the lane looks genuinely stuck:
-  the integrator is not `alive` **and** there is at least one `queued` request
-  with **zero attempts of any status** on the lane. Otherwise `null`. This
-  predicate is deliberately conservative — a fresh heartbeat, an empty queue, or a
-  request that already has an attempt row (e.g. a re-queued one) all read
-  `stall: null`, so a slow verify never produces a false "down".
+- `stall` — non-null **only** when the lane looks genuinely stuck, in one of two
+  shapes. Both require at least one `queued` request with **zero attempts of any
+  status** on the lane; otherwise `null`. The predicate is deliberately
+  conservative — a fresh heartbeat, an empty queue, or a request that already has
+  an attempt row (e.g. a re-queued one) all read `stall: null`, so a slow verify
+  never produces a false alarm.
+  - `"integrator_down"` — the integrator is not `alive`. The daemon is gone.
+  - `"pool_stranded"` — the integrator **is** alive and beating, the lane reads
+    `idle` with **nothing in flight**, yet **every verify worktree is leased**.
+    That combination is impossible on a working daemon: it means a slot leaked
+    and the lane can admit no work at all. See §14.15.
 
 **Staleness cutoff: 90s.** A heartbeat older than 90s reads `stale`; the daemon
 beats well inside that window, so `stale`/`down` on a live-looking queue is a real
@@ -880,6 +886,11 @@ tell apart:
   running (or crashed / lost its host). **Tell the operator to restart the
   integrator daemon** — the queue will drain once it beats again. Nothing is lost;
   the request stays `queued`.
+- **`stall: "pool_stranded"`** (status `alive`) → the daemon is running and
+  healthy by every other measure, but it holds every verify worktree with nothing
+  in flight and can admit nothing. **Restart the daemon** (§14.15). This is the
+  one stall a heartbeat alone cannot tell you about — which is why it has its own
+  name.
 - **`status: "alive"`, `lane_status: "integrating"`, `stall: null`** → the daemon
   is up and actively verifying. This is a **slow verify** (a long `cargo test`,
   a big cross-repo materialize). **Wait** — do not re-submit.
@@ -985,6 +996,64 @@ Wait; do not cancel or resubmit on elapsed time alone.` Reach for
 `pm_cancel_merge_request` on the basis of a **dead heartbeat** or a **structured
 reject**, never a big number.
 
+### 14.15 The stranded verify slot (an ALIVE daemon that admits nothing)
+
+On 2026-08-02 the rynx lane stopped consuming its queue for **nine and a half
+hours** while every signal read healthy: heartbeat 4s old, lane `idle`, train
+`running`, zero in flight. Twelve requests sat `queued` with **zero attempts**.
+The daemon was not hung — it was starting and completing an **empty batch every
+~15 seconds**, taking and releasing the lane lock each time.
+
+**What happened.** A worker called `pm_cancel_merge_request` on a request the
+train had already picked up, 44 seconds into a 39-minute verify. The verify
+passed; `landMergeRequest` then 409'd on the now-`abandoned` request; the throw
+unwound out of the drain loop **past the worktree release**. A pool slot is freed
+only by an explicit release and nothing reclaims it, so with `parallelism: 1` the
+lane had no slot left — forever. Cross-repo groups kept working throughout (they
+lease from the separate per-repo pools), which is why the train looked half-alive.
+
+**The tell, on any health read:** `pool_leased == pool_size` **while** every
+in-flight counter is `0`. That combination cannot occur on a working daemon — a
+batch that holds slots reports in-flight work. `pm_get_integrator_health` now
+calls it out inline, and the agent-facing liveness block reports
+`stall: "pool_stranded"` (§14.12).
+
+**Recovery: restart the daemon.** The leak is in-memory; the queue drains on the
+next poll. Nothing is lost — the queued requests were never touched.
+
+**Prevented since**, in `integrator-ref`:
+
+- The batch **releases every member's slot in its `finally`**, then calls
+  `pool.reclaimAll()` as a backstop for a slot no member owns yet, logging loudly
+  if it actually reclaims one. Any future leak is contained to one batch.
+- The admit loop's `acquire()` is wrapped in a `try/finally` that owns the slot
+  until `admitAndRebase` takes it — the window where the FIFO re-list can throw.
+- Terminal PM writes (`completeAttempt` / `reject` / `land` / `resetToQueued`)
+  **tolerate a 409**: it means the row went terminal underneath the train, which
+  is an outcome, not an error. A cancel mid-verify now drains cleanly. When the
+  land is refused **after** a successful push, the daemon logs that main
+  advanced anyway — main is authoritative, PM keeps the cancellation.
+- A batch **declines to start** when no slot is free, so a leak can never
+  reproduce the 4-cycles-per-minute lock churn.
+
+**Operator note:** cancelling a request that is already `integrating` is
+legitimate break-glass and now safe, but it still wastes the running verify.
+Prefer cancelling while `queued`.
+
+**The daemon now keeps its own log.** Diagnosing this took DB forensics for one
+reason: the daemon logged to stdout, the supervisor inherited that into the
+console that launched it, and the console's scrollback was all there was. The
+daemon therefore writes `daemon.log` (JSONL) **beside the bundle** as well as to
+stdout — so the evidence survives however it was launched, and a wedge is now a
+`tail` away instead of a query against `activity_log`.
+
+| Variable                 | Default                        | Meaning                                                                          |
+| ------------------------ | ------------------------------ | -------------------------------------------------------------------------------- |
+| `PM_INTEGRATOR_LOG_FILE` | `daemon.log` beside the bundle | Absolute path for the daemon log. Set to the empty string to disable the file sink (stdout only). |
+
+Rotation is one generation at 20 MB (`daemon.log` → `daemon.log.1`). An
+unwritable path is not fatal — the daemon falls back to stdout and runs.
+
 ---
 
 ## 15. Observability + Break-glass (Phase 7.4)
@@ -1065,7 +1134,9 @@ If other `rejected` members of the same group remain, the incident **stays open*
 
 ### 15.4 Alerts — dual delivery (in-app SSE/banner + outbound Discord)
 
-Three `train.*` alert events fire **edge-triggered, on-read** (once per breach episode; re-arm when the condition clears). There is no background sweep — evaluation happens when a dashboard metrics/health read runs (and the integrator's heartbeat POST re-arms its own lane's health latch). **Accepted tradeoff:** a dead integrator with nobody watching the dashboard delays the unhealthy alert until the next read of a metrics/health path.
+Three `train.*` alert events fire **edge-triggered** (once per breach episode; re-arm when the condition clears). Evaluation happens on two paths: whenever a dashboard metrics/health read runs (and the integrator's heartbeat POST re-arms its own lane's health latch), **and** on a periodic server-side sweep.
+
+**The sweep (`PM_ALERT_SWEEP_SEC`, default `300`; `0` disables).** Phase 7.4 shipped on-read evaluation only, and named the tradeoff: "a dead integrator with nobody watching the dashboard delays the alert until the next read." On 2026-08-02 that came due — a wedged lane (§14.15) held `train.stuck` TRUE for nine and a half hours and never alerted, because nobody opened the dashboard overnight; the operator heard about it from agents. The sweep runs the **same `computeMetrics`** the dashboard runs, for every lane that has an integrator heartbeat row or non-terminal merge requests. It introduces no new alert, threshold, or event — the existing latches still guarantee one alert per episode, so a 5-minute sweep cannot spam Discord. It only removes the requirement that a human be looking. It starts with the server process (not with `createApp`, so tests spawn no timers).
 
 | Event                        | Trigger                                                                                                                                          |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |

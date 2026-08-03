@@ -65,12 +65,21 @@ export type MergeLockHolderView = z.infer<typeof mergeLockHolderViewSchema>;
 // (restart it)" vs "alive, slow verify (wait)". `stall` correlates a
 // stale/absent heartbeat with a queued-but-unattempted request — the
 // "queue is not being consumed" signal.
+//
+// `stall` has two shapes, and they call for OPPOSITE reads of the same
+// heartbeat:
+//   - "integrator_down"  — no/stale heartbeat while the queue waits. Restart.
+//   - "pool_stranded"    — the daemon is ALIVE and heartbeating, but every
+//     verify worktree is leased while it reports nothing in flight, so it can
+//     admit nothing. This is the 2026-08-02 lane wedge: a slot leaked, the
+//     lane looked perfectly healthy for nine hours, and the queue never moved.
+//     Also restart — but nothing about liveness alone would have told you.
 export const integratorLivenessSchema = z.object({
   status: z.enum(["alive", "stale", "down"]),
   last_heartbeat_age_sec: z.number().nullable(),
   lane_status: z.enum(["idle", "integrating"]).nullable(),
   version: z.string().nullable(),
-  stall: z.literal("integrator_down").nullable(),
+  stall: z.enum(["integrator_down", "pool_stranded"]).nullable(),
 });
 export type IntegratorLiveness = z.infer<typeof integratorLivenessSchema>;
 

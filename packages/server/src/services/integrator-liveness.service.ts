@@ -22,6 +22,16 @@ import { getHealth } from "./health.service.js";
  * CANCELLED attempt rows, so a re-queue after a rejected attempt does not
  * false-positive. The `queuedZeroAttempt` conjunct guards a healthy-but-idle
  * lane with a legitimately empty queue.
+ *
+ * `stall = "pool_stranded"` is the ALIVE counterpart, added after the
+ * 2026-08-02 wedge: the daemon heartbeats normally, the lane reads `idle` with
+ * nothing in flight, yet every verify worktree is leased — so it can admit
+ * nothing, forever, while the queue grows. Liveness alone reads "alive" and
+ * says wait; this says restart. Both conjuncts matter: `poolLeased >= poolSize`
+ * is normal DURING a batch (which reports in-flight work and lane_status
+ * "integrating"), so the zero-in-flight requirement is what makes it a leak
+ * rather than a busy lane. Same `queuedZeroAttempt` guard — a lane with nothing
+ * waiting has no stall to report, whatever its pool says.
  */
 export function deriveLiveness(
   projectId: string,
@@ -38,7 +48,24 @@ export function deriveLiveness(
   const laneStatus: IntegratorLiveness["lane_status"] =
     live.lastSeenAt === null ? null : (live.status as "idle" | "integrating");
 
-  const stall = !alive && hasQueuedZeroAttempt(projectId, resource) ? "integrator_down" : null;
+  // Every verify slot leased while the lane reports NOTHING in flight — the
+  // leaked-slot signature. Only meaningful on a live heartbeat (a stale row's
+  // numbers describe a daemon that is already gone; "down" is the better read).
+  const poolStranded =
+    alive &&
+    live.poolSize !== null &&
+    live.poolSize > 0 &&
+    (live.poolLeased ?? 0) >= live.poolSize &&
+    live.inFlightRequests === 0 &&
+    live.inFlightBatches === 0 &&
+    live.inFlightGroups === 0;
+
+  // Short-circuit order matters: the queued-zero-attempt probe is a DB read on
+  // a hot path (every merge-lock / merge-request read), so it runs only once a
+  // stall shape is already suspected.
+  const suspected = !alive ? "integrator_down" : poolStranded ? "pool_stranded" : null;
+  const stall: IntegratorLiveness["stall"] =
+    suspected !== null && hasQueuedZeroAttempt(projectId, resource) ? suspected : null;
 
   return {
     status,

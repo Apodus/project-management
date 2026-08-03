@@ -20,6 +20,19 @@ export interface WorktreePool {
   ensureAll(): Promise<void>;
   acquire(): Worktree | null;
   release(wt: Worktree): void;
+  /**
+   * Free EVERY slot and return how many were still leased. The lane-wedge
+   * backstop (2026-08-02): a leased slot is freed only by an explicit
+   * `release`, so ANY throw between `acquire()` and the matching release
+   * strands the slot for the lifetime of the process — with `parallelism: 1`
+   * that silently kills the lane (the daemon keeps heartbeating, keeps taking
+   * the lane lock, and admits nothing, forever).
+   *
+   * Call ONLY at a point where the caller knows no work holds a slot — i.e.
+   * the end of a drained batch, which is single-flight per lane. Returns 0 on
+   * the healthy path, so the caller can alarm on a non-zero result.
+   */
+  reclaimAll(): number;
   repair(wt: Worktree): Promise<void>;
   gc(): Promise<void>;
 }
@@ -65,6 +78,17 @@ export function createWorktreePool(opts: WorktreePoolOptions): WorktreePool {
     if (s) s.leased = false;
   }
 
+  function reclaimAll(): number {
+    let reclaimed = 0;
+    for (const s of slots) {
+      if (s.leased) {
+        s.leased = false;
+        reclaimed += 1;
+      }
+    }
+    return reclaimed;
+  }
+
   async function repair(wt: Worktree): Promise<void> {
     const s = byPath.get(wt.path);
     if (!s) return;
@@ -103,6 +127,7 @@ export function createWorktreePool(opts: WorktreePoolOptions): WorktreePool {
     ensureAll,
     acquire,
     release,
+    reclaimAll,
     repair,
     gc,
   };

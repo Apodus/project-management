@@ -4,7 +4,7 @@ import { simpleGit } from "simple-git";
 import { createBindingResolver } from "./binding-clone.js";
 import { ConfigError, loadConfig, type CliArgs } from "./config.js";
 import { PmClient } from "./pm-client.js";
-import { createLogger } from "./logger.js";
+import { createLogger, resolveDaemonLogFile } from "./logger.js";
 import { createGitOps } from "./git-ops.js";
 import { createWorktreePool } from "./worktree-pool.js";
 import { createResolverPool } from "./resolver-pool.js";
@@ -37,7 +37,15 @@ async function main(): Promise<void> {
   // heartbeat. Sourced from the generated version.ts (single source of truth =
   // package.json), which is also what we pass to commander's .version() above.
   const version = VERSION;
-  const logger = createLogger(args.logLevel ?? process.env.PM_LOG_LEVEL ?? "info");
+  // The file sink is wired HERE (the daemon entry), not inside createLogger, so
+  // a library/test caller never drops a daemon.log next to its own entry point.
+  // Without it the daemon's own account of what it was doing lives only in the
+  // launching console's scrollback — which is why the §14.15 wedge had to be
+  // reconstructed from PM's activity_log after the fact.
+  const logger = createLogger(
+    args.logLevel ?? process.env.PM_LOG_LEVEL ?? "info",
+    resolveDaemonLogFile(),
+  );
 
   // ── Last-resort observability net (no auto-restart). ──────────────────────
   // The hot loop + SSE subscriber already contain every API/connection error
@@ -340,6 +348,11 @@ async function main(): Promise<void> {
       integratorId: undefined,
       innerLogsDir: undefined,
       outerLogsDir: undefined,
+      // §14.15 slot-leak seal for the cross-repo lane: at the end of a group
+      // pass nothing legitimately holds a per-repo slot (the land releases in
+      // its own finally), so anything still leased is stranded and would wedge
+      // the lane until restart.
+      reclaimLanes: () => innerBuilt.pool.reclaimAll() + outerBuilt.pool.reclaimAll(),
     };
 
     // ── Crash recovery: reclaim stranded GROUPS (design §9 finding 2 / §6.4). ──

@@ -5694,7 +5694,9 @@
             "type": "string",
             "nullable": true,
             "enum": [
-              "integrator_down"
+              "integrator_down",
+              "pool_stranded",
+              null
             ]
           }
         },

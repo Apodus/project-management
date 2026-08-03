@@ -486,6 +486,19 @@ export interface GroupLaneDeps {
   integratorId?: string;
   innerLogsDir?: string;
   outerLogsDir?: string;
+  /**
+   * Free any per-repo worktree slot still leased when the group pass ends, and
+   * return how many there were. The cross-repo mirror of the batch lane's
+   * slot-leak seal (2026-08-02, §14.15): `assembleGroup` holds BOTH correlated
+   * slots from assembly until the land releases them in its own finally, so a
+   * throw in between (a PM call after `markGroupIntegrating`, say) strands both
+   * — permanently, killing the cross-repo lane exactly as a leaked batch slot
+   * killed the single-repo one.
+   *
+   * Safe because a group pass is single-flight per lane: when it ends, by
+   * construction nothing legitimately holds a slot. Non-zero ⇒ a contained bug.
+   */
+  reclaimLanes?: () => number;
 }
 
 export type RunGroupLaneOutcome =
@@ -702,6 +715,47 @@ export async function computeSpeculativeBase(
 // ─── onMemberFailed ───────────────────────────────────────────────
 
 /**
+ * Run a TERMINAL PM write for a member (completeAttempt / reject / land /
+ * resetToQueued), tolerating a 409.
+ *
+ * A 409 on these calls means exactly one thing: the row went terminal
+ * UNDERNEATH the train while it was working. The canonical case (the
+ * 2026-08-02 lane wedge) is a worker calling `pm_cancel_merge_request` on a
+ * request the train had already picked up — 39 minutes later the verify passes,
+ * `landMergeRequest` 409s on the now-`abandoned` request, and the throw unwinds
+ * out of the drain loop past the slot release.
+ *
+ * There is nothing to undo and nothing to retry: the member is finished either
+ * way. Log it, report it, and let the caller run its normal terminal path
+ * (which frees the slot and keeps the drain going). Returns false when PM
+ * declined to record the write — the caller may narrate the discrepancy but
+ * MUST NOT treat it as a failure of its own work.
+ *
+ * Anything that is NOT a 409 still throws: a transient PM outage must never be
+ * mistaken for a cancelled request.
+ */
+async function pmTerminalWrite(
+  deps: Pick<BatchDeps, "logger">,
+  what: string,
+  requestId: string,
+  fn: () => Promise<unknown>,
+): Promise<boolean> {
+  try {
+    await fn();
+    return true;
+  } catch (err) {
+    if (isApiError(err, 409)) {
+      deps.logger.warn(
+        { requestId, call: what },
+        `${what} returned 409 — the request went terminal underneath the train (cancelled mid-flight?); continuing the drain`,
+      );
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
  * Failure reasons handled at member scope. `verify`/`conflict`/`push_other`
  * reject the request (terminal); `drift`/`push_race` cancel + re-queue so the
  * member re-competes on the next list iteration.
@@ -758,22 +812,26 @@ export async function onMemberFailed(
     const reason = "rebase conflict on " + failure.conflictingFiles.join(", ");
     const excerpt = failure.stderr.slice(0, LOG_EXCERPT_CAP);
     if (attemptId) {
-      await pmClient.completeAttempt(attemptId, {
-        status: "failed",
-        failureCategory: "conflict",
-        failureReason: reason,
+      await pmTerminalWrite(deps, "completeAttempt", requestId, () =>
+        pmClient.completeAttempt(attemptId, {
+          status: "failed",
+          failureCategory: "conflict",
+          failureReason: reason,
+          failedFiles: failure.conflictingFiles,
+          logExcerpt: excerpt,
+          logUrl,
+        }),
+      );
+    }
+    await pmTerminalWrite(deps, "rejectMergeRequest", requestId, () =>
+      pmClient.rejectMergeRequest(requestId, {
+        category: "conflict",
+        reason,
         failedFiles: failure.conflictingFiles,
         logExcerpt: excerpt,
         logUrl,
-      });
-    }
-    await pmClient.rejectMergeRequest(requestId, {
-      category: "conflict",
-      reason,
-      failedFiles: failure.conflictingFiles,
-      logExcerpt: excerpt,
-      logUrl,
-    });
+      }),
+    );
     member.state = "failed";
     releaseSlot();
     // PHASE 7.6 §5.1: AFTER the origin is rejected `conflict` + the slot is
@@ -806,25 +864,29 @@ export async function onMemberFailed(
     const reason = cat.reason || summaryLine(failure.stderr || failure.stdout) || "verify failed";
     const excerpt = tailExcerpt(`${failure.stdout}\n${failure.stderr}`, LOG_EXCERPT_CAP);
     if (attemptId) {
-      await pmClient.completeAttempt(attemptId, {
-        status: "failed",
-        failureCategory: cat.category,
-        failureReason: reason,
+      await pmTerminalWrite(deps, "completeAttempt", requestId, () =>
+        pmClient.completeAttempt(attemptId, {
+          status: "failed",
+          failureCategory: cat.category,
+          failureReason: reason,
+          failedFiles: cat.failedFiles,
+          logExcerpt: excerpt,
+          logUrl,
+          // PHASE 7.5: the failing pipeline pass's per-step results (the fail-fast
+          // short-circuit is visible — later steps absent). undefined pre-verify.
+          steps: member.steps ?? undefined,
+        }),
+      );
+    }
+    await pmTerminalWrite(deps, "rejectMergeRequest", requestId, () =>
+      pmClient.rejectMergeRequest(requestId, {
+        category: cat.category,
+        reason,
         failedFiles: cat.failedFiles,
         logExcerpt: excerpt,
         logUrl,
-        // PHASE 7.5: the failing pipeline pass's per-step results (the fail-fast
-        // short-circuit is visible — later steps absent). undefined pre-verify.
-        steps: member.steps ?? undefined,
-      });
-    }
-    await pmClient.rejectMergeRequest(requestId, {
-      category: cat.category,
-      reason,
-      failedFiles: cat.failedFiles,
-      logExcerpt: excerpt,
-      logUrl,
-    });
+      }),
+    );
     member.state = "failed";
     releaseSlot();
     await invalidateSuffix(member, batch, deps, ctx);
@@ -834,20 +896,24 @@ export async function onMemberFailed(
   if (failure.kind === "push_other") {
     const excerpt = failure.stderr.slice(0, LOG_EXCERPT_CAP);
     if (attemptId) {
-      await pmClient.completeAttempt(attemptId, {
-        status: "failed",
-        failureCategory: "other",
-        failureReason: failure.reason,
+      await pmTerminalWrite(deps, "completeAttempt", requestId, () =>
+        pmClient.completeAttempt(attemptId, {
+          status: "failed",
+          failureCategory: "other",
+          failureReason: failure.reason,
+          logExcerpt: excerpt,
+          logUrl,
+        }),
+      );
+    }
+    await pmTerminalWrite(deps, "rejectMergeRequest", requestId, () =>
+      pmClient.rejectMergeRequest(requestId, {
+        category: "other",
+        reason: failure.reason,
         logExcerpt: excerpt,
         logUrl,
-      });
-    }
-    await pmClient.rejectMergeRequest(requestId, {
-      category: "other",
-      reason: failure.reason,
-      logExcerpt: excerpt,
-      logUrl,
-    });
+      }),
+    );
     member.state = "failed";
     releaseSlot();
     await invalidateSuffix(member, batch, deps, ctx);
@@ -858,9 +924,13 @@ export async function onMemberFailed(
   // the verified tree is stale. Cancel the open attempt and re-queue so the
   // member re-competes on the next list iteration (design §6.2).
   if (attemptId) {
-    await pmClient.completeAttempt(attemptId, { status: "cancelled" });
+    await pmTerminalWrite(deps, "completeAttempt", requestId, () =>
+      pmClient.completeAttempt(attemptId, { status: "cancelled" }),
+    );
   }
-  await pmClient.resetToQueued(requestId, failure.reason);
+  await pmTerminalWrite(deps, "resetToQueued", requestId, () =>
+    pmClient.resetToQueued(requestId, failure.reason),
+  );
   member.state = "invalidated";
   member.attemptId = null;
   releaseSlot();
@@ -935,9 +1005,13 @@ async function invalidateSuffix(
   for (const j of suffix) {
     const attemptId = j.attemptId;
     if (attemptId) {
-      await deps.pmClient.completeAttempt(attemptId, { status: "cancelled" });
+      await pmTerminalWrite(deps, "completeAttempt", j.request.id, () =>
+        deps.pmClient.completeAttempt(attemptId, { status: "cancelled" }),
+      );
     }
-    await deps.pmClient.resetToQueued(j.request.id, reason);
+    await pmTerminalWrite(deps, "resetToQueued", j.request.id, () =>
+      deps.pmClient.resetToQueued(j.request.id, reason),
+    );
     j.attemptId = null;
     ctx.requeued.push(j.request.id);
     deps.onBatchEvent?.({
@@ -1041,14 +1115,23 @@ export async function landMember(
       { requestId: member.request.id, mainSha: actualMainSha },
       "rebased tree identical to main; content already landed — recording no-op land (no push)",
     );
-    if (member.attemptId) {
-      await deps.pmClient.completeAttempt(member.attemptId, {
-        status: "passed",
-        treeSha: actualMainSha,
-        steps: member.steps ?? undefined,
-      });
+    const attemptId = member.attemptId;
+    if (attemptId) {
+      await pmTerminalWrite(deps, "completeAttempt", member.request.id, () =>
+        deps.pmClient.completeAttempt(attemptId, {
+          status: "passed",
+          treeSha: actualMainSha,
+          steps: member.steps ?? undefined,
+        }),
+      );
     }
-    await deps.pmClient.landMergeRequest(member.request.id, actualMainSha);
+    // A 409 here = the request was cancelled mid-flight. Nothing was pushed on
+    // this path (the tree was already identical to main), so main is unchanged
+    // and the member is simply finished — fall through to the normal terminal
+    // bookkeeping, which frees the slot.
+    await pmTerminalWrite(deps, "landMergeRequest", member.request.id, () =>
+      deps.pmClient.landMergeRequest(member.request.id, actualMainSha),
+    );
     member.state = "landed";
     member.landedSha = actualMainSha;
     deps.pool.release(worktree);
@@ -1091,16 +1174,33 @@ export async function landMember(
   }
 
   // Successful land. No re-verify — the verified tree IS what we pushed.
-  if (member.attemptId) {
-    await deps.pmClient.completeAttempt(member.attemptId, {
-      status: "passed",
-      treeSha: push.pushedSha,
-      // PHASE 7.5: the per-step results captured at verify time (the slot bridges
-      // runVerifyTask → land). undefined on a 7.4 / cache-off-no-steps path.
-      steps: member.steps ?? undefined,
-    });
+  const attemptId = member.attemptId;
+  if (attemptId) {
+    await pmTerminalWrite(deps, "completeAttempt", member.request.id, () =>
+      deps.pmClient.completeAttempt(attemptId, {
+        status: "passed",
+        treeSha: push.pushedSha,
+        // PHASE 7.5: the per-step results captured at verify time (the slot bridges
+        // runVerifyTask → land). undefined on a 7.4 / cache-off-no-steps path.
+        steps: member.steps ?? undefined,
+      }),
+    );
   }
-  await deps.pmClient.landMergeRequest(member.request.id, push.pushedSha);
+  // THE PUSH ALREADY HAPPENED — main is at push.pushedSha whatever PM says. A
+  // 409 here means the worker cancelled the request while its verify ran (the
+  // 2026-08-02 wedge): their code passed verify and is now on main, but PM
+  // records the request `abandoned` and will not accept the land. That is a
+  // legible discrepancy to narrate, NOT a reason to throw — throwing here is
+  // what stranded the worktree slot and killed the lane for 9 hours.
+  const recorded = await pmTerminalWrite(deps, "landMergeRequest", member.request.id, () =>
+    deps.pmClient.landMergeRequest(member.request.id, push.pushedSha),
+  );
+  if (!recorded) {
+    deps.logger.warn(
+      { requestId: member.request.id, landedSha: push.pushedSha },
+      "main ADVANCED but PM would not record the land (request went terminal mid-verify) — main is authoritative; the request stays terminal in PM",
+    );
+  }
   member.state = "landed";
   member.landedSha = push.pushedSha;
   deps.pool.release(worktree);
@@ -1142,6 +1242,20 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     return { kind: "error", message: errMessage(err) };
   }
   if (queued.length === 0) return { kind: "idle" };
+
+  // 1a. NO-CHURN GATE (2026-08-02 lane wedge). A batch that cannot lease a
+  //     single worktree can admit nothing — taking the lane lock and emitting
+  //     batch markers for it produces the wedge's characteristic signature: an
+  //     empty started/completed pair plus a lock acquire/release every ~15s,
+  //     forever. The batch-end seal makes a stranded slot unreachable, so this
+  //     should now be dead code; keep it as the loud, cheap backstop.
+  if (pool.leasedCount >= pool.size) {
+    logger.error(
+      { leased: pool.leasedCount, poolSize: pool.size, queued: queued.length },
+      "no free verify worktree with work queued — declining to start a batch (nothing could be admitted); this means a slot leaked",
+    );
+    return { kind: "idle" };
+  }
 
   // 1b. PAUSE GATE (Phase 7.4 §4.2, Step 12) — read ONCE per pass, at the
   //     top, BEFORE the lock + any pickup. There is no batch in flight yet at
@@ -1292,43 +1406,52 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
       for (;;) {
         const wt = pool.acquire();
         if (!wt) break; // backpressure: no idle slot → stop admitting for now
-        // NO-ABORT GATE: a paused train admits NOTHING new — release the slot we
-        // just leased and stop the admit loop. We break (not short-circuit
-        // runBatchOnce) so the drain below still lands/settles in-flight members.
-        if (pausedThisPass) {
-          pool.release(wt);
-          break;
+        // SLOT OWNERSHIP (2026-08-02 lane-wedge fix). The window between
+        // `acquire()` and the hand-off to `admitAndRebase` contains awaits that
+        // can throw (the FIFO re-list is a PM call). A throw there used to
+        // escape to the drain catch with the slot still leased — permanently,
+        // since the pool frees a slot ONLY on an explicit release. The finally
+        // below owns the slot until `admitAndRebase` takes it, and NOT after:
+        // from that call on, the member (or admitAndRebase's own failure paths)
+        // releases it, so a double-release can never hand a live slot back.
+        let slotOwner: "admit_loop" | "member" = "admit_loop";
+        try {
+          // NO-ABORT GATE: a paused train admits NOTHING new — the finally frees
+          // the slot we just leased and we stop the admit loop. We break (not
+          // short-circuit runBatchOnce) so the drain below still lands/settles
+          // in-flight members.
+          if (pausedThisPass) break;
+          const list = await pmClient.listMergeRequests(projectId, {
+            resource,
+            status: "queued",
+            ungrouped: true,
+          });
+          const req = list.find((r) => !admittedIds.has(r.id));
+          if (!req) break; // nothing un-admitted at the FIFO head → done admitting
+          admittedIds.add(req.id);
+          admittedThisPass += 1;
+          const position = batch.nextPosition;
+          batch.nextPosition += 1;
+          // Admission + rebase is AWAITED in order so the predecessor's
+          // rebasedTreeSha is set before this member's base is computed.
+          slotOwner = "member";
+          const member = await admitAndRebase(req, wt, position, batch, deps, ctx);
+          // If the member reached `verifying`, launch verify (do NOT await).
+          // Build an AbortController so a failed predecessor can kill this verify
+          // (suffix invalidation, §7.3); expose `controller.abort()` as the
+          // VerifyHandle's `kill`.
+          if (member && member.state === "verifying") {
+            const controller = new AbortController();
+            member.verify = {
+              done: runVerifyTask(member, batch, deps, ctx, controller.signal),
+              kill: () => controller.abort(),
+            };
+          }
+          // A member that failed at admit (conflict / lost pickup / no ref) has
+          // already freed its slot and is terminal — continue admitting.
+        } finally {
+          if (slotOwner === "admit_loop") pool.release(wt);
         }
-        const list = await pmClient.listMergeRequests(projectId, {
-          resource,
-          status: "queued",
-          ungrouped: true,
-        });
-        const req = list.find((r) => !admittedIds.has(r.id));
-        if (!req) {
-          pool.release(wt);
-          break; // nothing un-admitted at the FIFO head → done admitting
-        }
-        admittedIds.add(req.id);
-        admittedThisPass += 1;
-        const position = batch.nextPosition;
-        batch.nextPosition += 1;
-        // Admission + rebase is AWAITED in order so the predecessor's
-        // rebasedTreeSha is set before this member's base is computed.
-        const member = await admitAndRebase(req, wt, position, batch, deps, ctx);
-        // If the member reached `verifying`, launch verify (do NOT await).
-        // Build an AbortController so a failed predecessor can kill this verify
-        // (suffix invalidation, §7.3); expose `controller.abort()` as the
-        // VerifyHandle's `kill`.
-        if (member && member.state === "verifying") {
-          const controller = new AbortController();
-          member.verify = {
-            done: runVerifyTask(member, batch, deps, ctx, controller.signal),
-            kill: () => controller.abort(),
-          };
-        }
-        // A member that failed at admit (conflict / lost pickup / no ref) has
-        // already freed its slot and is terminal — continue admitting.
       }
 
       // ── Land-gate: land every ready member, freeing slots for refill. Run
@@ -1388,6 +1511,44 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     logger.error({ err: errMessage(err) }, "Unexpected error draining batch");
     return { kind: "error", message: errMessage(err) };
   } finally {
+    // ── SLOT-LEAK SEAL (2026-08-02 lane wedge). FIRST in the finally, before
+    //    any await, so nothing downstream can skip it. ──
+    //
+    // The batch is over: by construction NO work still needs a worktree (a lane
+    // runs one batch at a time). Any slot still leased is stranded, and a
+    // stranded slot is FATAL rather than cosmetic — the pool frees a slot only
+    // on an explicit release, so with `parallelism: 1` one leak silently kills
+    // the lane: the daemon keeps heartbeating, keeps taking the lane lock, and
+    // admits nothing, forever. (That is exactly what happened when a request was
+    // cancelled mid-verify and the land 409'd out of the drain loop.)
+    //
+    // Two passes: first the members that legitimately hold a slot (the ordinary
+    // path — a throw mid-drain), then a pool-level reclaim for a slot no member
+    // owns (e.g. `admitAndRebase` threw before the member joined `batch.members`).
+    // A non-zero reclaim is a BUG that just got contained — log it loudly.
+    //
+    // KILL BEFORE RELEASE. If the drain threw while verifies were still running,
+    // their processes are still live IN those worktrees; handing a slot back
+    // while its verify runs would let the next batch reset a directory out from
+    // under a running build. Same abort mechanism suffix-invalidation uses.
+    for (const m of batch.members) {
+      if (m.verify) {
+        m.verify.kill();
+        m.verify = null;
+      }
+      if (m.worktree) {
+        pool.release(m.worktree);
+        m.worktree = null;
+      }
+    }
+    const stranded = pool.reclaimAll();
+    if (stranded > 0) {
+      logger.error(
+        { batchId: batch.batchId, stranded, poolSize: pool.size },
+        "worktree slot(s) were still leased after the batch drained — reclaimed; without this the lane would admit nothing until the daemon restarted",
+      );
+    }
+
     // PHASE 7.4 §3.2 (Step 12): the batch has drained (or threw) — clear the
     // in-flight counters so the heartbeat reports `status: "idle"` again. MUST
     // run in the finally: a batch that THROWS must still reset, else the status
@@ -2178,6 +2339,19 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
     );
     return { kind: "error", message: errMessage(err) };
   } finally {
+    // ── SLOT-LEAK SEAL, cross-repo half (§14.15). FIRST in the finally, before
+    //    any await. `landAssembledGroup` has already released the correlated
+    //    slots in its own finally on the happy path, so this only ever catches a
+    //    throw between assembly and land — which would otherwise wedge the
+    //    cross-repo lane until the daemon restarted.
+    const strandedLanes = groupLane.reclaimLanes?.() ?? 0;
+    if (strandedLanes > 0) {
+      logger.error(
+        { groupId: group?.id, stranded: strandedLanes },
+        "per-repo worktree slot(s) were still leased after the group pass — reclaimed; without this the cross-repo lane would assemble nothing until the daemon restarted",
+      );
+    }
+
     // PHASE 7.4 §3.2 (Step 12): the group step is done (or threw) — clear the
     // in-flight group counter so the heartbeat reports idle again. MUST run in
     // the finally so a throw can't leave the status stuck "integrating".

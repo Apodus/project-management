@@ -3108,6 +3108,32 @@ describe("MCP Tools", () => {
       expect(text).toContain("restart the daemon");
     });
 
+    it("pm_get_merge_lock renders the WEDGED hint when the daemon is alive but pool-stranded", async () => {
+      // The 2026-08-02 shape: heartbeat 4s old, lane idle, everything else says
+      // "healthy — be patient". An agent reading only the status would wait
+      // forever, which is exactly what happened for nine hours.
+      mockGetMergeLock.mockResolvedValue({
+        ...sampleMergeLock,
+        integrator: {
+          status: "alive",
+          last_heartbeat_age_sec: 4,
+          lane_status: "idle",
+          version: "0.1.0",
+          stall: "pool_stranded",
+        },
+      });
+      const result = await client.callTool({
+        name: "pm_get_merge_lock",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("ALIVE but WEDGED");
+      expect(text).toContain("leaked slot");
+      expect(text).toContain("restarted");
+      // It must NOT read as the ordinary healthy line.
+      expect(text).not.toContain("integrator: alive (last heartbeat 4s ago)");
+    });
+
     it("pm_get_merge_lock renders healthy-integrating (wait, don't restart)", async () => {
       mockGetMergeLock.mockResolvedValue({
         ...sampleMergeLock,
@@ -3575,6 +3601,48 @@ describe("MCP Tools", () => {
       });
       const text = (result.content as Array<{ text: string }>)[0].text;
       expect(text).not.toContain("0 leased is EXPECTED here");
+    });
+
+    it("calls out a WEDGED lane: all slots leased with nothing in flight", async () => {
+      // The exact 2026-08-02 numbers. Every other line on this read says the
+      // lane is fine — ALIVE, 5s heartbeat, idle, 0 in flight — and the queue
+      // had not moved for nine hours. The tell is pool 1/1 with 0 in flight.
+      mockGetIntegratorHealth.mockResolvedValue({
+        ...baseHealth,
+        status: "idle",
+        pool_size: 1,
+        pool_leased: 1,
+        in_flight_requests: 0,
+        in_flight_batches: 0,
+        in_flight_groups: 0,
+      });
+      const result = await client.callTool({
+        name: "pm_get_integrator_health",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("State: ALIVE");
+      expect(text).toContain("WEDGED");
+      expect(text).toContain("leaked slot");
+      expect(text).toContain("restarted");
+    });
+
+    it("does NOT call a busy lane wedged (slots leased BY in-flight work)", async () => {
+      mockGetIntegratorHealth.mockResolvedValue({
+        ...baseHealth,
+        status: "integrating",
+        pool_size: 1,
+        pool_leased: 1,
+        in_flight_requests: 1,
+        in_flight_batches: 1,
+      });
+      const result = await client.callTool({
+        name: "pm_get_integrator_health",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).not.toContain("WEDGED");
+      expect(text).toContain("Heartbeat is live and the lane is INTEGRATING");
     });
 
     it("renders DOWN when never seen (fail-safe)", async () => {

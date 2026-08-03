@@ -15,6 +15,26 @@ function triState(view: IntegratorHealthView): "alive" | "stale" | "down" {
   return view.healthy ? "alive" : "stale";
 }
 
+/**
+ * Every verify worktree leased while the lane reports NOTHING in flight — the
+ * leaked-slot signature (2026-08-02). Mirrors the server-side `pool_stranded`
+ * derivation in integrator-liveness.service.ts; kept here too so the health
+ * tool says it even when the caller never reads a lock or a request.
+ *
+ * A pool fully leased DURING a batch is normal — but that lane reports
+ * in-flight work, which is exactly what this predicate excludes.
+ */
+function isPoolStranded(view: IntegratorHealthView): boolean {
+  return (
+    view.pool_size !== null &&
+    view.pool_size > 0 &&
+    (view.pool_leased ?? 0) >= view.pool_size &&
+    view.in_flight_requests === 0 &&
+    view.in_flight_batches === 0 &&
+    view.in_flight_groups === 0
+  );
+}
+
 function render(view: IntegratorHealthView): string {
   const tri = triState(view);
   const lines: string[] = [];
@@ -72,6 +92,20 @@ function render(view: IntegratorHealthView): string {
     lines.push(
       "  ⚠ No live heartbeat — the queue is not being consumed; restart the integrator daemon.",
     );
+  } else if (tri === "alive" && isPoolStranded(view)) {
+    // The hardest stall to read from outside, and the reason this hint exists:
+    // on 2026-08-02 a leaked worktree slot wedged the lane for 9h while every
+    // other signal — heartbeat age, lane status, in-flight counts — read
+    // perfectly healthy. The tell is right here in the numbers: all slots
+    // leased AND nothing in flight is impossible on a working daemon.
+    lines.push("");
+    lines.push(
+      "  ⚠ WEDGED: every verify worktree is leased while NOTHING is in flight — a leaked slot.",
+    );
+    lines.push(
+      "    The heartbeat is healthy and the lane will keep looking alive, but it can admit no",
+    );
+    lines.push("    work: the queue will not move until the daemon is restarted.");
   } else if (tri === "alive" && view.status === "integrating") {
     // The positive counterpart to the DOWN hint. A fresh heartbeat is the ONLY
     // evidence that distinguishes "slow verify" from "wedged" — elapsed time

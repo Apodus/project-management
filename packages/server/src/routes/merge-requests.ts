@@ -94,7 +94,7 @@ const integratorLivenessMirror = z
     last_heartbeat_age_sec: z.number().nullable(),
     lane_status: z.enum(["idle", "integrating"]).nullable(),
     version: z.string().nullable(),
-    stall: z.literal("integrator_down").nullable(),
+    stall: z.enum(["integrator_down", "pool_stranded"]).nullable(),
   })
   .openapi("IntegratorLiveness");
 

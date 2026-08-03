@@ -16172,7 +16172,7 @@ export interface components {
       lane_status: "idle" | "integrating" | null;
       version: string | null;
       /** @enum {string|null} */
-      stall: "integrator_down" | null;
+      stall: "integrator_down" | "pool_stranded" | null;
     };
     MergeRequestDetail: components["schemas"]["MergeRequest"] & {
       attempts: components["schemas"]["MergeAttempt"][];

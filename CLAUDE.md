@@ -196,6 +196,14 @@ verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   waits) plus a `pm_get_integrator_health` MCP tool, so an agent distinguishes
   daemon-down (restart) from slow-verify (wait) from gitlink-drain (fix branch,
   §14.11). Deployment guide §14.12 / `roadmaps/roadmap-20260714-integrator-liveness-legibility.md`.
+- **Stranded verify slot** — a leased worktree slot is freed only by an explicit
+  release, so a throw between acquire and release used to kill a `parallelism: 1`
+  lane permanently while the daemon kept heartbeating (the 2026-08-02 nine-hour
+  wedge: a request cancelled mid-verify → land 409 → throw past the release).
+  Now sealed in `batch.ts` (member-slot sweep + `pool.reclaimAll()` in the drain
+  `finally`, `try/finally` over the admit window, 409-tolerant terminal PM
+  writes, no-batch-without-a-free-slot), surfaced as `stall: "pool_stranded"`,
+  and alerted by the periodic sweep (`PM_ALERT_SWEEP_SEC`). Guide §14.15.
 
 **Claim liveness (Campaigns C1–C3)** — `docs/design/phase-c*.md`.
 
@@ -289,6 +297,7 @@ The MCP server exposes tools for:
 | `PM_HOST`            | `127.0.0.1`             | Bind address (`0.0.0.0` for LAN access)                                                                                                                                                                                         |
 | `PM_DB_PATH`         | `./data/pm.db`          | SQLite database file path                                                                                                                                                                                                       |
 | `PM_LOG_LEVEL`       | `info`                  | Logging verbosity                                                                                                                                                                                                               |
+| `PM_ALERT_SWEEP_SEC` | `300`                   | How often the server re-evaluates the `train.*` alerts for every active lane, so a wedged train alerts without anyone opening the dashboard. `0` disables (on-read evaluation only, the pre-2026-08-03 behavior). Min 30.       |
 | `PM_WEB_DIST_PATH`   | (auto-resolved)         | Override path to web dist directory                                                                                                                                                                                             |
 | `PM_POOL_SECRET`     | (none)                  | Agent-pool secret. Server: auto-creates the `default` pool on first claim. MCP server: auto-claims an agent identity from the pool (alternative to a static `PM_API_TOKEN`).                                                    |
 | `PM_POOL_NAME`       | `default`               | MCP server: name of the agent pool to claim from                                                                                                                                                                                |
