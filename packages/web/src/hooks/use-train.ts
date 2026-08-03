@@ -7,6 +7,7 @@ import {
   getClaimsHealth,
   getTrainState,
   getMergeRequestTimeline,
+  getMergeRequestPhases,
   getAuditLog,
   pauseTrain,
   resumeTrain,
@@ -29,6 +30,9 @@ export const trainKeys = {
   state: (projectId: string) => [...trainKeys.all, "state", projectId] as const,
   claimsHealth: (projectId: string) => [...trainKeys.all, "claims-health", projectId] as const,
   timeline: (requestId: string) => [...trainKeys.all, "timeline", requestId] as const,
+  // Under trainKeys.all like the rest, so a lifecycle event (or a force-*
+  // mutation) refreshes the trace along with everything else on the page.
+  phases: (requestId: string) => [...trainKeys.all, "phases", requestId] as const,
   // Lives UNDER trainKeys.all so the shipped useSSE audit.recorded / train.* /
   // merge.* invalidation refreshes the audit log live.
   audit: (projectId: string, filters?: AuditFilters) =>
@@ -100,6 +104,26 @@ export function useMergeRequestTimeline(requestId: string | undefined) {
     enabled: !!requestId,
     // The key lives under trainKeys.all, so the shipped useSSE merge.* / train.*
     // invalidation refreshes the timeline live as attempts/lands/rejects fire.
+  });
+}
+
+/**
+ * The completed-phase trace for one merge request (campaign 2026-08-03 §P4).
+ *
+ * The 10s poll is not belt-and-braces, it is the ONLY way a phase completing
+ * mid-flight reaches the screen. The server does emit `merge.phase.recorded`,
+ * but this client's SSE subscription is an explicit event list that does not
+ * include it (the phases projection arm is §P5's), so nothing invalidates this
+ * key when a phase ends — only the lifecycle events do, which is far too late
+ * for a request that is still integrating. Cadence matches useTrainMetrics /
+ * useTrainHealth so the whole page refreshes on one beat.
+ */
+export function useMergeRequestPhases(requestId: string | undefined) {
+  return useQuery({
+    queryKey: trainKeys.phases(requestId!),
+    queryFn: () => getMergeRequestPhases(requestId!),
+    enabled: !!requestId,
+    refetchInterval: 10_000,
   });
 }
 

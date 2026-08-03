@@ -34,6 +34,16 @@ export type ClaimItem = ProjectClaims["items"][number];
 export type MergeRequest = components["schemas"]["MergeRequest"];
 export type MergeRequestTimeline = components["schemas"]["MergeRequestTimeline"];
 export type MergeRequestTimelineEvent = components["schemas"]["MergeRequestTimelineEvent"];
+// Phase timing (campaign 2026-08-03). The aggregation rides INSIDE TrainMetrics
+// as an anonymous inline shape — there is no named schema to alias — so index
+// into the generated type rather than hand-writing a mirror that can drift.
+// `PhaseTraceEntry` IS named (the per-request/per-group trace) and discriminates
+// on a BOOLEAN `derived`; narrow with `=== true`/`=== false`, never a string.
+export type PhaseTiming = TrainMetrics["phase_timing"];
+export type PhaseWindow = PhaseTiming["window"];
+export type PhaseStat = PhaseWindow["phases"][number];
+export type PhaseLabelStat = PhaseStat["labels"][number];
+export type PhaseTraceEntry = components["schemas"]["PhaseTraceEntry"];
 export type ResolverDefaults = components["schemas"]["ResolverDefaults"];
 export type Note = components["schemas"]["Note"];
 export type NotesHealth = components["schemas"]["NotesHealth"];
@@ -1227,6 +1237,16 @@ export async function getIntegratorHealth(
 
 export async function getMergeRequestTimeline(id: string): Promise<MergeRequestTimeline> {
   return apiFetch<MergeRequestTimeline>(`/merge-requests/${id}/timeline`);
+}
+
+/**
+ * The COMPLETED-phase trace for one merge request, oldest-first: the derived
+ * `queue_wait` entry at the head followed by whatever the integrator recorded.
+ * A phase in progress is absent by design — a row is written when a phase ENDS —
+ * so this never says what the request is doing right now.
+ */
+export async function getMergeRequestPhases(id: string): Promise<PhaseTraceEntry[]> {
+  return apiFetch<PhaseTraceEntry[]>(`/merge-requests/${id}/phases`);
 }
 
 // ---- Break-glass / Audit API (admin R1-override surface) ----

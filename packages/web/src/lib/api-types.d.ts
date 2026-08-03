@@ -17295,11 +17295,8 @@ export interface components {
       };
     };
     MergePhaseRow: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      derived: "false";
+      /** @enum {boolean} */
+      derived: false;
       id: string;
       projectId: string;
       resource: string;
@@ -17321,11 +17318,8 @@ export interface components {
       | components["schemas"]["MergePhaseRow"]
       | components["schemas"]["DerivedPhaseEntry"];
     DerivedPhaseEntry: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      derived: "true";
+      /** @enum {boolean} */
+      derived: true;
       /** @enum {string} */
       phase: "forming" | "queue_wait";
       projectId: string;

@@ -8875,21 +8875,14 @@
         ]
       },
       "PhaseTraceEntry": {
-        "oneOf": [
+        "anyOf": [
           {
             "$ref": "#/components/schemas/MergePhaseRow"
           },
           {
             "$ref": "#/components/schemas/DerivedPhaseEntry"
           }
-        ],
-        "discriminator": {
-          "propertyName": "derived",
-          "mapping": {
-            "false": "#/components/schemas/MergePhaseRow",
-            "true": "#/components/schemas/DerivedPhaseEntry"
-          }
-        }
+        ]
       },
       "DerivedPhaseEntry": {
         "type": "object",

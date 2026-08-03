@@ -148,8 +148,18 @@ const derivedPhaseEntrySchema = z
   })
   .openapi("DerivedPhaseEntry");
 
+// A PLAIN union, not `z.discriminatedUnion("derived", …)` — deliberately, and
+// this must stay plain. `derived` is a BOOLEAN on the wire, but OAS 3.x requires
+// a discriminator's propertyName to name a STRING property, so emitting a
+// `discriminator` block here produces a technically-invalid spec and
+// openapi-typescript faithfully rewrites the field into the string enum
+// `"true" | "false"`. A web renderer then narrows on `derived === "true"`,
+// compares `true === "true"`, always takes the wrong arm — and its tests pass,
+// because the fixtures are typed from the same corrupted types.
+// The runtime validation set and the wire bytes are identical either way; only
+// the emitted spec differs. Keep it a plain union.
 const phaseTraceEntrySchema = z
-  .discriminatedUnion("derived", [mergePhaseRowSchema, derivedPhaseEntrySchema])
+  .union([mergePhaseRowSchema, derivedPhaseEntrySchema])
   .openapi("PhaseTraceEntry");
 
 const ingestEnvelope = z.object({
