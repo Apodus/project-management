@@ -46,13 +46,12 @@ gitlink_parent?, gitlink_path? }]`; default `[]` = single-repo, byte-identical t
 linked-repo `path` accepts a bare/local path **or** a remote/`file://`/SSH/HTTPS URL (the integrator
 binds it via a local `--mirror` clone to resolve refs), and an inner repo's Git LFS files materialize
 as **real binaries** in the outer working tree for verify (land path AND recovery roll-forward). The
-materialized overlay is **complete and self-cleaning** (2026-06-10 hardening): materialize purges the
-gitlink path before writing (content at a committed gitlink is INVISIBLE to git status/clean/reset, so
-a stale overlay would otherwise outlive every attempt and poison later verifies in the slot â€” the
-game_one `submodule update` fatal), exports the inner repo's **nested submodules recursively**
-(tree-exact, initialized in the inner pool worktree where `submodule update` works), and every
-`resetForAttempt` purges leftover overlays at declared `gitlink_path`s (triple-guarded: only a
-populated, `.git`-less dir at a real 160000 gitlink is removed). **Verify contract:** the outer verify
+materialized overlay is **complete, self-cleaning, and content-stable**: materialize stages the exact
+new tree, deletes stale destinations, rewrites changed files, and leaves byte-identical files untouched
+so timestamp-based incremental builds retain compiler outputs. It exports the inner repo's **nested
+submodules recursively** (tree-exact, initialized in the inner pool worktree where `submodule update`
+works). Non-materializing pools still purge leftover overlays at declared `gitlink_path`s, while the
+linked outer pool retains the prior overlay for the next exact sync. **Verify contract:** the outer verify
 command must NOT `submodule update --init` the gitlink path (unfetchable pre-land; the train provides
 those sources) â€” see `docs/integrator-deployment.md` Â§14.8 for the detection idiom. Worker MCP tools:
 `pm_request_merge_group` (accepts an atomic `members` form — ≥2 specs, or ONE inner spec +

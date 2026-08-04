@@ -571,7 +571,7 @@ When `linked_repos` is non-empty the integrator builds **one worktree pool per l
 A group is picked up and integrated **under the same `(project, resource)` lane lock** the integrator already uses — there is no second lock. The cycle:
 
 1. **Bind members → roles.** Each member's identity ref (commitSha-preferred, else branch) is resolved in each linked repo's clone; the member binds to the repo whose clone resolves it, and its role comes from config. An ambiguous binding (resolves in both repos, or neither) rejects the group cleanly from `forming`.
-2. **Assemble** (no push, no PM mutation yet): rebase the inner member onto live inner `main` → `Ri`; rebase the outer member onto live outer `main`; commit the outer gitlink at `gitlink_path` to `Ri` → `Ro`; **materialize** the inner@`Ri` sources into the outer working tree at `gitlink_path` so the outer verify actually sees them. **Git LFS:** when the inner repo tracks files via git-lfs, materialize is **LFS-aware** — it writes the inner tree with `GIT_LFS_SKIP_SMUDGE=1` (so checkout-index never queries the OUTER LFS endpoint, which lacks the inner's objects → no 404), then **overlay-copies the real binaries** from the smudged inner pool worktree over the written pointers. The outer **working tree** thus holds the inner's real LFS binaries for verify, while the **committed** outer tree carries only the `160000` gitlink. Materialize also **purges any stale overlay first** and **exports the inner repo's nested submodules recursively** into the overlay — see §14.8 for the full overlay guarantees and the verify-command contract at the gitlink path. (This applies to **both** the LAND assemble path and the recovery roll-forward — see §14.5.)
+2. **Assemble** (no push, no PM mutation yet): rebase the inner member onto live inner `main` → `Ri`; rebase the outer member onto live outer `main`; commit the outer gitlink at `gitlink_path` to `Ri` → `Ro`; **materialize** the inner@`Ri` sources into the outer working tree at `gitlink_path` so the outer verify actually sees them. **Git LFS:** when the inner repo tracks files via git-lfs, materialize is **LFS-aware** — it writes the inner tree with `GIT_LFS_SKIP_SMUDGE=1` (so checkout-index never queries the OUTER LFS endpoint, which lacks the inner's objects → no 404), then **overlay-copies the real binaries** from the smudged inner pool worktree over the written pointers. The outer **working tree** thus holds the inner's real LFS binaries for verify, while the **committed** outer tree carries only the `160000` gitlink. Materialize performs a **tree-exact, content-stable sync** (stale files deleted, changed files rewritten, equal files left untouched) and exports the inner repo's nested submodules recursively — see §14.8 for the full overlay guarantees and the verify-command contract at the gitlink path. (This applies to **both** the LAND assemble path and the recovery roll-forward — see §14.5.)
 3. **Pick up** (`forming → integrating`, flips members) and start a per-member attempt.
 4. **Verify the assembled state**: run the inner and outer verify commands **concurrently**, both against the assembled checkout, and AND the results. Any repo failing → reject the **whole** group (nothing pushed, no incident).
 5. **Land**, under the lock, with a single pre-push drift re-check on both live mains:
@@ -689,15 +689,14 @@ real registered submodule. `git submodule foreach` skips the materialized path a
 it only visits initialized submodules — so nested `git lfs pull` loops need no change.)
 
 **Overlay hygiene (automatic):** the overlay is **invisible to git** — content at a committed
-`160000` gitlink path is skipped by `git status`, `git clean -fdx`, and `git reset --hard` — so
-the integrator removes it explicitly rather than relying on the per-attempt clean: materialize
-**purges the gitlink path before writing** (no stale files from a previous inner SHA can
-survive), and every `resetForAttempt` purges a leftover overlay at each declared `gitlink_path`
-(in **all** pools — default, lane, and resolver). The purge is triple-guarded: it only removes a
-**populated, `.git`-less** directory at a path that really is a `160000` gitlink in HEAD — a
-real initialized submodule checkout or a tracked directory is never touched. Hand-cleaning a
-pool slot is therefore never needed (and never was effective — the next assembly re-materializes
-by design).
+`160000` gitlink path is skipped by `git status`, `git clean -fdx`, and `git reset --hard`.
+The linked outer pool retains its prior overlay and materialize replaces it through a staged
+**tree-exact, content-stable sync**: destinations absent from the new tree are deleted, changed
+files are copied, and byte-identical files are not rewritten. This is stale-file safe and preserves
+the mtimes needed by timestamp-based incremental compilers. Pools that do not run the materializer
+continue to purge declared gitlink overlays on reset; that purge is triple-guarded and only removes
+a populated, `.git`-less directory at a real `160000` gitlink. A real initialized submodule checkout
+or tracked directory is never touched. Hand-cleaning a pool slot is not needed.
 
 ### 14.9 Inner-only groups: the synthetic outer member (operator view)
 

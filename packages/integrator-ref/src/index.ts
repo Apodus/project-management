@@ -128,14 +128,11 @@ async function main(): Promise<void> {
   // At parallelism:1 the pool is a size-1 pool, so the observable behavior is a
   // batch-of-one that is byte-identical to the 7.1 serial loop.
   //
-  // gitlinkPurgePaths: every declared inner gitlink_path is purged of stale
-  // materialized overlays on each resetForAttempt — git itself is blind to
-  // plain files at a committed gitlink path, so a leftover group-assembly
-  // overlay would otherwise poison every later verify in the slot. Applied to
-  // ALL pools (default/lane/resolver); the purge is self-guarding (only a
-  // populated, .git-less dir at an actual 160000 gitlink is removed), so it is
-  // a no-op for repos where the path is not a gitlink. Empty linked_repos ⇒ []
-  // ⇒ byte-identical to before.
+  // gitlinkPurgePaths: declared gitlink overlays are normally purged on reset.
+  // The linked outer lane opts out below because its materializer performs a
+  // tree-exact, content-stable replacement; retaining that overlay is what lets
+  // incremental builds keep timestamps and compiler intermediates. Empty
+  // linked_repos ⇒ [] ⇒ byte-identical to before.
   const gitlinkPurgePaths = cfg.linkedRepos.flatMap((r) => (r.gitlinkPath ? [r.gitlinkPath] : []));
   const pool = createWorktreePool({
     parallelism: cfg.parallelism,
@@ -264,7 +261,11 @@ async function main(): Promise<void> {
         gitRemote: cfg.gitRemote,
         gitMainBranch: cfg.gitMainBranch,
         cleanKeep: cfg.cleanKeep,
-        gitlinkPurgePaths,
+        // The linked OUTER pool retains its previous materialized overlay.
+        // materializeSubmoduleWorktree replaces it tree-exact with a
+        // content-stable sync, preserving unchanged source mtimes and compiler
+        // intermediates. Other pools keep the defensive reset-time purge.
+        gitlinkPurgePaths: repo.role === "outer" ? [] : gitlinkPurgePaths,
       });
       // Binding clone: a LOCAL `--mirror` clone of the linked repo, used ONLY to
       // resolve a member's ref (commitSha/branch). `repo.path` may be a remote

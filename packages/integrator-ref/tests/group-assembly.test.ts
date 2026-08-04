@@ -1,6 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
@@ -64,7 +73,8 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops submodule ops (real git)", () => {
     await configIdentity(innerGit);
     writeFileSync(path.join(innerWt, "lib.txt"), "lib content\n");
     writeFileSync(path.join(innerWt, "README.md"), "inner\n");
-    await innerGit.add(["lib.txt", "README.md"]);
+    writeFileSync(path.join(innerWt, "obsolete.txt"), "delete me later\n");
+    await innerGit.add(["lib.txt", "README.md", "obsolete.txt"]);
     await innerGit.commit("inner sources");
     await innerGit.branch(["-M", "main"]);
     await innerGit.push(["-u", "origin", "main"]);
@@ -109,6 +119,7 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops submodule ops (real git)", () => {
     await ops.materializeSubmoduleWorktree(GITLINK_PATH, innerSha, innerWt);
     const libOnDisk = path.join(outerWt, "vendor", "rynx", "lib.txt");
     const readmeOnDisk = path.join(outerWt, "vendor", "rynx", "README.md");
+    const obsoleteOnDisk = path.join(outerWt, "vendor", "rynx", "obsolete.txt");
     expect(existsSync(libOnDisk)).toBe(true);
     expect(existsSync(readmeOnDisk)).toBe(true);
     // Same content as the inner sources (the overlay is a no-op for a non-LFS
@@ -127,18 +138,33 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops submodule ops (real git)", () => {
     // readSubmoduleGitlink throws on a non-gitlink path (§11).
     await expect(ops.readSubmoduleGitlink("top.txt")).rejects.toThrow();
 
-    // ── PURGE-BEFORE-MATERIALIZE: a stale overlay file never survives. ──
-    // Files at a committed gitlink path are INVISIBLE to git (status/clean/
-    // reset all skip them), and checkout-index -f overwrites but never
-    // deletes — so a file present from a PREVIOUS materialize (e.g. one the
-    // next inner SHA deleted) would silently persist without the purge. Seed
-    // a stale file and re-materialize: it must be gone, the real tree intact.
+    // ── CONTENT-STABLE TREE-EXACT MATERIALIZE ──
+    // Stale files are removed, while byte-identical files retain their mtimes.
     const staleOnDisk = path.join(outerWt, "vendor", "rynx", "stale-deleted.txt");
     writeFileSync(staleOnDisk, "left over from a previous assembly\n");
+    const pinnedMtime = new Date("2000-01-01T00:00:00.000Z");
+    utimesSync(libOnDisk, pinnedMtime, pinnedMtime);
+    utimesSync(readmeOnDisk, pinnedMtime, pinnedMtime);
     await ops.materializeSubmoduleWorktree(GITLINK_PATH, innerSha, innerWt);
     expect(existsSync(staleOnDisk)).toBe(false);
     expect(existsSync(libOnDisk)).toBe(true);
     expect(existsSync(readmeOnDisk)).toBe(true);
+    expect(statSync(libOnDisk).mtimeMs).toBe(pinnedMtime.getTime());
+    expect(statSync(readmeOnDisk).mtimeMs).toBe(pinnedMtime.getTime());
+
+    // A new inner tree rewrites only changed files, preserves an unchanged
+    // file's timestamp, and removes files deleted by the new tree.
+    writeFileSync(path.join(innerWt, "lib.txt"), "changed lib content\n");
+    unlinkSync(path.join(innerWt, "obsolete.txt"));
+    await innerGit.add(["lib.txt", "obsolete.txt"]);
+    await innerGit.commit("change and delete inner sources");
+    const nextInnerSha = (await innerGit.revparse(["HEAD"])).trim();
+    await ops.fetchFromPath(innerWt, nextInnerSha);
+    await ops.materializeSubmoduleWorktree(GITLINK_PATH, nextInnerSha, innerWt);
+    expect(readFileSync(libOnDisk, "utf8").replace(/\r\n/g, "\n")).toBe("changed lib content\n");
+    expect(statSync(libOnDisk).mtimeMs).not.toBe(pinnedMtime.getTime());
+    expect(statSync(readmeOnDisk).mtimeMs).toBe(pinnedMtime.getTime());
+    expect(existsSync(obsoleteOnDisk)).toBe(false);
   });
 
   // BEHAVIORAL PIN (inner-only groups campaign): updateSubmoduleGitlink's

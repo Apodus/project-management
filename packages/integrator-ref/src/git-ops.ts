@@ -1,6 +1,18 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { copyFile, mkdir, readFile, rm, stat } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  readlink,
+  rm,
+  stat,
+  symlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
@@ -12,6 +24,105 @@ async function pathExistsLocal(p: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function filesEqual(a: string, b: string): Promise<boolean> {
+  try {
+    const [aStat, bStat] = await Promise.all([lstat(a), lstat(b)]);
+    if (!aStat.isFile() || !bStat.isFile() || aStat.size !== bStat.size) return false;
+    const [aFile, bFile] = await Promise.all([open(a, "r"), open(b, "r")]);
+    try {
+      const chunkSize = 1024 * 1024;
+      const aBytes = Buffer.allocUnsafe(chunkSize);
+      const bBytes = Buffer.allocUnsafe(chunkSize);
+      for (let position = 0; position < aStat.size; position += chunkSize) {
+        const length = Math.min(chunkSize, aStat.size - position);
+        const [aRead, bRead] = await Promise.all([
+          aFile.read(aBytes, 0, length, position),
+          bFile.read(bBytes, 0, length, position),
+        ]);
+        if (
+          aRead.bytesRead !== bRead.bytesRead ||
+          !aBytes.subarray(0, aRead.bytesRead).equals(bBytes.subarray(0, bRead.bytesRead))
+        ) {
+          return false;
+        }
+      }
+      return true;
+    } finally {
+      await Promise.all([aFile.close(), bFile.close()]);
+    }
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Make `destination` tree-exact with `source`, but do not rewrite equal files.
+ * Keeping the destination mtime for byte-identical files is load-bearing for
+ * timestamp-based incremental build systems (MSBuild in particular).
+ */
+async function syncTreeContentStable(source: string, destination: string): Promise<void> {
+  await mkdir(destination, { recursive: true });
+  const [sourceEntries, destinationEntries] = await Promise.all([
+    readdir(source, { withFileTypes: true }),
+    readdir(destination, { withFileTypes: true }),
+  ]);
+  const sourceNames = new Set(sourceEntries.map((entry) => entry.name));
+
+  for (const entry of destinationEntries) {
+    if (!sourceNames.has(entry.name)) {
+      await rm(path.join(destination, entry.name), { recursive: true, force: true });
+    }
+  }
+
+  for (const entry of sourceEntries) {
+    const sourcePath = path.join(source, entry.name);
+    const destinationPath = path.join(destination, entry.name);
+    if (entry.isDirectory()) {
+      try {
+        const destinationStat = await lstat(destinationPath);
+        if (!destinationStat.isDirectory()) {
+          await rm(destinationPath, { recursive: true, force: true });
+        }
+      } catch {
+        // Missing destination is created by the recursive call.
+      }
+      await syncTreeContentStable(sourcePath, destinationPath);
+      continue;
+    }
+
+    if (entry.isSymbolicLink()) {
+      const sourceTarget = await readlink(sourcePath);
+      let destinationTarget: string | null = null;
+      try {
+        if ((await lstat(destinationPath)).isSymbolicLink()) {
+          destinationTarget = await readlink(destinationPath);
+        }
+      } catch {
+        // Missing destination is replaced below.
+      }
+      if (destinationTarget === sourceTarget) continue;
+      await rm(destinationPath, { recursive: true, force: true });
+      await symlink(sourceTarget, destinationPath);
+      continue;
+    }
+
+    if (await filesEqual(sourcePath, destinationPath)) {
+      const [sourceStat, destinationStat] = await Promise.all([
+        lstat(sourcePath),
+        lstat(destinationPath),
+      ]);
+      if ((sourceStat.mode & 0o111) !== (destinationStat.mode & 0o111)) {
+        await chmod(destinationPath, sourceStat.mode);
+      }
+      continue;
+    }
+    await rm(destinationPath, { recursive: true, force: true });
+    await mkdir(path.dirname(destinationPath), { recursive: true });
+    await copyFile(sourcePath, destinationPath);
+    await chmod(destinationPath, (await lstat(sourcePath)).mode);
   }
 }
 
@@ -1032,28 +1143,12 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     innerWorktreePath?: string,
   ): Promise<void> {
     // Expand `sha`'s tree into the working tree at `gitlinkPath` on disk.
-    // Mechanism confirmed on win32: read-tree --prefix into a SEPARATE temp
-    // index (the real index already holds the gitlink at this path, which would
-    // collide), then checkout-index -a -f against that temp index. This writes
-    // the inner blobs under `<gitlinkPath>/` without disturbing the committed
-    // gitlink in HEAD or the real index.
+    // Mechanism confirmed on win32: read-tree into a SEPARATE temp index (the
+    // real index already holds the gitlink at this path), checkout-index into a
+    // staging tree, then content-stable/tree-exact sync into the overlay. This
+    // leaves equal-file mtimes untouched without disturbing HEAD or its index.
     const topLevel = (await git.revparse(["--show-toplevel"])).trim();
     const overlayRoot = path.join(topLevel, ...gitlinkPath.split("/"));
-
-    // ── PURGE the gitlink path before writing the overlay ──
-    // A previous materialize's overlay here is INVISIBLE to git: the path is a
-    // committed 160000 gitlink, so `git status` reports nothing and the
-    // worktree's per-attempt `reset --hard` + `clean -fdx` never touch it
-    // (confirmed empirically). Without this purge, (a) files deleted between
-    // two materialized inner SHAs would survive (checkout-index -f overwrites
-    // but never deletes), and (b) the stale overlay poisons every later verify
-    // in this slot — e.g. a verify script's `git submodule update --init`
-    // hard-fails on a populated-but-unregistered submodule path. `force: true`
-    // makes the first run (no dir) a no-op. A REAL initialized submodule
-    // checkout here is also safe to remove: its git dir lives under
-    // .git/modules, not inside the path, so a later `submodule update --init`
-    // re-checks-out from the existing module store without recloning.
-    await rm(overlayRoot, { recursive: true, force: true });
 
     // ── Nested-submodule prep in the INNER worktree (assembly opt-in) ──
     // `sha`'s tree records the inner repo's own submodules as 160000 gitlink
@@ -1091,6 +1186,10 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       ".git",
       `pm-materialize-index-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
+    const stagingRoot = path.join(
+      tmpdir(),
+      `pm-materialize-tree-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
     // NOTE: we spawn git DIRECTLY here rather than via the shared simple-git
     // instance. simple-git's `.env()` is STATEFUL — it persists GIT_INDEX_FILE
     // on the instance for ALL subsequent calls (confirmed empirically), which
@@ -1109,16 +1208,24 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       ...(innerWorktreePath ? { GIT_LFS_SKIP_SMUDGE: "1" } : {}),
     };
     try {
-      // Forward slash + trailing slash on the prefix (git convention).
-      await runGit(["read-tree", `--prefix=${gitlinkPath}/`, sha], topLevel, env);
-      await runGit(["checkout-index", "-a", "-f"], topLevel, env);
+      // Export into a staging tree first. The final content-stable sync makes
+      // the overlay tree-exact while retaining mtimes for byte-identical files;
+      // writing checkout-index directly into the overlay would refresh every
+      // source mtime and force timestamp-based build systems into a full rebuild.
+      await mkdir(stagingRoot, { recursive: true });
+      await runGit(["read-tree", sha], topLevel, env);
+      await runGit(
+        ["checkout-index", "-a", "-f", `--prefix=${stagingRoot.replace(/\\/g, "/")}/`],
+        topLevel,
+        env,
+      );
 
       if (innerWorktreePath) {
         // ── LFS overlay (opt-in) ──
         // checkout-index wrote POINTERS for the inner's LFS-tracked files
         // (smudge was skipped). Overlay the REAL binaries from the inner pool
         // worktree (which holds the correctly-smudged content at `sha`).
-        await overlayLfsReals(innerWorktreePath, overlayRoot);
+        await overlayLfsReals(innerWorktreePath, stagingRoot);
 
         // ── Nested-submodule overlay ──
         // Export each initialized nested submodule's HEAD tree (== the gitlink
@@ -1131,7 +1238,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
         // like the top level's.
         for (const nested of nestedPaths) {
           const srcRepo = path.join(innerWorktreePath, ...nested.split("/"));
-          const dstDir = path.join(overlayRoot, ...nested.split("/"));
+          const dstDir = path.join(stagingRoot, ...nested.split("/"));
           const nestedIndex = path.join(
             tmpdir(),
             `pm-materialize-nested-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1159,9 +1266,13 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
           await overlayLfsReals(srcRepo, dstDir);
         }
       }
+      await syncTreeContentStable(stagingRoot, overlayRoot);
     } finally {
       // The temp index is throwaway; remove it (best-effort).
       await rm(tmpIndex, { force: true }).catch(() => {
+        /* best-effort */
+      });
+      await rm(stagingRoot, { recursive: true, force: true }).catch(() => {
         /* best-effort */
       });
     }
