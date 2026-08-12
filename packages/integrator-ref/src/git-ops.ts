@@ -829,7 +829,27 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
   }
 
   async function rebaseOnto(base: string, branch: string): Promise<RebaseResult> {
-    await git.checkout(branch);
+    // A merge-group member carrying commitSha is already an immutable checkout
+    // subject. Do not send that 40-hex through `git checkout <arg>`'s DWIM path:
+    // on the long-lived Windows daemon that path can consult an inherited/
+    // missing repository hint and fail as `fatal: 'undefined' does not appear
+    // to be a git repository`, even though the object is present and a direct
+    // reset to it succeeds. Detach at the already-checked-out pool base first,
+    // then materialize the exact object without any remote/ref inference.
+    //
+    // Branch-only requests retain the legacy checkout behavior (including its
+    // remote-tracking DWIM). Group binding prefers commitSha, so pinned atomic
+    // members take this exact-object path.
+    if (/^[0-9a-f]{40}$/i.test(branch)) {
+      const pinned = (await git.revparse(["--verify", `${branch}^{commit}`])).trim();
+      if (!/^[0-9a-f]{40}$/.test(pinned)) {
+        throw new Error(`rebaseOnto: pinned ref ${branch} did not resolve to a commit`);
+      }
+      await git.raw(["checkout", "--detach", "HEAD"]);
+      await git.reset(["--hard", pinned]);
+    } else {
+      await git.checkout(branch);
+    }
     try {
       await git.raw([...COMMIT_IDENTITY_ARGS, "rebase", base]);
       const treeSha = (await git.revparse(["HEAD"])).trim();

@@ -17,6 +17,46 @@ function hasGit(): boolean {
 
 const GIT_AVAILABLE = hasGit();
 
+describe("git-ops pinned merge-group ref regression", () => {
+  it("materializes an exact commit without checkout DWIM/remote inference", async () => {
+    const pinned = "8".repeat(40);
+    const base = "7".repeat(40);
+    const calls: string[][] = [];
+    const fake = {
+      // This is the exact live failure. Before the repair rebaseOnto called
+      // checkout(pinned) and the test rejected here.
+      async checkout(ref: string): Promise<void> {
+        throw new Error(
+          `fatal: '${ref === pinned ? "undefined" : ref}' does not appear to be a git repository`,
+        );
+      },
+      async revparse(args: string[]): Promise<string> {
+        calls.push(["revparse", ...args]);
+        if (args[0] === "--verify") return pinned;
+        if (args[0] === "HEAD") return pinned;
+        throw new Error(`unexpected revparse ${args.join(" ")}`);
+      },
+      async raw(args: string[]): Promise<string> {
+        calls.push(["raw", ...args]);
+        return "";
+      },
+      async reset(args: string[]): Promise<string> {
+        calls.push(["reset", ...args]);
+        return "";
+      },
+    } as unknown as SimpleGit;
+
+    const result = await createGitOps(fake).rebaseOnto(base, pinned);
+    expect(result).toEqual({ ok: true, treeSha: pinned });
+    expect(calls).toContainEqual(["revparse", "--verify", `${pinned}^{commit}`]);
+    expect(calls).toContainEqual(["raw", "checkout", "--detach", "HEAD"]);
+    expect(calls).toContainEqual(["reset", "--hard", pinned]);
+    expect(calls.some((c) => c[0] === "raw" && c.includes("rebase") && c.includes(base))).toBe(
+      true,
+    );
+  });
+});
+
 // Shared fixture state.
 let tmpRoot: string;
 let bareRepo: string;

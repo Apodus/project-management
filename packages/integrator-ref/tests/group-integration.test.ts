@@ -449,6 +449,44 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
   // ── Phase 7.5 Step 6 (§6): per-repo cache keys on DISTINCT content-addressed
   //    TREE shas (CLARIFICATION A: derived from Ri/Ro via `^{tree}`), AND-combine
   //    preserved. Both repos MISS (the fake returns null) → both verifies run. ──
+  it("two pinned linked-repo specs prefer exact commit SHAs over branch names", async () => {
+    const innerBranch = "codex/piano-meadow-freeplay-v1-rynx";
+    const outerBranch = "codex/piano-meadow-freeplay-v1";
+    const state = makeGroupState({
+      inner: { branch: innerBranch, verifyCmd: null },
+      outer: { branch: outerBranch, verifyCmd: null },
+    });
+    const seenInnerRefs: string[] = [];
+    const exactInnerLane = innerLane({
+      gitOps: (poolPath) => {
+        const real = createGitOps(simpleGit(poolPath));
+        return {
+          ...real,
+          async rebaseOnto(base, ref) {
+            seenInnerRefs.push(ref);
+            return real.rebaseOnto(base, ref);
+          },
+        };
+      },
+    });
+
+    const outcome = await runGroupIntegration(
+      { id: "grp-pinned-two-specs", members: state.group.members },
+      depsFor(state, { innerLane: exactInnerLane }),
+    );
+
+    expect(outcome.kind).toBe("ready_to_land");
+    if (outcome.kind !== "ready_to_land") {
+      throw new Error(`expected ready_to_land, got ${outcome.kind}`);
+    }
+    outcome.assembled.release();
+    expect(seenInnerRefs).toEqual([innerFeatureSha, outerFeatureSha]);
+    expect(seenInnerRefs).not.toContain(innerBranch);
+    expect(seenInnerRefs).not.toContain(outerBranch);
+    expect(outcome.Ri).toMatch(/^[0-9a-f]{40}$/);
+    expect(outcome.Ro).toMatch(/^[0-9a-f]{40}$/);
+  }, 30_000);
+
   it("7.5 cross-repo: inner + outer cache lookups key on DISTINCT tree shas; AND preserved", async () => {
     const state = makeGroupState({
       inner: { verifyCmd: "echo inner-ok" },
