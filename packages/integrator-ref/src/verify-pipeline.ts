@@ -148,6 +148,14 @@ export interface PipelineCtx {
   signal?: AbortSignal;
   logsDir: string;
   attemptId: string;
+  /**
+   * Campaign 2026-08-04 §P2: the member's output-liveness box, forwarded to
+   * EVERY step's `runVerify`. One box shared by the whole DAG: a member is
+   * alive if any of its concurrent steps is still producing output, so the
+   * shared box IS the semantics — no per-step bookkeeping, no max to compute.
+   * Absent ⇒ the pre-P2 spawn.
+   */
+  liveness?: { lastOutputAt: number };
   /** STEP 6: the verify-cache seam (§5.3). Absent → off-path (byte-identical 5). */
   cache?: PipelineCacheCtx;
   /** STEP 6: best-effort cache-I/O failure logger (§11). Absent → silent. */
@@ -359,6 +367,7 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
         cwd: ctx.cwd,
         logPath,
         signal: passController.signal,
+        liveness: ctx.liveness,
       });
 
     // ── off / disabled / no cache → BYTE-IDENTICAL Step 5 (no lookup, no record).

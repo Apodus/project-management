@@ -408,6 +408,30 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
     expect(result.exitCode !== 0 || result.signal !== null).toBe(true);
   }, 15_000);
 
+  // Campaign 2026-08-04 §P2: the liveness box is the only progress signal a
+  // verify emits for free, and the stall watchdog is only as honest as it is.
+  it("runVerify stamps the liveness box at spawn and on every output chunk", async () => {
+    const ops = createGitOps(git);
+    const logPath = path.join(tmpRoot, "verify-liveness.log");
+    const liveness = { lastOutputAt: 0 };
+    const before = Date.now();
+    await ops.runVerify("echo alive", 10_000, { cwd: workClone, logPath, liveness });
+    // Stamped — a build that printed is not silent.
+    expect(liveness.lastOutputAt).toBeGreaterThanOrEqual(before);
+  }, 15_000);
+
+  it("runVerify stamps the liveness box at spawn even when the child prints nothing", async () => {
+    const ops = createGitOps(git);
+    const logPath = path.join(tmpRoot, "verify-liveness-quiet.log");
+    const liveness = { lastOutputAt: 0 };
+    const before = Date.now();
+    const quiet = process.platform === "win32" ? "ping -n 2 127.0.0.1 > nul" : "sleep 1";
+    await ops.runVerify(quiet, 10_000, { cwd: workClone, logPath, liveness });
+    // The spawn stamp is what stops a silent-from-birth build reading as
+    // "silent since 1970" and being killed on the watchdog's first tick.
+    expect(liveness.lastOutputAt).toBeGreaterThanOrEqual(before);
+  }, 15_000);
+
   it("runVerify already-aborted signal kills immediately", async () => {
     const ops = createGitOps(git);
     const logPath = path.join(tmpRoot, "verify-pre-abort.log");

@@ -37,6 +37,13 @@ export interface IntegratorConfig {
    * a test seam and the integrator suite runs on real timers.
    */
   verifyCancelPollSec: number;
+  /**
+   * Campaign 2026-08-04 §P2: kill a verify silent for this many SECONDS. A
+   * floor under `verifyTimeoutSec`'s ceiling; `0` (the default) disables.
+   * Output silence is WEAK evidence — a legitimately quiet phase exists — so
+   * this is opt-in per lane and generous when it is on.
+   */
+  verifyStallSec: number;
   worktreeRoot: string;
   worktreeName: string;
   gitRemote: string;
@@ -159,6 +166,10 @@ export async function loadConfig(
     // Mirror the schema default (project.ts): 30s. `0` is a MEANINGFUL value
     // (disable), so `??` — never `||` — is what preserves it.
     verifyCancelPollSec: ic.verify_cancel_poll_sec ?? 30,
+    // Mirrors the schema default: the stall watchdog ships DISABLED and is
+    // opted into per lane (see the shared schema for why 1200 is not a safe
+    // default against a 600s default timeout).
+    verifyStallSec: ic.verify_stall_sec ?? 0,
     worktreeRoot: ic.worktree_root,
     worktreeName: ic.worktree_name ?? `${project.slug}-integrator`,
     gitRemote: ic.git_remote ?? "origin",

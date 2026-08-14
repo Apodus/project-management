@@ -602,7 +602,17 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     // test. Four of the five land, and a landed branch re-used by a later test
     // trips the no-op/already-landed guard (same reasoning as `feature/drift`
     // above), so they must not share.
-    for (const name of ["cancelabort", "cancelthrow", "cancel404", "cancellive", "canceloff"]) {
+    for (const name of [
+      "cancelabort",
+      "cancelthrow",
+      "cancel404",
+      "cancellive",
+      "canceloff",
+      "stallkill",
+      "stallchatty",
+      "stallquiet",
+      "stalloff",
+    ]) {
       await author.checkout("main");
       await author.checkoutLocalBranch(`feature/${name}`);
       writeFileSync(path.join(authorClone, `${name}.txt`), `${name}\n`);
@@ -637,6 +647,9 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       heartbeatIntervalMs?: number;
       /** Campaign 2026-08-04 §P1: cancellation-watcher cadence (ms). 0/absent ⇒ off. */
       verifyCancelPollMs?: number;
+      /** Campaign 2026-08-04 §P2: output-stall threshold (ms). 0/absent ⇒ off. */
+      verifyStallMs?: number;
+      maxVerifyRetries?: number;
       gitOpsFactory?: (p: string) => GitOps;
       onBatchEvent?: (event: BatchEvent) => void;
       verifySteps?: VerifyStep[];
@@ -727,6 +740,8 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       newBatchId: () => "batch-test",
       heartbeatIntervalMs: opts.heartbeatIntervalMs,
       verifyCancelPollMs: opts.verifyCancelPollMs,
+      verifyStallMs: opts.verifyStallMs,
+      maxVerifyRetries: opts.maxVerifyRetries,
       onBatchEvent: opts.onBatchEvent,
       verifySteps: opts.verifySteps,
       cacheEnabled: opts.cacheEnabled,
@@ -3939,6 +3954,145 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect((state.getRequestCalls ?? []).length).toBe(after);
   }, 30_000);
 
+  // ─── Campaign 2026-08-04 §P2: output-stall watchdog ──────────────
+  //
+  // The other half of 2026-08-04: the build SUCCEEDED at 11:37:33 — exe, 999 MB
+  // pdb, linker tlogs all written — and then its process simply never exited.
+  // 12 threads parked, 0 CPU, 0 IO, nothing written anywhere. Only the
+  // 2.5-hour ceiling would have ended it.
+
+  // Quiet for ~8s: the shape of a parked build.
+  const STALL_QUIET = process.platform === "win32" ? "ping -n 9 127.0.0.1 > nul" : "sleep 8";
+  // Chatty for ~5s: `ping` WITHOUT the `> nul` prints a line per reply, which
+  // is exactly the "long but legitimately talking" build the watchdog must not
+  // touch.
+  const STALL_CHATTY =
+    process.platform === "win32"
+      ? "ping -n 6 127.0.0.1"
+      : "for i in 1 2 3 4 5 6; do echo tick; sleep 1; done";
+  // Quiet, but only briefly.
+  const STALL_BRIEF = process.platform === "win32" ? "ping -n 3 127.0.0.1 > nul" : "sleep 2";
+
+  it("kills a verify that has gone silent, and says which knob to raise", async () => {
+    const root = path.join(tmpRoot, "wt-stall-kill");
+    const req = makeRequest({
+      id: "req-stall-kill",
+      branch: "feature/stallkill",
+      verifyCmd: STALL_QUIET,
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      completeBodies: [],
+      phasePosts: [],
+    };
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      verifyStallMs: 1500,
+      // The stall arm must work with the cancellation poll OFF — an operator
+      // who disables one must not silently lose the other.
+      verifyCancelPollMs: 0,
+    });
+
+    const startedAt = Date.now();
+    const outcome = await runBatchOnce(deps);
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(outcome.kind).toBe("drained");
+    // Killed near the threshold, not at the ~8s natural end.
+    expect(elapsedMs).toBeLessThan(6000);
+    expect(req.status).toBe("rejected");
+
+    // NOT `verify_timeout`. A killed child resolves as SIGTERM, which
+    // `categorize` maps to verify_timeout — so this assertion is the one that
+    // keeps a stall distinguishable from the ceiling it pre-empts.
+    expect(req.rejectCategory).toBe("verify_stall");
+    expect(req.rejectReason).toMatch(/no output for \d+s/);
+    // The threshold is echoed in the operator's own unit (the knob is whole
+    // seconds in production; 1500ms here rounds to the 2s it reports).
+    expect(req.rejectReason).toMatch(/verify_stall_sec=2s/);
+    expect(req.rejectReason).toMatch(/raise verify_stall_sec/);
+
+    // And it was NOT retried. A stall-killed verify looks TRANSIENT to
+    // `classifyVerifyFailure` (exitCode null + signal), so without the
+    // watchdog's marker outranking that heuristic this one stall would have
+    // become four.
+    expect(state.calls.filter((c) => c === "startAttempt")).toHaveLength(1);
+
+    expect(deps.pool.leasedCount).toBe(0);
+    expect(state.lockHeld).toBe(false);
+  }, 30_000);
+
+  it("never kills a build that is still talking", async () => {
+    const root = path.join(tmpRoot, "wt-stall-chatty");
+    const req = makeRequest({
+      id: "req-stall-chatty",
+      branch: "feature/stallchatty",
+      verifyCmd: STALL_CHATTY,
+    });
+    const state: FakeState = { requests: [req], attempts: [], lockHeld: false, calls: [] };
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      // Threshold well under the build's total duration: only the SILENCE
+      // between its lines matters, and there is none longer than ~1s.
+      verifyStallMs: 1500,
+      verifyCancelPollMs: 0,
+    });
+
+    const outcome = await runBatchOnce(deps);
+
+    // The honesty constraint: a long build that keeps printing is healthy, and
+    // killing it would be worse than the disease this watchdog treats.
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(req.rejectCategory).toBeNull();
+  }, 30_000);
+
+  it("tolerates a quiet phase shorter than the threshold", async () => {
+    const root = path.join(tmpRoot, "wt-stall-quiet");
+    const req = makeRequest({
+      id: "req-stall-quiet",
+      branch: "feature/stallquiet",
+      verifyCmd: STALL_BRIEF,
+    });
+    const state: FakeState = { requests: [req], attempts: [], lockHeld: false, calls: [] };
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      verifyStallMs: 6000,
+      verifyCancelPollMs: 0,
+    });
+
+    const outcome = await runBatchOnce(deps);
+
+    // Linking a 999 MB pdb writes nothing for minutes; silence under the
+    // threshold is not evidence of anything.
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+  }, 30_000);
+
+  it("does not watch for stalls when the threshold is 0", async () => {
+    const root = path.join(tmpRoot, "wt-stall-off");
+    const req = makeRequest({
+      id: "req-stall-off",
+      branch: "feature/stalloff",
+      verifyCmd: STALL_BRIEF,
+    });
+    const state: FakeState = { requests: [req], attempts: [], lockHeld: false, calls: [] };
+    const deps = await depsFor(state, {
+      worktreeRoot: root,
+      verifyStallMs: 0,
+      verifyCancelPollMs: 0,
+    });
+
+    const outcome = await runBatchOnce(deps);
+
+    // Both arms off ⇒ no timer at all, and a quiet build is nobody's business.
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+  }, 30_000);
+
   it("a cancelled member has left the batch: never a predecessor, never a land blocker", () => {
     // The regression F1 nearly shipped: `survivingPredecessor` and `tryLand`
     // walked the SAME hand-written `!== "failed" && !== "invalidated"` filter in
@@ -3967,6 +4121,8 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       steps: null,
       verify: null,
       abortedReason: null,
+      abortedDetail: null,
+      liveness: null,
     });
 
     const anchor = member(0, "landed");

@@ -807,6 +807,53 @@ describe("Projects API", () => {
       expect(res.status).toBe(400);
     });
 
+    // Campaign 2026-08-04 §P2: the stall FLOOR must sit under the timeout
+    // CEILING, or the ceiling always fires first and the operator has a knob
+    // that silently does nothing.
+    it("rejects verify_stall_sec >= verify_timeout_sec", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "x",
+              worktree_root: "/tmp",
+              verify_timeout_sec: 600,
+              verify_stall_sec: 600,
+            },
+          },
+        },
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("accepts verify_stall_sec 0 as the disable value", async () => {
+      const project = createTestProject(testApp.db);
+      const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+        body: {
+          settings: {
+            ...validBaseSettings,
+            integrator: {
+              enabled: true,
+              verify_command: "x",
+              worktree_root: "/tmp",
+              verify_timeout_sec: 600,
+              verify_stall_sec: 0,
+            },
+          },
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { settings: Record<string, never> } };
+      const i = (body.data.settings as unknown as { integrator: Record<string, unknown> })
+        .integrator;
+      expect(i.verify_stall_sec).toBe(0);
+      // ...and the P1 knob keeps its default alongside it.
+      expect(i.verify_cancel_poll_sec).toBe(30);
+    });
+
     it("rejects parallelism < 1", async () => {
       const project = createTestProject(testApp.db);
       const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {

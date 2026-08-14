@@ -21,7 +21,13 @@ import { pathToFileURL } from "node:url";
 import type { Logger } from "./logger.js";
 import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
-import type { CacheMode, MergeRequestView, VerifyStep, VerifyStepResult } from "@pm/shared";
+import type {
+  CacheMode,
+  MergeRejectCategory,
+  MergeRequestView,
+  VerifyStep,
+  VerifyStepResult,
+} from "@pm/shared";
 import { type PmClient } from "./pm-client.js";
 import { categorize, classifyVerifyFailure, failureExcerpt } from "./categorize.js";
 import { runPipeline, toVerifyStepResults } from "./verify-pipeline.js";
@@ -150,7 +156,20 @@ export interface Member {
    * operator can tell "the code failed" from "we stopped caring about this
    * build" — the two look identical in a bare exit code. P2 adds its own value.
    */
-  abortedReason: "request_cancelled" | null;
+  abortedReason: "request_cancelled" | "output_stall" | null;
+  /**
+   * Campaign 2026-08-04 §P2: the human sentence for `abortedReason`, composed
+   * where the EVIDENCE lives (the watcher knows the threshold and how long the
+   * build was silent; the reject path does not). Null when nothing aborted.
+   */
+  abortedDetail: string | null;
+  /**
+   * Campaign 2026-08-04 §P2: the output-liveness box handed to every step of
+   * this member's verify pipeline. `lastOutputAt` is stamped at spawn and on
+   * every stdout/stderr chunk, so the watcher can read progress without
+   * touching the child. Null until the member starts verifying.
+   */
+  liveness: { lastOutputAt: number } | null;
 }
 
 export interface Batch {
@@ -244,6 +263,12 @@ export interface BatchDeps {
    * `0` (or absent) disables the watcher: no timer is created at all.
    */
   verifyCancelPollMs?: number;
+  /**
+   * Campaign 2026-08-04 §P2: kill a verify silent for this many MILLISECONDS.
+   * `0`/absent disables the stall watchdog INDEPENDENTLY of the cancellation
+   * poll — an operator who turns off one must not silently lose the other.
+   */
+  verifyStallMs?: number;
   /**
    * STEP 8 (design §10.2): max transient verify retries per member before a
    * transient failure is treated as real. Defaults to
@@ -835,6 +860,15 @@ export type MemberFailure =
       stdout: string;
       stderr: string;
       timedOut: boolean;
+      /**
+       * Campaign 2026-08-04 §P2: an EXPLICIT category/reason that overrides
+       * `categorize`'s inference. Needed because `categorize` maps any
+       * SIGTERM/SIGKILL to `verify_timeout` — so a stall-killed verify would be
+       * reported as "verify timed out", the exact confusion the stall watchdog
+       * exists to remove. Absent on every ordinary failure, which keeps the
+       * inference path byte-identical.
+       */
+      categoryOverride?: { category: MergeRejectCategory; reason: string };
     }
   | { kind: "conflict"; conflictingFiles: string[]; stderr: string }
   | { kind: "push_other"; reason: string; stderr: string }
@@ -920,13 +954,22 @@ export async function onMemberFailed(
   }
 
   if (failure.kind === "verify") {
-    const cat = categorize({
-      exitCode: failure.exitCode,
-      signal: failure.signal,
-      stdout: failure.stdout,
-      stderr: failure.stderr,
-      timedOut: failure.timedOut,
-    });
+    // §P2: an explicit override wins over inference. `categorize` reads a
+    // SIGTERM as `verify_timeout`, which is right for the ceiling and wrong for
+    // every other reason we might have killed the child ourselves.
+    const cat = failure.categoryOverride
+      ? {
+          category: failure.categoryOverride.category,
+          reason: failure.categoryOverride.reason,
+          failedFiles: [] as string[],
+        }
+      : categorize({
+          exitCode: failure.exitCode,
+          signal: failure.signal,
+          stdout: failure.stdout,
+          stderr: failure.stderr,
+          timedOut: failure.timedOut,
+        });
     const reason = cat.reason || summaryLine(failure.stderr || failure.stdout) || "verify failed";
     const excerpt = failureExcerpt(failure.stdout, failure.stderr, LOG_EXCERPT_CAP);
     if (attemptId) {
@@ -1202,9 +1245,23 @@ function startCancellationWatcher(
   ctx: BatchCtx,
 ): { stop: () => void } {
   const pollMs = deps.verifyCancelPollMs ?? 0;
-  if (pollMs <= 0) return { stop: (): void => {} };
+  const stallMs = deps.verifyStallMs ?? 0;
+  // Campaign 2026-08-04 §P2: the two arms are INDEPENDENTLY disableable, so the
+  // timer runs if EITHER is on. Turning off the cancellation poll must not
+  // silently take the stall watchdog with it.
+  //
+  // Cadence = the finest resolution any enabled arm needs. The stall arm needs
+  // only enough granularity to notice within a fraction of its own threshold
+  // (a 20-minute threshold checked every minute is plenty), and cheaply — the
+  // check is local arithmetic, not I/O.
+  const stallTickMs = stallMs > 0 ? Math.min(Math.max(Math.floor(stallMs / 20), 1000), 60_000) : 0;
+  const candidates = [pollMs, stallTickMs].filter((n) => n > 0);
+  if (candidates.length === 0) return { stop: (): void => {} };
+  const tickMs = Math.min(...candidates);
 
   let inTick = false;
+  // Epoch 0 ⇒ the first tick always runs a cancellation round.
+  let lastCancelPollAt = 0;
   const timer = setInterval(() => {
     // Skip rather than overlap: a slow PM must not queue up ticks.
     if (inTick) return;
@@ -1217,7 +1274,56 @@ function startCancellationWatcher(
         // would corrupt that land for no gain. `landMember`'s own PM calls
         // already handle a request that went terminal.
         const inFlight = batch.members.filter((m) => m.verify !== null && m.state === "verifying");
+
+        // Decided ONCE per tick, not per member: the cancellation arm runs on
+        // its own cadence, and every in-flight member must be polled in the
+        // same round (a per-member gate would let the first member consume the
+        // round and starve the rest).
+        const cancelRound = pollMs > 0 && Date.now() - lastCancelPollAt >= pollMs;
+        if (cancelRound) lastCancelPollAt = Date.now();
+
         for (const member of inFlight) {
+          // ── STALL ARM (§P2), evaluated BEFORE the PM read. The check is
+          //    local arithmetic that cannot fail or block; the read below is
+          //    I/O that can. A PM outage is exactly when a build is most likely
+          //    to be left stranded, so stall detection must not sit behind it.
+          // `abortedReason` already set ⇒ a previous tick fired the kill and the
+          // child has not finished dying yet. Firing again would log a second
+          // time and overwrite the silence figure with a larger, later one.
+          if (stallMs > 0 && member.liveness && member.abortedReason === null) {
+            const silentMs = Date.now() - member.liveness.lastOutputAt;
+            if (silentMs > stallMs) {
+              // NOTE the deliberate difference from the cancellation arm: state
+              // is NOT flipped here. A killed child resolves as
+              // `exitCode:null + signal`, which `classifyVerifyFailure` calls
+              // TRANSIENT — so letting the normal path run would RETRY a stalled
+              // build up to maxVerifyRetries (four stalls, not one). Instead the
+              // marker below tells `runVerifyTask` to treat this pass as a REAL
+              // failure, which keeps every terminal write on the proven path.
+              member.abortedReason = "output_stall";
+              member.abortedDetail =
+                `verify produced no output for ${Math.round(silentMs / 1000)}s ` +
+                `(threshold verify_stall_sec=${Math.round(stallMs / 1000)}s); killed. ` +
+                `If this build legitimately goes quiet for that long, raise verify_stall_sec.`;
+              deps.logger.warn(
+                {
+                  requestId: member.request.id,
+                  silentMs,
+                  stallMs,
+                  batchId: batch.batchId,
+                },
+                "killing in-flight verify: no output past the stall threshold",
+              );
+              member.verify?.kill();
+              continue;
+            }
+          }
+
+          // ── CANCELLATION ARM (§P1). Rate-limited to its OWN cadence: the
+          //    tick can be much faster than `pollMs` when the stall arm needs
+          //    finer resolution, and that must not multiply PM read load by
+          //    the ratio between the two. ──
+          if (!cancelRound) continue;
           let status: string;
           try {
             const view = await deps.pmClient.getMergeRequest(member.request.id);
@@ -1250,7 +1356,7 @@ function startCancellationWatcher(
         inTick = false;
       }
     })();
-  }, pollMs);
+  }, tickMs);
   timer.unref?.();
 
   return {
@@ -1952,6 +2058,8 @@ async function admitAndRebase(
     steps: null,
     verify: null,
     abortedReason: null,
+    abortedDetail: null,
+    liveness: null,
   };
   // STEP-6 CASCADE-RACE FIX: do NOT push the member into `batch.members` with an
   // empty `predecessorChain`. A predecessor's verify can fail (and run suffix
@@ -2281,6 +2389,11 @@ async function runVerifyTask(
       detail: { batchId: batch.batchId, speculativePosition: member.speculativePosition },
     });
 
+    // Campaign 2026-08-04 §P2: ONE liveness box for this member, shared by every
+    // step of every pass. Created here (not per pass) so a transient retry keeps
+    // the same box and the watcher never reads a null between iterations.
+    member.liveness = { lastOutputAt: Date.now() };
+
     // ── Verify + transient-retry loop (design §10). The loop runs INSIDE the
     //    single runVerifyTask (= member.verify.done), so the handle/controller —
     //    and thus `signal` — is stable across iterations. A transient failure
@@ -2355,6 +2468,9 @@ async function runVerifyTask(
         // Step 5). Stable across retries (built once above; same tree/config).
         cache: cacheCtx,
         logger: deps.logger,
+        // §P2: forwarded to every step's runVerify so any output from any
+        // concurrent step counts as this member being alive.
+        liveness: member.liveness ?? undefined,
       });
 
       // Campaign 2026-08-03 §P2: record the verify spans BEFORE the bail guard
@@ -2419,7 +2535,14 @@ async function runVerifyTask(
       // A real VerifyResult — the SAME shape the single-command path branched on
       // (the captured failing-step trigger, never an abort-casualty).
       const verify = pipeline.failingStep!.verify;
-      const disposition = classifyVerifyFailure(verify);
+      // Campaign 2026-08-04 §P2: a stall-killed verify resolves as
+      // `exitCode:null + signal`, which `classifyVerifyFailure` calls TRANSIENT
+      // — so without this the watchdog would retry a stalled build up to
+      // `maxVerifyRetries` times and turn one 20-minute stall into four. The
+      // watchdog's marker is a positive statement that this pass is over, so it
+      // outranks the signal heuristic.
+      const stalled = member.abortedReason === "output_stall";
+      const disposition = stalled ? "real" : classifyVerifyFailure(verify);
       if (disposition === "real" || member.retryCount >= maxVerifyRetries) {
         // Real failure, OR transient but the cap is reached → reject + suffix
         // invalidate (Step 6). The final failure is categorized normally for the
@@ -2435,6 +2558,17 @@ async function runVerifyTask(
             stdout: verify.stdout,
             stderr: verify.stderr,
             timedOut: verify.timedOut,
+            // §P2: the watchdog composed the sentence where the evidence lived
+            // — how long it was silent and what threshold it crossed — so the
+            // worker's merge_rejection says which knob to raise.
+            ...(stalled && member.abortedDetail
+              ? {
+                  categoryOverride: {
+                    category: "verify_stall" as MergeRejectCategory,
+                    reason: member.abortedDetail,
+                  },
+                }
+              : {}),
           },
           ctx,
         );

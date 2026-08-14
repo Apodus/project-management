@@ -117,6 +117,19 @@ export interface RunVerifyOptions {
    * that omit `signal` (e.g. loop.ts) are unaffected.
    */
   signal?: AbortSignal;
+  /**
+   * Campaign 2026-08-04 §P2: the output-liveness box. When supplied, `runVerify`
+   * stamps `lastOutputAt = Date.now()` on every stdout/stderr chunk (and once at
+   * spawn), so a watcher outside this call can ask "has this build produced
+   * anything lately?" — the only progress signal a verify emits for free.
+   *
+   * A caller-owned MUTABLE BOX rather than a callback: no closure-lifetime
+   * questions, readable from a timer without awaiting anything, and absent ⇒
+   * byte-identical to the pre-P2 spawn. One box is shared by every step of a
+   * member's pipeline, which is exactly the semantics wanted — a member is alive
+   * if ANY of its concurrent steps is still talking.
+   */
+  liveness?: { lastOutputAt: number };
 }
 
 export interface GitOps {
@@ -1234,13 +1247,24 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
         return current + (chunk.length > room ? chunk.slice(0, room) : chunk);
       };
 
+      // Campaign 2026-08-04 §P2. Stamped at spawn so a build that never prints
+      // ANYTHING is measured from when it started, not from epoch 0 (which
+      // would read as "silent since 1970" and kill it on the first tick).
+      const liveness = runOpts.liveness;
+      if (liveness) liveness.lastOutputAt = Date.now();
+      const markAlive = (): void => {
+        if (liveness) liveness.lastOutputAt = Date.now();
+      };
+
       child.stdout?.on("data", (d: Buffer) => {
         const s = d.toString();
+        markAlive();
         logStream.write(s);
         stdoutBuf = appendCapped(stdoutBuf, s);
       });
       child.stderr?.on("data", (d: Buffer) => {
         const s = d.toString();
+        markAlive();
         logStream.write(s);
         stderrBuf = appendCapped(stderrBuf, s);
       });

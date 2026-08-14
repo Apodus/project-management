@@ -58,6 +58,8 @@ export interface IntegratorSettings {
   verify_timeout_sec?: number;
   /** Campaign 2026-08-04 §P1: in-flight cancellation poll cadence; 0 disables. */
   verify_cancel_poll_sec?: number;
+  /** Campaign 2026-08-04 §P2: output-silence kill threshold; 0 disables. */
+  verify_stall_sec?: number;
   worktree_root?: string;
   git_remote?: string;
   git_main_branch?: string;
@@ -114,6 +116,10 @@ export type RejectCategory =
   | "test_failed"
   | "lint_failed"
   | "verify_timeout"
+  // Campaign 2026-08-04 §P2. Kept in lockstep with MERGE_REJECT_CATEGORIES in
+  // @pm/shared — this union is a hand-maintained mirror, and the compiler only
+  // catches drift in the direction that narrows it.
+  | "verify_stall"
   | "policy"
   | "other"
   | "gitlink_unreachable"

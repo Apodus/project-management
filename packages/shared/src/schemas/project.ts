@@ -231,6 +231,23 @@ export const integratorSettingsSchema = z
     // timer, byte-identical to pre-P1). The poll is the correctness floor — SSE
     // is deliberately NOT load-bearing here.
     verify_cancel_poll_sec: z.number().int().min(0).default(30),
+    // Campaign 2026-08-04 §P2: kill a verify that has produced NO output for
+    // this long. A FLOOR under `verify_timeout_sec`'s ceiling — the 2026-08-04
+    // build succeeded at 11:37:33 and then sat parked with 0 CPU and 0 IO,
+    // where only a 2.5-hour ceiling would have ended it.
+    //
+    // SHIPS DISABLED (`0`), a deliberate deviation from the roadmap's "generous
+    // ~1200s default". 1200 was calibrated against game_one's 9000s
+    // verify_timeout_sec, but the SCHEMA default timeout is 600 — so a 1200s
+    // default is both unreachable (the ceiling always fires first) and, per the
+    // floor-under-ceiling rule below, invalid on a default project.
+    //
+    // Off is also the honest default for a watchdog that KILLS work on WEAK
+    // evidence (silence, not proof of death), and matches how everything else
+    // dangerous here ships — cache_enabled, resolver.enabled. An operator sets
+    // it against their own lane: ~1200 on a lane whose timeout is measured in
+    // hours. See the deployment guide.
+    verify_stall_sec: z.number().int().min(0).default(0),
     worktree_root: z.string().min(1).optional(),
     git_remote: z.string().min(1).default("origin"),
     git_main_branch: z.string().min(1).default("main"),
@@ -293,6 +310,17 @@ export const integratorSettingsSchema = z
         code: z.ZodIssueCode.custom,
         message: "verify_steps contains a dependency cycle.",
         path: ["verify_steps"],
+      });
+    }
+    // Campaign 2026-08-04 §P2: the stall FLOOR must sit under the timeout
+    // CEILING. Configured the other way round the floor is unreachable — the
+    // timeout always fires first — and the operator gets a knob that silently
+    // does nothing. `0` is the disable value, not a threshold.
+    if (v.verify_stall_sec !== 0 && v.verify_stall_sec >= v.verify_timeout_sec) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `verify_stall_sec (${v.verify_stall_sec}) must be less than verify_timeout_sec (${v.verify_timeout_sec}); use 0 to disable the stall watchdog.`,
+        path: ["verify_stall_sec"],
       });
     }
   })

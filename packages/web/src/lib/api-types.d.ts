@@ -15151,6 +15151,8 @@ export interface components {
           verify_timeout_sec: number;
           /** @default 30 */
           verify_cancel_poll_sec: number;
+          /** @default 0 */
+          verify_stall_sec: number;
           worktree_root?: string;
           /** @default origin */
           git_remote: string;
@@ -15270,6 +15272,8 @@ export interface components {
           verify_timeout_sec: number;
           /** @default 30 */
           verify_cancel_poll_sec: number;
+          /** @default 0 */
+          verify_stall_sec: number;
           worktree_root?: string;
           /** @default origin */
           git_remote: string;
@@ -16521,6 +16525,7 @@ export interface components {
         | "test_failed"
         | "lint_failed"
         | "verify_timeout"
+        | "verify_stall"
         | "policy"
         | "other"
         | "gitlink_unreachable"
@@ -16582,6 +16587,7 @@ export interface components {
         | "test_failed"
         | "lint_failed"
         | "verify_timeout"
+        | "verify_stall"
         | "policy"
         | "other"
         | "gitlink_unreachable"
@@ -16710,6 +16716,7 @@ export interface components {
             | "test_failed"
             | "lint_failed"
             | "verify_timeout"
+            | "verify_stall"
             | "policy"
             | "other"
             | "gitlink_unreachable"
@@ -16735,6 +16742,7 @@ export interface components {
         | "test_failed"
         | "lint_failed"
         | "verify_timeout"
+        | "verify_stall"
         | "policy"
         | "other"
         | "gitlink_unreachable"

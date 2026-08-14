@@ -296,6 +296,11 @@
                     "minimum": 0,
                     "default": 30
                   },
+                  "verify_stall_sec": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0
+                  },
                   "worktree_root": {
                     "type": "string",
                     "minLength": 1
@@ -669,6 +674,11 @@
                     "type": "integer",
                     "minimum": 0,
                     "default": 30
+                  },
+                  "verify_stall_sec": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0
                   },
                   "worktree_root": {
                     "type": "string",
@@ -5548,6 +5558,7 @@
               "test_failed",
               "lint_failed",
               "verify_timeout",
+              "verify_stall",
               "policy",
               "other",
               "gitlink_unreachable",
@@ -5789,6 +5800,7 @@
               "test_failed",
               "lint_failed",
               "verify_timeout",
+              "verify_stall",
               "policy",
               "other",
               "gitlink_unreachable",
@@ -6222,6 +6234,7 @@
                   "test_failed",
                   "lint_failed",
                   "verify_timeout",
+                  "verify_stall",
                   "policy",
                   "other",
                   "gitlink_unreachable",
@@ -6296,6 +6309,7 @@
               "test_failed",
               "lint_failed",
               "verify_timeout",
+              "verify_stall",
               "policy",
               "other",
               "gitlink_unreachable",

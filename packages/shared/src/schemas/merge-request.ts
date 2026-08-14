@@ -48,6 +48,13 @@ export const MERGE_REJECT_CATEGORIES = [
   "test_failed",
   "lint_failed",
   "verify_timeout",
+  // Campaign 2026-08-04 §P2: the verify produced NO output for longer than
+  // `verify_stall_sec` and was killed. Deliberately NOT folded into
+  // `verify_timeout`: a build that ran out of clock and a build that stopped
+  // talking are different failures with different operator responses, and
+  // `categorize` maps a SIGTERM/SIGKILL to `verify_timeout`, so a stall would
+  // otherwise be indistinguishable from the ceiling it exists to pre-empt.
+  "verify_stall",
   "policy",
   "other",
   "gitlink_unreachable",

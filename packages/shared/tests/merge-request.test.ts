@@ -60,6 +60,11 @@ describe("MERGE_REJECT_CATEGORIES", () => {
       "test_failed",
       "lint_failed",
       "verify_timeout",
+      // Campaign 2026-08-04 §P2: a verify killed for producing no output. Sits
+      // beside verify_timeout because they are neighbours in meaning and must
+      // stay distinguishable — categorize() maps a SIGTERM to verify_timeout,
+      // so a stall would otherwise be reported as the ceiling it pre-empts.
+      "verify_stall",
       "policy",
       "other",
       "gitlink_unreachable",
