@@ -1,0 +1,12 @@
+{
+  "roadmap": "roadmaps/roadmap-20260714-integrator-liveness-legibility.md",
+  "branch": "campaign-integrator-liveness-legibility",
+  "worktree": "D:/code/pm-wt-liveness",
+  "proposal_id": "01KXFVW6XMQB5DH1X8QX834GTK",
+  "completed_steps": ["P0", "P1", "P2", "P3"],
+  "current_step": "P4",
+  "commits": {"P0": "a255050", "P1": "589c33c", "P2": "ffc5a6e", "P3": "9a00609"},
+  "open_issues": [],
+  "notes": "P3 MCP surfacing done: renderIntegratorLiveness helper, both clients envelope-preserving, pm_get_integrator_health tool, descriptions cross-ref, web api-types +13 (trimmed 16k pre-existing reorder). MCP 231 green. P4: end-to-end seal (assess vs P1-P3 coverage, add only genuine e2e) + docs (integrator-deployment.md agent-legibility + agent guidance). P5 close-out.",
+  "dag_drift": []
+}
