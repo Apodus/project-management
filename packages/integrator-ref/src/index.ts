@@ -429,6 +429,9 @@ async function main(): Promise<void> {
       resource: cfg.resource,
       defaultVerifyCommand: cfg.verifyCommand,
       verifyTimeoutSec: cfg.verifyTimeoutSec,
+      // Campaign 2026-08-04 §P1: seconds → milliseconds, converted exactly once
+      // here. `0` disables the cancellation watcher entirely.
+      verifyCancelPollMs: cfg.verifyCancelPollSec * 1000,
       // Phase 7.5 Step 5: the verify_steps DAG (empty → synthetic single step).
       verifySteps: cfg.verifySteps,
       // Phase 7.5 Step 6: the verify-cache kill-switch + mode (default off → the

@@ -117,6 +117,10 @@ const integratorSettingsSchema = z
     enabled: z.boolean().default(false),
     verify_command: z.string().min(1).optional(),
     verify_timeout_sec: z.number().int().min(1).default(600),
+    // Campaign 2026-08-04 §P1 (mirrors the canonical @pm/shared schema): the
+    // in-flight cancellation poll. `0` disables. See the shared schema for why
+    // the poll — not SSE — is the correctness floor.
+    verify_cancel_poll_sec: z.number().int().min(0).default(30),
     worktree_root: z.string().min(1).optional(),
     git_remote: z.string().min(1).default("origin"),
     git_main_branch: z.string().min(1).default("main"),

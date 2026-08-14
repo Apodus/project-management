@@ -29,6 +29,14 @@ export interface IntegratorConfig {
   cacheEnabled: boolean;
   cacheMode: CacheMode;
   verifyTimeoutSec: number;
+  /**
+   * Campaign 2026-08-04 §P1: how often an in-flight member re-reads its own
+   * merge-request status, in SECONDS (the operator-facing unit). `0` disables
+   * the cancellation watcher entirely. Converted to milliseconds exactly once,
+   * at the BatchDeps boundary in index.ts, because the batch layer's cadence is
+   * a test seam and the integrator suite runs on real timers.
+   */
+  verifyCancelPollSec: number;
   worktreeRoot: string;
   worktreeName: string;
   gitRemote: string;
@@ -148,6 +156,9 @@ export async function loadConfig(
     cacheEnabled: ic.cache_enabled ?? false,
     cacheMode: ic.cache_mode ?? "off",
     verifyTimeoutSec: ic.verify_timeout_sec ?? 600,
+    // Mirror the schema default (project.ts): 30s. `0` is a MEANINGFUL value
+    // (disable), so `??` — never `||` — is what preserves it.
+    verifyCancelPollSec: ic.verify_cancel_poll_sec ?? 30,
     worktreeRoot: ic.worktree_root,
     worktreeName: ic.worktree_name ?? `${project.slug}-integrator`,
     gitRemote: ic.git_remote ?? "origin",

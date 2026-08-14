@@ -15149,6 +15149,8 @@ export interface components {
           verify_command?: string;
           /** @default 600 */
           verify_timeout_sec: number;
+          /** @default 30 */
+          verify_cancel_poll_sec: number;
           worktree_root?: string;
           /** @default origin */
           git_remote: string;
@@ -15266,6 +15268,8 @@ export interface components {
           verify_command?: string;
           /** @default 600 */
           verify_timeout_sec: number;
+          /** @default 30 */
+          verify_cancel_poll_sec: number;
           worktree_root?: string;
           /** @default origin */
           git_remote: string;

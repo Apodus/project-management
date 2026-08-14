@@ -224,6 +224,13 @@ export const integratorSettingsSchema = z
     enabled: z.boolean().default(false),
     verify_command: z.string().min(1).optional(),
     verify_timeout_sec: z.number().int().min(1).default(600),
+    // Campaign 2026-08-04 §P1: how often an in-flight member re-reads its OWN
+    // merge-request status so a verify whose request already went terminal
+    // (cancelled / abandoned / re-queued) is killed in ~one interval instead of
+    // burning to `verify_timeout_sec`. `0` disables the watcher entirely (no
+    // timer, byte-identical to pre-P1). The poll is the correctness floor — SSE
+    // is deliberately NOT load-bearing here.
+    verify_cancel_poll_sec: z.number().int().min(0).default(30),
     worktree_root: z.string().min(1).optional(),
     git_remote: z.string().min(1).default("origin"),
     git_main_branch: z.string().min(1).default("main"),

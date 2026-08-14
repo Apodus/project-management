@@ -24,9 +24,13 @@ import { createLogger } from "../src/logger.js";
 import {
   runBatchOnce,
   runGroupLaneOnce,
+  survivingPredecessor,
+  hasLeftBatch,
+  type Batch,
   type BatchDeps,
   type BatchEvent,
   type GroupLaneDeps,
+  type Member,
   type RunBatchLoopDeps,
 } from "../src/batch.js";
 import { reclaimStrandedRequests } from "../src/recovery.js";
@@ -134,6 +138,19 @@ interface FakeState {
   phasePosts?: PhasePost[];
   /** How the fake postMergePhases behaves — the four ways an ingest can misbehave. */
   phaseIngest?: "ok" | "reject" | "throw" | "never" | "absent";
+  // ── Campaign 2026-08-04 §P1: the cancellation watcher's status reads. ──
+  /**
+   * Every `getMergeRequest` the watcher issued. Counting them is how the
+   * disabled-watcher and timer-teardown tests prove a NEGATIVE (no poll at all
+   * / no poll after the batch returned).
+   */
+  getRequestCalls?: string[];
+  /**
+   * Override what `getMergeRequest` does. Absent ⇒ it returns the LIVE fake
+   * request, so a test that flips `req.status` mid-verify exercises the real
+   * read path. Throw from here to exercise the fail-open branches.
+   */
+  getRequestImpl?: (id: string, callNumber: number) => MergeRequestView;
 }
 
 interface PhasePost {
@@ -211,6 +228,18 @@ function makeFakeClient(state: FakeState): PmClient {
       }
       state.lockHeld = false;
       return { ok: true, status: "released" };
+    },
+    // Campaign 2026-08-04 §P1. Deliberately NOT pushed onto `state.calls`: a
+    // read-side liveness poll is not a merge operation, and the exact call-order
+    // assertions in this file would break if it appeared there (same reasoning
+    // as `getTrainState`'s filter and `phasePosts`' separate array).
+    async getMergeRequest(id: string): Promise<MergeRequestView & { attempts: [] }> {
+      state.getRequestCalls?.push(id);
+      const n = state.getRequestCalls?.length ?? 0;
+      if (state.getRequestImpl) return { ...state.getRequestImpl(id, n), attempts: [] };
+      const r = find(id);
+      if (!r) throw new PmApiError(404, "NOT_FOUND", "not found");
+      return { ...r, attempts: [] };
     },
     async pickupMergeRequest(id: string, tags?: BatchTag): Promise<MergeRequestView> {
       const r = find(id);
@@ -568,6 +597,20 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     await author.commit("add spans feature");
     await author.push(["-u", "origin", "feature/spans"]);
     await author.checkout("main");
+
+    // Campaign 2026-08-04 §P1: one DEDICATED branch per cancellation-watcher
+    // test. Four of the five land, and a landed branch re-used by a later test
+    // trips the no-op/already-landed guard (same reasoning as `feature/drift`
+    // above), so they must not share.
+    for (const name of ["cancelabort", "cancelthrow", "cancel404", "cancellive", "canceloff"]) {
+      await author.checkout("main");
+      await author.checkoutLocalBranch(`feature/${name}`);
+      writeFileSync(path.join(authorClone, `${name}.txt`), `${name}\n`);
+      await author.add([`${name}.txt`]);
+      await author.commit(`add ${name} feature`);
+      await author.push(["-u", "origin", `feature/${name}`]);
+    }
+    await author.checkout("main");
   });
 
   afterAll(() => {
@@ -592,6 +635,8 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       verifyTimeoutSec?: number;
       defaultVerifyCommand?: string;
       heartbeatIntervalMs?: number;
+      /** Campaign 2026-08-04 §P1: cancellation-watcher cadence (ms). 0/absent ⇒ off. */
+      verifyCancelPollMs?: number;
       gitOpsFactory?: (p: string) => GitOps;
       onBatchEvent?: (event: BatchEvent) => void;
       verifySteps?: VerifyStep[];
@@ -681,6 +726,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       gitMainBranch: "main",
       newBatchId: () => "batch-test",
       heartbeatIntervalMs: opts.heartbeatIntervalMs,
+      verifyCancelPollMs: opts.verifyCancelPollMs,
       onBatchEvent: opts.onBatchEvent,
       verifySteps: opts.verifySteps,
       cacheEnabled: opts.cacheEnabled,
@@ -3707,4 +3753,238 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(deps.pool.leasedCount).toBe(0);
     expect(state.lockHeld).toBe(false);
   }, 20_000);
+
+  // ─── Campaign 2026-08-04 §P1: cancellation watcher ───────────────
+  //
+  // The 2026-08-04 incident: a worker cancelled its request at 11:30:08; the
+  // build it was waiting on did not even FINISH until 11:37:33, and nothing
+  // told the daemon. Every second after the cancel was spent on work nobody
+  // wanted, bounded only by a 2.5-hour `verify_timeout_sec`.
+  //
+  // A long verify + a 25ms poll is the whole fixture: if the abort works, the
+  // batch returns in about a second; if it does not, it returns in eight.
+
+  // ~8s of verify. Long enough that "did we cut it short?" is unambiguous.
+  const CANCEL_SLEEP = process.platform === "win32" ? "ping -n 9 127.0.0.1 > nul" : "sleep 8";
+  // ~2s of verify — long enough for several polls, short enough to land fast.
+  const CANCEL_SHORT = process.platform === "win32" ? "ping -n 3 127.0.0.1 > nul" : "sleep 2";
+
+  it("kills an in-flight verify once PM stops considering the request integrating", async () => {
+    const root = path.join(tmpRoot, "wt-cancel-abort");
+    const req = makeRequest({
+      id: "req-cancel-abort",
+      branch: "feature/cancelabort",
+      verifyCmd: CANCEL_SLEEP,
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      completeBodies: [],
+      getRequestCalls: [],
+      phasePosts: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, verifyCancelPollMs: 25 });
+
+    // The worker walks away mid-build, exactly as it did on 2026-08-04.
+    const flip = setTimeout(() => {
+      req.status = "abandoned";
+    }, 500);
+    const startedAt = Date.now();
+    const outcome = await runBatchOnce(deps);
+    clearTimeout(flip);
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(outcome.kind).toBe("drained");
+    // THE assertion: the lane did not sit through the remaining ~7.5 seconds of
+    // a build whose result nobody would ever read.
+    expect(elapsedMs).toBeLessThan(6000);
+
+    // Our attempt is closed so it cannot dangle as `running` forever...
+    expect(state.calls).toContain("completeAttempt:cancelled");
+    // ...but we did NOT reject (that would write a merge_rejection blaming the
+    // code for a human's decision) and did NOT reset-to-queued (that would
+    // resurrect work somebody deliberately cancelled).
+    expect(state.calls.some((c) => c.startsWith("reject:"))).toBe(false);
+    expect(state.calls).not.toContain("resetToQueued");
+    expect(req.status).toBe("abandoned");
+
+    // The slot came back immediately rather than at end-of-batch — on a
+    // parallelism:1 lane that difference IS the stall.
+    expect(deps.pool.leasedCount).toBe(0);
+    expect(state.lockHeld).toBe(false);
+
+    // Legibility: the burned time is still recorded (it is what the speculation
+    // COST), and it is labelled with why it stopped, so nobody reads a killed
+    // verify as "the code failed".
+    const verifyRows = (state.phasePosts ?? [])
+      .flatMap((p) => p.phases)
+      .filter((r) => r.phase === "verify");
+    expect(verifyRows.length).toBeGreaterThan(0);
+    expect(verifyRows.some((r) => r.detail?.abortedReason === "request_cancelled")).toBe(true);
+  }, 30_000);
+
+  it("fails OPEN: a throwing status read never kills a healthy verify", async () => {
+    const root = path.join(tmpRoot, "wt-cancel-throw");
+    const req = makeRequest({
+      id: "req-cancel-throw",
+      branch: "feature/cancelthrow",
+      verifyCmd: CANCEL_SHORT,
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      getRequestCalls: [],
+      getRequestImpl: () => {
+        throw new PmApiError(500, "INTERNAL", "PM is having a moment");
+      },
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, verifyCancelPollMs: 25 });
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    // It really did poll — and every read failed, and the build still landed.
+    expect((state.getRequestCalls ?? []).length).toBeGreaterThan(0);
+    expect(req.status).toBe("landed");
+    expect(state.calls).toContain("land");
+  }, 30_000);
+
+  it("fails OPEN on a 404: absence of the request is not evidence it is terminal", async () => {
+    const root = path.join(tmpRoot, "wt-cancel-404");
+    const req = makeRequest({
+      id: "req-cancel-404",
+      branch: "feature/cancel404",
+      verifyCmd: CANCEL_SHORT,
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      getRequestCalls: [],
+      getRequestImpl: () => {
+        throw new PmApiError(404, "NOT_FOUND", "not found");
+      },
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, verifyCancelPollMs: 25 });
+
+    const outcome = await runBatchOnce(deps);
+
+    // A 404 is ambiguous (routing blip vs. deletion); design lock 1 demands a
+    // positive TERMINAL STATUS before anything dies. Asserted separately from
+    // the 5xx case so a future refactor that starts killing on 404 fails here.
+    expect(outcome.kind).toBe("drained");
+    expect((state.getRequestCalls ?? []).length).toBeGreaterThan(0);
+    expect(req.status).toBe("landed");
+  }, 30_000);
+
+  it("leaves an integrating request completely alone", async () => {
+    const root = path.join(tmpRoot, "wt-cancel-live");
+    const req = makeRequest({
+      id: "req-cancel-live",
+      branch: "feature/cancellive",
+      verifyCmd: CANCEL_SHORT,
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      getRequestCalls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, verifyCancelPollMs: 25 });
+
+    const outcome = await runBatchOnce(deps);
+
+    // The happy path is undisturbed by the watcher: polled repeatedly, killed
+    // nothing, landed normally.
+    expect(outcome.kind).toBe("drained");
+    expect((state.getRequestCalls ?? []).length).toBeGreaterThan(0);
+    expect(req.status).toBe("landed");
+    expect(state.calls).not.toContain("completeAttempt:cancelled");
+  }, 30_000);
+
+  it("creates no timer at all when the poll is disabled", async () => {
+    const root = path.join(tmpRoot, "wt-cancel-off");
+    const req = makeRequest({
+      id: "req-cancel-off",
+      branch: "feature/canceloff",
+      verifyCmd: CANCEL_SHORT,
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      getRequestCalls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, verifyCancelPollMs: 0 });
+
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    // `0` is the kill-switch: not a fast poll, not a silent default — none.
+    expect(state.getRequestCalls).toEqual([]);
+    expect(req.status).toBe("landed");
+
+    // And nothing keeps polling after the batch is over. A leaked interval
+    // quietly hammering PM forever is precisely the class of bug this campaign
+    // exists to remove, so it is pinned rather than assumed.
+    const after = (state.getRequestCalls ?? []).length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect((state.getRequestCalls ?? []).length).toBe(after);
+  }, 30_000);
+
+  it("a cancelled member has left the batch: never a predecessor, never a land blocker", () => {
+    // The regression F1 nearly shipped: `survivingPredecessor` and `tryLand`
+    // walked the SAME hand-written `!== "failed" && !== "invalidated"` filter in
+    // two places, and `tryLand` breaks at the first non-`verified` member. One
+    // unrecognized terminal state parked in that list stops every successor
+    // from landing for the life of the batch — a wedge that reads as healthy.
+    // Both now call `hasLeftBatch`, so this pins the predicate itself.
+    expect(hasLeftBatch("cancelled")).toBe(true);
+    expect(hasLeftBatch("failed")).toBe(true);
+    expect(hasLeftBatch("invalidated")).toBe(true);
+    expect(hasLeftBatch("verifying")).toBe(false);
+    expect(hasLeftBatch("verified")).toBe(false);
+    expect(hasLeftBatch("landed")).toBe(false);
+
+    const member = (position: number, state: Member["state"]): Member => ({
+      request: makeRequest({ id: `req-${position}` }),
+      speculativePosition: position,
+      state,
+      worktree: null,
+      base: null,
+      rebasedTreeSha: null,
+      landedSha: null,
+      attemptId: null,
+      predecessorChain: [],
+      retryCount: 0,
+      steps: null,
+      verify: null,
+      abortedReason: null,
+    });
+
+    const anchor = member(0, "landed");
+    const cancelled = member(1, "cancelled");
+    const follower = member(2, "verifying");
+    const batch = {
+      batchId: "b",
+      projectId: "proj-1",
+      resource: "main",
+      members: [anchor, cancelled, follower],
+      lockHeld: true,
+      createdAt: nowIso(),
+      nextPosition: 3,
+    } satisfies Batch;
+
+    // The follower must chain onto the LANDED anchor, not onto the cancelled
+    // member — whose worktree has already been released, so chaining onto it
+    // would hit `computeSpeculativeBase`'s defensive no-worktree branch.
+    expect(survivingPredecessor(follower, batch)).toBe(anchor);
+  });
 });

@@ -56,6 +56,8 @@ export interface IntegratorSettings {
   enabled: boolean;
   verify_command?: string;
   verify_timeout_sec?: number;
+  /** Campaign 2026-08-04 §P1: in-flight cancellation poll cadence; 0 disables. */
+  verify_cancel_poll_sec?: number;
   worktree_root?: string;
   git_remote?: string;
   git_main_branch?: string;

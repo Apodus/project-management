@@ -291,6 +291,11 @@
                     "minimum": 1,
                     "default": 600
                   },
+                  "verify_cancel_poll_sec": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 30
+                  },
                   "worktree_root": {
                     "type": "string",
                     "minLength": 1
@@ -659,6 +664,11 @@
                     "type": "integer",
                     "minimum": 1,
                     "default": 600
+                  },
+                  "verify_cancel_poll_sec": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 30
                   },
                   "worktree_root": {
                     "type": "string",
