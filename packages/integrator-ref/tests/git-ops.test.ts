@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
@@ -407,6 +407,115 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
     // The result reflects a kill: non-zero exit or a kill signal.
     expect(result.exitCode !== 0 || result.signal !== null).toBe(true);
   }, 15_000);
+
+  // ── Campaign 2026-08-04 §P3: the grandchild-reap regression ──────
+  //
+  // The debt this pays off: an earlier note claimed the timeout killed only the
+  // shell and leaked grandchildren. That was WRONG — `killTree` has always
+  // taken the tree — but it was wrong by INSPECTION, and the 2026-08-04
+  // incident (an MSBuild that outlived its build) is exactly the shape of thing
+  // that makes such a claim plausible. So it is pinned by test instead.
+  //
+  // The tree here is real: runVerify spawns a shell (shell:true), the shell
+  // runs node, and that node spawns a second node. Only a tree kill reaps the
+  // last one; killing the shell alone leaves it running.
+
+  /** Writes a helper whose child records its own pid, then both wait forever. */
+  function writeTreeScript(dir: string, pidFile: string): string {
+    const script = path.join(dir, "spawn-grandchild.cjs");
+    writeFileSync(
+      script,
+      [
+        "const { spawn } = require('node:child_process');",
+        "const fs = require('node:fs');",
+        // The grandchild: record its pid, then idle far longer than the test.
+        "const gc = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {",
+        "  stdio: 'ignore',",
+        "});",
+        `fs.writeFileSync(${JSON.stringify(pidFile)}, String(gc.pid));`,
+        // The parent also idles, so the shell stays alive and the whole tree is
+        // still standing when the kill arrives.
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+      "utf8",
+    );
+    return script;
+  }
+
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  async function waitForDeath(pid: number, budgetMs: number): Promise<boolean> {
+    const deadline = Date.now() + budgetMs;
+    while (Date.now() < deadline) {
+      if (!alive(pid)) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return !alive(pid);
+  }
+
+  async function readPidWhenWritten(pidFile: string, budgetMs: number): Promise<number> {
+    const deadline = Date.now() + budgetMs;
+    while (Date.now() < deadline) {
+      try {
+        const raw = readFileSync(pidFile, "utf8").trim();
+        if (raw) return Number(raw);
+      } catch {
+        /* not written yet */
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error("grandchild never recorded its pid");
+  }
+
+  it("runVerify's ABORT path reaps a grandchild, not just the shell", async () => {
+    const ops = createGitOps(git);
+    const pidFile = path.join(tmpRoot, "gc-abort.pid");
+    const script = writeTreeScript(tmpRoot, pidFile);
+    const controller = new AbortController();
+
+    const run = ops.runVerify(`node "${script}"`, 60_000, {
+      cwd: workClone,
+      logPath: path.join(tmpRoot, "verify-gc-abort.log"),
+      signal: controller.signal,
+      killGracePeriodMs: 500,
+    });
+
+    const gcPid = await readPidWhenWritten(pidFile, 15_000);
+    expect(alive(gcPid)).toBe(true); // the tree really is standing
+
+    controller.abort();
+    await run;
+
+    // THE assertion: the process two levels down is gone. This is what makes
+    // "the daemon can end a doomed build" true rather than hopeful.
+    expect(await waitForDeath(gcPid, 10_000)).toBe(true);
+  }, 45_000);
+
+  it("runVerify's TIMEOUT path reaps a grandchild, not just the shell", async () => {
+    const ops = createGitOps(git);
+    const pidFile = path.join(tmpRoot, "gc-timeout.pid");
+    const script = writeTreeScript(tmpRoot, pidFile);
+
+    // A 2s timeout against a tree that would otherwise idle forever.
+    const run = ops.runVerify(`node "${script}"`, 2_000, {
+      cwd: workClone,
+      logPath: path.join(tmpRoot, "verify-gc-timeout.log"),
+      killGracePeriodMs: 500,
+    });
+
+    const gcPid = await readPidWhenWritten(pidFile, 15_000);
+    const result = await run;
+
+    expect(result.timedOut).toBe(true);
+    expect(await waitForDeath(gcPid, 10_000)).toBe(true);
+  }, 45_000);
 
   // Campaign 2026-08-04 §P2: the liveness box is the only progress signal a
   // verify emits for free, and the stall watchdog is only as honest as it is.

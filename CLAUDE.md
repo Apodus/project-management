@@ -228,6 +228,34 @@ verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   fabricated split. No new env vars; needs a PM-server redeploy (0038) AND a
   bundle redistribute + daemon restart before any observed data exists. Guide
   §14.16 / `roadmaps/roadmap-20260803-train-phase-timing-legibility.md`.
+- **Ending a doomed verify** — until 2026-08-04 only pass/fail/`verify_timeout_sec`
+  ended a verify, and on game_one that ceiling is 9000s of dead lane. That day a
+  worker cancelled a request 7 minutes before its build even FINISHED, and then
+  the build succeeded and its MSBuild never exited (12 threads, 0 CPU, 0 IO).
+  Two triggers now feed the kill seam that already existed (`killTree` always
+  reaped the tree — the failure was that no kill ever FIRED; now pinned by a
+  grandchild-reap test on both the abort and timeout paths).
+  **`verify_cancel_poll_sec`** (**default 30**, `0` disables, ON by default): each
+  in-flight member re-reads its OWN status; anything but `integrating` aborts
+  within ~one interval. **Fails OPEN** — network error / 5xx / 401 / 404 /
+  malformed body all leave the verify RUNNING; only a successful terminal read
+  may kill. A cancel is NOT a rejection: attempt closed + suffix invalidated +
+  slot freed, but never a `merge_rejection` (that blames code for a human's
+  decision) and never `resetToQueued` (that resurrects cancelled work) — a new
+  `cancelled` member state, and `hasLeftBatch` now replaces four hand-copied
+  "has this member left the batch" predicates (one missed copy would have
+  wedged `tryLand`'s land walk for the life of the batch).
+  **`verify_stall_sec`** (**default 0 = OFF**, opt in per lane): kills a verify
+  producing NO output for that long, categorized **`verify_stall`** (never
+  `verify_timeout` — `categorize` maps SIGTERM to the latter) and never retried
+  (a killed child reads TRANSIENT). Ships off because silence is WEAK evidence;
+  API 400s unless `stall < timeout`. **Verify contract (§14.8):** a verify
+  command MUST EXIT — MSBuild `nodeReuse` is the known offender; use
+  `/nodeReuse:false` or `MSBUILDDISABLENODEREUSE=1` on the daemon env. SSE stays
+  out (the subscriber reads event names only; poll is the correctness floor).
+  Both knobs REST-only; no migration, but needs a PM-server redeploy + a bundle
+  redistribute/daemon restart. Guide §14.17 + §14.8 /
+  `roadmaps/roadmap-20260804-verify-abort-and-stall-detection.md`.
 
 **Claim liveness (Campaigns C1–C3)** — `docs/design/phase-c*.md`.
 

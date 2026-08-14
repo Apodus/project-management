@@ -688,6 +688,39 @@ script keeps working for **single-repo** requests, where the slot is a plain clo
 real registered submodule. `git submodule foreach` skips the materialized path automatically —
 it only visits initialized submodules — so nested `git lfs pull` loops need no change.)
 
+**The other half of the contract: a verify command MUST EXIT.** The train's only
+signal that a verify is over is the process tree ending. A command that finishes
+its work and then lingers is indistinguishable from one still working, and holds
+the lane until `verify_timeout_sec` — on the game_one lane, 2.5 hours (§14.17 is
+the incident).
+
+The known offender is **MSBuild node reuse**. MSBuild defaults to
+`nodeReuse:true`, which leaves worker nodes parked after the build so the next
+build can reuse them; on 2026-08-04 a build that had written its exe, its 999 MB
+pdb and its final linker tlogs sat with 12 threads parked at 0 CPU and never
+exited. Node reuse also has near-zero upside here — the train verifies in a
+**fresh isolated worktree every time**, so there are no warm nodes worth keeping
+— while parked nodes can hold file handles in a worktree the next attempt wants
+to reset.
+
+Two ways to turn it off, both owned by the verify command's repo:
+
+```bat
+REM in the build invocation
+msbuild /nodeReuse:false ...
+```
+
+```sh
+# or, without touching the script at all: set it on the DAEMON's environment
+# and every msbuild under verify inherits it (the integrator spawns verify with
+# its own env). An explicit /nodeReuse:true on the command line still wins.
+MSBUILDDISABLENODEREUSE=1
+```
+
+Generally: if your verify spawns background workers, daemons, or file watchers,
+it must reap them before exiting. `verify_stall_sec` (§14.17) is a backstop for
+the cases you miss — not a substitute for a command that ends.
+
 **Overlay hygiene (automatic):** the overlay is **invisible to git** — content at a committed
 `160000` gitlink path is skipped by `git status`, `git clean -fdx`, and `git reset --hard` — so
 the integrator removes it explicitly rather than relying on the per-attempt clean: materialize
@@ -1377,6 +1410,92 @@ until rows exist.
 5. **Optional, game_one-owned:** split `pm-verify.bat` into `verify_steps`
    (§16.1) to unlock the intra-verify breakdown. Nothing on the PM side needs to
    change.
+
+### 14.17 Ending a verify that can no longer produce a useful result
+
+Until 2026-08-04 exactly three things ended a verify: it passed, it failed, or it
+hit `verify_timeout_sec`. On the game_one lane that ceiling is **9000s (2.5
+hours)**, and with `parallelism: 1` that is 2.5 hours of a dead lane.
+
+**The incident.** Two independent faults, either of which alone would have cost
+an hour:
+
+| local | what |
+| --- | --- |
+| 11:29:17 | daemon picks up `fix/dark-instruments-checkification`; verify starts at 11:29:26 |
+| **11:30:08** | the worker **cancels** the request — 7 minutes before the build even finishes |
+| 11:31:43 | msbuild starts |
+| **11:37:33** | **the build SUCCEEDS** — exe, a 999 MB pdb, map, final linker tlogs all written |
+| 11:37:33 → 12:30+ | MSBuild **never exits**. 12 threads parked, **0 CPU, 0 IO, no children**, nothing written anywhere |
+
+Nobody wanted the result after 11:30:08, and nothing would have ended the parked
+process before 12:00 the next morning but the ceiling.
+
+Note what was NOT wrong: the kill machinery. `killTree` (Windows `taskkill /T
+/F`, POSIX negative-pid group kill) has always reaped the whole process tree,
+and now proves it by test — `git-ops.test.ts` spawns a shell → node → node and
+asserts the **grandchild** is gone after both the abort and the timeout path.
+MSBuild survived because **no kill ever fired**, not because a kill failed.
+
+**Two triggers into that existing seam:**
+
+#### `verify_cancel_poll_sec` (default `30`, `0` disables) — on by default
+
+Each in-flight member re-reads its **own** merge-request status on this cadence.
+Anything other than `integrating` — `abandoned`, `rejected`, `landed`, or back to
+`queued` after a re-queue — ends the verify within about one interval.
+
+It **fails open**, and that is the design's spine: a network error, a 5xx, a 401,
+a 404, or a malformed body all leave the verify **running**. Only a successful
+read reporting a terminal status may kill. A PM blip must never kill a healthy
+build, so absence of evidence is never evidence.
+
+A cancel is **not** a rejection. The daemon closes its open attempt, invalidates
+the dependent suffix and frees the worktree slot, but it does **not** write a
+`merge_rejection` (that would blame the code for a human's decision) and does
+**not** reset the request to `queued` (that would resurrect work somebody
+deliberately cancelled). In the Discord feed and the request timeline it reads as
+a cancellation, not a failure.
+
+SSE is deliberately **not** used for this. The subscriber parses only event
+names, never the `data:` payload, so per-member abort would mean teaching it to
+parse and route request ids — a new failure surface whose entire benefit is
+shaving <1 poll interval off a ~52-minute saving. **Poll is the correctness
+floor** (§14.12's contract), and here it does all the work.
+
+#### `verify_stall_sec` (default `0` = **OFF**) — opt in per lane
+
+Kills a verify that has produced **no output at all** for this long, well below
+the timeout ceiling. `runVerify` stamps a liveness mark at spawn and on every
+stdout/stderr chunk; one mark is shared by all steps of a member's pipeline, so a
+member counts as alive while **any** of its concurrent steps is talking.
+
+**It ships OFF, and you should think before turning it on.** Output silence is
+*weak* evidence — linking a 999 MB pdb writes nothing for minutes — and killing
+healthy builds would be worse than the disease. The roadmap proposed a 1200s
+default; that number was calibrated against game_one's 9000s timeout, but the
+schema default `verify_timeout_sec` is 600, which would make a 1200s floor both
+unreachable and invalid. So it is per-lane and explicit:
+
+- **Set it to a small fraction of your ceiling**, generous against your quietest
+  legitimate phase. For a lane whose verify runs 6–15 minutes with a 9000s
+  ceiling, ~1200s (20 min) is the intended shape.
+- **`verify_stall_sec` must be less than `verify_timeout_sec`** — the API 400s
+  otherwise, because a floor above the ceiling can never fire. `0` disables.
+- A stall reject carries its own category, **`verify_stall`** (never
+  `verify_timeout` — they are different failures with different responses), and a
+  reason naming how long it was silent, the threshold it crossed, and that the
+  fix may simply be to raise the threshold.
+- A stalled verify is **not retried**. A killed child looks transient to the
+  retry classifier, so without this a single 20-minute stall would have become
+  four.
+
+Both knobs are REST-only (`PATCH /api/v1/projects/{id}` → `settings.integrator`),
+like `verify_steps` / `cache_*` / `resolver`. The admin Integrator page preserves
+them opaquely on save, so editing settings in the UI will not clobber them.
+
+**Neither knob needs a migration.** A PM-server redeploy picks up the schema; the
+daemon needs a rebundle + restart before either trigger exists.
 
 ---
 
