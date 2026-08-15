@@ -55,6 +55,9 @@ export type GroupAssemblyReason =
  * a reason that no longer exists. Both are compile errors here.
  */
 type AssertMutuallyAssignable<A extends B, B extends C, C = A> = true;
+// The DECLARATION is the test: instantiating it is what type-checks the mirror,
+// so it is "unused" by construction and must not be deleted to please a linter.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 type _AssemblyReasonMirrorIsExact = AssertMutuallyAssignable<
   AssembledGroupErr["reason"],
   GroupAssemblyReason
