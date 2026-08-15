@@ -256,6 +256,32 @@ verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   Both knobs REST-only; no migration, but needs a PM-server redeploy + a bundle
   redistribute/daemon restart. Guide §14.17 + §14.8 /
   `roadmaps/roadmap-20260804-verify-abort-and-stall-detection.md`.
+- **Group-path parity** — two capabilities stopped at the cross-repo boundary,
+  and game_one is a cross-repo lane. (1) The kill seam: `group-integration.ts`
+  passed `signal: undefined` to both pipelines, so NEITHER trigger above reached
+  a grouped merge. The group lane is now a second CALLER of that machinery
+  (`isTerminalForUs`/`watcherTickMs` exported, not copied); policy differs only
+  in that **a group is an ATOM** — one controller, one liveness box, a kill takes
+  both repos. PLACEMENT IS LOAD-BEARING: the watcher runs only around the verify
+  await, because members are `queued` during assembly and `queued` reads as
+  terminal after pickup — started earlier it would kill every group (pinned by
+  test). A cancelled group rejects as `other` (it must leave `integrating` or the
+  lane wedges, and the sibling is owed the news), a stalled one as `verify_stall`.
+  (2) Resolver reach: `maybeOpenResolution` had TWO call sites, both single-repo
+  `failure.kind === "conflict"`, and ZERO in the group path — the usual reason
+  "auto-resolve never activates" (the other being `resolver.enabled`, **default
+  false**). `resolution-eligibility.ts` now decides per assembly reason
+  (`inner_conflict`/`outer_conflict`/`gitlink_diverged` YES;
+  `gitlink_unreachable` NO — the commit was never pushed, no agent can
+  materialize absent objects; `gitlink_mismatch` NO — a train bug, resolving it
+  destroys evidence), pinned to `AssembledGroupErr` in BOTH directions plus an
+  exhaustiveness guard, and its `why` strings are what the reject now tells the
+  author. Opening a resolution also posts a **`merge_resolution`** comment ("do
+  not start a manual fix; a linked MR is coming") — its own comment type, since
+  it says the opposite of a `merge_rejection`. **NOT built: the cross-repo
+  resolver executor** (resolver pool is single-repo; `merge_resolutions` is
+  single-origin). Guide §14.17/§14.18 /
+  `roadmaps/roadmap-20260815-group-path-parity.md`.
 
 **Claim liveness (Campaigns C1–C3)** — `docs/design/phase-c*.md`.
 
