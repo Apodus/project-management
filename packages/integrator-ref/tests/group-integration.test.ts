@@ -29,6 +29,10 @@ import {
   type GroupIntegrationDeps,
   type RepoLane,
 } from "../src/group-integration.js";
+import {
+  assemblyResolutionEligibility,
+  type GroupAssemblyReason,
+} from "../src/resolution-eligibility.js";
 
 function hasGit(): boolean {
   try {
@@ -910,6 +914,20 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     expect(o).not.toBeNull();
     if (i) innerPool.release(i);
     if (o) outerPool.release(o);
+
+    // Campaign 2026-08-15 §S4: the reject must tell the author what to DO, not
+    // only what broke. A bare "group assembly failed (inner_conflict)" reads as
+    // a train fault; the eligibility taxonomy's sentence is what makes it
+    // actionable, and it is the same source of truth that decides whether a
+    // resolver is worth spinning.
+    // Asserted generically over WHICH reason the fixture produced (it can be
+    // inner_conflict or gitlink_mismatch depending on how far assembly gets):
+    // the property is that whatever failed, its guidance sentence reached the
+    // author — not that this fixture fails one particular way.
+    const rejectReason = state.rejectPayload?.reason ?? "";
+    const code = rejectReason.match(/^group assembly failed \((\w+)\)/)?.[1];
+    expect(code, rejectReason).toBeDefined();
+    expect(rejectReason).toContain(assemblyResolutionEligibility(code as GroupAssemblyReason).why);
   }, 30_000);
 
   // ── 6b. FIX 2: post-pickup verify-fail → integrating-reject ──

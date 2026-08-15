@@ -44,6 +44,7 @@ import { categorize, failureExcerpt } from "./categorize.js";
 // kill seam's helpers, never a second copy of them.
 import { isTerminalForUs, watcherTickMs } from "./batch.js";
 import { errMessage } from "./loop.js";
+import { assemblyResolutionEligibility } from "./resolution-eligibility.js";
 import { chaosCrashPoint } from "./chaos.js";
 import {
   runPipeline,
@@ -766,7 +767,17 @@ export async function runGroupIntegration(
           : asm.reason === "gitlink_unreachable"
             ? "gitlink_unreachable"
             : "other";
-    const reason = `group assembly failed (${asm.reason})${asm.detail ? `: ${asm.detail}` : ""}`;
+    // Campaign 2026-08-15 §S4: the assembly reason alone tells an author what
+    // BROKE but never what to DO, and "group assembly failed
+    // (gitlink_unreachable)" is the worst of them — it reads as a train fault
+    // when the actual fix is one push. The eligibility taxonomy already holds
+    // that sentence for every reason, written for the person reading it, so it
+    // is the same source of truth that decides whether a resolver is worth
+    // spinning and what to tell the author when one is not.
+    const verdict = assemblyResolutionEligibility(asm.reason);
+    const reason =
+      `group assembly failed (${asm.reason})${asm.detail ? `: ${asm.detail}` : ""}` +
+      ` — ${verdict.why}`;
     logger.warn(
       { groupId: group.id, reason },
       "group assembly failed pre-pickup; rejecting from forming",
