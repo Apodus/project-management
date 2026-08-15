@@ -78,6 +78,17 @@ export interface LandAssembledGroupDeps {
 export type GroupLandResult =
   | { kind: "landed"; innerLandedSha: string; outerLandedSha: string }
   | { kind: "rejected"; reason: string }
+  /**
+   * Campaign 2026-08-15 §R1: nothing is wrong with the change — main simply
+   * moved, or we lost a push race — so the group went back to `forming` and
+   * re-integrates against the new main on a later pass. NOT a rejection: no
+   * author is told anything, because there is nothing for an author to do.
+   *
+   * A distinct kind rather than a flag on `rejected` so the compiler finds
+   * every consumer that has to tell "this group is finished" from "this group
+   * is going around again".
+   */
+  | { kind: "requeued"; reason: string }
   | {
       kind: "orphaned";
       incidentId: string;
@@ -105,6 +116,55 @@ function categorizePushReason(
       return "other";
     default:
       return "other";
+  }
+}
+
+// ─── Re-queue bound (campaign 2026-08-15 §R1) ─────────────────────────
+
+/**
+ * How many integration passes a group gets before a "nothing is wrong with the
+ * change" failure stops being retried and becomes a rejection.
+ *
+ * The bound is the whole reason a re-queue is safe: without it, a group that
+ * can NEVER land (because the lane is busier than it can assemble) would cycle
+ * forever, burning the lane and telling nobody — strictly worse than the bounce
+ * it replaced. With it, the author eventually hears the truth, and the truth is
+ * about lane contention rather than about their code.
+ */
+const MAX_GROUP_INTEGRATION_ATTEMPTS = 4;
+
+/**
+ * How many integration passes this group has already had, derived from a real
+ * member's attempt rows (`startAttempt` runs once per member per pass), so no
+ * migration and no counter to keep in sync.
+ *
+ * Counts a REAL member: a lone-outer group's inner is synthetic, and while it
+ * does get attempts, deriving from the member an author actually submitted
+ * keeps the number meaning what its name says.
+ *
+ * Returns `null` when the count cannot be read. The caller treats that as
+ * "unknown, proceed with the re-queue": a PM read failure is transient and the
+ * drift that triggered it is a race, whereas rejecting on a failed read would
+ * reintroduce exactly the bounce this campaign removes. A group that is
+ * persistently unlandable will get a successful read on some later pass and be
+ * stopped then.
+ */
+async function priorIntegrationAttempts(
+  pmClient: PmClient,
+  logger: Logger,
+  members: { id: string; synthetic?: boolean }[],
+): Promise<number | null> {
+  const real = members.find((m) => m.synthetic !== true) ?? members[0];
+  if (!real) return null;
+  try {
+    const view = await pmClient.getMergeRequest(real.id);
+    return view.attempts?.length ?? null;
+  } catch (err) {
+    logger.warn(
+      { requestId: real.id, err: err instanceof Error ? err.message : String(err) },
+      "could not read attempt count for the re-queue bound; proceeding with the re-queue",
+    );
+    return null;
   }
 }
 
@@ -152,16 +212,41 @@ export async function landAssembledGroup(
     });
 
     if (liveInner !== Mi || liveOuter !== Mo) {
-      const reason = "live main drifted before land; re-verify next pass";
-      logger.info(
-        { groupId, liveInner, Mi, liveOuter, Mo },
-        "group land drift detected; rejecting cleanly (no push, no incident)",
-      );
-      // Cancel BOTH attempts; reject the whole group. Nothing landed.
+      // ── Campaign 2026-08-15 §R1. This used to REJECT, while writing the
+      //    reason "re-verify next pass" — the intent was always a retry. Main
+      //    moving under an assembled group says nothing about the change, and
+      //    the single-repo lane has always handled the identical event by
+      //    re-queueing (onMemberFailed kind "drift" → resetToQueued), silently
+      //    and with nobody notified. This makes the two lanes agree. ──
+      // Cancel BOTH attempts either way: neither produced a verdict.
       await pmClient.completeAttempt(innerAttemptId, { status: "cancelled" });
       await pmClient.completeAttempt(outerAttemptId, { status: "cancelled" });
-      await pmClient.rejectGroup(groupId, { reason, category: "other" });
-      return { kind: "rejected", reason };
+
+      const attempts = await priorIntegrationAttempts(pmClient, logger, [innerMember, outerMember]);
+      if (attempts !== null && attempts >= MAX_GROUP_INTEGRATION_ATTEMPTS) {
+        // The bound. Losing the race repeatedly is a real finding — about the
+        // LANE, not the change — and saying so is the point of stopping here
+        // rather than cycling forever.
+        const reason =
+          `live main drifted before land on ${attempts} consecutive integration attempts; ` +
+          `the lane is landing changes faster than this group can assemble and verify. ` +
+          `Re-submit when the lane is quieter, or split the change so it assembles faster.`;
+        logger.warn({ groupId, attempts }, "group re-queue bound reached; rejecting");
+        await pmClient.rejectGroup(groupId, { reason, category: "other" });
+        return { kind: "rejected", reason };
+      }
+
+      const reason = "live main drifted before land; re-integrating against the new main";
+      logger.info(
+        { groupId, liveInner, Mi, liveOuter, Mo, attempts },
+        "group land drift detected; re-queueing (no push, no incident, no author notified)",
+      );
+      // `resetGroup` puts the group back to `forming` and its members back to
+      // `queued`, atomically. Its own corruption fence refuses to reset a group
+      // carrying an OPEN orphan incident — that case is the §7 rollforward's,
+      // and this must not fight it.
+      await pmClient.resetGroup(groupId, { reason });
+      return { kind: "requeued", reason };
     }
 
     // NOTE — no-op / already-landed groups: a re-submitted group whose content
@@ -183,20 +268,65 @@ export async function landAssembledGroup(
     );
     if (!push1.ok) {
       // §6.3 failure point (a): inner push failed. NOTHING landed. Outer NEVER
-      // touched. Reject the whole group cleanly. No incident.
+      // touched. No incident.
       const cat = categorizePushReason(push1.reason);
       const failureReason = `inner push failed (${push1.reason})`;
+
+      // ── Campaign 2026-08-15 §R1: a `non_fast_forward` push IS a lost race —
+      //    someone landed between our drift check and our push — and is the
+      //    same non-verdict as the drift above. Every OTHER reason is retried
+      //    into a wall: `auth` will not fix itself, `network` and `other` are
+      //    unknown, and silently cycling a lane against a broken remote is the
+      //    failure mode a bounded retry exists to avoid. So only this one arm
+      //    re-queues. ──
+      const isRace = push1.reason === "non_fast_forward";
+      // Two calls rather than one conditional body: `completeAttempt`'s payload
+      // is a discriminated union, and a spread that makes `status` a union
+      // defeats the narrowing that keeps `failureCategory`/`failureReason`
+      // required exactly where they belong.
+      if (isRace) {
+        // A lost race produced no verdict, so the attempt is cancelled — not
+        // failed. Recording it as failed would put a `conflict` on the author's
+        // attempt history for something they did not do.
+        await pmClient.completeAttempt(innerAttemptId, { status: "cancelled" });
+      } else {
+        await pmClient.completeAttempt(innerAttemptId, {
+          status: "failed",
+          failureCategory: cat,
+          failureReason,
+        });
+      }
+      await pmClient.completeAttempt(outerAttemptId, { status: "cancelled" });
+
+      if (isRace) {
+        const attempts = await priorIntegrationAttempts(pmClient, logger, [
+          innerMember,
+          outerMember,
+        ]);
+        if (attempts === null || attempts < MAX_GROUP_INTEGRATION_ATTEMPTS) {
+          const reason =
+            "inner push lost a race (non-fast-forward); re-integrating against the new main";
+          logger.info(
+            { groupId, attempts },
+            "inner push non-fast-forward; re-queueing (nothing landed, no author notified)",
+          );
+          await pmClient.resetGroup(groupId, { reason });
+          return { kind: "requeued", reason };
+        }
+        const reason =
+          `inner push lost a race on ${attempts} consecutive integration attempts; ` +
+          `the lane is landing changes faster than this group can assemble and verify. ` +
+          `Re-submit when the lane is quieter, or split the change so it assembles faster.`;
+        logger.warn({ groupId, attempts }, "group re-queue bound reached on push race; rejecting");
+        await pmClient.rejectGroup(groupId, { reason, category: "other" });
+        return { kind: "rejected", reason };
+      }
+
       logger.warn(
         { groupId, reason: push1.reason },
         "inner push failed; rejecting group (outer never touched)",
       );
-      await pmClient.completeAttempt(innerAttemptId, {
-        status: "failed",
-        failureCategory: cat,
-        failureReason,
-      });
-      await pmClient.completeAttempt(outerAttemptId, { status: "cancelled" });
-      const reason = "inner push failed; nothing landed";
+      const reason = `inner push failed (${push1.reason}); nothing landed`;
       await pmClient.rejectGroup(groupId, { reason, category: "other" });
       return { kind: "rejected", reason };
     }

@@ -65,6 +65,27 @@ export interface ResolutionJob {
   baseSha: string;
   ref: string;
   resource: string;
+  /**
+   * Campaign 2026-08-15 §R4: which repo this conflict lives in, when the origin
+   * was a member of a cross-repo GROUP. Absent ⇒ the single-repo path,
+   * byte-identical to 7.6.
+   *
+   * Only `"inner"` is executed today. The eligibility taxonomy also rates
+   * `outer_conflict` and `gitlink_diverged` worth resolving, but the resolver's
+   * completion criterion is `hasRemainingMarkers()` — a marker reconciliation,
+   * which is what an inner conflict IS and what a gitlink rebase is NOT. The
+   * hook opens only what this can finish.
+   */
+  repoRole?: "inner" | "outer";
+  /**
+   * §R4: the group the origin belonged to. Present ⇒ the resolved change must
+   * come back as a GROUP (see `submitInnerOnlyGroup`), not a lone request:
+   * resubmitting an inner change alone would land it without the outer gitlink
+   * bump that makes it reachable.
+   */
+  groupId?: string;
+  /** §R4: the origin member's task, carried onto the resubmitted member. */
+  taskId?: string | null;
 }
 
 /**

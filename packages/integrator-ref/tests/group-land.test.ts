@@ -20,7 +20,8 @@
  * (b) inner-push-fail — inner bare main NOT advanced, outer untouched, group
  * rejected, no incident; (c) outer-push-fail AFTER inner landed — THE ORPHAN:
  * inner bare main advanced, outer NOT advanced, the EXACT §6.5 call order +
- * incident; (d) drift — neither push attempted, group rejected, no incident.
+ * incident; (d) drift — neither push attempted, group RE-QUEUED (campaign
+ * 2026-08-15 §R1: main moving is not a verdict on the change), no incident.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
@@ -105,6 +106,12 @@ interface FakePm {
   orphaned?: { requestId: string; orphanedSha: string };
   /** Recorded per-request rejectMergeRequest (the outer member, §6.5e). */
   requestRejects: { requestId: string; category: string; reason: string }[];
+  /** §R1: recorded resetGroup payload (the re-queue). */
+  resetPayload?: { reason?: string };
+  /** §R1: force the derived attempt count, to drive the re-queue bound. */
+  priorAttempts?: number;
+  /** §R1: make the attempt-count read fail (the fail-open branch). */
+  getRequestThrows?: boolean;
   /** Per-attempt completion payloads, in order. */
   attemptCompletions: {
     attemptId: string;
@@ -142,6 +149,33 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
         }
       }
       return { ...state.group };
+    },
+    // Campaign 2026-08-15 §R1: the re-queue primitive (integrating → forming,
+    // members back to queued) and the attempt-count read behind its bound.
+    async resetGroup(_id: string, opts?: { reason?: string }): Promise<unknown> {
+      state.calls.push("resetGroup");
+      state.resetPayload = { reason: opts?.reason };
+      state.group.state = "forming";
+      for (const m of state.group.members) {
+        if (m.status === "integrating") m.status = "queued";
+      }
+      return { ...state.group };
+    },
+    async getMergeRequest(
+      id: string,
+    ): Promise<MergeRequestView & { attempts: MergeAttemptView[] }> {
+      if (state.getRequestThrows) throw new Error("PM is having a moment");
+      const m = state.group.members.find((x) => x.id === id);
+      if (!m) throw new Error("not found");
+      // The bound is derived from attempt rows; `priorAttempts` lets a test
+      // pretend this group has already been round the loop several times.
+      const attempts =
+        state.priorAttempts !== undefined
+          ? (Array.from({ length: state.priorAttempts }, (_, i) => ({
+              id: `hist-${i}`,
+            })) as MergeAttemptView[])
+          : state.attempts.filter((a) => a.requestId === id);
+      return { ...m, attempts };
     },
     async startAttempt(requestId: string, baseSha: string): Promise<MergeAttemptView> {
       seq += 1;
@@ -598,8 +632,14 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     const deps = depsFor(state, {
       // Assembly builds both GitOps from the INNER lane factory → fail push only
       // for the inner worktree path.
+      // Campaign 2026-08-15 §R1: induced with `auth` rather than
+      // `non_fast_forward`. This test's subject is ATOMICITY — inner main not
+      // advanced, outer untouched, no incident — which is unchanged; but a
+      // non-fast-forward push is now a lost RACE that re-queues, so inducing it
+      // here would be asserting the disposition this campaign deliberately
+      // changed. The race variant has its own §R1 test below.
       innerLane: innerLane({
-        gitOps: failingPushGitOps((p) => createGitOps(simpleGit(p)), "non_fast_forward", "inner"),
+        gitOps: failingPushGitOps((p) => createGitOps(simpleGit(p)), "auth", "inner"),
       }),
     });
     const integ = await runGroupIntegration(
@@ -738,7 +778,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
   }, 30_000);
 
   // ── (d) drift precondition ──
-  it("drift: live inner main moved between assembly and land → NEITHER push attempted, group rejected, NO incident, worktrees released", async () => {
+  it("drift: live inner main moved between assembly and land → NEITHER push attempted, group RE-QUEUED (not rejected), NO incident, worktrees released", async () => {
     const state = makeGroupState();
     // Wrap the inner lane's gitOps so resolveRef of remote main returns a SHA
     // that differs from baseInnerSha (Mi) — simulating drift after assembly.
@@ -783,8 +823,12 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
       { pmClient: deps.pmClient, logger, gitRemote: GIT_REMOTE, gitMainBranch: GIT_MAIN },
     );
 
-    expect(result.kind).toBe("rejected");
-    if (result.kind === "rejected") {
+    // Campaign 2026-08-15 §R1: this used to REJECT — while writing the reason
+    // "re-verify next pass". Main moving under an assembled group says nothing
+    // about the change, and the single-repo lane has always re-queued the
+    // identical event silently. THE assertion of this campaign.
+    expect(result.kind).toBe("requeued");
+    if (result.kind === "requeued") {
       expect(result.reason).toMatch(/drift/i);
     }
 
@@ -792,17 +836,174 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
     expect(await bareMainSha(innerBare)).toBe(innerBefore);
     expect(await bareMainSha(outerBare)).toBe(outerBefore);
 
-    // Both attempts cancelled; group rejected; NO incident.
+    // Both attempts cancelled (neither produced a verdict); the group went back
+    // to forming rather than being terminated; NO incident.
     const innerComp = state.attemptCompletions.find((c) => c.attemptId === integ.innerAttemptId);
     const outerComp = state.attemptCompletions.find((c) => c.attemptId === integ.outerAttemptId);
     expect(innerComp?.status).toBe("cancelled");
     expect(outerComp?.status).toBe("cancelled");
-    expect(state.calls).toContain("rejectGroup");
+    expect(state.calls).toContain("resetGroup");
+    // Nobody is told anything, because there is nothing for an author to do.
+    expect(state.calls).not.toContain("rejectGroup");
+    expect(state.group.state).toBe("forming");
     expect(state.calls).not.toContain("openIncident");
     expect(state.calls).not.toContain("landGroup");
 
     assertPoolsReacquirable();
   }, 30_000);
+
+  // ── Campaign 2026-08-15 §R1: the bound, and the push race ──────────
+
+  it("§R1: drift stops being retried once the group has burned its attempts", async () => {
+    const state = makeGroupState();
+    // Pretend this group has already been round the loop the maximum number of
+    // times. The bound is what makes a re-queue safe: without it a group that
+    // can never land cycles forever and tells nobody.
+    state.priorAttempts = 4;
+
+    const driftGitOps = (p: string): GitOps => {
+      const g = createGitOps(simpleGit(p));
+      return {
+        ...g,
+        async resolveRef(ref: string): Promise<string> {
+          if (ref === `${GIT_REMOTE}/${GIT_MAIN}`) return "f".repeat(40);
+          return g.resolveRef(ref);
+        },
+        async push(): Promise<PushResult> {
+          throw new Error("push must not be reached on drift");
+        },
+      };
+    };
+    const deps = depsFor(state, { innerLane: innerLane({ gitOps: driftGitOps }) });
+    const integ = await runGroupIntegration(
+      { id: "grp-land-r1-bound", members: state.group.members },
+      deps,
+    );
+    if (integ.kind !== "ready_to_land") throw new Error("not ready");
+
+    const result = await landAssembledGroup(
+      {
+        groupId: "grp-land-r1-bound",
+        projectId: "proj-1",
+        ready: integ,
+        innerRepoName: "rynx-inner",
+        outerRepoName: "app-outer",
+      },
+      { pmClient: deps.pmClient, logger, gitRemote: GIT_REMOTE, gitMainBranch: GIT_MAIN },
+    );
+
+    expect(result.kind).toBe("rejected");
+    expect(state.calls).toContain("rejectGroup");
+    expect(state.calls).not.toContain("resetGroup");
+    // And the rejection names the LANE, not the change — the author has not
+    // done anything wrong and must not be sent looking for a bug.
+    expect(state.rejectPayload?.reason).toMatch(/lane is landing changes faster/i);
+    assertPoolsReacquirable();
+  }, 30_000);
+
+  it("§R1: an unreadable attempt count still re-queues rather than bouncing", async () => {
+    const state = makeGroupState();
+    state.getRequestThrows = true;
+
+    const driftGitOps = (p: string): GitOps => {
+      const g = createGitOps(simpleGit(p));
+      return {
+        ...g,
+        async resolveRef(ref: string): Promise<string> {
+          if (ref === `${GIT_REMOTE}/${GIT_MAIN}`) return "f".repeat(40);
+          return g.resolveRef(ref);
+        },
+        async push(): Promise<PushResult> {
+          throw new Error("push must not be reached on drift");
+        },
+      };
+    };
+    const deps = depsFor(state, { innerLane: innerLane({ gitOps: driftGitOps }) });
+    const integ = await runGroupIntegration(
+      { id: "grp-land-r1-openread", members: state.group.members },
+      deps,
+    );
+    if (integ.kind !== "ready_to_land") throw new Error("not ready");
+
+    const result = await landAssembledGroup(
+      {
+        groupId: "grp-land-r1-openread",
+        projectId: "proj-1",
+        ready: integ,
+        innerRepoName: "rynx-inner",
+        outerRepoName: "app-outer",
+      },
+      { pmClient: deps.pmClient, logger, gitRemote: GIT_REMOTE, gitMainBranch: GIT_MAIN },
+    );
+
+    // A transient PM read failure must not reintroduce the bounce this campaign
+    // exists to remove. A persistently unlandable group gets a readable count on
+    // some later pass and is stopped then.
+    expect(result.kind).toBe("requeued");
+    expect(state.calls).toContain("resetGroup");
+    assertPoolsReacquirable();
+  }, 30_000);
+
+  it("§R1: an inner push that loses a race re-queues; other push failures still reject", async () => {
+    // (a) non_fast_forward — a lost race, not a verdict.
+    const race = makeGroupState();
+    const raceDeps = depsFor(race, {
+      innerLane: innerLane({
+        gitOps: failingPushGitOps((p) => createGitOps(simpleGit(p)), "non_fast_forward", "inner"),
+      }),
+    });
+    const raceInteg = await runGroupIntegration(
+      { id: "grp-land-r1-race", members: race.group.members },
+      raceDeps,
+    );
+    if (raceInteg.kind !== "ready_to_land") throw new Error("not ready");
+    const raceResult = await landAssembledGroup(
+      {
+        groupId: "grp-land-r1-race",
+        projectId: "proj-1",
+        ready: raceInteg,
+        innerRepoName: "rynx-inner",
+        outerRepoName: "app-outer",
+      },
+      { pmClient: raceDeps.pmClient, logger, gitRemote: GIT_REMOTE, gitMainBranch: GIT_MAIN },
+    );
+    expect(raceResult.kind).toBe("requeued");
+    expect(race.calls).toContain("resetGroup");
+    expect(race.calls).not.toContain("rejectGroup");
+    // The attempt is CANCELLED, not failed: recording a `conflict` failure would
+    // put a defect on the author's history for a race they did not run.
+    const innerComp = race.attemptCompletions.find((c) => c.attemptId === raceInteg.innerAttemptId);
+    expect(innerComp?.status).toBe("cancelled");
+    assertPoolsReacquirable();
+
+    // (b) auth — retrying this spins a lane against a wall forever, so it must
+    // still reject. This is the arm that keeps the re-queue honest.
+    const auth = makeGroupState();
+    const authDeps = depsFor(auth, {
+      innerLane: innerLane({
+        gitOps: failingPushGitOps((p) => createGitOps(simpleGit(p)), "auth", "inner"),
+      }),
+    });
+    const authInteg = await runGroupIntegration(
+      { id: "grp-land-r1-auth", members: auth.group.members },
+      authDeps,
+    );
+    if (authInteg.kind !== "ready_to_land") throw new Error("not ready");
+    const authResult = await landAssembledGroup(
+      {
+        groupId: "grp-land-r1-auth",
+        projectId: "proj-1",
+        ready: authInteg,
+        innerRepoName: "rynx-inner",
+        outerRepoName: "app-outer",
+      },
+      { pmClient: authDeps.pmClient, logger, gitRemote: GIT_REMOTE, gitMainBranch: GIT_MAIN },
+    );
+    expect(authResult.kind).toBe("rejected");
+    expect(auth.calls).toContain("rejectGroup");
+    expect(auth.calls).not.toContain("resetGroup");
+    assertPoolsReacquirable();
+  }, 60_000);
 
   // ── Campaign 2026-08-03 §P2 ────────────────────────────────────────
   it("P2: an ORPHANED land is legible in two rows — inner:push ok, outer:push not", async () => {

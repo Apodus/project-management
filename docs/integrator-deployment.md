@@ -1543,17 +1543,93 @@ default — a new assembly reason is a compile error until someone decides:
 Those sentences are not just documentation — they are the same strings the
 reject now carries, so an author is told what to do rather than only what broke.
 
-> **Not yet built: the cross-repo resolver EXECUTOR.** The taxonomy decides what
-> *should* be resolved; nothing yet resolves a group. Two structural blockers:
-> `createResolverPool` builds its worktrees from one repo URL, and
-> `merge_resolutions` has a single origin/resolved request while a group
-> resolution has two origins and must resubmit a group. Before building it,
-> **look at which reasons actually fire on your lane** (the train audit /
-> dashboard will tell you). If most of them are `outer_conflict` from
-> hand-minted gitlink-bump branches, the fix is free and already available:
-> submit inner-only groups with `synthesize_outer: true` (§14.10), which makes
-> that rejection class structurally impossible. Build the executor for the
-> reasons that survive that check.
+**The executor (2026-08-15).** `inner_conflict` is now actually resolved. Three
+things had to exist, and each is worth knowing about when it misbehaves:
+
+- **A second resolver pool, cloned from the INNER repo.** The resolver had one
+  pool built from `gitRepoUrl`, so materializing an inner conflict happened in a
+  clone of the wrong repo. Its worktrees are named `<worktree_name>-inner-resolver-<i>`
+  and are deliberately NOT shared with the verify lane — a resolver session can
+  run for an hour and would otherwise hold a slot the lane needs to land. If the
+  pool cannot be built the daemon logs and carries on: group conflicts simply
+  reject as they did before.
+- **Replay inputs on the failure.** `materializeConflict(base, ref)` needs a base
+  and a ref, and a failed assembly releases its worktrees at once — so the
+  assembly error now carries them.
+- **A group resubmit.** The resolved inner change comes back as an *inner-only
+  group* (`synthesizeOuter`), never as a lone request: a lone inner would land
+  without the outer gitlink bump that makes it reachable. Because the bump is
+  synthesized against live outer main, the resolution cannot re-create the
+  stale-bump `outer_conflict` class it was spun up to escape.
+
+**Only `inner_conflict` is executed**, and the reason is worth stating: the table
+above is a judgement about what *deserves* an agent, which is not the same as
+what one can *finish*. `gitlink_diverged` is rated worth resolving, but a bump
+rebase is not a marker reconciliation, and the session's completion criterion
+(`hasRemainingMarkers`) would declare it done while nothing was fixed. It stays
+eligible-but-unexecuted until it has a criterion of its own.
+
+**Still worth checking before you expect much from this**: which reasons actually
+fire on your lane. If most are `outer_conflict` from hand-minted gitlink-bump
+branches, the fix is free and already available — submit inner-only groups with
+`synthesize_outer: true` (§14.10), which makes that class structurally
+impossible.
+
+### 14.19 A merge that fails for no fault of the author
+
+Three outcomes used to end a cross-repo group that had nothing wrong with it.
+All three now behave the way the single-repo lane always has.
+
+**Main moved (drift before land).** The pre-land drift guard used to reject the
+group — while writing the reason *"live main drifted before land; re-verify next
+pass"*. The intent was always a retry. It now **re-queues**: the group returns to
+`forming` and re-integrates against the new main, and nobody is told anything,
+because there is nothing for an author to do. The single-repo lane has always
+done exactly this (`resetToQueued`).
+
+**A lost push race.** An inner push returning `non_fast_forward` is the
+definition of losing a race, and gets the same treatment. Its attempt is
+recorded **cancelled**, not failed — logging a `conflict` failure would put a
+defect on the author's history for a race they did not run. Every other push
+reason (`auth`, `network`, `other`) still rejects: retrying those spins a lane
+against a wall.
+
+**The bound.** A re-queue that can never succeed would cycle forever and tell
+nobody — strictly worse than the bounce it replaced. After **4 integration
+attempts** (derived from the member's attempt rows, so there is no counter to
+keep in sync and no migration) the group is rejected with a reason naming the
+LANE: *"the lane is landing changes faster than this group can assemble and
+verify."* That is a true finding about contention, and the author must not be
+sent hunting for a bug in their code. If the count cannot be read, the group
+re-queues anyway — a transient PM blip must not reintroduce the bounce.
+
+If you see that bound firing regularly, the answer is not to raise it: it means
+the lane is saturated, and the fix is smaller changes, fewer concurrent
+submissions, or a faster verify.
+
+### 14.20 Telling the author, in their session
+
+`settings.integrator.notify_author_on_reject` (**default `false`**). When on, a
+REJECTED merge request raises an escalation addressed to the submitting worker,
+so the **existing wake daemon** (§19) delivers the outcome into that agent's
+session instead of a human relaying it from Discord.
+
+- **Rejections only.** A re-queue (§14.19) is not the author's business, and a
+  land needs no action.
+- **The worker needs a keyed claim.** Delivery is by `PM_WORKER_KEY`; a
+  submitter without a keyed binding is skipped rather than given an escalation
+  nobody receives.
+- **It ships off on purpose.** It widens what the escalation channel carries, and
+  on a project running the **auto-responder** these escalations become responder
+  input. That may be exactly what you want — it is the auto-implement path — but
+  it should be a decision, not a surprise.
+- Every failure arm is a silent skip: a notification must never fail a reject.
+
+> **Implementation note worth keeping.** The escalation belongs to the WORKER and
+> the notice is authored by the train. That is not cosmetic: the daemon delivers
+> "messages not authored by the origin author", so authoring the escalation as
+> the integrator would make its own notice self-authored, match nothing, and wake
+> nobody — silently. A test pins it.
 
 ---
 

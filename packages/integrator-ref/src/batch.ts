@@ -345,7 +345,18 @@ export interface BatchDeps {
       conflictingFiles: string[];
       baseSha: string;
       ref: string;
-    }) => Promise<string>;
+      /**
+       * Campaign 2026-08-15 §R4: which repo the conflict lives in, when the
+       * origin was a member of a cross-repo group. Absent ⇒ the single-repo
+       * path. The handle returns NULL when it has no resolver pool for that
+       * repo — resolving an inner conflict in a clone of the outer repo would
+       * resolve nothing and burn a budget proving it, so refusing is the
+       * correct answer and the plain reject stands.
+       */
+      repoRole?: "inner" | "outer";
+      groupId?: string;
+      taskId?: string | null;
+    }) => Promise<string | null>;
   };
 }
 
@@ -380,6 +391,14 @@ export async function maybeOpenResolution(
      * We skip + log instead.
      */
     originResolvedFrom: string | null;
+    /**
+     * Campaign 2026-08-15 §R4: set when the origin was a member of a cross-repo
+     * GROUP. The job then runs in that repo's resolver pool and the resolved
+     * change is resubmitted as a group rather than a lone request.
+     */
+    repoRole?: "inner" | "outer";
+    groupId?: string;
+    taskId?: string | null;
   },
 ): Promise<void> {
   if (!deps.resolver?.enabled) return;
@@ -425,12 +444,21 @@ export async function maybeOpenResolution(
       conflictingFiles: args.conflictingFiles,
       baseSha: args.baseSha,
       ref: args.ref,
+      ...(args.repoRole ? { repoRole: args.repoRole } : {}),
+      ...(args.groupId ? { groupId: args.groupId } : {}),
+      ...(args.taskId !== undefined ? { taskId: args.taskId } : {}),
     });
+    if (resolutionId === null) {
+      // §R4: the handle has no pool for this repo role. Nothing was opened, so
+      // there is nothing to clean up — the origin's plain reject stands.
+      return;
+    }
     deps.logger.info(
       {
         resolutionId,
         originRequestId: args.originRequestId,
         conflictingFiles: args.conflictingFiles,
+        repoRole: args.repoRole,
       },
       "opened conflict resolution",
     );
@@ -2871,6 +2899,8 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
         // given merge happened to be cross-repo.
         verifyCancelPollMs: deps.verifyCancelPollMs,
         verifyStallMs: deps.verifyStallMs,
+        // Campaign 2026-08-15 §R5: the resolver seam reaches the group path.
+        resolver: deps.resolver,
         integratorId: groupLane.integratorId,
         innerLogsDir: groupLane.innerLogsDir,
         outerLogsDir: groupLane.outerLogsDir,
@@ -2943,6 +2973,11 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
     // plain reason-based release.
     if (landResult?.kind === "landed") {
       await releaseLock({ landedSha: landResult.outerLandedSha });
+    } else if (landResult?.kind === "requeued") {
+      // Campaign 2026-08-15 §R1: main did not move because we failed — it moved
+      // because the lane is busy. Naming that on the lock is what stops the
+      // next reader mistaking a re-queue for a stalled or empty pass.
+      await releaseLock({ reason: `group re-queued: ${landResult.reason}` });
     } else {
       await releaseLock({ reason: "group integration step complete" });
     }

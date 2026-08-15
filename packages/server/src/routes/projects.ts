@@ -124,6 +124,10 @@ const integratorSettingsSchema = z
     // Campaign 2026-08-04 §P2 (mirrors the canonical @pm/shared schema): the
     // output-stall floor under verify_timeout_sec's ceiling. `0` disables.
     verify_stall_sec: z.number().int().min(0).default(0),
+    // Campaign 2026-08-15 §R3 (mirrors the canonical @pm/shared schema): raise
+    // an escalation to the submitting worker on a REJECT so the wake daemon
+    // delivers it into their session. Ships OFF.
+    notify_author_on_reject: z.boolean().default(false),
     worktree_root: z.string().min(1).optional(),
     git_remote: z.string().min(1).default("origin"),
     git_main_branch: z.string().min(1).default("main"),

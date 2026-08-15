@@ -186,6 +186,8 @@ async function main(): Promise<void> {
   // a SEPARATE pool (size = resolver.maxConcurrent) whose worktrees carry a
   // distinct `-resolver-<i>` name so they never collide with verify-pool slots.
   let resolverPool: ReturnType<typeof createResolverPool> | undefined;
+  /** §R4: cloned from the INNER linked repo, for group-member conflicts. */
+  let innerResolverPool: ReturnType<typeof createResolverPool> | undefined;
   if (cfg.resolver.enabled) {
     resolverPool = createResolverPool({
       worktreeRoot: cfg.worktreeRoot,
@@ -237,6 +239,64 @@ async function main(): Promise<void> {
       { size: resolverPool.size, maxConcurrent: cfg.resolver.maxConcurrent },
       "Resolver pool ready (Phase 7.6)",
     );
+
+    // ── Campaign 2026-08-15 §R4: a SECOND resolver pool, cloned from the INNER
+    //    linked repo. Until now the resolver had one pool built from
+    //    `cfg.gitRepoUrl`, so a cross-repo lane could not resolve anything: an
+    //    inner conflict lives in the inner repo's history, and materializing it
+    //    in a clone of the outer repo resolves nothing.
+    //
+    //    A separate pool rather than a repo-aware one, because that is already
+    //    how the verify lane handles two repos (per-repo pools), and because the
+    //    slots must not be shared with the verify lane — a resolver session can
+    //    run for an hour and would otherwise hold a slot the lane needs to land.
+    //    The `-inner` name keeps its worktrees distinct from every other pool. ──
+    const innerRepo = cfg.linkedRepos.find((r) => r.role === "inner");
+    if (innerRepo) {
+      innerResolverPool = createResolverPool({
+        worktreeRoot: cfg.worktreeRoot,
+        worktreeName: `${cfg.worktreeName}-inner`,
+        gitRepoUrl: innerRepo.path,
+        gitRemote: cfg.gitRemote,
+        gitMainBranch: cfg.gitMainBranch,
+        cleanKeep: cfg.cleanKeep,
+        // The inner repo owns no managed gitlink of its own.
+        gitlinkPurgePaths: [],
+        maxConcurrent: cfg.resolver.maxConcurrent,
+        pmClient,
+        logger,
+        gitOps: makeGitOps,
+        verifySteps: cfg.verifySteps,
+        defaultVerifyCommand: cfg.verifyCommand,
+        runner: createClaudeResolverRunner(cfg),
+        timeBudgetSec: cfg.resolver.timeBudgetSec,
+        tokenBudget: cfg.resolver.tokenBudget,
+        prompt: cfg.resolver.prompt,
+        onOutcome: makeOnOutcome({
+          pmClient,
+          makeGitOps,
+          logger,
+          cfg: { projectId: cfg.projectId, gitRemote: cfg.gitRemote },
+        }),
+      });
+      try {
+        await innerResolverPool.gc();
+        await innerResolverPool.ensureAll();
+        logger.info(
+          { size: innerResolverPool.size, repo: innerRepo.name },
+          "Inner-repo resolver pool ready (campaign 2026-08-15 §R4)",
+        );
+      } catch (err) {
+        // NOT fatal, unlike the main pool: a cross-repo lane that cannot build
+        // inner resolver worktrees should still integrate and land. The seam
+        // simply stays inert and group conflicts keep rejecting as before.
+        logger.error(
+          { err: err instanceof Error ? err.message : String(err) },
+          "could not initialize the inner-repo resolver pool; group conflicts will reject rather than resolve",
+        );
+        innerResolverPool = undefined;
+      }
+    }
   }
 
   // ── Phase 7.3 group lane (Step 10) — only when linkedRepos are declared. ──
@@ -470,31 +530,53 @@ async function main(): Promise<void> {
       // pool; `maybeOpenResolution` wraps the call non-fatally. Absent ⇒ the
       // conflict path is byte-identical to 7.5.
       resolver: resolverPool
-        ? ((rp) => ({
+        ? ((rp, innerRp) => ({
             enabled: true as const,
             openAndEnqueue: async (args: {
               originRequestId: string;
               conflictingFiles: string[];
               baseSha: string;
               ref: string;
+              // Campaign 2026-08-15 §R4: set when the origin was a member of a
+              // cross-repo group. The job then runs in THAT repo's resolver
+              // worktrees and comes back as a group.
+              repoRole?: "inner" | "outer";
+              groupId?: string;
+              taskId?: string | null;
             }) => {
+              // A group job needs a clone of the repo the conflict is in. Only
+              // the inner pool exists (see `innerResolverPool`), so refuse
+              // rather than run an inner conflict against the wrong repo — a
+              // resolver pointed at the wrong tree would "resolve" nothing and
+              // burn its budget proving it.
+              const pool = args.repoRole === "inner" ? innerRp : args.repoRole ? undefined : rp;
+              if (!pool) {
+                logger.info(
+                  { originRequestId: args.originRequestId, repoRole: args.repoRole },
+                  "no resolver pool for this repo role; skipping resolution (the reject stands)",
+                );
+                return null;
+              }
               const resolution = await pmClient.openResolution(
                 cfg.projectId,
                 cfg.resource,
                 args.originRequestId,
                 args.conflictingFiles,
               );
-              rp.enqueue({
+              pool.enqueue({
                 resolutionId: resolution.id,
                 originRequestId: args.originRequestId,
                 conflictingFiles: args.conflictingFiles,
                 baseSha: args.baseSha,
                 ref: args.ref,
                 resource: cfg.resource,
+                ...(args.repoRole ? { repoRole: args.repoRole } : {}),
+                ...(args.groupId ? { groupId: args.groupId } : {}),
+                ...(args.taskId !== undefined ? { taskId: args.taskId } : {}),
               });
               return resolution.id;
             },
-          }))(resolverPool)
+          }))(resolverPool, innerResolverPool)
         : undefined,
       shouldContinue: () => !stopRequested,
       waitForWork: async (pollMs: number) => {

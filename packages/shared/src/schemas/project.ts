@@ -248,6 +248,17 @@ export const integratorSettingsSchema = z
     // it against their own lane: ~1200 on a lane whose timeout is measured in
     // hours. See the deployment guide.
     verify_stall_sec: z.number().int().min(0).default(0),
+    // Campaign 2026-08-15 §R3: when a merge request is REJECTED, raise an
+    // escalation addressed to the submitting worker so the existing wake daemon
+    // delivers the outcome into that agent's session — instead of a human
+    // reading Discord and pasting the news in.
+    //
+    // Ships OFF. It widens what the escalation channel carries, and on a project
+    // running the auto-responder those escalations become responder input, which
+    // is a decision an operator should make deliberately rather than inherit.
+    // Rejections only: a re-queue (§R1) is not the author's business, and a land
+    // needs no action.
+    notify_author_on_reject: z.boolean().default(false),
     worktree_root: z.string().min(1).optional(),
     git_remote: z.string().min(1).default("origin"),
     git_main_branch: z.string().min(1).default("main"),

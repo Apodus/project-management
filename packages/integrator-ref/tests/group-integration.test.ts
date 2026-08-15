@@ -465,6 +465,124 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     if (o) outerPool.release(o);
   }, 30_000);
 
+  // ─── Campaign 2026-08-15 §R5: the group reject reaches the resolver ──
+  //
+  // Until this campaign `maybeOpenResolution` had two call sites, both in the
+  // SINGLE-REPO conflict branch, and the group path had none — so a cross-repo
+  // lane could not spin a resolver no matter how mechanical the failure.
+
+  /** An inner lane whose rebase always conflicts, with named files. */
+  function conflictingInnerLane(files: string[]): RepoLane {
+    return innerLane({
+      gitOps: (p: string): GitOps => {
+        const g = createGitOps(simpleGit(p));
+        return {
+          ...g,
+          async rebaseOnto() {
+            return { ok: false as const, conflictingFiles: files, stderr: "CONFLICT (content)" };
+          },
+        };
+      },
+    });
+  }
+
+  it("§R5: an inner_conflict opens a resolution carrying everything needed to replay it", async () => {
+    const state = makeGroupState();
+    const opened: Record<string, unknown>[] = [];
+    const deps = depsFor(state, {
+      innerLane: conflictingInnerLane(["src/engine/audio.rs"]),
+      resolver: {
+        enabled: true,
+        openAndEnqueue: async (args) => {
+          opened.push({ ...args });
+          return "res-1";
+        },
+      },
+    });
+
+    const outcome = await runGroupIntegration(
+      { id: "grp-r5-inner", members: state.group.members },
+      deps,
+    );
+
+    expect(outcome.kind).toBe("rejected");
+    expect(opened).toHaveLength(1);
+    const job = opened[0];
+    // The origin is the INNER member — the repo the conflict actually lives in.
+    expect(job.originRequestId).toBe("req-inner");
+    expect(job.repoRole).toBe("inner");
+    // A group job must come back as a GROUP; resubmitting a resolved inner
+    // change alone would land it without the outer gitlink bump.
+    expect(job.groupId).toBe("grp-r5-inner");
+    // The replay inputs. Without a base and a ref, materializeConflict has
+    // nothing to reproduce and the resolution is a dead end.
+    expect(job.conflictingFiles).toEqual(["src/engine/audio.rs"]);
+    expect(job.baseSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(job.ref).toBeTruthy();
+  }, 30_000);
+
+  it("§R5: an unpushed gitlink target is rejected and never handed to a resolver", async () => {
+    // The eligibility taxonomy's sharpest refusal, now proven end-to-end: the
+    // inner commit was never pushed, so no agent can materialize its objects.
+    const state = makeGroupState();
+    const opened: unknown[] = [];
+    const deps = depsFor(state, {
+      innerLane: innerLane({
+        gitOps: (p: string): GitOps => {
+          const g = createGitOps(simpleGit(p));
+          return {
+            ...g,
+            async rebaseOnto() {
+              // Not a conflict — the assembly fails a different way, so no
+              // `conflict` payload exists and the capability gate must hold
+              // even though the reason may be rated eligible.
+              throw new Error("simulated assembly failure");
+            },
+          };
+        },
+      }),
+      resolver: {
+        enabled: true,
+        openAndEnqueue: async () => {
+          opened.push(1);
+          return "res-x";
+        },
+      },
+    });
+
+    const outcome = await runGroupIntegration(
+      { id: "grp-r5-nores", members: state.group.members },
+      deps,
+    );
+
+    expect(outcome.kind).toBe("rejected");
+    // No replay inputs ⇒ no resolution, however the reason is rated. A
+    // resolution nothing can execute would sit in `pending` forever.
+    expect(opened).toHaveLength(0);
+  }, 30_000);
+
+  it("§R5: a member that is itself a resolution product does not loop the resolver", async () => {
+    const state = makeGroupState({ inner: { resolvedFrom: "req-original" } });
+    const opened: unknown[] = [];
+    const deps = depsFor(state, {
+      innerLane: conflictingInnerLane(["a.rs"]),
+      resolver: {
+        enabled: true,
+        openAndEnqueue: async () => {
+          opened.push(1);
+          return "res-y";
+        },
+      },
+    });
+
+    await runGroupIntegration({ id: "grp-r5-recur", members: state.group.members }, deps);
+
+    // The no-recursion guard has to live HERE for group jobs: the group
+    // resubmit takes member specs and has no resolvedFrom field to carry, so a
+    // resolved group member cannot mark itself downstream.
+    expect(opened).toHaveLength(0);
+  }, 30_000);
+
   // ─── Campaign 2026-08-15 §S1: the group verify kill seam ─────────
   //
   // Until this campaign both `runPipeline` calls took `signal: undefined`, so

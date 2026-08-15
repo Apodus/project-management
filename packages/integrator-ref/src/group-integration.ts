@@ -42,7 +42,7 @@ import { assembleGroup, type AssembledGroupOk, type AssembleGroupDeps } from "./
 import { categorize, failureExcerpt } from "./categorize.js";
 // Campaign 2026-08-15 §S1: the group lane is a second CALLER of the 2026-08-04
 // kill seam's helpers, never a second copy of them.
-import { isTerminalForUs, watcherTickMs } from "./batch.js";
+import { isTerminalForUs, maybeOpenResolution, watcherTickMs, type BatchDeps } from "./batch.js";
 import { errMessage } from "./loop.js";
 import { assemblyResolutionEligibility } from "./resolution-eligibility.js";
 import { chaosCrashPoint } from "./chaos.js";
@@ -109,6 +109,13 @@ export interface GroupIntegrationDeps {
    */
   verifyCancelPollMs?: number;
   verifyStallMs?: number;
+  /**
+   * Campaign 2026-08-15 §R5: the Phase-7.6 resolver seam, threaded so a group
+   * assembly conflict can reach it. Absent ⇒ group conflicts reject exactly as
+   * before (which was the ONLY behaviour until this campaign — the group path
+   * had no resolver call site at all).
+   */
+  resolver?: BatchDeps["resolver"];
   /** Integrator identity recorded on pickup (markGroupIntegrating). */
   integratorId?: string;
   /** Log directory for the per-attempt verify logs (per repo). */
@@ -795,6 +802,45 @@ export async function runGroupIntegration(
     // FIX 4 surfacing path also: release the (held) worktrees the failed
     // assembly leased.
     asm.release();
+
+    // ── Campaign 2026-08-15 §R5: hand the failure to a resolver, if this is a
+    //    failure a resolver should AND can take.
+    //
+    //    Two gates, deliberately separate. `verdict.eligible` is the JUDGEMENT
+    //    (is this worth an agent's time — `gitlink_unreachable` never is, since
+    //    nobody can materialize an unpushed commit). `asm.conflict` is the
+    //    CAPABILITY: the resolver reproduces a conflict by replaying a ref onto
+    //    a base, so an arm that cannot supply those cannot be executed no
+    //    matter how eligible it is. `gitlink_diverged` is exactly that case —
+    //    rated worth resolving, but a bump rebase is not a marker
+    //    reconciliation and the session's completion criterion
+    //    (`hasRemainingMarkers`) would pass it while nothing was fixed.
+    //
+    //    Non-fatal by construction (maybeOpenResolution swallows everything):
+    //    the group is ALREADY cleanly rejected above, and a resolver that fails
+    //    to open must not change that outcome. ──
+    if (verdict.eligible && asm.conflict && verdict.repo === "inner") {
+      await maybeOpenResolution(
+        { resolver: deps.resolver, logger, pmClient },
+        {
+          projectId: deps.projectId ?? "",
+          resource: deps.resource ?? "main",
+          originRequestId: innerMember.id,
+          conflictingFiles: asm.conflict.conflictingFiles,
+          baseSha: asm.conflict.baseSha,
+          ref: asm.conflict.ref,
+          // The no-recursion guard moves UPSTREAM here: the group resubmit path
+          // takes member specs and has no `resolvedFrom` field to carry, so a
+          // resolved group member cannot mark itself. Checking the ORIGIN keeps
+          // a chronically-conflicting change from looping the resolver forever.
+          originResolvedFrom: innerMember.resolvedFrom ?? null,
+          repoRole: "inner",
+          groupId: group.id,
+          taskId: innerMember.taskId,
+        },
+      );
+    }
+
     return { kind: "rejected", reason };
   }
 

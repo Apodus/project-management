@@ -301,6 +301,10 @@
                     "minimum": 0,
                     "default": 0
                   },
+                  "notify_author_on_reject": {
+                    "type": "boolean",
+                    "default": false
+                  },
                   "worktree_root": {
                     "type": "string",
                     "minLength": 1
@@ -679,6 +683,10 @@
                     "type": "integer",
                     "minimum": 0,
                     "default": 0
+                  },
+                  "notify_author_on_reject": {
+                    "type": "boolean",
+                    "default": false
                   },
                   "worktree_root": {
                     "type": "string",

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import type {
   AuditAction,
@@ -12,6 +12,7 @@ import type {
   VerifyStepResult,
 } from "@pm/shared";
 import {
+  agentClaims,
   comments,
   escalations,
   getDb,
@@ -1801,5 +1802,83 @@ export function reject(id: string, body: MergeRequestReject, actor: Actor): Merg
       logUrl: body.logUrl ?? null,
     });
   }
+  // Campaign 2026-08-15 §R3: put the outcome where the author actually is.
+  // Best-effort, after the commit + event, and never throws — a notification
+  // that fails must not turn a clean reject into an error.
+  notifyAuthorOfReject(row, body, actor);
   return toView(updated);
+}
+
+/**
+ * Campaign 2026-08-15 §R3 — raise an escalation addressed to the submitting
+ * worker so the wake daemon delivers the rejection into their session.
+ *
+ * Before this, a merge outcome reached Discord and the web UI and stopped: the
+ * author's session learned nothing, so either the agent polled its own request
+ * on a babysitting timer or a human read Discord and pasted the news in. The
+ * delivery channel already existed and was simply scoped to escalations.
+ *
+ * Every arm here is a silent skip, because this is a notification: it is never
+ * worth failing a reject over, and it must never throw into the caller.
+ */
+function notifyAuthorOfReject(
+  row: {
+    id: string;
+    projectId: string;
+    submittedBy: string;
+    taskId: string | null;
+    branch: string | null;
+  },
+  body: { category: string; reason: string; logUrl?: string | null },
+  actor: Actor,
+): void {
+  try {
+    const project = getDb()
+      .select({ settings: projects.settings })
+      .from(projects)
+      .where(eq(projects.id, row.projectId))
+      .get();
+    const integrator = (project?.settings as { integrator?: { notify_author_on_reject?: boolean } })
+      ?.integrator;
+    if (integrator?.notify_author_on_reject !== true) return;
+
+    // The delivery identity. A worker without a KEYED claim (legacy keyless
+    // pool claim, or a token-authed submitter) has nothing the wake daemon
+    // could poll on — skip rather than raise an escalation nobody receives.
+    const binding = getDb()
+      .select({ workerKey: agentClaims.workerKey })
+      .from(agentClaims)
+      .where(and(eq(agentClaims.userId, row.submittedBy), isNotNull(agentClaims.workerKey)))
+      .get();
+    if (!binding?.workerKey) return;
+
+    // The notice must come from someone OTHER than the escalation's author, or
+    // the daemon's unread rule never matches it. `actor` is the integrator.
+    if (actor.id === row.submittedBy) return;
+
+    escalationService.raiseOutcomeNotice({
+      projectId: row.projectId,
+      authorUserId: row.submittedBy,
+      originWorkerKey: binding.workerKey,
+      originRepo: row.branch ?? "(unknown)",
+      title: `Merge request rejected: ${row.id}`,
+      noticeBody:
+        `Your merge request was rejected (${body.category}).\n\n${body.reason}\n\n` +
+        (body.logUrl ? `Log: ${body.logUrl}\n\n` : "") +
+        `Fix and resubmit. If a resolver session is already working this, you will ` +
+        `have a separate "merge_resolution" comment saying so — in that case wait for ` +
+        `the linked merge request rather than redoing the work.`,
+      noticeAuthorId: actor.id,
+      anchorTaskId: row.taskId,
+      metadata: {
+        mergeRequestId: row.id,
+        category: body.category,
+        reason: body.reason,
+      },
+    });
+  } catch (err) {
+    console.warn(
+      `[merge-reject-notify] could not notify the author of ${row.id} (advisory, ignored): ${err}`,
+    );
+  }
 }

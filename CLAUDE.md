@@ -256,6 +256,49 @@ verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   Both knobs REST-only; no migration, but needs a PM-server redeploy + a bundle
   redistribute/daemon restart. Guide §14.17 + §14.8 /
   `roadmaps/roadmap-20260804-verify-abort-and-stall-detection.md`.
+- **A race is not a verdict** — three outcomes used to END a cross-repo group
+  that had nothing wrong with it, where the single-repo lane self-heals. Pre-land
+  **drift** rejected the group while writing the reason "re-verify next pass";
+  an inner push returning **`non_fast_forward`** — the definition of a lost race
+  — rejected too. Both now **`resetGroup`** (back to `forming`, re-integrates
+  against the new main, nobody notified), mirroring `onMemberFailed` kind
+  `"drift"` → `resetToQueued`. A race's attempt is **cancelled, not failed** (a
+  `conflict` on the author's history for a race they did not run is a lie).
+  `auth`/`network`/`other` still reject — retrying those spins a lane against a
+  wall. BOUNDED at 4 integration attempts, **derived from attempt rows** (no
+  migration, no counter to sync); past it the reject names the LANE ("landing
+  changes faster than this group can assemble"), because that is the true
+  finding. An unreadable count re-queues anyway. **R2 of that campaign was
+  DROPPED on a verified false premise**: `resetForAttempt` fetches + hard-resets
+  to `origin/main` before EVERY attempt, so an assembly rebase is never against
+  a stale base and a retry would hit the identical conflict. Guide §14.19 /
+  `roadmaps/roadmap-20260815-stop-bouncing-landable-merges.md`.
+- **Outcome delivery** — `settings.integrator.notify_author_on_reject`
+  (**default false**): a REJECT raises an escalation addressed to the submitting
+  worker so the EXISTING wake daemon delivers it into that agent's session,
+  instead of a human relaying from Discord. Rejections only. **The escalation
+  belongs to the WORKER, the notice is authored by the TRAIN** — the daemon
+  delivers "messages not authored by the origin author", so authoring it as the
+  integrator would match nothing and wake nobody, SILENTLY (pinned by test). Its
+  own raise path, not `create()` (which sets authorId from the actor and whose
+  FTS dedup would fold two different rejections into one thread). Ships off: it
+  widens what the escalation channel carries and, with the auto-responder on,
+  these become responder input. Guide §14.20.
+- **Cross-repo resolver executor** — `maybeOpenResolution` had two call sites,
+  both single-repo conflict; the group path had NONE, so a cross-repo lane could
+  not auto-resolve anything. Now `inner_conflict` resolves: a **second resolver
+  pool cloned from the INNER repo** (its own slots — a resolver session can run
+  an hour and must not hold a verify slot; non-fatal if unbuildable), **replay
+  inputs carried on the assembly error** (`materializeConflict` needs base+ref
+  and the failed assembly releases its worktrees at once), and a **group
+  resubmit** as an inner-only group (a lone inner would land without the outer
+  gitlink bump — the orphan the train exists to prevent; `synthesizeOuter` also
+  stops the resolution re-creating the stale-bump `outer_conflict` class). The
+  hook gates on eligibility AND capability separately: `gitlink_diverged` is
+  rated worth resolving but a bump rebase is not a marker reconciliation, so
+  `hasRemainingMarkers()` would call it done while nothing was fixed. The
+  no-recursion guard moves UPSTREAM (the group resubmit takes member specs with
+  no `resolvedFrom` to carry). Guide §14.18.
 - **Group-path parity** — two capabilities stopped at the cross-repo boundary,
   and game_one is a cross-repo lane. (1) The kill seam: `group-integration.ts`
   passed `signal: undefined` to both pipelines, so NEITHER trigger above reached
