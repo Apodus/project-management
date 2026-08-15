@@ -161,6 +161,95 @@ function appendMessageTx(
     .run();
 }
 
+/**
+ * Campaign 2026-08-15 §R3 — raise a SYSTEM-authored outcome notice addressed to
+ * a specific worker, so the existing wake daemon delivers it into that agent's
+ * session.
+ *
+ * Why this exists beside `create()` rather than inside it:
+ *
+ *  - **The author must be the recipient.** The wake daemon's unread rule is
+ *    "messages NOT authored by the origin author, past the cursor"
+ *    (`listUndeliveredForWorker`). So the escalation has to belong to the WORKER
+ *    (authorId = their user), with the notice authored by the TRAIN. Route this
+ *    through `create()` and authorId becomes the integrator — whose own message
+ *    is then read as self-authored, never counts as unread, and never wakes
+ *    anybody. That failure would be silent, which is why this is its own path.
+ *  - **No dedup/auto-link.** `create()`'s FTS dedup exists for agent-raised
+ *    questions, where folding near-duplicates is a feature. Folding two
+ *    different merge rejections into one thread would lose an outcome.
+ *
+ * The escalation is opened + the notice appended in ONE transaction: an
+ * escalation with no message would sit forever, undeliverable by construction.
+ */
+export function raiseOutcomeNotice(params: {
+  projectId: string;
+  /** The worker's user id — the escalation belongs to THEM. */
+  authorUserId: string;
+  /** Delivery identity the wake daemon polls on. */
+  originWorkerKey: string;
+  originRepo: string;
+  title: string;
+  noticeBody: string;
+  /** The train's user id — must differ from `authorUserId` (see above). */
+  noticeAuthorId: string;
+  anchorTaskId?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): { escalationId: string } {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const id = createId();
+
+  db.transaction((tx) => {
+    tx.insert(escalations)
+      .values({
+        id,
+        projectId: params.projectId,
+        // "blocked": the author's work cannot proceed until they act. It is the
+        // honest kind — this is not a question and not a bug report.
+        kind: "blocked",
+        status: "open",
+        severity: null,
+        title: params.title,
+        body: null,
+        codeLocator: null,
+        anchorType: params.anchorTaskId ? "task" : null,
+        anchorId: params.anchorTaskId ?? null,
+        originRepo: params.originRepo,
+        originWorkerKey: params.originWorkerKey,
+        holderId: null,
+        authorId: params.authorUserId,
+        createdAt: now,
+        updatedAt: now,
+        resolvedAt: null,
+        resolvedBy: null,
+      })
+      .run();
+
+    appendMessageTx(
+      tx,
+      id,
+      params.noticeAuthorId,
+      params.noticeBody,
+      "system",
+      params.metadata ?? null,
+      now,
+    );
+  });
+
+  const row = toView(getRowOr404(id));
+  getEventBus().emit(EVENT_NAMES.ESCALATION_OPENED, {
+    entity: row,
+    entityType: "escalation",
+    entityId: id,
+    projectId: row.projectId,
+    actorId: params.noticeAuthorId,
+    timestamp: now,
+  });
+
+  return { escalationId: id };
+}
+
 // ─── C4 §P4: advisory dedup (FTS) + strict auto-link ──────────────
 // escalations_fts is a programmatic external-content FTS5 table (db/fts.ts +
 // db/fts-triggers.ts), NOT a migration — like notes_fts. findSimilar* mirrors

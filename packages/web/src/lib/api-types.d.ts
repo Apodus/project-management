@@ -15153,6 +15153,8 @@ export interface components {
           verify_cancel_poll_sec: number;
           /** @default 0 */
           verify_stall_sec: number;
+          /** @default false */
+          notify_author_on_reject: boolean;
           worktree_root?: string;
           /** @default origin */
           git_remote: string;
@@ -15274,6 +15276,8 @@ export interface components {
           verify_cancel_poll_sec: number;
           /** @default 0 */
           verify_stall_sec: number;
+          /** @default false */
+          notify_author_on_reject: boolean;
           worktree_root?: string;
           /** @default origin */
           git_remote: string;
