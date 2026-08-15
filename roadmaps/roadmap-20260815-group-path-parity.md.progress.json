@@ -1,0 +1,48 @@
+{
+  "roadmap": "roadmaps/roadmap-20260815-group-path-parity.md",
+  "branch": "campaign/group-path-parity",
+  "completed": ["S1", "S2", "S4-judgment"],
+  "current": "S3",
+  "pending": ["S3 (executor)", "S4 (hook)", "S5 (full seal)"],
+  "steps": {
+    "S1": {
+      "status": "complete",
+      "commit": "c56f908",
+      "outcome": "The cross-repo lane is now a second CALLER of the 2026-08-04 kill machinery (isTerminalForUs + watcherTickMs exported and shared, not copied). One controller and one liveness box per group pass: a group is an atom, so a kill takes both repos. Watcher scoped to the verify await only — members are `queued` during assembly and `queued` reads terminal after pickup, so an earlier start would kill every group (pinned by test). Cancelled group rejects as `other` with a cancelled reason; stalled as verify_stall."
+    },
+    "S2": {
+      "status": "complete",
+      "commit": "841f710",
+      "outcome": "Opening a resolution posts a `merge_resolution` comment on the origin's task: do not start a manual fix, a linked MR is coming, here is what happens if the resolver fails. New comment type — it says the opposite of a merge_rejection, and an agent filtering rejections should not have to parse prose. Closes the duplicated-grunt-work gap: the reject comment is written before the resolution exists and so could never mention it."
+    },
+    "S4-judgment": {
+      "status": "complete",
+      "commits": ["33effa0", "5d1e097", "1ea968a"],
+      "outcome": "resolution-eligibility.ts: a per-assembly-reason decision with an operator-facing why, pinned to AssembledGroupErr in both directions plus an exhaustiveness guard (both probe-tested to confirm they fail on drift). The why strings are now what the group reject tells the author, so a reject says what to DO, not only what broke.",
+      "decisions": {
+        "inner_conflict": "eligible — textual conflict, the resolver's home ground",
+        "outer_conflict": "eligible — only reachable with real outer content (synthetic outer has no ref; pure bumps auto-convert)",
+        "gitlink_diverged": "eligible — a stale bump branch an agent can rebase",
+        "gitlink_unreachable": "NOT eligible — the inner commit was never pushed; its objects exist in no reachable clone, so no agent can materialize them",
+        "gitlink_mismatch": "NOT eligible — a train defect; resolving destroys the evidence",
+        "backpressure": "NOT eligible — not a failure"
+      }
+    }
+  },
+  "verification": {
+    "integrator": "41 test files green (group-integration 17/17 incl. 4 new S1 tests + the reject-guidance pin; resolution-eligibility 6/6)",
+    "shared": "592",
+    "server": "2024",
+    "web": "561",
+    "mcp": "257",
+    "gates": "typecheck + lint + format:check + build all pass",
+    "e2e": "not re-run this stretch — no web/API behavior change beyond an additive enum + comment type; both regenerated through the openapi drift guard"
+  },
+  "blocked": {
+    "id": "cross-repo-resolver-executor",
+    "detail": "S3 as roadmapped is a campaign, not a step. Two structural blockers, both verified: createResolverPool (resolver-pool.ts:169-192) builds N worktrees from ONE gitRepoUrl, but a cross-repo resolution needs correlated inner+outer worktrees; and merge_resolutions (schema.ts:1043-1060) carries one originRequestId/one resolvedRequestId while a group resolution has two origins and must resubmit a GROUP. On top of that the resolver's completion criterion is hasRemainingMarkers() — conflict-marker shaped, meaningless for a gitlink rebase. Deliberately NOT half-built: the hook stays unwired, because opening resolutions nothing can execute would strand them.",
+    "cheaper_design_found": "inner_conflict → resolve in an inner-repo worktree → resubmit as an INNER-ONLY group (synthesize_outer: true), which the project's own MCP docs call the recommended form. Avoids reconstructing the outer member entirely.",
+    "decide_first": "Which assembly reasons actually fire on the game_one lane. If most are outer_conflict from hand-minted gitlink-bump branches, the fix is FREE and already shipped (§14.10 auto-convert + synthesize_outer makes that class structurally impossible), and the executor should be built only for the reasons that survive that check."
+  },
+  "notes": "Also unverified and worth one API read before any resolver work: settings.integrator.resolver.enabled defaults to FALSE. If it is false on game_one, that alone explains 'auto-resolve never activates' and nothing in this campaign changes it."
+}

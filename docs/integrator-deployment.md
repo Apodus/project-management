@@ -1497,6 +1497,64 @@ them opaquely on save, so editing settings in the UI will not clobber them.
 **Neither knob needs a migration.** A PM-server redeploy picks up the schema; the
 daemon needs a rebundle + restart before either trigger exists.
 
+**Both arms cover cross-repo groups as of 2026-08-15.** They did not at first:
+`group-integration.ts` passed `signal: undefined` to both repos' pipelines, so a
+cancelled or hung *grouped* verify still burned to the ceiling — and on a
+cross-repo lane that is most of the traffic. The group lane now runs the same
+watcher with one difference in policy: **a group is an atom**, so one controller
+covers both repos and a kill always takes both. One setting drives both lanes;
+you do not configure this per merge shape.
+
+Two consequences worth knowing:
+
+- A **cancelled group** is rejected as `other` with a reason that says
+  cancelled. The group has to leave `integrating` or the lane wedges, and the
+  sibling member is owed the news that the group it belonged to can no longer
+  land — but it is not a verdict on anyone's code.
+- The watcher runs only **during verify**, never during assembly. Members are
+  still `queued` while a group assembles, and a `queued` member counts as
+  terminal *after* pickup — so a watcher started any earlier would kill every
+  group. If you ever move it, the test named "never kills during assembly" is
+  the one that will tell you.
+
+### 14.18 Which failures a resolver is allowed to see
+
+The Phase 7.6 resolver has always had exactly one trigger: a textual rebase
+conflict in the **single-repo** path. `group-integration.ts` never called it at
+all — so on a cross-repo lane the auto-resolve workflow could not fire no matter
+how mechanical the failure. That is the usual explanation for "the resolver
+never seems to do anything"; the other is that
+`settings.integrator.resolver.enabled` **defaults to false**, so check that
+first.
+
+`resolution-eligibility.ts` now holds the decision for every group-assembly
+outcome, as policy separate from plumbing. Eligibility is a decision, never a
+default — a new assembly reason is a compile error until someone decides:
+
+| reason | resolver? | why |
+| --- | --- | --- |
+| `inner_conflict` | **yes** | a textual conflict in the inner repo — the resolver's home ground |
+| `outer_conflict` | **yes** | same, in the outer repo. Only reachable when the outer member carries REAL content: a synthetic outer has no ref to rebase, and a pure gitlink bump is auto-converted (§14.10) |
+| `gitlink_diverged` | **yes** | a stale bump branch; an agent with both repos can rebase it onto the landing inner |
+| `gitlink_unreachable` | **no** | the inner commit was never pushed. Its objects are in no clone the daemon can reach, so no agent can materialize them — **push the inner branch and resubmit** |
+| `gitlink_mismatch` | **no** | a post-assembly assertion failure = a train defect. A resolver would paper over the evidence |
+| `backpressure` | **no** | not a failure; the group retries next pass |
+
+Those sentences are not just documentation — they are the same strings the
+reject now carries, so an author is told what to do rather than only what broke.
+
+> **Not yet built: the cross-repo resolver EXECUTOR.** The taxonomy decides what
+> *should* be resolved; nothing yet resolves a group. Two structural blockers:
+> `createResolverPool` builds its worktrees from one repo URL, and
+> `merge_resolutions` has a single origin/resolved request while a group
+> resolution has two origins and must resubmit a group. Before building it,
+> **look at which reasons actually fire on your lane** (the train audit /
+> dashboard will tell you). If most of them are `outer_conflict` from
+> hand-minted gitlink-bump branches, the fix is free and already available:
+> submit inner-only groups with `synthesize_outer: true` (§14.10), which makes
+> that rejection class structurally impossible. Build the executor for the
+> reasons that survive that check.
+
 ---
 
 ## 15. Observability + Break-glass (Phase 7.4)

@@ -5,9 +5,10 @@ import {
   createTestAiAgent,
   createTestApp,
   createTestProject,
+  createTestTask,
   type TestApp,
 } from "../utils.js";
-import { mergeResolutions } from "../../src/db/index.js";
+import { comments, mergeResolutions } from "../../src/db/index.js";
 
 describe("Merge Resolutions API", () => {
   let testApp: TestApp;
@@ -23,12 +24,17 @@ describe("Merge Resolutions API", () => {
   // ── helpers ─────────────────────────────────────────────────────
 
   /** Submit a merge request via the agent token → returns its id (FK-valid). */
-  async function makeRequest(projectId: string, token: string, branch = "feat-a"): Promise<string> {
+  async function makeRequest(
+    projectId: string,
+    token: string,
+    branch = "feat-a",
+    taskId?: string,
+  ): Promise<string> {
     const res = await authRequest(
       testApp.app,
       "POST",
       `/api/v1/projects/${projectId}/merge-requests`,
-      { token, body: { resource: "main", branch } },
+      { token, body: { resource: "main", branch, ...(taskId ? { taskId } : {}) } },
     );
     expect(res.status).toBe(201);
     return (await res.json()).data.id as string;
@@ -78,6 +84,61 @@ describe("Merge Resolutions API", () => {
       expect(row?.state).toBe("pending");
       expect(row?.originRequestId).toBe(originId);
       expect(row?.conflictingFiles).toEqual(["a.ts"]);
+    });
+
+    // Campaign 2026-08-15 §S2. The origin was rejected moments earlier, and
+    // that rejection comment cannot mention this resolution — the reject is
+    // written first. Without this notice the author's only signal is
+    // "rejected: conflict", and the rational response is to start fixing it by
+    // hand: exactly the work the resolver is concurrently doing.
+    it("§S2: opening a resolution tells the author a resolver has it", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const task = createTestTask(testApp.db, { projectId: project.id });
+      const originId = await makeRequest(project.id, agent.token, "feat-s2", task.id);
+
+      const id = await openResolution(project.id, agent.token, originId);
+
+      const notice = testApp.db
+        .select()
+        .from(comments)
+        .where(eq(comments.taskId, task.id))
+        .all()
+        .find((c) => c.commentType === "merge_resolution");
+
+      expect(notice).toBeDefined();
+      // The instruction is the payload: an agent that reads only this must not
+      // go and redo the work.
+      expect(notice!.body).toMatch(/do not start a manual fix/i);
+      expect(notice!.body).toMatch(/new merge request/i);
+      // ...and it must say what happens on failure, so "wait" is not a gamble.
+      expect(notice!.body).toMatch(/fails or runs out of budget/i);
+      expect(notice!.body).toContain(id);
+      expect((notice!.metadata as { resolutionId: string }).resolutionId).toBe(id);
+      // Its own type — an agent filtering rejections must not have to parse
+      // prose to tell "you fix it" from "leave it alone".
+      expect(notice!.commentType).not.toBe("merge_rejection");
+    });
+
+    it("§S2: a request with no linked task opens cleanly and posts nothing", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const originId = await makeRequest(project.id, agent.token, "feat-s2-notask");
+
+      const id = await openResolution(project.id, agent.token, originId);
+
+      const row = testApp.db
+        .select()
+        .from(mergeResolutions)
+        .where(eq(mergeResolutions.id, id))
+        .get();
+      expect(row?.state).toBe("pending");
+      const anyNotice = testApp.db
+        .select()
+        .from(comments)
+        .all()
+        .find((c) => c.commentType === "merge_resolution");
+      expect(anyNotice).toBeUndefined();
     });
 
     it("403 when non-ai_agent (human admin) opens", async () => {

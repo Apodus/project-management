@@ -1135,8 +1135,31 @@ async function invalidateSuffix(
 
 // ─── Cancellation watcher (campaign 2026-08-04 §P1) ───────────────
 
-/** A merge-request status that means "PM is done with this request". */
-function isTerminalForUs(status: string): boolean {
+/**
+ * The watcher's tick cadence given the two arms' settings (campaign
+ * 2026-08-04 §P2, shared with the group lane by §S1). `0` ⇒ both arms off, so
+ * no timer at all.
+ *
+ * The stall arm needs only enough resolution to notice within a fraction of its
+ * own threshold — a 20-minute threshold checked every minute is plenty — and
+ * the check is local arithmetic, not I/O. The cancellation arm's own cadence is
+ * enforced separately by its caller, so a fine tick never multiplies PM reads.
+ */
+export function watcherTickMs(pollMs: number, stallMs: number): number {
+  const stallTickMs = stallMs > 0 ? Math.min(Math.max(Math.floor(stallMs / 20), 1000), 60_000) : 0;
+  const candidates = [pollMs, stallTickMs].filter((n) => n > 0);
+  return candidates.length === 0 ? 0 : Math.min(...candidates);
+}
+
+/**
+ * A merge-request status that means "PM is done with this request".
+ *
+ * EXPORTED so the cross-repo group lane (campaign 2026-08-15 §S1) applies the
+ * SAME rule rather than a second copy of it. Note the caller's obligation: a
+ * `queued` member is terminal only AFTER pickup. Read this in a pre-pickup
+ * context and it says every un-started request is dead.
+ */
+export function isTerminalForUs(status: string): boolean {
   // Anything that is not `integrating` ends OUR work on it. `queued` is
   // included deliberately: that is the re-queue case (someone reset the
   // request), and continuing to verify a tree nobody is waiting on is the same
@@ -1254,10 +1277,8 @@ function startCancellationWatcher(
   // only enough granularity to notice within a fraction of its own threshold
   // (a 20-minute threshold checked every minute is plenty), and cheaply — the
   // check is local arithmetic, not I/O.
-  const stallTickMs = stallMs > 0 ? Math.min(Math.max(Math.floor(stallMs / 20), 1000), 60_000) : 0;
-  const candidates = [pollMs, stallTickMs].filter((n) => n > 0);
-  if (candidates.length === 0) return { stop: (): void => {} };
-  const tickMs = Math.min(...candidates);
+  const tickMs = watcherTickMs(pollMs, stallMs);
+  if (tickMs === 0) return { stop: (): void => {} };
 
   let inTick = false;
   // Epoch 0 ⇒ the first tick always runs a cancellation round.
@@ -2844,6 +2865,12 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
         gitRemote: deps.gitRemote,
         defaultVerifyCommand: deps.defaultVerifyCommand,
         verifyTimeoutSec: deps.verifyTimeoutSec,
+        // Campaign 2026-08-15 §S1: the same two kill-seam knobs the single-repo
+        // lane reads. One setting per project drives both lanes — an operator
+        // configuring `verify_cancel_poll_sec` should not have to know whether a
+        // given merge happened to be cross-repo.
+        verifyCancelPollMs: deps.verifyCancelPollMs,
+        verifyStallMs: deps.verifyStallMs,
         integratorId: groupLane.integratorId,
         innerLogsDir: groupLane.innerLogsDir,
         outerLogsDir: groupLane.outerLogsDir,

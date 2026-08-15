@@ -15473,7 +15473,8 @@ export interface components {
         | "review_note"
         | "design_discussion"
         | "merge_rejection"
-        | "merge_incident";
+        | "merge_incident"
+        | "merge_resolution";
     };
     ImplementProposal: {
       /** @default [] */
@@ -16214,7 +16215,8 @@ export interface components {
         | "review_note"
         | "design_discussion"
         | "merge_rejection"
-        | "merge_incident";
+        | "merge_incident"
+        | "merge_resolution";
       metadata?: {
         [key: string]: unknown;
       } | null;
