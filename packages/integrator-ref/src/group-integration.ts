@@ -40,6 +40,10 @@ import type { MergeRequestView } from "@pm/shared";
 import type { PmClient, RejectCategory } from "./pm-client.js";
 import { assembleGroup, type AssembledGroupOk, type AssembleGroupDeps } from "./group-assembly.js";
 import { categorize, failureExcerpt } from "./categorize.js";
+// Campaign 2026-08-15 §S1: the group lane is a second CALLER of the 2026-08-04
+// kill seam's helpers, never a second copy of them.
+import { isTerminalForUs, watcherTickMs } from "./batch.js";
+import { errMessage } from "./loop.js";
 import { chaosCrashPoint } from "./chaos.js";
 import {
   runPipeline,
@@ -95,6 +99,15 @@ export interface GroupIntegrationDeps {
   /** Per-repo verify fallback when a member has no verifyCmd. */
   defaultVerifyCommand: string;
   verifyTimeoutSec: number;
+  /**
+   * Campaign 2026-08-15 §S1: the two kill-seam arms, in MILLISECONDS, same
+   * units and same meaning as `BatchDeps`. `0`/absent disables that arm.
+   * Until this campaign the cross-repo lane had NEITHER — it passed
+   * `signal: undefined` to both pipelines — so a cancelled or hung grouped
+   * verify burned to `verifyTimeoutSec` (9000s on game_one).
+   */
+  verifyCancelPollMs?: number;
+  verifyStallMs?: number;
   /** Integrator identity recorded on pickup (markGroupIntegrating). */
   integratorId?: string;
   /** Log directory for the per-attempt verify logs (per repo). */
@@ -502,6 +515,135 @@ function recordRepoVerify(
   }
 }
 
+// ─── The group verify kill seam (campaign 2026-08-15 §S1) ────────────
+
+/** Why a group verify was killed from outside. */
+type GroupAbortReason = "request_cancelled" | "output_stall";
+
+interface GroupAbortState {
+  reason: GroupAbortReason | null;
+  detail: string;
+}
+
+/**
+ * Watch ONE group's in-flight verify and abort BOTH repos when it can no
+ * longer produce a useful result (campaign 2026-08-15 §S1 — the cross-repo half
+ * of the 2026-08-04 campaign).
+ *
+ * Simpler than the batch watcher it mirrors: a group lane processes one group
+ * per call with no admit/drain loop and no speculative suffix, so there is one
+ * controller, one liveness box and one decision — kill the whole group or
+ * nothing. **A group is an atom:** a half-verified group is meaningless, so a
+ * kill always takes both repos. (That is NOT in tension with the "do NOT abort
+ * the sibling on first-fail" rule at the verify site: that rule is about a repo
+ * FAILING on its own merits, where each attempt is owed a truthful outcome.
+ * An external cancel or a stall dooms the whole group either way.)
+ *
+ * **The placement is load-bearing.** This must only run once the group is
+ * `integrating` and its members have been picked up — which is why it is
+ * started immediately around the verify await, after `markGroupIntegrating` and
+ * `startAttempt`. `isTerminalForUs` treats `queued` as terminal, which is
+ * correct after pickup and catastrophically wrong before it: run this during
+ * assembly, when members are still `queued`, and it would kill every group.
+ *
+ * Synthetic members are skipped — a PM-minted ref-less member has no request of
+ * its own to be cancelled.
+ *
+ * Fails OPEN exactly like the batch arm: only a positive, successful read of a
+ * terminal status may kill; every read failure leaves the verify running.
+ */
+function startGroupVerifyWatcher(opts: {
+  members: { id: string; synthetic?: boolean }[];
+  groupId: string;
+  controller: AbortController;
+  liveness: { lastOutputAt: number };
+  state: GroupAbortState;
+  pmClient: PmClient;
+  logger: Logger;
+  pollMs: number;
+  stallMs: number;
+}): { stop: () => void } {
+  const { pollMs, stallMs } = opts;
+  const tickMs = watcherTickMs(pollMs, stallMs);
+  if (tickMs === 0) return { stop: (): void => {} };
+
+  const realMembers = opts.members.filter((m) => m.synthetic !== true);
+  let inTick = false;
+  let lastCancelPollAt = 0;
+
+  const fire = (reason: GroupAbortReason, detail: string): void => {
+    if (opts.state.reason !== null) return; // already firing; do not re-decide
+    opts.state.reason = reason;
+    opts.state.detail = detail;
+    opts.logger.warn({ groupId: opts.groupId, reason, detail }, "killing in-flight group verify");
+    opts.controller.abort();
+  };
+
+  const timer = setInterval(() => {
+    if (inTick) return;
+    inTick = true;
+    void (async () => {
+      try {
+        if (opts.state.reason !== null) return;
+
+        // ── STALL ARM: local arithmetic first, so a PM outage can never delay
+        //    or prevent it. One box for both repos, so "either repo is still
+        //    talking" counts as alive — which is the honest reading of a
+        //    concurrent two-repo verify.
+        if (stallMs > 0) {
+          const silentMs = Date.now() - opts.liveness.lastOutputAt;
+          if (silentMs > stallMs) {
+            fire(
+              "output_stall",
+              `group verify produced no output for ${Math.round(silentMs / 1000)}s ` +
+                `(threshold verify_stall_sec=${Math.round(stallMs / 1000)}s); killed. ` +
+                `If this build legitimately goes quiet for that long, raise verify_stall_sec.`,
+            );
+            return;
+          }
+        }
+
+        // ── CANCELLATION ARM, rate-limited to its own cadence. ──
+        if (pollMs <= 0) return;
+        if (Date.now() - lastCancelPollAt < pollMs) return;
+        lastCancelPollAt = Date.now();
+
+        for (const member of realMembers) {
+          let status: string;
+          try {
+            const view = await opts.pmClient.getMergeRequest(member.id);
+            status = view.status;
+          } catch (err) {
+            // FAIL OPEN: any read failure leaves the verify running.
+            opts.logger.debug?.(
+              { groupId: opts.groupId, requestId: member.id, err: errMessage(err) },
+              "group cancellation poll failed; leaving verify running",
+            );
+            continue;
+          }
+          if (isTerminalForUs(status)) {
+            fire(
+              "request_cancelled",
+              `member ${member.id} is no longer integrating (${status}); the group cannot land`,
+            );
+            return;
+          }
+        }
+      } catch (err) {
+        opts.logger.debug?.(
+          { groupId: opts.groupId, err: errMessage(err) },
+          "group verify watcher tick threw; ignored",
+        );
+      } finally {
+        inTick = false;
+      }
+    })();
+  }, tickMs);
+  timer.unref?.();
+
+  return { stop: (): void => clearInterval(timer) };
+}
+
 // ─── rejectGroupLegibly (the single group-reject choke-point) ─────────
 
 /**
@@ -811,6 +953,16 @@ export async function runGroupIntegration(
   // inner failure would wrongly reject a change that only touches the outer).
   // Synthesize a PASS instead of running the pipeline (the outer verify against
   // Ri remains the sole real gate).
+  // ── Campaign 2026-08-15 §S1: the group kill seam. ONE controller and ONE
+  //    liveness box for the whole pass — a group is an atom, so a kill takes
+  //    both repos, and either repo still producing output means the group is
+  //    still alive. Started only HERE, after markGroupIntegrating + startAttempt:
+  //    see `startGroupVerifyWatcher` for why running it any earlier would kill
+  //    every group during assembly. ──
+  const verifyAbort = new AbortController();
+  const groupLiveness = { lastOutputAt: Date.now() };
+  const abortState: GroupAbortState = { reason: null, detail: "" };
+
   const runInnerPipeline = (): Promise<PipelineResult> => {
     if (innerRef === null) {
       return Promise.resolve(syntheticInnerPass());
@@ -819,7 +971,8 @@ export async function runGroupIntegration(
       gitOps: asm.innerGitOps,
       cwd: asm.innerWt.path,
       verifyTimeoutSec: deps.verifyTimeoutSec,
-      signal: undefined,
+      signal: verifyAbort.signal,
+      liveness: groupLiveness,
       logsDir: innerLogsDir,
       attemptId: innerAttempt.id,
       cache: innerCache,
@@ -827,19 +980,39 @@ export async function runGroupIntegration(
     });
   };
 
-  const [pipeI, pipeO] = await Promise.all([
-    runInnerPipeline(),
-    runPipeline(outerSteps, {
-      gitOps: asm.outerGitOps,
-      cwd: asm.outerWt.path,
-      verifyTimeoutSec: deps.verifyTimeoutSec,
-      signal: undefined,
-      logsDir: outerLogsDir,
-      attemptId: outerAttempt.id,
-      cache: outerCache,
-      logger: deps.logger,
-    }),
-  ]);
+  const groupWatcher = startGroupVerifyWatcher({
+    members: [innerMember, outerMember],
+    groupId: group.id,
+    controller: verifyAbort,
+    liveness: groupLiveness,
+    state: abortState,
+    pmClient,
+    logger,
+    pollMs: deps.verifyCancelPollMs ?? 0,
+    stallMs: deps.verifyStallMs ?? 0,
+  });
+
+  let pipeI: PipelineResult;
+  let pipeO: PipelineResult;
+  try {
+    [pipeI, pipeO] = await Promise.all([
+      runInnerPipeline(),
+      runPipeline(outerSteps, {
+        gitOps: asm.outerGitOps,
+        cwd: asm.outerWt.path,
+        verifyTimeoutSec: deps.verifyTimeoutSec,
+        signal: verifyAbort.signal,
+        liveness: groupLiveness,
+        logsDir: outerLogsDir,
+        attemptId: outerAttempt.id,
+        cache: outerCache,
+        logger: deps.logger,
+      }),
+    ]);
+  } finally {
+    // A bare clearInterval that cannot throw; nothing downstream may skip it.
+    groupWatcher.stop();
+  }
 
   // Campaign 2026-08-03 §P2: the assembled verify's spans. The SYNTHETIC inner
   // pass emits NOTHING — `innerRef === null` means no verify ran at all, and a
@@ -849,6 +1022,59 @@ export async function runGroupIntegration(
     recordRepoVerify(phases, pipeI, "inner", innerMember.id, innerAttempt.id);
   }
   recordRepoVerify(phases, pipeO, "outer", outerMember.id, outerAttempt.id);
+
+  // ── Campaign 2026-08-15 §S1: an EXTERNALLY killed verify. Handled BEFORE the
+  //    ordinary pass/fail branch below, because the killed pipelines resolve as
+  //    `exitCode:null + signal` and would otherwise be categorized as
+  //    `verify_timeout` and blamed on the code. Placed AFTER the phase rows on
+  //    purpose: the minutes were really spent, and what they cost is exactly
+  //    the question those rows answer. ──
+  if (abortState.reason !== null) {
+    const cancelled = abortState.reason === "request_cancelled";
+    // Both attempts end as `cancelled`: neither produced a verdict, because we
+    // took the verdict away from them. Individually guarded — a member whose
+    // request already went terminal can 409 here, and that must not turn a
+    // clean kill into an unhandled error.
+    for (const [label, attemptId] of [
+      ["inner", innerAttempt.id],
+      ["outer", outerAttempt.id],
+    ] as const) {
+      try {
+        await pmClient.completeAttempt(attemptId, { status: "cancelled" });
+      } catch (err) {
+        logger.warn(
+          { groupId: group.id, repo: label, err: errMessage(err) },
+          "completing the aborted group attempt failed (tolerated)",
+        );
+      }
+    }
+
+    // The group must leave `integrating` either way, or the lane is wedged.
+    // A cancellation is NOT the code's fault, so it is reported as such — but
+    // the group still has to be rejected: its sibling member is owed the news
+    // that the group it was part of can no longer land.
+    const reason = cancelled
+      ? `group verify cancelled: ${abortState.detail}`
+      : `group verify killed: ${abortState.detail}`;
+    try {
+      await rejectGroupLegibly(pmClient, logger, group, {
+        reason,
+        // A stall is a verdict about the build; a cancellation is not a verdict
+        // at all, and there is no category that says so — `other` plus an
+        // unmistakable reason is the honest encoding until one exists.
+        category: cancelled ? "other" : "verify_stall",
+        taskIds: group.members.map((m) => m.taskId).filter((t): t is string => t != null),
+      });
+    } catch (err) {
+      logger.error(
+        { groupId: group.id, err: errMessage(err), reason },
+        "rejecting the aborted group failed — the group may be stuck integrating and need a break-glass force-reject",
+      );
+    }
+    asm.release();
+    logger.info({ groupId: group.id, reason }, "group verify aborted; worktrees released");
+    return { kind: "rejected", reason };
+  }
 
   // Extract the per-repo VerifyResult (the failing-step trigger on fail, else the
   // single synthetic step's result) — the SAME shape the VerifyOutcome consumer

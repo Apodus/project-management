@@ -79,6 +79,10 @@ interface FakePm {
   rejectPayload?: { reason: string; category?: string };
   /** Phase 7.5 Step 6: recorded per-repo cache lookup keys (treeSha + stepId). */
   cacheLookups?: { treeSha: string; stepId: string }[];
+  /** Campaign 2026-08-15 §S1: every cancellation-poll read the watcher issued. */
+  getRequestCalls?: string[];
+  /** §S1: make every status read fail, to exercise the fail-open branch. */
+  getRequestThrows?: boolean;
   /** Phase 7.5 Step 7: captured completeAttempt bodies (steps[] M1 assertion). */
   completeBodies?: { status: string; steps?: unknown[] }[];
   /** P3 legibility: captured merge_rejection task comments (choke-point assertion). */
@@ -117,6 +121,17 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
         }
       }
       return { ...state.group };
+    },
+    // Campaign 2026-08-15 §S1: the group kill seam's cancellation read.
+    // Deliberately NOT pushed onto `state.calls` — a liveness poll is not a
+    // merge operation, and the exact call-sequence assertions in this file
+    // would break if it appeared there.
+    async getMergeRequest(id: string): Promise<MergeRequestView & { attempts: [] }> {
+      state.getRequestCalls?.push(id);
+      if (state.getRequestThrows) throw new Error("PM is having a moment");
+      const m = state.group.members.find((x) => x.id === id);
+      if (!m) throw new Error("not found");
+      return { ...m, attempts: [] };
     },
     async startAttempt(requestId: string, baseSha: string): Promise<MergeAttemptView> {
       seq += 1;
@@ -444,6 +459,134 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     expect(o).not.toBeNull();
     if (i) innerPool.release(i);
     if (o) outerPool.release(o);
+  }, 30_000);
+
+  // ─── Campaign 2026-08-15 §S1: the group verify kill seam ─────────
+  //
+  // Until this campaign both `runPipeline` calls took `signal: undefined`, so
+  // neither 2026-08-04 trigger could reach a grouped merge — and game_one is a
+  // cross-repo lane, so that was most of its traffic.
+
+  // ~20s of silence. Deliberately much longer than this fixture's real-git
+  // assembly (rebase + materialize + gitlink commit, several seconds), so
+  // "elapsed" cleanly separates a killed verify from a completed one: killed
+  // ≈ assembly only, not-killed ≈ assembly + 20s.
+  const S1_QUIET = process.platform === "win32" ? "ping -n 21 127.0.0.1 > nul" : "sleep 20";
+  const S1_SHORT = process.platform === "win32" ? "ping -n 3 127.0.0.1 > nul" : "sleep 2";
+
+  it("§S1: polls while integrating and lands normally — and never kills during assembly", async () => {
+    const state = makeGroupState({
+      inner: { verifyCmd: S1_SHORT },
+      outer: { verifyCmd: S1_SHORT },
+    });
+    state.getRequestCalls = [];
+    const deps = depsFor(state, { verifyCancelPollMs: 50 });
+    const outcome = await runGroupIntegration(
+      { id: "grp-s1-live", members: state.group.members },
+      deps,
+    );
+
+    // THE assembly trap: members are `queued` until markGroupIntegrating, and
+    // `isTerminalForUs` counts `queued` as terminal (right after pickup, wrong
+    // before it). The watcher is started only around the verify await, so a
+    // group survives its own assembly. Move it earlier and this test dies.
+    expect(outcome.kind).toBe("ready_to_land");
+    if (outcome.kind !== "ready_to_land") throw new Error("not ready_to_land");
+    // It really did poll — the pass above is not vacuous.
+    expect((state.getRequestCalls ?? []).length).toBeGreaterThan(0);
+    expect(state.calls).not.toContain("rejectGroup");
+
+    outcome.assembled.release();
+  }, 30_000);
+
+  it("§S1: a member going terminal mid-verify kills BOTH repos and rejects the group", async () => {
+    const state = makeGroupState({
+      inner: { verifyCmd: S1_QUIET },
+      outer: { verifyCmd: S1_QUIET },
+    });
+    state.getRequestCalls = [];
+    state.completeBodies = [];
+    const deps = depsFor(state, { verifyCancelPollMs: 50 });
+
+    // The worker walks away mid-build. Triggered off the FIRST poll rather than
+    // a wall-clock timer: the watcher only polls once the verify is running, so
+    // this lands the cancellation inside the window by construction. A timer
+    // would race real-git assembly, and `markGroupIntegrating` resets every
+    // member to `integrating` — so a flip that fires too early is silently
+    // undone and the test passes for the wrong reason.
+    const realGet = deps.pmClient.getMergeRequest.bind(deps.pmClient);
+    let flipped = false;
+    (deps.pmClient as { getMergeRequest: unknown }).getMergeRequest = async (id: string) => {
+      if (!flipped) {
+        flipped = true;
+        state.group.members[0].status = "abandoned";
+      }
+      return realGet(id);
+    };
+
+    const startedAt = Date.now();
+    const outcome = await runGroupIntegration(
+      { id: "grp-s1-cancel", members: state.group.members },
+      deps,
+    );
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(outcome.kind).toBe("rejected");
+    // A group is an atom: both repos died, so we did not sit through the
+    // remaining ~7s of either build.
+    expect(elapsedMs).toBeLessThan(15_000);
+    // Neither attempt produced a verdict, because we took it away from them.
+    const statuses = (state.completeBodies ?? []).map((b) => b.status);
+    expect(statuses.filter((s) => s === "cancelled")).toHaveLength(2);
+    // The sibling is owed the news that its group died — and the reason says
+    // "cancelled", not "your code failed".
+    expect(state.calls).toContain("rejectGroup");
+    expect(state.rejectPayload?.reason).toMatch(/cancelled/i);
+    expect(state.rejectPayload?.category).toBe("other");
+  }, 30_000);
+
+  it("§S1: a silent group verify is killed and rejected as verify_stall", async () => {
+    const state = makeGroupState({
+      inner: { verifyCmd: S1_QUIET },
+      outer: { verifyCmd: S1_QUIET },
+    });
+    state.completeBodies = [];
+    const deps = depsFor(state, { verifyStallMs: 1500, verifyCancelPollMs: 0 });
+
+    const startedAt = Date.now();
+    const outcome = await runGroupIntegration(
+      { id: "grp-s1-stall", members: state.group.members },
+      deps,
+    );
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(outcome.kind).toBe("rejected");
+    expect(elapsedMs).toBeLessThan(15_000);
+    // The stall arm works with the cancellation poll OFF, and reports the
+    // threshold rather than masquerading as the timeout it pre-empts.
+    expect(state.rejectPayload?.category).toBe("verify_stall");
+    expect(state.rejectPayload?.reason).toMatch(/no output for \d+s/);
+    expect(state.rejectPayload?.reason).toMatch(/verify_stall_sec=2s/);
+  }, 30_000);
+
+  it("§S1: fails OPEN — a throwing status read never kills a healthy group", async () => {
+    const state = makeGroupState({
+      inner: { verifyCmd: S1_SHORT },
+      outer: { verifyCmd: S1_SHORT },
+    });
+    state.getRequestCalls = [];
+    state.getRequestThrows = true;
+    const deps = depsFor(state, { verifyCancelPollMs: 50 });
+    const outcome = await runGroupIntegration(
+      { id: "grp-s1-open", members: state.group.members },
+      deps,
+    );
+
+    // Every read failed, and the group still landed.
+    expect((state.getRequestCalls ?? []).length).toBeGreaterThan(0);
+    expect(outcome.kind).toBe("ready_to_land");
+    if (outcome.kind !== "ready_to_land") throw new Error("not ready_to_land");
+    outcome.assembled.release();
   }, 30_000);
 
   // ── Phase 7.5 Step 6 (§6): per-repo cache keys on DISTINCT content-addressed
