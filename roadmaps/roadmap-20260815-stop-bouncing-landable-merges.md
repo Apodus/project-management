@@ -96,7 +96,32 @@ group row (a migration) or is it derived from the audit/attempt history (no
 migration)? Bias to derived — this repo's migration history is a hazard area —
 but only if the derivation is honest and cheap.
 
-## R2 — Tell a stale base apart from a real conflict
+## R2 — DROPPED (2026-08-15): the premise does not hold
+
+**Kept as a record of why, because the idea is a natural one to re-propose.**
+
+R2 assumed an assembly conflict might be against a *stale* base. It is not:
+`worktree.resetForAttempt()` (`worktree.ts:148-154`) does
+`fetch` → `checkout main` → `reset --hard <remote>/main` before **every**
+attempt, and `assembleGroup` reads its base as `resolveRef("HEAD")` immediately
+after that reset. So each rebase already runs against freshly fetched main, and
+re-fetching to retry would hit the identical conflict — a wasted pass and a
+slower reject, with no case it can rescue.
+
+The real staleness window is between assembly and land — main moving during a
+30-minute verify — and **R1 already covers it**: the group re-queues and the
+next pass re-assembles against the new main, which is precisely the "retry
+against fresh main" R2 was invented to provide.
+
+What survives of R2 is the observation it was going to produce ("how often is
+the lane simply too busy?"), and R1's re-queue logging plus its bound already
+answer that.
+
+A conflict that survives a re-assembly against current main is therefore REAL —
+the author's change genuinely conflicts with what landed — and belongs to R4,
+not to a retry.
+
+## R2 (original text, superseded) — Tell a stale base apart from a real conflict
 
 A rebase that conflicts because main moved *while we were assembling* is a race;
 a rebase that conflicts against the newest main is a real conflict that needs a
