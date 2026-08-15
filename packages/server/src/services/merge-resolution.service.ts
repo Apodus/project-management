@@ -1,7 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
 import type { MergeEscalationTarget, MergeResolutionDetail, MergeResolutionView } from "@pm/shared";
-import { getDb, mergeResolutions, projects } from "../db/index.js";
+import { comments, getDb, mergeRequests, mergeResolutions, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
 import type { Actor } from "./merge-request.service.js";
@@ -213,6 +213,54 @@ export function open(params: OpenResolutionParams, actor: Actor): MergeResolutio
         updatedAt: now,
       })
       .run();
+
+    // ── Campaign 2026-08-15 §S2: tell the AUTHOR a resolver has this. ──
+    //
+    // The origin was rejected a moment ago, and that rejection comment is what
+    // an agent actually reads. It cannot mention this resolution, because the
+    // reject is written first and the resolution did not exist yet — so until
+    // now the author's only signal was "rejected: conflict", and the rational
+    // response to that is to start fixing it by hand. Which is exactly the work
+    // the resolver is concurrently doing.
+    //
+    // Same shape as the reject comment: inside the transaction, guarded on a
+    // non-null taskId (a request may have no linked task).
+    const origin = params.originRequestId
+      ? tx
+          .select({ taskId: mergeRequests.taskId })
+          .from(mergeRequests)
+          .where(eq(mergeRequests.id, params.originRequestId))
+          .get()
+      : undefined;
+    if (origin?.taskId) {
+      const files = conflictingFiles ?? [];
+      const body =
+        `Auto-resolve started — a resolver session is working this conflict.\n\n` +
+        `**Do not start a manual fix.** The resolver reconciles the conflict, ` +
+        `re-verifies, and submits a NEW merge request linked to this one; watch ` +
+        `for that request rather than redoing the work.\n\n` +
+        `If it fails or runs out of budget, this comes back to you with a ` +
+        `follow-up comment — no silent drop.\n\n` +
+        `Resolution: ${id}\n` +
+        `Conflicting file(s): ${files.length > 0 ? files.join(", ") : "(not recorded)"}`;
+      tx.insert(comments)
+        .values({
+          id: createId(),
+          taskId: origin.taskId,
+          proposalId: null,
+          authorId: actor.id,
+          body,
+          commentType: "merge_resolution",
+          metadata: {
+            resolutionId: id,
+            originRequestId: params.originRequestId,
+            conflictingFiles: files,
+          },
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
   });
 
   const row = readResolutionOrThrow(id);

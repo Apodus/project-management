@@ -1385,7 +1385,8 @@
               "review_note",
               "design_discussion",
               "merge_rejection",
-              "merge_incident"
+              "merge_incident",
+              "merge_resolution"
             ]
           }
         },
@@ -4398,7 +4399,8 @@
               "review_note",
               "design_discussion",
               "merge_rejection",
-              "merge_incident"
+              "merge_incident",
+              "merge_resolution"
             ]
           },
           "metadata": {

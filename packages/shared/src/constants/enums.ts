@@ -69,6 +69,11 @@ export const COMMENT_TYPES = [
   "design_discussion",
   "merge_rejection",
   "merge_incident",
+  // Campaign 2026-08-15 §S2: "a resolver session is working this conflict —
+  // do not start a manual fix." Its own type, not `merge_rejection`: the two
+  // say opposite things about what the author should do next, and an agent
+  // filtering for rejections must not have to parse prose to tell them apart.
+  "merge_resolution",
 ] as const;
 export type CommentType = (typeof COMMENT_TYPES)[number];
 
