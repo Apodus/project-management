@@ -1,0 +1,13 @@
+{
+  "roadmap": "roadmaps/roadmap-20260713-xrepo-gitlink-umbrella-widening.md",
+  "branch": "campaign-xrepo-gitlink-umbrella-widening",
+  "worktree": "D:/code/pm-wt-gitlink-umbrella",
+  "proposal_id": "01KXEBB9ZV1TVRVCWC1AHXE9S7",
+  "completed_steps": ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7"],
+  "current_step": "DONE",
+  "commits": {"P0": "e86d633", "P1": "c6b092f", "P2": "c153e53", "P3": "e398042", "P4": "388392b", "P5": "df721f3", "P6": "a7f4c2b", "P7": "3a92a0c"},
+  "open_issues": [],
+  "notes": "CAMPAIGN COMPLETE. 8 commits, +4489/-187. Full gate green (integrator 372/1skip standalone 3x; 1 turbo-load flake). NOT merged/pushed. Ops handoff pending: merge, redistribute game_one bundle, PM-server redeploy (new categories+audit action+synthesizeInner, no migration), daemon restart, re-drive g1-p6-placement-v3.",
+  "dag_drift": [],
+  "status": "complete"
+}

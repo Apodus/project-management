@@ -117,6 +117,13 @@ const integratorSettingsSchema = z
     enabled: z.boolean().default(false),
     verify_command: z.string().min(1).optional(),
     verify_timeout_sec: z.number().int().min(1).default(600),
+    // Campaign 2026-08-04 §P1 (mirrors the canonical @pm/shared schema): the
+    // in-flight cancellation poll. `0` disables. See the shared schema for why
+    // the poll — not SSE — is the correctness floor.
+    verify_cancel_poll_sec: z.number().int().min(0).default(30),
+    // Campaign 2026-08-04 §P2 (mirrors the canonical @pm/shared schema): the
+    // output-stall floor under verify_timeout_sec's ceiling. `0` disables.
+    verify_stall_sec: z.number().int().min(0).default(0),
     worktree_root: z.string().min(1).optional(),
     git_remote: z.string().min(1).default("origin"),
     git_main_branch: z.string().min(1).default("main"),
@@ -177,6 +184,15 @@ const integratorSettingsSchema = z
         code: z.ZodIssueCode.custom,
         message: "verify_steps contains a dependency cycle.",
         path: ["verify_steps"],
+      });
+    }
+    // Campaign 2026-08-04 §P2 (mirrors the canonical schema): the stall floor
+    // must sit under the timeout ceiling, or it can never fire. `0` disables.
+    if (v.verify_stall_sec !== 0 && v.verify_stall_sec >= v.verify_timeout_sec) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `verify_stall_sec (${v.verify_stall_sec}) must be less than verify_timeout_sec (${v.verify_timeout_sec}); use 0 to disable the stall watchdog.`,
+        path: ["verify_stall_sec"],
       });
     }
   })

@@ -132,10 +132,11 @@ async function main(): Promise<void> {
   // materialized overlays on each resetForAttempt — git itself is blind to
   // plain files at a committed gitlink path, so a leftover group-assembly
   // overlay would otherwise poison every later verify in the slot. Applied to
-  // ALL pools (default/lane/resolver); the purge is self-guarding (only a
-  // populated, .git-less dir at an actual 160000 gitlink is removed), so it is
-  // a no-op for repos where the path is not a gitlink. Empty linked_repos ⇒ []
-  // ⇒ byte-identical to before.
+  // Default, resolver, and inner linked pools; the purge is self-guarding
+  // (only a populated, .git-less dir at an actual 160000 gitlink is removed),
+  // so it is a no-op for repos where the path is not a gitlink. The deployed
+  // linked-lane policy leaves the outer worktree to group assembly's gitlink
+  // normalization. Empty linked_repos ⇒ [] ⇒ byte-identical to before.
   const gitlinkPurgePaths = cfg.linkedRepos.flatMap((r) => (r.gitlinkPath ? [r.gitlinkPath] : []));
   const pool = createWorktreePool({
     parallelism: cfg.parallelism,
@@ -264,7 +265,10 @@ async function main(): Promise<void> {
         gitRemote: cfg.gitRemote,
         gitMainBranch: cfg.gitMainBranch,
         cleanKeep: cfg.cleanKeep,
-        gitlinkPurgePaths,
+        // Preserve the deployed linked-lane policy: only the inner pool may
+        // purge managed gitlink overlays. The outer worktree owns the gitlink
+        // entry and is normalized by group assembly itself.
+        gitlinkPurgePaths: repo.role === "outer" ? [] : gitlinkPurgePaths,
       });
       // Binding clone: a LOCAL `--mirror` clone of the linked repo, used ONLY to
       // resolve a member's ref (commitSha/branch). `repo.path` may be a remote
@@ -425,6 +429,12 @@ async function main(): Promise<void> {
       resource: cfg.resource,
       defaultVerifyCommand: cfg.verifyCommand,
       verifyTimeoutSec: cfg.verifyTimeoutSec,
+      // Campaign 2026-08-04 §P1: seconds → milliseconds, converted exactly once
+      // here. `0` disables the cancellation watcher entirely.
+      verifyCancelPollMs: cfg.verifyCancelPollSec * 1000,
+      // Campaign 2026-08-04 §P2: same seconds → milliseconds boundary. `0`
+      // disables the stall watchdog INDEPENDENTLY of the cancellation poll.
+      verifyStallMs: cfg.verifyStallSec * 1000,
       // Phase 7.5 Step 5: the verify_steps DAG (empty → synthetic single step).
       verifySteps: cfg.verifySteps,
       // Phase 7.5 Step 6: the verify-cache kill-switch + mode (default off → the

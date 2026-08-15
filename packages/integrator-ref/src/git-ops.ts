@@ -117,6 +117,19 @@ export interface RunVerifyOptions {
    * that omit `signal` (e.g. loop.ts) are unaffected.
    */
   signal?: AbortSignal;
+  /**
+   * Campaign 2026-08-04 §P2: the output-liveness box. When supplied, `runVerify`
+   * stamps `lastOutputAt = Date.now()` on every stdout/stderr chunk (and once at
+   * spawn), so a watcher outside this call can ask "has this build produced
+   * anything lately?" — the only progress signal a verify emits for free.
+   *
+   * A caller-owned MUTABLE BOX rather than a callback: no closure-lifetime
+   * questions, readable from a timer without awaiting anything, and absent ⇒
+   * byte-identical to the pre-P2 spawn. One box is shared by every step of a
+   * member's pipeline, which is exactly the semantics wanted — a member is alive
+   * if ANY of its concurrent steps is still talking.
+   */
+  liveness?: { lastOutputAt: number };
 }
 
 export interface GitOps {
@@ -829,7 +842,27 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
   }
 
   async function rebaseOnto(base: string, branch: string): Promise<RebaseResult> {
-    await git.checkout(branch);
+    // A merge-group member carrying commitSha is already an immutable checkout
+    // subject. Do not send that 40-hex through `git checkout <arg>`'s DWIM path:
+    // on the long-lived Windows daemon that path can consult an inherited/
+    // missing repository hint and fail as `fatal: 'undefined' does not appear
+    // to be a git repository`, even though the object is present and a direct
+    // reset to it succeeds. Detach at the already-checked-out pool base first,
+    // then materialize the exact object without any remote/ref inference.
+    //
+    // Branch-only requests retain the legacy checkout behavior (including its
+    // remote-tracking DWIM). Group binding prefers commitSha, so pinned atomic
+    // members take this exact-object path.
+    if (/^[0-9a-f]{40}$/i.test(branch)) {
+      const pinned = (await git.revparse(["--verify", `${branch}^{commit}`])).trim();
+      if (!/^[0-9a-f]{40}$/.test(pinned)) {
+        throw new Error(`rebaseOnto: pinned ref ${branch} did not resolve to a commit`);
+      }
+      await git.raw(["checkout", "--detach", "HEAD"]);
+      await git.reset(["--hard", pinned]);
+    } else {
+      await git.checkout(branch);
+    }
     try {
       await git.raw([...COMMIT_IDENTITY_ARGS, "rebase", base]);
       const treeSha = (await git.revparse(["HEAD"])).trim();
@@ -1214,13 +1247,24 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
         return current + (chunk.length > room ? chunk.slice(0, room) : chunk);
       };
 
+      // Campaign 2026-08-04 §P2. Stamped at spawn so a build that never prints
+      // ANYTHING is measured from when it started, not from epoch 0 (which
+      // would read as "silent since 1970" and kill it on the first tick).
+      const liveness = runOpts.liveness;
+      if (liveness) liveness.lastOutputAt = Date.now();
+      const markAlive = (): void => {
+        if (liveness) liveness.lastOutputAt = Date.now();
+      };
+
       child.stdout?.on("data", (d: Buffer) => {
         const s = d.toString();
+        markAlive();
         logStream.write(s);
         stdoutBuf = appendCapped(stdoutBuf, s);
       });
       child.stderr?.on("data", (d: Buffer) => {
         const s = d.toString();
+        markAlive();
         logStream.write(s);
         stderrBuf = appendCapped(stderrBuf, s);
       });

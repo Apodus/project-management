@@ -1,0 +1,80 @@
+{
+  "roadmap": "roadmaps/roadmap-20260803-train-phase-timing-legibility.md",
+  "branch": "campaign-train-phase-timing",
+  "status": "COMPLETE \u2014 merged to main (fast-forward) and PUSHED to origin/main @ b44185b",
+  "completed": [
+    {
+      "step": "P1",
+      "title": "Phase record (data + contract)",
+      "commit": "d68de88",
+      "outcome": "merge_phase_timings + migration 0038; shared enums (derived/observed partition) + Zod schemas + pure derive helpers; merge-phase.service (record + 5 reads); 4 REST routes; MERGE_PHASE_RECORDED one-per-batch + activity_log telemetry suppression. shared 591, server 1945 green.",
+      "plan_revisions": 1
+    },
+    {
+      "step": "P3",
+      "title": "Aggregation",
+      "commit": "825240a",
+      "outcome": "phase_timing block on the train metrics bundle: per-phase p50/p95/max/count/share + per-label drill-down, 24h window + newest-20-TRIPS recent. Absent-not-zero enforced as a type property through to the wire. shared 592, server 1968, web 519 green.",
+      "plan_revisions": 0,
+      "amendments_adopted": [
+        "shares sum to ~1 not exactly 1 in floating point (7 equal durations = 0.9999999999999998) \u2014 exact invariants pinned on integer totalMs, shares asserted with toBeCloseTo",
+        "the denominator double-counts the QUEUE side structurally (forming + per-member queue_wait overlap by construction, 1+memberCount times), not only concurrent verify \u2014 both sources named in the comment, route description, and a test",
+        "the 'merge_requests join is forbidden' premise was false \u2014 metrics.service already joins it; did the join so `recent` is the newest 20 TRIPS (a cross-repo group counts once) instead of ~6-7 merges masquerading as 20",
+        "the label change broke an existing P1 shared test \u2014 amended",
+        "added a wire-level absent-not-zero assertion (an .optional() slip in the Zod-4 mirror would become ?? 0 in a renderer)"
+      ]
+    },
+    {
+      "step": "P2",
+      "title": "Integrator instrumentation",
+      "commit": "fb6805a",
+      "outcome": "phase-recorder.ts (PhaseSpans/PhaseRecorder type split; time() await-neutral inside acquire/release; buffer 100 auto-flush; drop+count past 4 outstanding POSTs; flush() un-awaitable by type). Spans across batch.ts + group-assembly/integration/land. PipelineStepResult gains startedAtMs/wallMs/waveIndex so a CACHED step no longer reports the original run's 26 minutes. Integrator suite 436 passed / 1 skipped, 41 files.",
+      "amendments_adopted": [
+        "optional dep + coalesce at entry (deps.phases ?? NOOP) \u2014 required-field wiring was ~26 test sites, not 3; the non-nullable local seals `phases?.` identically",
+        "waveIndex on single-repo verify rows too \u2014 runPipeline runs each topological wave concurrently",
+        "no row where no operation runs (pure-bump arm, synthetic-inner rebase/verify)",
+        "await-neutrality claimed only as 'no new await between an acquire and its release, or inside a lock hold'",
+        "flush() FIRST in the finally, matching the file's existing seal convention"
+      ]
+    },
+    {
+      "step": "P4",
+      "commit": "8f076b1",
+      "outcome": "'Where the time goes' panel (two share bars + value table + label drill-down + absence list) and an In Flight phase-progress column. Also fixed a P1 wire defect: openapi-typescript had rewritten the BOOLEAN `derived` discriminator into the string \"true\"/\"false\", so a narrow would have been dead code while tests stayed green. web 540, server 1968."
+    },
+    {
+      "step": "P6",
+      "commit": "f0294f6",
+      "outcome": "Discord land/reject lines gained a stopwatch second line. A phase figure is the UNION of its intervals (sum would print verify 52m under a 26m header; max under-reports staggered overlap) and is scoped to the CURRENT trip (a requeue's prior attempt is dropped). A grouped member gets no line of its own. server 1982."
+    },
+    {
+      "step": "P5",
+      "commit": "11bfab6",
+      "outcome": "GET .../train/trace + a lane event-trace card. TWO arms (phase timings + audit log) plus entity-table reads \u2014 NOT activity_log, because a partially-landed group's discriminator never reaches it and entity tables carry full retroactive history. Phase entries order by END. `elapsed` is a closed union so a renderer can't print 'took' over a since-pickup number. shared 592 / server 2020 / web 561."
+    },
+    {
+      "step": "P7",
+      "commit": "b44185b",
+      "outcome": "e2e spec 11 (un-instrumented + instrumented lanes, seeded through the real ai_agent ingest), deployment guide \u00a714.16, CLAUDE.md capability entry. Full suite: shared 592 / server 2020 / web 561 / integrator 436+1skip / e2e 38-39."
+    }
+  ],
+  "pending": [],
+  "open_issues": [
+    "The other session's verify-legibility work moved to an isolated worktree; this tree was clean at 825240a. Executors still stage BY EXPLICIT PATH."
+  ],
+  "notes": [
+    "P2 is a DAEMON change: the integrator bundle must be redistributed + restarted before P3-P6 have any data. Until then the metrics bundle honestly shows only forming/queue_wait.",
+    "P4/P5/P6 touch server + web only and do NOT collide with the concurrent work; P4 is unblocked (depends on P3, which is done).",
+    "Migration 0038 needs a PM-server redeploy to activate; the table stays empty until P2 ships.",
+    "Out of scope by design: splitting game_one's pm-verify.bat into verify_steps \u2014 owned by the game_one team, and it is what unlocks the intra-verify generate/build/test breakdown."
+  ],
+  "ops_pending": [
+    "Redeploy the PM server \u2014 migration 0038 creates merge_phase_timings; until then the ingest 404s and the daemon just warns.",
+    "Redistribute the integrator bundle + restart the daemon \u2014 NOTHING has observed data until this.",
+    "After one merge, confirm the panel shows assemble/rebase/verify/land and watch that `adjusted` stays 0 on ingest acks.",
+    "Optional, game_one-owned: split pm-verify.bat into verify_steps to unlock the intra-verify breakdown (no PM change needed)."
+  ],
+  "residuals": [
+    "e2e specs 06 (2 tests) and 07 (1) flake independently under load on this box \u2014 untouched by the campaign; 07 fails even in isolation, on a different test than in-suite. Spec 11 passed 5/5 isolated and green in the final full run."
+  ]
+}

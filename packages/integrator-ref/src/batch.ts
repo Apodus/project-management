@@ -21,7 +21,13 @@ import { pathToFileURL } from "node:url";
 import type { Logger } from "./logger.js";
 import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
-import type { CacheMode, MergeRequestView, VerifyStep, VerifyStepResult } from "@pm/shared";
+import type {
+  CacheMode,
+  MergeRejectCategory,
+  MergeRequestView,
+  VerifyStep,
+  VerifyStepResult,
+} from "@pm/shared";
 import { type PmClient } from "./pm-client.js";
 import { categorize, classifyVerifyFailure, failureExcerpt } from "./categorize.js";
 import { runPipeline, toVerifyStepResults } from "./verify-pipeline.js";
@@ -53,7 +59,32 @@ export type MemberState =
   | "verified" // verify passed; waiting for land-gate (predecessors)
   | "failed" // verify non-zero OR rebase conflict → rejected (terminal)
   | "invalidated" // a predecessor failed; speculation void → re-admit
+  | "cancelled" // PM resolved the request while we worked on it (terminal, NOT ours to reject)
   | "landed"; // pushed to main + PM land() succeeded (terminal)
+
+/**
+ * Has this member LEFT the batch's active set? (campaign 2026-08-04 §P1)
+ *
+ * `survivingPredecessor` and `tryLand` walked the same hand-written predicate
+ * (`!== "failed" && !== "invalidated"`) in two places, and `computeSuffix` /
+ * the heartbeat in-flight count carried third and fourth copies. Adding
+ * `cancelled` to three of four would have wedged the lane in a way that reads
+ * as healthy: `tryLand` breaks at the first non-`verified` member (see its
+ * walk below), so ONE unrecognized terminal state parked in the ordered list
+ * stops every successor from landing for the life of the batch.
+ *
+ * So the predicate is defined ONCE, here, and every site calls it. A future
+ * terminal state is then a single-line change that cannot miss a site.
+ */
+const LEFT_BATCH: ReadonlySet<MemberState> = new Set<MemberState>([
+  "failed",
+  "invalidated",
+  "cancelled",
+]);
+
+export function hasLeftBatch(state: MemberState): boolean {
+  return LEFT_BATCH.has(state);
+}
 
 /**
  * The speculative base a member rebased on top of. `liveMainSha` is the `main`
@@ -118,6 +149,27 @@ export interface Member {
    * this in a `finally`.
    */
   verify: VerifyHandle | null;
+  /**
+   * Campaign 2026-08-04 §P1: WHY this member's verify was killed from outside,
+   * when it was. Null on every ordinary path (a verify that failed on its own
+   * merits was not aborted). Read by the verify phase-row recorder so an
+   * operator can tell "the code failed" from "we stopped caring about this
+   * build" — the two look identical in a bare exit code. P2 adds its own value.
+   */
+  abortedReason: "request_cancelled" | "output_stall" | null;
+  /**
+   * Campaign 2026-08-04 §P2: the human sentence for `abortedReason`, composed
+   * where the EVIDENCE lives (the watcher knows the threshold and how long the
+   * build was silent; the reject path does not). Null when nothing aborted.
+   */
+  abortedDetail: string | null;
+  /**
+   * Campaign 2026-08-04 §P2: the output-liveness box handed to every step of
+   * this member's verify pipeline. `lastOutputAt` is stamped at spawn and on
+   * every stdout/stderr chunk, so the watcher can read progress without
+   * touching the child. Null until the member starts verifying.
+   */
+  liveness: { lastOutputAt: number } | null;
 }
 
 export interface Batch {
@@ -200,6 +252,23 @@ export interface BatchDeps {
   newBatchId?: () => string;
   /** Lock heartbeat cadence; defaults to 60s (design §9.2). */
   heartbeatIntervalMs?: number;
+  /**
+   * Campaign 2026-08-04 §P1: cancellation-watcher cadence in MILLISECONDS.
+   * The operator-facing knob is `settings.integrator.verify_cancel_poll_sec`
+   * (seconds); index.ts converts once at this boundary. Milliseconds here so a
+   * test can run the watcher at 20ms — the integrator suite uses real timers
+   * throughout, and a seconds-only cadence would make these tests either
+   * 30 seconds long or unwritable.
+   *
+   * `0` (or absent) disables the watcher: no timer is created at all.
+   */
+  verifyCancelPollMs?: number;
+  /**
+   * Campaign 2026-08-04 §P2: kill a verify silent for this many MILLISECONDS.
+   * `0`/absent disables the stall watchdog INDEPENDENTLY of the cancellation
+   * poll — an operator who turns off one must not silently lose the other.
+   */
+  verifyStallMs?: number;
   /**
    * STEP 8 (design §10.2): max transient verify retries per member before a
    * transient failure is treated as real. Defaults to
@@ -586,6 +655,13 @@ interface BatchCtx {
   rejected: string[];
   requeued: string[];
   /**
+   * Campaign 2026-08-04 §P1: members whose verify we killed because PM had
+   * already resolved the request. Kept SEPARATE from `rejected` (we did not
+   * reject anything) and from `requeued` (the request is terminal — re-queuing
+   * it would resurrect work a human deliberately cancelled).
+   */
+  cancelled: string[];
+  /**
    * Campaign 2026-08-03 §P2: the drain's phase-timing spans. Deliberately typed
    * `PhaseSpans` and NOT `PhaseRecorder` — the members' code paths can record
    * but cannot flush, so the decision to talk to PM stays with `runBatchOnce`,
@@ -609,9 +685,16 @@ interface BatchCtx {
  * it is a genuinely empty batch (the FIFO head had no admittable request).
  */
 export function composeAbandonReason(
-  ctx: Pick<BatchCtx, "rejected" | "requeued">,
+  ctx: Pick<BatchCtx, "rejected" | "requeued" | "cancelled">,
   admittedCount: number,
 ): string {
+  // Campaign 2026-08-04 §P1. Named FIRST: "no land" because the only work in
+  // the batch was cancelled out from under us is not a failure of the train,
+  // and reporting it as a rejection or an empty batch would send an operator
+  // hunting for a bug that isn't there.
+  if ((ctx.cancelled?.length ?? 0) > 0) {
+    return `batch drained with no land: ${ctx.cancelled.length} member(s) cancelled mid-verify (request went terminal in PM)`;
+  }
   if (ctx.rejected.length > 0) {
     return `batch drained with no land: ${ctx.rejected.length} member(s) rejected at verify/conflict`;
   }
@@ -652,7 +735,7 @@ function baseShaOf(base: SpeculativeBase): string {
  */
 export function survivingPredecessor(member: Member, batch: Batch): Member | undefined {
   const surviving = batch.members
-    .filter((m) => m.state !== "failed" && m.state !== "invalidated")
+    .filter((m) => !hasLeftBatch(m.state))
     .sort((a, b) => a.speculativePosition - b.speculativePosition);
   let prev: Member | undefined;
   for (const m of surviving) {
@@ -777,6 +860,15 @@ export type MemberFailure =
       stdout: string;
       stderr: string;
       timedOut: boolean;
+      /**
+       * Campaign 2026-08-04 §P2: an EXPLICIT category/reason that overrides
+       * `categorize`'s inference. Needed because `categorize` maps any
+       * SIGTERM/SIGKILL to `verify_timeout` — so a stall-killed verify would be
+       * reported as "verify timed out", the exact confusion the stall watchdog
+       * exists to remove. Absent on every ordinary failure, which keeps the
+       * inference path byte-identical.
+       */
+      categoryOverride?: { category: MergeRejectCategory; reason: string };
     }
   | { kind: "conflict"; conflictingFiles: string[]; stderr: string }
   | { kind: "push_other"; reason: string; stderr: string }
@@ -862,13 +954,22 @@ export async function onMemberFailed(
   }
 
   if (failure.kind === "verify") {
-    const cat = categorize({
-      exitCode: failure.exitCode,
-      signal: failure.signal,
-      stdout: failure.stdout,
-      stderr: failure.stderr,
-      timedOut: failure.timedOut,
-    });
+    // §P2: an explicit override wins over inference. `categorize` reads a
+    // SIGTERM as `verify_timeout`, which is right for the ceiling and wrong for
+    // every other reason we might have killed the child ourselves.
+    const cat = failure.categoryOverride
+      ? {
+          category: failure.categoryOverride.category,
+          reason: failure.categoryOverride.reason,
+          failedFiles: [] as string[],
+        }
+      : categorize({
+          exitCode: failure.exitCode,
+          signal: failure.signal,
+          stdout: failure.stdout,
+          stderr: failure.stderr,
+          timedOut: failure.timedOut,
+        });
     const reason = cat.reason || summaryLine(failure.stderr || failure.stdout) || "verify failed";
     const excerpt = failureExcerpt(failure.stdout, failure.stderr, LOG_EXCERPT_CAP);
     if (attemptId) {
@@ -960,8 +1061,7 @@ export function computeSuffix(failed: Member, batch: Batch): Member[] {
     (j) =>
       j !== failed &&
       j.state !== "landed" &&
-      j.state !== "failed" &&
-      j.state !== "invalidated" &&
+      !hasLeftBatch(j.state) &&
       j.predecessorChain.some((p) => p.requestId === failed.request.id),
   );
 }
@@ -1033,6 +1133,237 @@ async function invalidateSuffix(
   }
 }
 
+// ─── Cancellation watcher (campaign 2026-08-04 §P1) ───────────────
+
+/** A merge-request status that means "PM is done with this request". */
+function isTerminalForUs(status: string): boolean {
+  // Anything that is not `integrating` ends OUR work on it. `queued` is
+  // included deliberately: that is the re-queue case (someone reset the
+  // request), and continuing to verify a tree nobody is waiting on is the same
+  // waste as verifying a cancelled one.
+  return status !== "integrating";
+}
+
+/**
+ * Tear a member down because PM resolved its request while we were verifying
+ * (campaign 2026-08-04 §P1 — the 2026-08-04 incident spent 52 of its 59 wasted
+ * minutes here: the worker cancelled the request seven minutes before the build
+ * even finished, and the daemon never learned).
+ *
+ * This is `onMemberFailed`'s shape MINUS the reject, and the difference is the
+ * whole point:
+ *  - we do NOT `rejectMergeRequest` — PM already resolved it, and a reject would
+ *    write a `merge_rejection` comment blaming the code for a human's decision;
+ *  - we do NOT `resetToQueued` THIS member — that would resurrect work somebody
+ *    deliberately cancelled. (Its SUFFIX is re-queued, because those requests
+ *    are still live and merely lost their speculative base.)
+ *
+ * ORDERING IS LOAD-BEARING and mirrors `invalidateSuffix`'s FIX 1: the state
+ * flip is synchronous and happens BEFORE the kill, so when the killed child
+ * resolves `runVerify`, `runVerifyTask`'s post-await bail-guard sees a state
+ * that is no longer `verifying` and returns without re-entering the failure
+ * path. Flipping after the kill would race the continuation into a double
+ * teardown.
+ */
+async function onMemberCancelled(
+  member: Member,
+  batch: Batch,
+  deps: BatchDeps,
+  ctx: BatchCtx,
+  observedStatus: string,
+): Promise<void> {
+  // ── Synchronous block: NO await until the member is off `verifying`. ──
+  member.abortedReason = "request_cancelled";
+  member.state = "cancelled";
+  member.verify?.kill();
+  member.verify = null;
+
+  deps.logger.warn(
+    { requestId: member.request.id, observedStatus, batchId: batch.batchId },
+    "killing in-flight verify: PM no longer considers this request integrating",
+  );
+
+  // The successors chained onto this member's rebased tree. They are still
+  // legitimately queued, so the existing path (cancel attempt + resetToQueued +
+  // member_invalidated event) is exactly right — reuse it rather than minting a
+  // second, subtly-different teardown.
+  await invalidateSuffix(member, batch, deps, ctx);
+
+  // Close OUR attempt so it does not dangle as `running` forever. 409-tolerant
+  // by construction: the request is ALREADY terminal, which is precisely the
+  // case `pmTerminalWrite` was built for on 2026-08-02.
+  const attemptId = member.attemptId;
+  if (attemptId) {
+    await pmTerminalWrite(deps, "completeAttempt", member.request.id, () =>
+      // `cancelled` carries no step results by contract (the attempt produced
+      // no verdict — see the completeAttempt payload type), which is exactly
+      // the honest shape here: we killed the run before it had one.
+      deps.pmClient.completeAttempt(attemptId, { status: "cancelled" }),
+    );
+  }
+  member.attemptId = null;
+
+  // Free the slot NOW rather than at end-of-batch: with `parallelism: 1` the
+  // lane is otherwise idle until the drain finishes, which is the stall this
+  // campaign exists to remove. Safe because the kill above already tore down
+  // the process tree in that worktree.
+  if (member.worktree) {
+    deps.pool.release(member.worktree);
+    member.worktree = null;
+  }
+
+  ctx.cancelled.push(member.request.id);
+}
+
+/**
+ * The lane-level cancellation watcher (campaign 2026-08-04 §P1).
+ *
+ * ONE timer per batch, not one per member: the drain loop parks in
+ * `Promise.race(inFlight)` for the whole of a 39-minute verify, so nothing on
+ * the loop's own cadence can notice anything. The watcher polls PM for each
+ * in-flight member's OWN status and routes a positive terminal read into the
+ * kill seam that already exists (`VerifyHandle.kill` → `AbortController` →
+ * git-ops `killTree`). No second kill path is created.
+ *
+ * FAIL OPEN (design lock 1): only a SUCCESSFUL read reporting a terminal status
+ * may kill. Every failure mode of the read — network error, 5xx, 401, 404,
+ * malformed body — leaves the verify running. A PM blip must never kill a
+ * healthy build, so absence of evidence is never evidence.
+ *
+ * SSE is deliberately NOT used here. `sse-subscriber.ts` parses only the event
+ * NAME and explicitly ignores the `data:` payload, so per-member abort would
+ * require teaching it to parse and fan out request ids — a new failure surface
+ * whose entire benefit is shaving <1 poll interval off a ~52-minute saving,
+ * on top of a poll that has to be sufficient alone regardless. Poll is the
+ * correctness floor; that contract is honored by not depending on SSE at all.
+ *
+ * Returns a `stop()` the caller MUST call from the drain's `finally`.
+ */
+function startCancellationWatcher(
+  batch: Batch,
+  deps: BatchDeps,
+  ctx: BatchCtx,
+): { stop: () => void } {
+  const pollMs = deps.verifyCancelPollMs ?? 0;
+  const stallMs = deps.verifyStallMs ?? 0;
+  // Campaign 2026-08-04 §P2: the two arms are INDEPENDENTLY disableable, so the
+  // timer runs if EITHER is on. Turning off the cancellation poll must not
+  // silently take the stall watchdog with it.
+  //
+  // Cadence = the finest resolution any enabled arm needs. The stall arm needs
+  // only enough granularity to notice within a fraction of its own threshold
+  // (a 20-minute threshold checked every minute is plenty), and cheaply — the
+  // check is local arithmetic, not I/O.
+  const stallTickMs = stallMs > 0 ? Math.min(Math.max(Math.floor(stallMs / 20), 1000), 60_000) : 0;
+  const candidates = [pollMs, stallTickMs].filter((n) => n > 0);
+  if (candidates.length === 0) return { stop: (): void => {} };
+  const tickMs = Math.min(...candidates);
+
+  let inTick = false;
+  // Epoch 0 ⇒ the first tick always runs a cancellation round.
+  let lastCancelPollAt = 0;
+  const timer = setInterval(() => {
+    // Skip rather than overlap: a slow PM must not queue up ticks.
+    if (inTick) return;
+    inTick = true;
+    void (async () => {
+      try {
+        // Snapshot: only members actually verifying. A `verified` member is
+        // deliberately out of scope — it is about to land (or is mid-land in
+        // `tryLand`), and releasing its worktree from under an in-flight land
+        // would corrupt that land for no gain. `landMember`'s own PM calls
+        // already handle a request that went terminal.
+        const inFlight = batch.members.filter((m) => m.verify !== null && m.state === "verifying");
+
+        // Decided ONCE per tick, not per member: the cancellation arm runs on
+        // its own cadence, and every in-flight member must be polled in the
+        // same round (a per-member gate would let the first member consume the
+        // round and starve the rest).
+        const cancelRound = pollMs > 0 && Date.now() - lastCancelPollAt >= pollMs;
+        if (cancelRound) lastCancelPollAt = Date.now();
+
+        for (const member of inFlight) {
+          // ── STALL ARM (§P2), evaluated BEFORE the PM read. The check is
+          //    local arithmetic that cannot fail or block; the read below is
+          //    I/O that can. A PM outage is exactly when a build is most likely
+          //    to be left stranded, so stall detection must not sit behind it.
+          // `abortedReason` already set ⇒ a previous tick fired the kill and the
+          // child has not finished dying yet. Firing again would log a second
+          // time and overwrite the silence figure with a larger, later one.
+          if (stallMs > 0 && member.liveness && member.abortedReason === null) {
+            const silentMs = Date.now() - member.liveness.lastOutputAt;
+            if (silentMs > stallMs) {
+              // NOTE the deliberate difference from the cancellation arm: state
+              // is NOT flipped here. A killed child resolves as
+              // `exitCode:null + signal`, which `classifyVerifyFailure` calls
+              // TRANSIENT — so letting the normal path run would RETRY a stalled
+              // build up to maxVerifyRetries (four stalls, not one). Instead the
+              // marker below tells `runVerifyTask` to treat this pass as a REAL
+              // failure, which keeps every terminal write on the proven path.
+              member.abortedReason = "output_stall";
+              member.abortedDetail =
+                `verify produced no output for ${Math.round(silentMs / 1000)}s ` +
+                `(threshold verify_stall_sec=${Math.round(stallMs / 1000)}s); killed. ` +
+                `If this build legitimately goes quiet for that long, raise verify_stall_sec.`;
+              deps.logger.warn(
+                {
+                  requestId: member.request.id,
+                  silentMs,
+                  stallMs,
+                  batchId: batch.batchId,
+                },
+                "killing in-flight verify: no output past the stall threshold",
+              );
+              member.verify?.kill();
+              continue;
+            }
+          }
+
+          // ── CANCELLATION ARM (§P1). Rate-limited to its OWN cadence: the
+          //    tick can be much faster than `pollMs` when the stall arm needs
+          //    finer resolution, and that must not multiply PM read load by
+          //    the ratio between the two. ──
+          if (!cancelRound) continue;
+          let status: string;
+          try {
+            const view = await deps.pmClient.getMergeRequest(member.request.id);
+            status = view.status;
+          } catch (err) {
+            // FAIL OPEN: any read failure at all leaves the verify running.
+            deps.logger.debug?.(
+              { requestId: member.request.id, err: errMessage(err) },
+              "cancellation poll failed; leaving verify running",
+            );
+            continue;
+          }
+          if (!isTerminalForUs(status)) continue;
+
+          // RE-CHECK with NO AWAIT between here and the synchronous mutation
+          // block inside `onMemberCancelled` — the same discipline the retry
+          // loop enforces before `startAttempt`. The `await` above is a
+          // suspension point: the member may have become `verified` (and be
+          // mid-land) or have been torn down by a suffix invalidation while we
+          // were reading. This is also what makes a tick that resolves AFTER
+          // the batch's finally safe — that finally nulls every `verify`.
+          if (member.verify === null || member.state !== "verifying") continue;
+
+          await onMemberCancelled(member, batch, deps, ctx, status);
+        }
+      } catch (err) {
+        // The watcher must never throw into the loop it is watching.
+        deps.logger.debug?.({ err: errMessage(err) }, "cancellation watcher tick threw; ignored");
+      } finally {
+        inTick = false;
+      }
+    })();
+  }, tickMs);
+  timer.unref?.();
+
+  return {
+    stop: (): void => clearInterval(timer),
+  };
+}
+
 // ─── tryLand ──────────────────────────────────────────────────────
 
 /**
@@ -1051,7 +1382,7 @@ export async function tryLand(batch: Batch, deps: BatchDeps, ctx: BatchCtx): Pro
   // land order. Ordered ascending by position; land each `verified` member and
   // halt at the first non-`verified` (never skip ahead).
   const ordered = batch.members
-    .filter((m) => m.state !== "failed" && m.state !== "invalidated")
+    .filter((m) => !hasLeftBatch(m.state))
     .sort((a, b) => a.speculativePosition - b.speculativePosition);
   for (const member of ordered) {
     if (member.state === "landed") continue;
@@ -1376,7 +1707,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     },
   });
 
-  const ctx: BatchCtx = { landed: [], rejected: [], requeued: [], phases };
+  const ctx: BatchCtx = { landed: [], rejected: [], requeued: [], cancelled: [], phases };
 
   // PHASE 7.4 §3.2 (Step 12): the lock is held → a batch is now in flight. The
   // heartbeat reads these counters to derive status="integrating". `requests`
@@ -1396,7 +1727,14 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
   // strip the re-admitted member's fresh tracking.
   const reAdmitted = new WeakSet<Member>();
 
+  // Campaign 2026-08-04 §P1. Started INSIDE the try whose finally owns the
+  // slot-leak seal, so no exit path — return, throw, or drain — can leak the
+  // timer. `stop()` is called there, beside the other teardown.
+  let cancelWatcher: { stop: () => void } = { stop: (): void => {} };
+
   try {
+    cancelWatcher = startCancellationWatcher(batch, deps, ctx);
+
     // 4. Drain loop (design §5/§9.3/§11): rebase-sequential, verify-parallel.
     //
     // Each iteration: ADMIT as many FIFO-head requests as there are idle slots
@@ -1517,11 +1855,7 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
       // reads this between passes to report how many requests are integrating.
       if (deps.inFlight) {
         deps.inFlight.requests = batch.members.filter(
-          (m) =>
-            m.worktree !== null &&
-            m.state !== "landed" &&
-            m.state !== "failed" &&
-            m.state !== "invalidated",
+          (m) => m.worktree !== null && m.state !== "landed" && !hasLeftBatch(m.state),
         ).length;
       }
 
@@ -1566,6 +1900,15 @@ export async function runBatchOnce(deps: BatchDeps): Promise<RunBatchOutcome> {
     //    failure mode is swallowed inside), and returns void, so the two are
     //    both "first" in every sense that matters. ──
     phases.flush();
+
+    // ── CANCELLATION WATCHER (campaign 2026-08-04 §P1). Immediately after the
+    //    flush — `phase-timing-seal.test.ts` pins the flush as LITERALLY the
+    //    first statement here, and that seal is right: a leaked interval is a
+    //    cheap problem, a lost phase row is an unanswerable question. Both are
+    //    synchronous and total, so neither can starve the other. A tick already
+    //    in flight is harmless: its pre-mutation re-check sees `verify === null`
+    //    once the slot-leak seal below nulls every handle. ──
+    cancelWatcher.stop();
 
     // ── SLOT-LEAK SEAL (2026-08-02 lane wedge). FIRST in the finally, before
     //    any await, so nothing downstream can skip it. ──
@@ -1714,6 +2057,9 @@ async function admitAndRebase(
     retryCount: 0,
     steps: null,
     verify: null,
+    abortedReason: null,
+    abortedDetail: null,
+    liveness: null,
   };
   // STEP-6 CASCADE-RACE FIX: do NOT push the member into `batch.members` with an
   // empty `predecessorChain`. A predecessor's verify can fail (and run suffix
@@ -2043,6 +2389,11 @@ async function runVerifyTask(
       detail: { batchId: batch.batchId, speculativePosition: member.speculativePosition },
     });
 
+    // Campaign 2026-08-04 §P2: ONE liveness box for this member, shared by every
+    // step of every pass. Created here (not per pass) so a transient retry keeps
+    // the same box and the watcher never reads a null between iterations.
+    member.liveness = { lastOutputAt: Date.now() };
+
     // ── Verify + transient-retry loop (design §10). The loop runs INSIDE the
     //    single runVerifyTask (= member.verify.done), so the handle/controller —
     //    and thus `signal` — is stable across iterations. A transient failure
@@ -2117,6 +2468,9 @@ async function runVerifyTask(
         // Step 5). Stable across retries (built once above; same tree/config).
         cache: cacheCtx,
         logger: deps.logger,
+        // §P2: forwarded to every step's runVerify so any output from any
+        // concurrent step counts as this member being alive.
+        liveness: member.liveness ?? undefined,
       });
 
       // Campaign 2026-08-03 §P2: record the verify spans BEFORE the bail guard
@@ -2149,6 +2503,13 @@ async function runVerifyTask(
             // The cached verdict's own duration is a FACT, not a group-by key:
             // it belongs in detail so nobody mistakes it for this pass's cost.
             ...(step.cached ? { cachedDurationMs: step.durationMs } : {}),
+            // Campaign 2026-08-04 §P1: WHY these minutes stopped. A verify that
+            // was killed because its request went terminal is NOT a verify that
+            // failed, and the exit code alone cannot tell the two apart — the
+            // row would otherwise read as "the code failed" to anyone looking
+            // at where the wall clock went. Passive `detail` only: no new await,
+            // no flush, nothing load-bearing.
+            ...(member.abortedReason ? { abortedReason: member.abortedReason } : {}),
           },
         });
       }
@@ -2174,7 +2535,14 @@ async function runVerifyTask(
       // A real VerifyResult — the SAME shape the single-command path branched on
       // (the captured failing-step trigger, never an abort-casualty).
       const verify = pipeline.failingStep!.verify;
-      const disposition = classifyVerifyFailure(verify);
+      // Campaign 2026-08-04 §P2: a stall-killed verify resolves as
+      // `exitCode:null + signal`, which `classifyVerifyFailure` calls TRANSIENT
+      // — so without this the watchdog would retry a stalled build up to
+      // `maxVerifyRetries` times and turn one 20-minute stall into four. The
+      // watchdog's marker is a positive statement that this pass is over, so it
+      // outranks the signal heuristic.
+      const stalled = member.abortedReason === "output_stall";
+      const disposition = stalled ? "real" : classifyVerifyFailure(verify);
       if (disposition === "real" || member.retryCount >= maxVerifyRetries) {
         // Real failure, OR transient but the cap is reached → reject + suffix
         // invalidate (Step 6). The final failure is categorized normally for the
@@ -2190,6 +2558,17 @@ async function runVerifyTask(
             stdout: verify.stdout,
             stderr: verify.stderr,
             timedOut: verify.timedOut,
+            // §P2: the watchdog composed the sentence where the evidence lived
+            // — how long it was silent and what threshold it crossed — so the
+            // worker's merge_rejection says which knob to raise.
+            ...(stalled && member.abortedDetail
+              ? {
+                  categoryOverride: {
+                    category: "verify_stall" as MergeRejectCategory,
+                    reason: member.abortedDetail,
+                  },
+                }
+              : {}),
           },
           ctx,
         );

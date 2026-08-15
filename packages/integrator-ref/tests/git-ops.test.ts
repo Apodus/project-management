@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
@@ -16,6 +16,46 @@ function hasGit(): boolean {
 }
 
 const GIT_AVAILABLE = hasGit();
+
+describe("git-ops pinned merge-group ref regression", () => {
+  it("materializes an exact commit without checkout DWIM/remote inference", async () => {
+    const pinned = "8".repeat(40);
+    const base = "7".repeat(40);
+    const calls: string[][] = [];
+    const fake = {
+      // This is the exact live failure. Before the repair rebaseOnto called
+      // checkout(pinned) and the test rejected here.
+      async checkout(ref: string): Promise<void> {
+        throw new Error(
+          `fatal: '${ref === pinned ? "undefined" : ref}' does not appear to be a git repository`,
+        );
+      },
+      async revparse(args: string[]): Promise<string> {
+        calls.push(["revparse", ...args]);
+        if (args[0] === "--verify") return pinned;
+        if (args[0] === "HEAD") return pinned;
+        throw new Error(`unexpected revparse ${args.join(" ")}`);
+      },
+      async raw(args: string[]): Promise<string> {
+        calls.push(["raw", ...args]);
+        return "";
+      },
+      async reset(args: string[]): Promise<string> {
+        calls.push(["reset", ...args]);
+        return "";
+      },
+    } as unknown as SimpleGit;
+
+    const result = await createGitOps(fake).rebaseOnto(base, pinned);
+    expect(result).toEqual({ ok: true, treeSha: pinned });
+    expect(calls).toContainEqual(["revparse", "--verify", `${pinned}^{commit}`]);
+    expect(calls).toContainEqual(["raw", "checkout", "--detach", "HEAD"]);
+    expect(calls).toContainEqual(["reset", "--hard", pinned]);
+    expect(calls.some((c) => c[0] === "raw" && c.includes("rebase") && c.includes(base))).toBe(
+      true,
+    );
+  });
+});
 
 // Shared fixture state.
 let tmpRoot: string;
@@ -366,6 +406,139 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops (real git)", () => {
     expect(result.timedOut).toBe(false);
     // The result reflects a kill: non-zero exit or a kill signal.
     expect(result.exitCode !== 0 || result.signal !== null).toBe(true);
+  }, 15_000);
+
+  // ── Campaign 2026-08-04 §P3: the grandchild-reap regression ──────
+  //
+  // The debt this pays off: an earlier note claimed the timeout killed only the
+  // shell and leaked grandchildren. That was WRONG — `killTree` has always
+  // taken the tree — but it was wrong by INSPECTION, and the 2026-08-04
+  // incident (an MSBuild that outlived its build) is exactly the shape of thing
+  // that makes such a claim plausible. So it is pinned by test instead.
+  //
+  // The tree here is real: runVerify spawns a shell (shell:true), the shell
+  // runs node, and that node spawns a second node. Only a tree kill reaps the
+  // last one; killing the shell alone leaves it running.
+
+  /** Writes a helper whose child records its own pid, then both wait forever. */
+  function writeTreeScript(dir: string, pidFile: string): string {
+    const script = path.join(dir, "spawn-grandchild.cjs");
+    writeFileSync(
+      script,
+      [
+        "const { spawn } = require('node:child_process');",
+        "const fs = require('node:fs');",
+        // The grandchild: record its pid, then idle far longer than the test.
+        "const gc = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {",
+        "  stdio: 'ignore',",
+        "});",
+        `fs.writeFileSync(${JSON.stringify(pidFile)}, String(gc.pid));`,
+        // The parent also idles, so the shell stays alive and the whole tree is
+        // still standing when the kill arrives.
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+      "utf8",
+    );
+    return script;
+  }
+
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  async function waitForDeath(pid: number, budgetMs: number): Promise<boolean> {
+    const deadline = Date.now() + budgetMs;
+    while (Date.now() < deadline) {
+      if (!alive(pid)) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return !alive(pid);
+  }
+
+  async function readPidWhenWritten(pidFile: string, budgetMs: number): Promise<number> {
+    const deadline = Date.now() + budgetMs;
+    while (Date.now() < deadline) {
+      try {
+        const raw = readFileSync(pidFile, "utf8").trim();
+        if (raw) return Number(raw);
+      } catch {
+        /* not written yet */
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error("grandchild never recorded its pid");
+  }
+
+  it("runVerify's ABORT path reaps a grandchild, not just the shell", async () => {
+    const ops = createGitOps(git);
+    const pidFile = path.join(tmpRoot, "gc-abort.pid");
+    const script = writeTreeScript(tmpRoot, pidFile);
+    const controller = new AbortController();
+
+    const run = ops.runVerify(`node "${script}"`, 60_000, {
+      cwd: workClone,
+      logPath: path.join(tmpRoot, "verify-gc-abort.log"),
+      signal: controller.signal,
+      killGracePeriodMs: 500,
+    });
+
+    const gcPid = await readPidWhenWritten(pidFile, 15_000);
+    expect(alive(gcPid)).toBe(true); // the tree really is standing
+
+    controller.abort();
+    await run;
+
+    // THE assertion: the process two levels down is gone. This is what makes
+    // "the daemon can end a doomed build" true rather than hopeful.
+    expect(await waitForDeath(gcPid, 10_000)).toBe(true);
+  }, 45_000);
+
+  it("runVerify's TIMEOUT path reaps a grandchild, not just the shell", async () => {
+    const ops = createGitOps(git);
+    const pidFile = path.join(tmpRoot, "gc-timeout.pid");
+    const script = writeTreeScript(tmpRoot, pidFile);
+
+    // A 2s timeout against a tree that would otherwise idle forever.
+    const run = ops.runVerify(`node "${script}"`, 2_000, {
+      cwd: workClone,
+      logPath: path.join(tmpRoot, "verify-gc-timeout.log"),
+      killGracePeriodMs: 500,
+    });
+
+    const gcPid = await readPidWhenWritten(pidFile, 15_000);
+    const result = await run;
+
+    expect(result.timedOut).toBe(true);
+    expect(await waitForDeath(gcPid, 10_000)).toBe(true);
+  }, 45_000);
+
+  // Campaign 2026-08-04 §P2: the liveness box is the only progress signal a
+  // verify emits for free, and the stall watchdog is only as honest as it is.
+  it("runVerify stamps the liveness box at spawn and on every output chunk", async () => {
+    const ops = createGitOps(git);
+    const logPath = path.join(tmpRoot, "verify-liveness.log");
+    const liveness = { lastOutputAt: 0 };
+    const before = Date.now();
+    await ops.runVerify("echo alive", 10_000, { cwd: workClone, logPath, liveness });
+    // Stamped — a build that printed is not silent.
+    expect(liveness.lastOutputAt).toBeGreaterThanOrEqual(before);
+  }, 15_000);
+
+  it("runVerify stamps the liveness box at spawn even when the child prints nothing", async () => {
+    const ops = createGitOps(git);
+    const logPath = path.join(tmpRoot, "verify-liveness-quiet.log");
+    const liveness = { lastOutputAt: 0 };
+    const before = Date.now();
+    const quiet = process.platform === "win32" ? "ping -n 2 127.0.0.1 > nul" : "sleep 1";
+    await ops.runVerify(quiet, 10_000, { cwd: workClone, logPath, liveness });
+    // The spawn stamp is what stops a silent-from-birth build reading as
+    // "silent since 1970" and being killed on the watchdog's first tick.
+    expect(liveness.lastOutputAt).toBeGreaterThanOrEqual(before);
   }, 15_000);
 
   it("runVerify already-aborted signal kills immediately", async () => {

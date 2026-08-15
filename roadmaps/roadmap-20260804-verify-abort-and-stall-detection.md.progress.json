@@ -1,0 +1,66 @@
+{
+  "roadmap": "roadmaps/roadmap-20260804-verify-abort-and-stall-detection.md",
+  "branch": "campaign/verify-abort-stall-detection",
+  "completed": ["P1", "P2", "P3"],
+  "current": null,
+  "pending": [],
+  "steps": {
+    "P1": {
+      "status": "complete",
+      "commit": "ba4de2b",
+      "outcome": "Lane-level cancellation watcher polls each in-flight member's own status and routes a positive terminal read into the existing kill seam. Fails open on every read failure. New `cancelled` member state: closes the attempt, invalidates the suffix, frees the slot; never rejects, never resets-to-queued. `hasLeftBatch` replaces four copies of the same predicate. Knob: verify_cancel_poll_sec (default 30, 0 disables), REST-only.",
+      "adversarial_findings_folded_in": [
+        "F1 tryLand/survivingPredecessor/computeSuffix/heartbeat all walked duplicate predicates; a `cancelled` member missed by one would have wedged the land walk for the life of the batch. Fixed with one shared `hasLeftBatch`.",
+        "F2 mandatory no-await-between re-check before mutation, else a member that became `verified` mid-read gets its slot released under an in-flight land.",
+        "F3 watcher acts only on state `verifying` (deliberate scope line).",
+        "F4 BatchDeps cadence is milliseconds — the integrator suite has no fake timers anywhere.",
+        "F5 late-tick safety made explicit; covered by the teardown test."
+      ]
+    },
+    "P2": {
+      "status": "complete",
+      "commit": "b3da457",
+      "outcome": "runVerify stamps a caller-owned liveness box at spawn and on every output chunk; one box per member shared by all pipeline steps. The P1 watcher grows a second, independently-disableable arm that reads it. New `verify_stall` reject category; reason names silence + threshold + which knob to raise.",
+      "deviation_from_roadmap": "verify_stall_sec ships DISABLED (0), not the roadmap's 1200. 1200 was calibrated against game_one's 9000s verify_timeout_sec, but the SCHEMA default timeout is 600 — a 1200 default is unreachable AND invalid under the floor-under-ceiling rule P2 adds (it 400'd every settings write until changed). Off also matches how cache_enabled/resolver.enabled ship. Operators opt in per lane; guide §14.17 gives the sizing.",
+      "adversarial_findings_folded_in": [
+        "G1 a stall-killed verify looks TRANSIENT to classifyVerifyFailure (exitCode null + signal), so the naive design would have RETRIED it up to maxVerifyRetries — one 20-min stall becoming four. Marker outranks the heuristic; pinned by a startAttempt-count assertion.",
+        "G2 categorize() maps SIGTERM/SIGKILL to verify_timeout, so a stall would have been reported as the ceiling it pre-empts. Explicit categoryOverride + new verify_stall category.",
+        "G3 one liveness box per member, not per step.",
+        "G4 the two arms must be independently disableable; tick = min of enabled cadences, PM read rate-limited to its own.",
+        "G5 stall check runs BEFORE the PM read — local arithmetic that cannot block, and a PM outage is when a build is most likely stranded."
+      ]
+    },
+    "P3": {
+      "status": "complete",
+      "commit": "fbdca4e",
+      "outcome": "Grandchild-reap regression test on BOTH the abort and timeout paths (shell -> node -> node; asserts the grandchild is dead) — the debt the roadmap named. Guide §14.17 narrates the incident + both knobs; §14.8 gains the 'a verify command MUST EXIT' contract naming MSBuild nodeReuse with /nodeReuse:false and MSBUILDDISABLENODEREUSE=1. CLAUDE.md capability-index entry added.",
+      "notes": "Distinct outcomes fell out of P1/P2's design rather than needing new rendering: verify failed (existing category) / killed-cancelled (attempt cancelled + detail.abortedReason=request_cancelled, no reject) / killed-stalled (verify_stall + reason) / timed out (verify_timeout). No hand-written category->label map exists in web, so the new category renders generically."
+    }
+  },
+  "verification": {
+    "integrator": "41 test files, all green (batch.test.ts 71/71 incl. 10 new; git-ops.test.ts 21/21 incl. 4 new)",
+    "shared": "592",
+    "server": "2022",
+    "web": "561",
+    "mcp": "257",
+    "gates": "typecheck + lint + format:check + build all pass"
+  },
+  "open_issues": [
+    {
+      "id": "group-path-uncovered",
+      "severity": "scope-gap",
+      "detail": "group-integration.ts passes `signal: undefined` explicitly — the cross-repo group path has no member-level kill seam, so NEITHER trigger covers a grouped merge; it still burns to verify_timeout_sec. game_one runs cross-repo. Not in the roadmap's text; a kill seam there touches three call sites plus recovery/rollforward interactions. Candidate follow-up campaign."
+    },
+    {
+      "id": "completed-event-omits-cancelled",
+      "severity": "minor",
+      "detail": "The `completed` BatchEvent reports landed/rejected/invalidated; a cancelled member is in none of them (no miscount, just unreported). Adding a field is a wire-contract change; left for whoever next touches that event."
+    },
+    {
+      "id": "subagent-delegation-unavailable",
+      "severity": "process",
+      "detail": "Three sub-agents (2x Plan, 1x general-purpose) went idle without returning output, so the commander ran plan/verify/execute inline. The adversarial passes were performed against the code and produced F1-F5 and G1-G5, several of which changed the shipped design."
+    }
+  ],
+  "deployment": "No migration. PM-server redeploy picks up the schema (verify_cancel_poll_sec, verify_stall_sec, verify_stall category). The daemon needs a bundle redistribute + restart before either trigger exists. verify_cancel_poll_sec is ON at 30s by default; verify_stall_sec must be opted into per lane (game_one: ~1200 against its 9000s ceiling)."
+}
