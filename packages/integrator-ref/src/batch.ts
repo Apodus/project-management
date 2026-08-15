@@ -2943,6 +2943,11 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
     // plain reason-based release.
     if (landResult?.kind === "landed") {
       await releaseLock({ landedSha: landResult.outerLandedSha });
+    } else if (landResult?.kind === "requeued") {
+      // Campaign 2026-08-15 §R1: main did not move because we failed — it moved
+      // because the lane is busy. Naming that on the lock is what stops the
+      // next reader mistaking a re-queue for a stalled or empty pass.
+      await releaseLock({ reason: `group re-queued: ${landResult.reason}` });
     } else {
       await releaseLock({ reason: "group integration step complete" });
     }
