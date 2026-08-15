@@ -41,7 +41,7 @@
     "web": "561",
     "mcp": "257",
     "gates": "typecheck + lint + format:check + build all pass",
-    "e2e": "run at seal"
+    "e2e": "38/39. The single failure is 07-claims-surface stale-lease timing — a known pre-existing flake unrelated to the merge train (it also flaked during the 2026-08-14 campaign); passes 8/8 in isolation, verified twice."
   },
   "deployment": {
     "migration": "none in this campaign",
