@@ -54,6 +54,9 @@ export interface ResolutionOutcomeDeps {
     PmClient,
     | "getMergeRequest"
     | "submitMergeRequest"
+    // §R4: the group resubmit arm, for a resolution whose origin was a member
+    // of a cross-repo group.
+    | "submitInnerOnlyGroup"
     | "resolvedResolution"
     | "escalateResolution"
     | "postTaskComment"
@@ -178,17 +181,55 @@ export function makeOnOutcome(
     //    carries the post-back link; dropping either loses a seal/post-back. A
     //    null escalationId (the common case — a plain task MR) is byte-identical
     //    to pre-A2.
+    //
+    //    Campaign 2026-08-15 §R4: a job that came from a cross-repo GROUP must
+    //    come back as a group. Resubmitting a resolved inner change as a lone
+    //    request would land the inner without the outer gitlink bump that makes
+    //    it reachable — the orphan this train exists to prevent. The inner-only
+    //    form (`synthesizeOuter`) is used deliberately: PM mints the synthetic
+    //    outer and the train builds the bump against LIVE outer main at
+    //    integration time, so the resolution cannot re-create the stale-bump
+    //    `outer_conflict` class it was spun up to escape.
+    //
+    //    NOTE the one thing lost on this arm: the group submit takes member
+    //    SPECS, so there is no `resolvedFrom` field to carry. The no-recursion
+    //    guard therefore does NOT protect a resolved GROUP member from spinning
+    //    a second resolution if it conflicts again. That is why §R5's hook
+    //    gates on the ORIGIN's `resolvedFrom` before opening a group resolution
+    //    at all — the check moves upstream rather than disappearing.
     let newReq;
     try {
-      newReq = await pmClient.submitMergeRequest({
-        projectId: cfg.projectId,
-        resource: outcome.job.resource,
-        taskId: origin.taskId,
-        branch,
-        verifyCmd: origin.verifyCmd,
-        resolvedFrom: outcome.job.originRequestId,
-        escalationId: origin.escalationId ?? null,
-      });
+      if (outcome.job.groupId) {
+        const group = await pmClient.submitInnerOnlyGroup({
+          projectId: cfg.projectId,
+          resource: outcome.job.resource,
+          branch,
+          verifyCmd: origin.verifyCmd,
+          taskId: origin.taskId,
+        });
+        const inner = (group.members ?? []).find(
+          (m: { synthetic?: boolean }) => m.synthetic !== true,
+        );
+        if (!inner) {
+          logger.warn(
+            { resolutionId: outcome.resolutionId, groupId: group.id },
+            "resolved: inner-only group submit returned no real member; escalating failed (resubmit_submit_failed)",
+          );
+          await escalateAndComment(outcome, "failed", "resubmit_submit_failed", origin);
+          return;
+        }
+        newReq = inner;
+      } else {
+        newReq = await pmClient.submitMergeRequest({
+          projectId: cfg.projectId,
+          resource: outcome.job.resource,
+          taskId: origin.taskId,
+          branch,
+          verifyCmd: origin.verifyCmd,
+          resolvedFrom: outcome.job.originRequestId,
+          escalationId: origin.escalationId ?? null,
+        });
+      }
     } catch (err) {
       logger.warn(
         { resolutionId: outcome.resolutionId, err: errMessage(err) },

@@ -865,6 +865,46 @@ export class PmClient {
   }
 
   /**
+   * Campaign 2026-08-15 §R4: submit a resolved INNER change as an inner-only
+   * cross-repo group (`synthesizeOuter: true`), the shape a resolved
+   * `inner_conflict` has to come back as.
+   *
+   * Why a group and not a plain merge request: the origin was one member of a
+   * cross-repo group, so resubmitting it alone would land the inner without the
+   * outer gitlink bump that makes it reachable. `synthesizeOuter` is also the
+   * form the MCP tool description calls RECOMMENDED — PM mints the synthetic
+   * outer and the train builds the bump against LIVE outer main at integration
+   * time, so there is no hand-minted bump branch to go stale (which is the
+   * `outer_conflict` class this avoids re-creating).
+   *
+   * POST /api/v1/projects/{projectId}/merge-groups
+   */
+  submitInnerOnlyGroup(params: {
+    projectId: string;
+    resource?: string;
+    branch?: string | null;
+    commitSha?: string | null;
+    verifyCmd?: string | null;
+    taskId?: string | null;
+  }): Promise<MergeRequestGroupView & { members?: MergeRequestView[] }> {
+    const { projectId, resource, branch, commitSha, verifyCmd, taskId } = params;
+    const spec: Record<string, string> = {};
+    if (branch) spec.branch = branch;
+    if (commitSha) spec.commitSha = commitSha;
+    if (verifyCmd) spec.verifyCmd = verifyCmd;
+    if (taskId) spec.taskId = taskId;
+    return this.request<MergeRequestGroupView & { members?: MergeRequestView[] }>(
+      "POST",
+      `/projects/${encodeURIComponent(projectId)}/merge-groups`,
+      {
+        ...(resource ? { resource } : {}),
+        members: [spec],
+        synthesizeOuter: true,
+      },
+    );
+  }
+
+  /**
    * Record a resolved resolution — resolving → resolved (§4.3 / §5.3). Called
    * AFTER the resolved tree has been pushed AND resubmitted as a new request;
    * `resolvedRequestId` cross-links that new request. The resubmitted request

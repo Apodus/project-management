@@ -90,6 +90,21 @@ export interface AssembledGroupErr {
     | "gitlink_mismatch";
   /** Extra detail for logging (conflicting files / mismatch detail). */
   detail?: string;
+  /**
+   * Campaign 2026-08-15 §R4: the inputs a resolver needs to REPRODUCE a
+   * conflict — the base the failing rebase ran against, the ref that failed,
+   * and the conflicting paths as structure rather than a joined string.
+   *
+   * Populated on the conflict arms only. Without these the reject is a dead
+   * end: `materializeConflict(baseSha, ref)` cannot replay anything, and the
+   * hook would have to re-derive a base from a worktree the failed assembly
+   * has already released.
+   */
+  conflict?: {
+    baseSha: string;
+    ref: string;
+    conflictingFiles: string[];
+  };
   /** Release whatever slots were taken (no-op when nothing was acquired). */
   release(): void;
 }
@@ -271,6 +286,14 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
           ok: false,
           reason: "inner_conflict",
           detail: innerRebase.conflictingFiles.join(", "),
+          // §R4: everything a resolver needs to replay this exact conflict in
+          // an inner-repo worktree, captured before `release()` takes the
+          // assembly's worktrees away.
+          conflict: {
+            baseSha: baseInnerSha,
+            ref: innerRef,
+            conflictingFiles: innerRebase.conflictingFiles,
+          },
           release,
         };
       }
