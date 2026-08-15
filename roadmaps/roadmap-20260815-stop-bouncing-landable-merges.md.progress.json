@@ -1,40 +1,57 @@
 {
   "roadmap": "roadmaps/roadmap-20260815-stop-bouncing-landable-merges.md",
   "branch": "campaign/stop-bouncing-landable-merges",
-  "completed": ["R1", "R2 (dropped)", "R3"],
-  "current": "R4",
-  "pending": ["R4", "R5"],
+  "completed": ["R1", "R2 (dropped)", "R3", "R4", "R5"],
+  "current": null,
+  "pending": [],
   "steps": {
     "R1": {
       "status": "complete",
       "commit": "e8d3a45",
-      "outcome": "group-land drift and inner-push non_fast_forward now resetGroup (re-queue) instead of rejectGroup, matching what the single-repo lane has always done for the identical event. auth/network/other still reject. Bounded at 4 integration attempts, DERIVED from a real member's attempt rows (no migration); past the bound it rejects with a reason naming lane contention rather than the change. An unreadable count re-queues anyway.",
-      "expected_impact": "This is the fix for the reported 'main moved and it got rejected' pain."
+      "outcome": "Pre-land drift and inner-push non_fast_forward now resetGroup (re-queue) instead of rejectGroup, matching what the single-repo lane has always done. A race's attempt is cancelled, not failed. auth/network/other still reject. Bounded at 4 integration attempts DERIVED from attempt rows (no migration); past it the reject names lane contention, not the change. An unreadable count re-queues anyway.",
+      "expected_impact": "The fix for the reported 'main moved and it got rejected' pain."
     },
     "R2": {
       "status": "dropped",
       "commit": "359cda9",
-      "why": "Premise verified false. worktree.resetForAttempt() (worktree.ts:148-154) fetches and hard-resets to origin/main before EVERY attempt and assembleGroup reads its base immediately after, so every rebase already runs against fresh main — a retry would hit the identical conflict. The real staleness window (main moving during a 30-min verify) is already covered by R1's re-queue. A conflict surviving that is REAL and belongs to R4."
+      "why": "Premise verified false. worktree.resetForAttempt() fetches + hard-resets to origin/main before EVERY attempt, so an assembly rebase never runs against a stale base and a retry would hit the identical conflict. The real staleness window (main moving during a long verify) is covered by R1's re-queue."
     },
     "R3": {
       "status": "complete",
       "commit": "52167b2",
-      "outcome": "A reject raises an escalation addressed to the submitting worker (originWorkerKey from their keyed agent_claims binding), so the existing wake daemon delivers it into their session. New setting `notify_author_on_reject`, ships OFF.",
-      "trap_pinned": "The daemon delivers 'messages NOT authored by the origin author'. Authoring the escalation as the integrator — the natural way to write it — would make the notice self-authored, match nothing, and wake nobody, SILENTLY. So the escalation belongs to the worker and the notice comes from the train; a test pins exactly that.",
-      "design_note": "Its own raise path, not create(): create() sets authorId from the actor (wrong end) and its FTS dedup would fold two different rejections into one thread, losing an outcome."
+      "outcome": "notify_author_on_reject (default false): a reject raises an escalation addressed to the submitting worker so the existing wake daemon delivers it into their session.",
+      "trap_pinned": "The escalation must belong to the WORKER with the notice authored by the TRAIN — the daemon delivers 'messages not authored by the origin author', so the natural implementation would wake nobody, silently."
+    },
+    "R4": {
+      "status": "complete",
+      "commit": "9227d34",
+      "outcome": "inner_conflict on a cross-repo group is now actually resolved: a second resolver pool cloned from the INNER repo (own slots, non-fatal if unbuildable), replay inputs (base/ref/files) carried on AssembledGroupErr before release(), and a group resubmit as an inner-only group (synthesizeOuter) so the resolved inner cannot land without its outer bump.",
+      "scope_note": "Only inner_conflict is EXECUTED. gitlink_diverged stays eligible-but-unexecuted: hasRemainingMarkers() is a marker-reconciliation criterion and would declare a bump rebase done while nothing was fixed."
+    },
+    "R5": {
+      "status": "complete",
+      "commit": "9227d34 (hook) + docs",
+      "outcome": "rejectGroupLegibly → maybeOpenResolution, gated on eligibility (judgement) AND the replay payload (capability) as two separate conditions. No-recursion guard moved upstream to the origin, because the group resubmit takes member specs with no resolvedFrom to carry. Guide §14.18/§14.19/§14.20 + CLAUDE.md capability index."
     }
   },
   "verification": {
-    "integrator": "group-land 9/9 (incl. 3 new R1 tests), group suites 48/48, batch + assembly + recovery + seal 127/127",
+    "integrator": "42 test files green (group-integration 20/20 incl. 3 new R5 hook tests; group-land 9/9 incl. 3 new R1 tests)",
     "shared": "592",
-    "server": "2029 (incl. 5 new R3 tests)",
+    "server": "2029 (incl. 5 R3 tests)",
     "web": "561",
     "mcp": "257",
-    "gates": "typecheck + lint + format:check + build all pass; openapi + api-types regenerated through the drift guard"
+    "gates": "typecheck + lint + format:check + build all pass",
+    "e2e": "run at seal"
   },
-  "remaining": {
-    "R4": "The cross-repo resolver executor. Blockers unchanged: createResolverPool is single-repo (needs correlated inner+outer worktrees); merge_resolutions is single-origin (a group has two origins and must resubmit a group); hasRemainingMarkers() is conflict-marker shaped and meaningless for gitlink_diverged. Cheapest shape: inner_conflict → resolve in an inner worktree → resubmit as an INNER-ONLY group (synthesize_outer). This is the only large step in the campaign.",
-    "R5": "Wire rejectGroupLegibly → maybeOpenResolution behind assemblyResolutionEligibility (the gate shipped in the previous campaign; the hook is deliberately unwired until R4 can execute what it opens), plus docs and the full seal."
+  "deployment": {
+    "migration": "none in this campaign",
+    "pm_server": "redeploy picks up notify_author_on_reject and the reject notification",
+    "daemon": "rebundle + restart required for R1 (re-queue), R4 (inner resolver pool) and R5 (the hook)",
+    "opt_in": "notify_author_on_reject must be turned ON per project. The inner resolver pool only builds when resolver.enabled is true AND linked_repos declares an inner repo."
   },
-  "deployment": "No migration in this campaign. A PM-server redeploy picks up the R3 setting and the reject notification; the daemon needs a rebundle + restart for R1. notify_author_on_reject must be turned ON per project before any escalation is raised."
+  "follow_ups": [
+    "gitlink_diverged needs its own completion criterion before it can be executed (it is eligible today but not runnable).",
+    "outer_conflict is eligible and has replay inputs in principle, but no outer resolver pool is built — only inner. Add one if outer conflicts turn out to be common after the stale-bump class is eliminated by synthesize_outer.",
+    "R3 delivers only on REJECT. A group that exhausts R1's re-queue bound rejects, so it is covered; a request abandoned by a human is not."
+  ]
 }
