@@ -1631,6 +1631,78 @@ session instead of a human relaying it from Discord.
 > the integrator would make its own notice self-authored, match nothing, and wake
 > nobody — silently. A test pins it.
 
+### 14.21 Resubmitting on the same branch (fixed 2026-08-22)
+
+**If you are on a bundle older than 2026-08-22, this is the defect behind
+"the integrator rejected my correct fix", and the workaround is a fresh branch
+name per submission.** Fixed bundles need no workaround: resubmit on whatever
+branch you like.
+
+**What went wrong.** A worker submits `fix/x`, the train rejects it, the worker
+fixes the problem and pushes to **the same branch** — and the train replays the
+OLD tip, rejecting the new commit with the very error that commit removes.
+
+The cause was `git checkout <branch>` in a pool slot. That bare form only DWIMs
+to `<remote>/<branch>` while no local branch of that name exists. Attempt 1
+created one, and `git rebase` then **moved it** onto that attempt's commits — so
+the slot kept a local `fix/x` pinned to the rejected content. Pool clones are
+created once and outlive daemon restarts, and nothing prunes local branches, so
+the poisoned ref was permanent. `resetForAttempt`'s fetch advanced
+`origin/fix/x` correctly every time; the checkout simply never consulted it.
+
+Two things made this hard to see, and both are worth remembering:
+
+- **It looked intermittent.** The stale ref is per *slot*. At `parallelism > 1` a
+  resubmission that landed on a different slot behaved correctly, so the failure
+  did not reproduce on demand.
+- **A false reject reads as a code problem.** The rejection named files and an
+  error, with no commit attached, so every report was investigated as a conflict
+  in the author's change. Three notes were filed before the pattern surfaced.
+
+**The fix.** Branch refs now resolve **remote-first** and force-repoint the local
+branch (`git checkout -B <branch> <remote>/<branch>`), so an already-poisoned
+slot self-heals the first time it is used — there is no pool to wipe. Resolution
+falls back to the bare name when no remote-tracking ref exists, which keeps
+local-only branches working (the A4 revert path's `pm/revert-<sha>`). The
+resolver's conflict-replay path shared the same defect and the same fix; the
+cross-repo gitlink-bump detection was deliberately mirroring the old DWIM order
+and was flipped to match.
+
+**And a conflict rejection now names the sha it judged** — `rebase conflict on
+src/foo.rs (at a1b2c3d4e5f6)`. If a rejection ever again disagrees with what you
+pushed, compare that sha to your branch tip; a mismatch is a train bug, not
+yours. Nothing branches on the value — it is there to be read.
+
+**It also produced a false GREEN.** If the reused branch had already LANDED, the
+stale local ref rebases to a no-op, `tree == base`, and the no-op land guard
+(§9) correctly reports LANDED — for a request that changed nothing. That is the
+same defect wearing the opposite face, and it is the more dangerous one: an agent
+that submits and walks away believes its work is on main. Both directions are
+closed by the same fix.
+
+### 14.22 A pinned `commit_sha` is now honored (fixed 2026-08-22)
+
+`pm_request_merge` documents the pin as *"pin to a SHA when you may keep
+committing on the branch while queued"* — the mechanism that lets an agent land a
+verified subset while work continues on the branch. The integrator read
+`branch ?? commit_sha`, so a request carrying **both** integrated the branch
+**TIP**: the pin was silently ignored and everything else on the branch shipped
+with it, unverified. Reported after a pinned suppression commit landed together
+with an unverified follow-up.
+
+It now reads `commit_sha ?? branch` — an explicit pin **outranks** the branch,
+which is what the documentation always promised. This matches the cross-repo
+lane, which has always bound commit-sha-first (`memberIdentityRef`).
+
+One consequence worth knowing: a pin that **cannot be resolved** (a sha that was
+never pushed) is now a legible reject rather than a silent fall-back to the
+branch tip. That is deliberate — falling back is how the original defect shipped
+unverified work. Push the commit, or submit the branch alone.
+
+**Rollout (both §14.21 and §14.22).** Integrator-side only: no migration, no
+PM-server change. They reach a lane on a **bundle redistribute + daemon
+restart**.
+
 ---
 
 ## 15. Observability + Break-glass (Phase 7.4)

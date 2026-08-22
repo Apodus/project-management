@@ -55,7 +55,7 @@ export function registerMergeRequestTools(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          "Specific commit SHA to land. Pin to a SHA when you may keep committing on the branch while queued.",
+          "Specific commit SHA to land. Pin to a SHA when you may keep committing on the branch while queued: when both are given the PIN WINS, and the integrator lands exactly this commit rather than the branch tip. The commit must be pushed — an unresolvable pin is rejected, not quietly downgraded to the branch tip.",
         ),
       verify_cmd: z
         .string()

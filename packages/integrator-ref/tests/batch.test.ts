@@ -984,6 +984,62 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     expect(deps.pool.leasedCount).toBe(0);
   });
 
+  /**
+   * PIN PRECEDENCE (2026-08-22). `pm_request_merge` documents commit_sha as
+   * "pin to a SHA when you may keep committing on the branch while queued".
+   * The integrator read `branch ?? commitSha`, so a request carrying BOTH
+   * integrated the branch TIP and shipped the unverified follow-up commits with
+   * it — reported by the client after a pinned suppression commit landed
+   * together with an unverified anti-pop change.
+   */
+  it("pin precedence: a request with branch AND commitSha lands the PINNED commit, not the tip", async () => {
+    const root = path.join(tmpRoot, "wt-pin-precedence");
+    const author = simpleGit(authorClone);
+    await author.checkout("main");
+    await author.pull("origin", "main");
+    await author.checkoutLocalBranch("feature/pinned-work");
+    writeFileSync(path.join(authorClone, "pinned.txt"), "pinned");
+    await author.add(["pinned.txt"]);
+    await author.commit("the commit the worker pinned");
+    const pinnedSha = (await author.revparse(["HEAD"])).trim();
+    // ...then the worker keeps committing on the branch while queued.
+    writeFileSync(path.join(authorClone, "unverified.txt"), "not ready");
+    await author.add(["unverified.txt"]);
+    await author.commit("still-unverified follow-up");
+    await author.push(["-u", "origin", "feature/pinned-work"]);
+    await author.checkout("main");
+
+    const req = makeRequest({
+      id: "req-pinned",
+      branch: "feature/pinned-work",
+      commitSha: pinnedSha,
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+
+    await author.fetch("origin");
+    const landedFiles = (await author.raw(["ls-tree", "-r", "--name-only", "origin/main"]))
+      .split(String.fromCharCode(10))
+      .map((l) => l.trim())
+      .filter(Boolean);
+    // THE ASSERTION: the pin was honored — the follow-up did NOT ride along.
+    expect(landedFiles).toContain("pinned.txt");
+    expect(landedFiles).not.toContain("unverified.txt");
+
+    await author.checkout("main");
+    await author.pull("origin", "main");
+  });
+
   // ───────────────────────────────────────────────────────────────────
   // Strand-fix: an unexpected REQUEST-fault error during integration must
   // REJECT the request (not strand it `integrating` + bail the lane), while a

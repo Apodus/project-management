@@ -47,7 +47,9 @@ describe("git-ops pinned merge-group ref regression", () => {
     } as unknown as SimpleGit;
 
     const result = await createGitOps(fake).rebaseOnto(base, pinned);
-    expect(result).toEqual({ ok: true, treeSha: pinned });
+    // `checkedOutSha` (2026-08-22) reports which commit the attempt judged. On the
+    // pinned path it IS the pin — that is the whole point of pinning.
+    expect(result).toEqual({ ok: true, treeSha: pinned, checkedOutSha: pinned });
     expect(calls).toContainEqual(["revparse", "--verify", `${pinned}^{commit}`]);
     expect(calls).toContainEqual(["raw", "checkout", "--detach", "HEAD"]);
     expect(calls).toContainEqual(["reset", "--hard", pinned]);

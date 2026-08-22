@@ -148,7 +148,7 @@ async function main(): Promise<void> {
     cleanKeep: cfg.cleanKeep,
     gitlinkPurgePaths,
   });
-  const makeGitOps = (p: string) => createGitOps(simpleGit(p));
+  const makeGitOps = (p: string) => createGitOps(simpleGit(p), { gitRemote: cfg.gitRemote });
 
   // ── Phase 7.4 §3.2 (Step 12): the shared in-flight counters + heartbeat. ──
   // A single mutable object threaded into the batch + group lane deps; the
@@ -350,7 +350,7 @@ async function main(): Promise<void> {
         name: repo.name,
         acquire: () => lanePool.acquire(),
         release: (wt) => lanePool.release(wt),
-        gitOps: (p) => createGitOps(simpleGit(p)),
+        gitOps: (p) => createGitOps(simpleGit(p), { gitRemote: cfg.gitRemote }),
         gitlinkPath: repo.gitlinkPath,
         resolveRefInClone: (ref) => binding.resolveRefInClone(ref),
       };

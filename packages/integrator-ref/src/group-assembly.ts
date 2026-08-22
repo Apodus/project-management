@@ -166,17 +166,24 @@ export interface AssembleGroupDeps {
   outerRequestId?: string;
 }
 
-/** Resolve the outer detection ref to a concrete present commit, mirroring the DWIM
- *  that rebaseOnto's `git checkout <ref>` performs (bare branch → <remote>/<branch>),
- *  so isPureGitlinkBump sees the exact commit the rebase would. Returns null when
- *  neither form resolves ⇒ caller keeps the legacy rebase (fail-open). The `^{commit}`
- *  peel forces object presence (bare revparse of a 40-hex echoes it back unverified). */
+/** Resolve the outer detection ref to a concrete present commit, mirroring what
+ *  rebaseOnto's checkout performs, so isPureGitlinkBump sees the exact commit the
+ *  rebase would. Returns null when neither form resolves ⇒ caller keeps the legacy
+ *  rebase (fail-open). The `^{commit}` peel forces object presence (bare revparse of
+ *  a 40-hex echoes it back unverified).
+ *
+ *  REMOTE-FIRST since 2026-08-22: this used to try the bare name first to mirror
+ *  `git checkout <ref>`'s DWIM, which faithfully reproduced the stale-local-branch
+ *  false-reject (see rebaseOnto). rebaseOnto now resolves `<remote>/<branch>` first
+ *  and falls back to the bare name; the order here MUST match it, or detection reads
+ *  a different commit than the one that gets rebased. A 40-hex commitSha is unchanged
+ *  either way (it resolves on the first candidate and has no remote-tracking form). */
 async function resolveDetectRef(
   gitOps: GitOps,
   ref: string,
   remote: string,
 ): Promise<string | null> {
-  for (const cand of [`${ref}^{commit}`, `${remote}/${ref}^{commit}`]) {
+  for (const cand of [`${remote}/${ref}^{commit}`, `${ref}^{commit}`]) {
     try {
       return await gitOps.resolveRef(cand);
     } catch {

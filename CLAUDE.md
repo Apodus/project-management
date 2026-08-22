@@ -284,6 +284,38 @@ verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   FTS dedup would fold two different rejections into one thread). Ships off: it
   widens what the escalation channel carries and, with the auto-responder on,
   these become responder input. Guide §14.20.
+- **Which commit the train actually judged** — two defects made the train
+  integrate something OTHER than what a worker submitted, and both read to the
+  author as a problem with their own code. (1) **Branch reuse replayed a stale
+  tip.** `rebaseOnto` did a bare `git checkout <branch>`, which only DWIMs to
+  `<remote>/<branch>` while NO local branch of that name exists — attempt 1
+  creates one and `git rebase` MOVES it onto that attempt's commits, so the pool
+  slot kept a local `<branch>` pinned to the rejected content FOREVER (slot
+  clones are cloned once, outlive daemon restarts, nothing prunes local
+  branches). `resetForAttempt`'s fetch advanced the remote-tracking ref every
+  time; the checkout never consulted it. Surfaced BOTH ways: a false **reject**
+  (a correct fix rejected with the error it removes) and a false **green** (the
+  stale branch rebases to a no-op ⇒ `tree == base` ⇒ the no-op land guard reports
+  LANDED having changed nothing). Per-SLOT, so at `parallelism > 1` it read as
+  intermittent; three client notes across seven weeks, each investigated as a
+  conflict in the author's change because **the rejection named no commit**. Now
+  resolved **remote-first** with `checkout -B <branch> <remote>/<branch>` — a
+  poisoned slot self-heals on first use, no pool wipe — falling back to the bare
+  name when no remote-tracking ref exists (keeps the A4 `pm/revert-<sha>` path).
+  Same defect and same fix in the resolver's `materializeConflict` (a stale
+  branch there hands the agent a conflict that no longer exists); `resolveDetectRef`
+  was deliberately mirroring the OLD DWIM order and was flipped to match, since
+  detection reading a different commit than the rebase is its own bug class.
+  (2) **A `commit_sha` pin was ignored.** `ref = branch ?? commitSha` meant a
+  request carrying both integrated the branch TIP — shipping later, unverified
+  commits — while `pm_request_merge` documents the pin as "pin to a SHA when you
+  may keep committing on the branch while queued". Now `commitSha ?? branch`,
+  matching the cross-repo lane's `memberIdentityRef`, which was always
+  commitSha-first. A conflict reject now NAMES the sha it judged
+  (`RebaseResult.checkedOutSha`, optional, **nothing branches on it** — the
+  missing fact was never control flow). Integrator-side only: no migration, no
+  PM-server change; reaches a lane on a bundle redistribute + daemon restart.
+  Guide §14.21 + §14.22.
 - **Cross-repo resolver executor** — `maybeOpenResolution` had two call sites,
   both single-repo conflict; the group path had NONE, so a cross-repo lane could
   not auto-resolve anything. Now `inner_conflict` resolves: a **second resolver

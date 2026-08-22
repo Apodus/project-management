@@ -898,7 +898,7 @@ export type MemberFailure =
        */
       categoryOverride?: { category: MergeRejectCategory; reason: string };
     }
-  | { kind: "conflict"; conflictingFiles: string[]; stderr: string }
+  | { kind: "conflict"; conflictingFiles: string[]; stderr: string; checkedOutSha?: string }
   | { kind: "push_other"; reason: string; stderr: string }
   | { kind: "drift"; reason: string };
 
@@ -937,7 +937,11 @@ export async function onMemberFailed(
   };
 
   if (failure.kind === "conflict") {
-    const reason = "rebase conflict on " + failure.conflictingFiles.join(", ");
+    // Name the sha we judged. A conflict report the author cannot tie to a
+    // commit is what let the stale-local-branch defect (2026-08-22) read as
+    // "the integrator rejected my correct fix" for three reports running.
+    const at = failure.checkedOutSha ? ` (at ${failure.checkedOutSha.slice(0, 12)})` : "";
+    const reason = "rebase conflict on " + failure.conflictingFiles.join(", ") + at;
     const excerpt = failure.stderr.slice(0, LOG_EXCERPT_CAP);
     if (attemptId) {
       await pmTerminalWrite(deps, "completeAttempt", requestId, () =>
@@ -2284,7 +2288,15 @@ async function admitAndRebase(
     // the try (rebaseOnto's `git.checkout` can throw a pathspec error — the live
     // bug). The `!ref` and `!rebase.ok` handling happens AFTER the try (below),
     // so `rebase` is only computed when there IS something to integrate.
-    ref = req.branch ?? req.commitSha;
+    // PRECEDENCE: commitSha FIRST. `pm_request_merge` documents the pin as
+    // "pin to a SHA when you may keep committing on the branch while queued",
+    // which only holds if an explicit pin OUTRANKS the branch. This read was
+    // `branch ?? commitSha` until 2026-08-22, so a request carrying BOTH silently
+    // integrated the branch TIP and shipped whatever else was on it unverified
+    // (client note: a pinned suppression commit landed together with an
+    // unverified follow-up). The cross-repo lane already binds commitSha-first
+    // (`memberIdentityRef`); this makes the single-repo lane agree.
+    ref = req.commitSha ?? req.branch;
     if (ref) {
       const rebaseRef = ref;
       // `label: null` — for a single-repo member the phase IS the unit; there is
@@ -2372,6 +2384,7 @@ async function admitAndRebase(
         kind: "conflict",
         conflictingFiles: rebase?.conflictingFiles ?? [],
         stderr: rebase?.stderr ?? "",
+        checkedOutSha: rebase?.checkedOutSha,
       },
       ctx,
     );
