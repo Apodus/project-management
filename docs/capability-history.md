@@ -493,3 +493,44 @@ admin-gated Auto-implement settings page) and is the source of truth, composed w
 (git url / budget / allowlist / verify) **stay env**. New projects are **off** by default; a responder shipping
 with the env unset stays byte-identical until an operator flips a project's DB toggle.
 Roadmap: `roadmaps/roadmap-20260614-0230-responder-per-project-settings.md`.
+
+
+**Resubmission on the same branch (defect fix, 2026-08-22).** Reported by the client team after
+three prior notes: the integrator would not pick up a change pushed to a branch it had once
+rejected a group from — it replayed the OLD tip and rejected the correct fix **with the error
+that fix removes**. Teams had derived a folklore workaround ("fresh branch per landing") for
+what was our bug. The cause was a bare `git checkout <branch>` in `rebaseOnto`: that form only
+DWIMs to `<remote>/<branch>` while **no local branch of that name exists**, and attempt 1
+creates one which `git rebase` then **moves** onto that attempt's commits — so the pool slot
+keeps a local `<branch>` pinned to the rejected content. Pool clones are cloned once and outlive
+daemon restarts and nothing prunes local branches, so the poisoned ref was **permanent per
+(slot, branch name)**; `resetForAttempt`'s fetch advanced the remote-tracking ref correctly every
+time and the checkout never consulted it. Two properties kept it alive for three reports: the
+stale ref is **per slot**, so at `parallelism > 1` a resubmission landing on a different slot
+behaved correctly and it read as intermittent; and a **false reject reads as a code problem** —
+the rejection named files and an error with **no commit attached**, so each report was
+investigated as a conflict in the author's change. Fix: branch refs resolve **remote-first** and
+force-repoint the local branch (`checkout -B <branch> <remote>/<branch>`), so an already-poisoned
+slot **self-heals on first use** (no pool wipe); resolution **falls back to the bare name** when
+no remote-tracking ref exists, preserving local-only branches (the A4 revert path's
+`pm/revert-<sha>`). The **resolver's conflict-replay** (`materializeConflict`) carried the same
+defect — a stale local branch would hand the agent a conflict that no longer exists on the
+submitted tip — and shares the fix; `resolveDetectRef` (cross-repo gitlink-bump detection) was
+deliberately mirroring the OLD DWIM order in a comment and was flipped to match, since detection
+reading a different commit than the rebase is its own bug class. A conflict rejection now also
+**names the sha it judged** (`rebase conflict on <files> (at <sha12>)`), carried on
+`RebaseResult.checkedOutSha` — **optional, and nothing branches on it**: the missing fact was
+never control flow, it was that a rejection had no commit to compare against. Regression test
+drives the **real lifecycle** (one long-lived slot, `resetForAttempt` between attempts, a real
+force-push in between), because the defect lives in the interaction between pool longevity and
+checkout DWIM, not in either alone. Integrator-side only: no migration, no PM-server change;
+reaches a lane on a **bundle redistribute + daemon restart**. Guide §14.21. **Same campaign, second
+defect (§14.22):** `ref = branch ?? commitSha` meant a request carrying BOTH integrated the branch
+**TIP**, silently ignoring an explicit `commit_sha` pin and shipping later unverified commits with it
+— while `pm_request_merge` documents the pin as "pin to a SHA when you may keep committing on the
+branch while queued", which only holds if the pin OUTRANKS the branch. Now `commitSha ?? branch`,
+matching the cross-repo lane's `memberIdentityRef` (always commitSha-first). Deliberate consequence:
+an UNRESOLVABLE pin is now a legible reject rather than a silent fall-back to the tip — falling back
+is exactly how the original defect shipped unverified work. The three client notes
+(01KXACN48X2NWHRMVYFQMGYC51 pin-ignored, 01KYG4KRGG3590PS0G3J9DQCRY false-green,
+01M0MRPN730V5BQJDC07FG9RN6 false-reject) are all closed by these two fixes.

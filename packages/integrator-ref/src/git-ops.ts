@@ -20,12 +20,23 @@ async function pathExistsLocal(p: string): Promise<boolean> {
 export interface RebaseSuccess {
   ok: true;
   treeSha: string;
+  /** See RebaseConflict.checkedOutSha. */
+  checkedOutSha?: string;
 }
 
 export interface RebaseConflict {
   ok: false;
   conflictingFiles: string[];
   stderr: string;
+  /**
+   * The commit the submitted ref actually resolved to BEFORE the rebase — i.e.
+   * the sha this attempt judged. OPTIONAL because a pinned-sha member's value is
+   * simply the ref, and because no control flow may depend on it: this exists so
+   * a reject NAMES the sha it read. The stale-local-branch defect (2026-08-22)
+   * survived three client reports precisely because a rejection's only
+   * observable was a diff-derived error message with no commit attached.
+   */
+  checkedOutSha?: string;
 }
 
 export type RebaseResult = RebaseSuccess | RebaseConflict;
@@ -428,9 +439,16 @@ export interface ClassifyOuterGitlinkArgs {
 export interface GitOpsOptions {
   /** Max bytes captured into the in-memory stdout/stderr buffers. */
   maxBufferBytes?: number;
+  /**
+   * The git remote name (e.g. "origin") a BARE branch ref is resolved against
+   * in `rebaseOnto`. See the stale-local-branch note there for why resolving a
+   * bare name is not safe in a long-lived pool clone. Defaults to "origin".
+   */
+  gitRemote?: string;
 }
 
 const DEFAULT_MAX_BUFFER = 1024 * 1024; // 1 MiB
+const DEFAULT_GIT_REMOTE = "origin";
 const DEFAULT_KILL_GRACE_MS = 5000;
 
 // ─── Push failure classification ──────────────────────────────────
@@ -826,6 +844,7 @@ const COMMIT_IDENTITY_ARGS = [
 
 export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
   const maxBuffer = opts.maxBufferBytes ?? DEFAULT_MAX_BUFFER;
+  const gitRemote = opts.gitRemote ?? DEFAULT_GIT_REMOTE;
 
   async function fetch(remote: string): Promise<void> {
     await git.fetch(remote);
@@ -841,6 +860,51 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     await git.checkout(ref);
   }
 
+  /**
+   * Check out a worker-supplied ref so it can be replayed onto a base.
+   *
+   * STALE-LOCAL-BRANCH REGRESSION (2026-08-22). A bare `git checkout <branch>`
+   * only DWIMs to `<remote>/<branch>` when no local branch of that name exists
+   * yet. Attempt 1 creates one (checkout DWIM) and then `git rebase` MOVES it
+   * onto the rebased commits, so the slot keeps a local `<branch>` pinned to
+   * that attempt's content — forever (pool clones are created once and outlive
+   * daemon restarts; nothing prunes local branches).
+   *
+   * A worker who fixes the rejection and re-pushes THE SAME BRANCH then gets
+   * attempt 1 replayed: `resetForAttempt`'s fetch advances the remote-tracking
+   * ref correctly, but the bare checkout resolves the stale LOCAL branch and
+   * never consults it. The reject cites the very error the new commit removes,
+   * which is why the workaround folklore was "fresh branch per landing".
+   * Reported by the client team with three prior notes; the false-reject is
+   * slot-local, so at parallelism > 1 it reads as intermittent.
+   *
+   * Resolve against the remote and force-repoint the local branch (`-B`), so an
+   * already-poisoned slot self-heals on first use — no pool wipe needed.
+   * FAIL-OPEN to the bare name when the remote-tracking ref does not resolve: a
+   * local-only branch is legitimate (`createBranch` + the A4 revert path, whose
+   * push does update `<remote>/<branch>` but need not be relied on), and there
+   * is nothing better to check out.
+   *
+   * Returns the resolved commit so the caller can LOG which sha it judged — the
+   * missing fact that made this defect survive three reports.
+   */
+  async function checkoutForReplay(branch: string): Promise<string> {
+    const remoteRef = `${gitRemote}/${branch}`;
+    let fromRemote = false;
+    try {
+      await git.revparse(["--verify", `${remoteRef}^{commit}`]);
+      fromRemote = true;
+    } catch {
+      /* no remote-tracking ref — fall back to the bare name */
+    }
+    if (fromRemote) {
+      await git.checkout(["-B", branch, remoteRef]);
+    } else {
+      await git.checkout(branch);
+    }
+    return (await git.revparse(["HEAD"])).trim();
+  }
+
   async function rebaseOnto(base: string, branch: string): Promise<RebaseResult> {
     // A merge-group member carrying commitSha is already an immutable checkout
     // subject. Do not send that 40-hex through `git checkout <arg>`'s DWIM path:
@@ -850,9 +914,10 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     // reset to it succeeds. Detach at the already-checked-out pool base first,
     // then materialize the exact object without any remote/ref inference.
     //
-    // Branch-only requests retain the legacy checkout behavior (including its
-    // remote-tracking DWIM). Group binding prefers commitSha, so pinned atomic
-    // members take this exact-object path.
+    // Branch-only requests go through checkoutForReplay (remote-first — see the
+    // stale-local-branch note there). Group binding prefers commitSha, so pinned
+    // atomic members take this exact-object path.
+    let checkedOut: string;
     if (/^[0-9a-f]{40}$/i.test(branch)) {
       const pinned = (await git.revparse(["--verify", `${branch}^{commit}`])).trim();
       if (!/^[0-9a-f]{40}$/.test(pinned)) {
@@ -860,13 +925,14 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       }
       await git.raw(["checkout", "--detach", "HEAD"]);
       await git.reset(["--hard", pinned]);
+      checkedOut = pinned;
     } else {
-      await git.checkout(branch);
+      checkedOut = await checkoutForReplay(branch);
     }
     try {
       await git.raw([...COMMIT_IDENTITY_ARGS, "rebase", base]);
       const treeSha = (await git.revparse(["HEAD"])).trim();
-      return { ok: true, treeSha };
+      return { ok: true, treeSha, checkedOutSha: checkedOut };
     } catch (err) {
       let conflictingFiles: string[] = [];
       try {
@@ -883,7 +949,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       } catch {
         /* ignore — abort may itself fail on a corrupt state */
       }
-      return { ok: false, conflictingFiles, stderr: errText(err) };
+      return { ok: false, conflictingFiles, stderr: errText(err), checkedOutSha: checkedOut };
     }
   }
 
@@ -935,7 +1001,15 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     ref: string,
   ): Promise<MaterializeConflictResult> {
     // Replay `ref` onto `baseSha`, leaving the markers in place (do NOT abort).
-    await git.checkout(ref);
+    // Same remote-first resolution as rebaseOnto: the resolver pool is just as
+    // long-lived, so a stale local branch here would hand the agent a conflict
+    // that no longer exists on the submitted tip.
+    if (/^[0-9a-f]{40}$/i.test(ref)) {
+      await git.raw(["checkout", "--detach", "HEAD"]);
+      await git.reset(["--hard", ref]);
+    } else {
+      await checkoutForReplay(ref);
+    }
     try {
       await git.raw([...COMMIT_IDENTITY_ARGS, "rebase", baseSha]);
       // No conflict on replay (main moved so the collision is gone). The rebase

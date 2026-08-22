@@ -281,7 +281,15 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
     }
 
     // 6. Rebase the request's branch/commit onto baseSha.
-    const ref = request.branch ?? request.commitSha;
+    // PRECEDENCE: commitSha FIRST. `pm_request_merge` documents the pin as
+    // "pin to a SHA when you may keep committing on the branch while queued",
+    // which only holds if an explicit pin OUTRANKS the branch. This read was
+    // `branch ?? commitSha` until 2026-08-22, so a request carrying BOTH silently
+    // integrated the branch TIP and shipped whatever else was on it unverified
+    // (client note: a pinned suppression commit landed together with an
+    // unverified follow-up). The cross-repo lane already binds commitSha-first
+    // (`memberIdentityRef`); this makes the single-repo lane agree.
+    const ref = request.commitSha ?? request.branch;
     if (!ref) {
       // No branch and no commit: nothing to integrate. Reject as "other".
       await pmClient.completeAttempt(attemptId, {
@@ -299,7 +307,9 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
 
     const rebase = await gitOps.rebaseOnto(baseSha, ref);
     if (!rebase.ok) {
-      const reason = "rebase conflict on " + rebase.conflictingFiles.join(", ");
+      // Name the sha we judged (see the batch-path note on the same line).
+      const at = rebase.checkedOutSha ? ` (at ${rebase.checkedOutSha.slice(0, 12)})` : "";
+      const reason = "rebase conflict on " + rebase.conflictingFiles.join(", ") + at;
       const excerpt = rebase.stderr.slice(0, LOG_EXCERPT_CAP);
       await pmClient.completeAttempt(attemptId, {
         status: "failed",
