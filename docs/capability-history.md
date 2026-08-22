@@ -534,3 +534,32 @@ an UNRESOLVABLE pin is now a legible reject rather than a silent fall-back to th
 is exactly how the original defect shipped unverified work. The three client notes
 (01KXACN48X2NWHRMVYFQMGYC51 pin-ignored, 01KYG4KRGG3590PS0G3J9DQCRY false-green,
 01M0MRPN730V5BQJDC07FG9RN6 false-reject) are all closed by these two fixes.
+
+
+**Note dismissal loses its authz gate (2026-08-22).** `dismiss` was author-or-human, plus (T1·P3) the
+project's designated `settings.notesTriage.triageAgentId` while notes-triage was enabled — a gate named
+**anti-signal-burying**, guarding against an agent disposing of someone else's inconvenient finding. The
+intent was right and the aim was wrong: it assumed the closer is an adversary, when the ordinary closer is
+the agent that just FIXED the thing. The case that broke it: on 2026-08-22 six client notes reporting one
+integrator defect were fixed, and the fixing agent could close NONE of them — closure had to be relayed
+through a human or filed as a SEVENTH note pointing at the other six. The gate never prevented signal from
+being buried; it prevented signal from being RESOLVED, which leaves a triage queue that only grows and
+therefore stops being read. Now **any authenticated caller may dismiss**, mirroring `promoteToProposal`
+which never had a gate. What actually protects the signal is unchanged and is not authz: `reason` is
+REQUIRED and non-empty (route schema), `triagedBy` + a `NOTE_DISMISSED` activity row make a bad dismissal
+**attributable rather than anonymous**, `applyTriage`'s terminal guard still 409s a re-dismissal (the real
+brake on churn), and **`reopen` stays HUMAN-ONLY** — so the undo is deliberately harder to reach than the
+do, and an agent cannot un-bury or re-bury in a loop. Dismissal is now **independent of notesTriage
+settings** (sealed by an inverted `it.each` over enabled/disabled × agent-set/absent): `triageAgentId`
+still scopes triage METRICS but grants nothing here, so no project can re-acquire a private dismissal
+policy by toggling a setting. Fallout tidied: the route's 403 is deleted (unreachable — spec regenerated),
+the MCP tool now tells agents to close what they fixed instead of filing another note, and the triager's
+warn-once identity-mismatch message was **reframed rather than deleted** — it used to warn of a dismiss-403
+that can no longer happen, and now names the real consequence (a mismatched daemon's decisions fall outside
+the scoped metrics). Tooling note for the next person who regenerates the web API types:
+`pnpm --filter @pm/web generate:api` emits UNFORMATTED output while the committed
+`packages/web/src/lib/api-types.d.ts` is prettier-formatted, so the raw regeneration shows a ~17k-line
+diff that is pure formatting — run prettier on it (the pre-commit hook does this anyway) and the diff
+collapses to the real delta. It is NOT semantic drift, and there is no stale-types problem to chase. A
+genuine gap does remain: the drift guard covers `openapi.json` ↔ live routes, but nothing checks the
+generated web types against `openapi.json`.

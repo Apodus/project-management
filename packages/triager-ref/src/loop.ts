@@ -256,11 +256,13 @@ export async function triagerTick(deps: TriagerDeps, state: TriagerState): Promi
     // GUARDRAIL 3 — the per-project gate. A disabled project does no work.
     if (!resolved.enabled) continue;
 
-    // On-mode identity check (warn-once per project). The dismiss endpoint is
-    // authz-gated to the note's author OR a human, so an on-mode triager whose
-    // identity is NOT the project's notesTriage.triageAgentId will see dismiss
-    // 403 → escalate to needs_human (executor's permanent-failure rule). Surface
-    // the misconfiguration once so the operator can set triageAgentId.
+    // On-mode identity check (warn-once per project). This USED to warn that a
+    // triager whose identity is not the project's notesTriage.triageAgentId
+    // would see dismiss 403 → needs_human. Dismissal lost its authz gate on
+    // 2026-08-22, so that failure can no longer happen and warning about it
+    // would send an operator hunting a non-problem. The mismatch still matters,
+    // for a narrower reason: triageAgentId SCOPES the triage metrics/heartbeat,
+    // so a mismatched daemon does its work but reports into an unscoped bucket.
     if (
       resolved.mode === "on" &&
       resolved.triageAgentId != null &&
@@ -269,7 +271,7 @@ export async function triagerTick(deps: TriagerDeps, state: TriagerState): Promi
     ) {
       deps.logger.warn(
         { projectId, selfId: deps.selfId, triageAgentId: resolved.triageAgentId },
-        `daemon identity ${deps.selfId} is not project ${projectId}'s notesTriage.triageAgentId ${resolved.triageAgentId}; on-mode dismiss will be escalated to needs_human`,
+        `daemon identity ${deps.selfId} is not project ${projectId}'s notesTriage.triageAgentId ${resolved.triageAgentId}; triage still works (dismissal is no longer authz-gated) but this daemon's decisions fall OUTSIDE the scoped triage metrics — set triageAgentId to match`,
       );
       state.warnedIdentityMismatch.add(projectId);
     }

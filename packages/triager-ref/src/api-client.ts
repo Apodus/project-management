@@ -259,10 +259,12 @@ export class TriagerClient {
   }
 
   /**
-   * Terminally dismiss a note (triage outcome `dismissed`). Authz: only the
-   * note's author OR a human may dismiss — a triager whose identity is NOT the
-   * project's `triageAgentId` gets a 403 (the executor escalates that to
-   * needs_human rather than hot-looping). `reason` must be non-empty.
+   * Terminally dismiss a note (triage outcome `dismissed`). NO authz gate since
+   * 2026-08-22 — any authenticated caller may dismiss, so a triager no longer
+   * needs to be the project's `triageAgentId` to act (that setting now only
+   * scopes triage metrics). `reason` must be non-empty. A 4xx here is still
+   * escalated to needs_human by the executor rather than hot-looped, which now
+   * covers 409-on-terminal rather than the old 403.
    */
   dismissNote(noteId: string, reason: string): Promise<Note> {
     return this.request<Note>("POST", `/notes/${encodeURIComponent(noteId)}/dismiss`, { reason });
