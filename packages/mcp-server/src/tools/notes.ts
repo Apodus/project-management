@@ -244,7 +244,7 @@ export function registerNoteTools(server: McpServer): void {
 
   server.tool(
     "pm_dismiss_note",
-    "Dismiss a note you've reviewed and decided needs no action (you must be the note's author or a human). Use when a finding is a duplicate, no longer relevant, or not worth pursuing — distinct from promoting it into a proposal.",
+    "Dismiss a note you've reviewed and decided needs no action. ANY authenticated caller may dismiss — author or not, human or agent — so if you FIXED what a note reports, close it yourself rather than filing another note about it. The reason is required and recorded against your identity, and a human can reopen. Use when a finding is a duplicate, no longer relevant, or already resolved — distinct from promoting it into a proposal.",
     {
       note_id: z.string().describe("The note ID to dismiss"),
       reason: z.string().describe("Why this note needs no action (required, recorded on the note)"),

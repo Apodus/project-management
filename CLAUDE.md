@@ -435,7 +435,7 @@ The MCP server exposes tools for:
 - **Projects**: List, create, and manage projects
 - **Proposals**: List, create, discuss, and transition proposals
 - **Tasks**: List, get, create, and update tasks
-- **Notes**: Capture, list, and get lightweight ownerless notes (bug/question/idea/tech_debt/wtf/observation) via `pm_post_note`/`pm_list_notes`/`pm_get_note`
+- **Notes**: Capture, list, and get lightweight ownerless notes (bug/question/idea/tech_debt/wtf/observation) via `pm_post_note`/`pm_list_notes`/`pm_get_note`. Triage via `pm_dismiss_note` / `pm_promote_note_to_proposal` / `pm_flag_note_needs_human` — **neither dismiss nor promote is authz-gated** (any authenticated caller, author or not, human or agent), because the agent that FIXES a reported bug is rarely the one that reported it and had no way to close the note. What protects the signal is not authz: `reason` is required, `triagedBy` records who, the terminal guard stops re-dismissal, and `pm_reopen_note` (HUMAN-ONLY) makes the undo strictly harder to reach than the do
 - **Search**: Full-text search across all entities
 - **Updates**: Activity feed and status updates
 - **Workflow**: Status transitions and workflow management

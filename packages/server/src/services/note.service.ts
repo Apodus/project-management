@@ -451,14 +451,35 @@ export function applyTriage(
 
 /**
  * Dismiss a MUTABLE note (open|needs_human) (Campaign C2 §P2) — a terminal
- * triage with outcome "dismissed". Anti-signal-burying authz: only the note's
- * author OR a human may dismiss, PLUS (T1·P3) the project's designated triage
- * identity — a non-author ai_agent may dismiss only if it equals
- * `settings.notesTriage.triageAgentId` AND notes-triage is enabled
- * (`notesTriage.enabled === true`). The enabled-gate keeps the seal byte-identical
- * to today when disabled: a triageAgentId set on a disabled project grants nothing.
- * The authz check runs BEFORE applyTriage's mutable-check so a forbidden actor gets
- * 403 regardless of status; applyTriage handles 404-on-reselect / 409-if-terminal.
+ * triage with outcome "dismissed". **Any authenticated caller may dismiss**
+ * (2026-08-22); this mirrors `promoteToProposal`, which never had a gate.
+ *
+ * It used to be author-or-human, plus (T1·P3) the project's designated
+ * `settings.notesTriage.triageAgentId` while notes-triage was enabled. That gate
+ * was called anti-signal-burying, and the intent was right, but it was aimed at
+ * the wrong actor: it assumed the agent closing a note is disposing of someone
+ * else's inconvenient finding. The case that broke it is the opposite one — the
+ * agent that FIXES a reported bug is almost never the agent that reported it, and
+ * it is the one holding the evidence that the note is resolved. On 2026-08-22 six
+ * client notes about one integrator defect were fixed, and the fixing agent could
+ * close NONE of them: closure had to be relayed through a human, or filed as a
+ * seventh note pointing at the other six. The gate did not prevent signal from
+ * being buried; it prevented signal from being RESOLVED, which leaves a triage
+ * queue that grows monotonically and stops being read.
+ *
+ * What actually protects the signal is unchanged and is not authz:
+ *   - `reason` is REQUIRED and non-empty (route schema) — a dismissal must say why;
+ *   - `triagedBy` records WHO, and a NOTE_DISMISSED event writes an activity row —
+ *     a bad dismissal is attributable, not anonymous;
+ *   - dismissal is REVERSIBLE via `reopen`, which stays HUMAN-ONLY, so the undo
+ *     is strictly harder to abuse than the do.
+ *
+ * Deliberately NOT gated on notesTriage settings any more: `triageAgentId` still
+ * scopes the triage METRICS (triage-metrics.service.ts) but grants nothing here,
+ * so dismissal behaves identically whether or not a project runs the triager.
+ *
+ * applyTriage still handles 404-on-reselect / 409-if-terminal — a terminal note
+ * cannot be re-dismissed, which is what stops dismissal churn.
  */
 export function dismiss(id: string, actor: { id: string; type: UserType }, reason: string) {
   const db = getDb();
@@ -466,23 +487,9 @@ export function dismiss(id: string, actor: { id: string; type: UserType }, reaso
   if (!existing) {
     throw new AppError(404, "NOT_FOUND", `Note not found: ${id}`);
   }
-  // Anti-signal-burying: only the note's author OR a human may dismiss, plus the
-  // project's designated triage identity while notes-triage is enabled (T1·P3).
-  // Read the DB enabled/triageAgentId directly — NOT resolveNotesTriage (that
-  // folds the env master and is the daemon-scoped composition).
-  const project = db.select().from(projects).where(eq(projects.id, existing.projectId)).get();
-  const settings = (project?.settings ?? null) as {
-    notesTriage?: { enabled?: boolean; triageAgentId?: string };
-  } | null;
-  const nt = settings?.notesTriage;
-  const isTriageIdentity =
-    actor.type === "ai_agent" &&
-    nt?.enabled === true &&
-    nt.triageAgentId !== undefined &&
-    actor.id === nt.triageAgentId;
-  if (actor.type !== "human" && existing.authorId !== actor.id && !isTriageIdentity) {
-    throw new AppError(403, "FORBIDDEN", `User "${actor.id}" is not allowed to dismiss note ${id}`);
-  }
+  // NO authz gate — see the policy note above. `existing` is still read (404) and
+  // `actor` is still recorded as `triagedBy`, which is what makes a dismissal
+  // attributable now that it is not restricted.
   const row = applyTriage(id, { outcome: "dismissed", triagedBy: actor.id, triageReason: reason });
   getEventBus().emit(EVENT_NAMES.NOTE_DISMISSED, {
     entity: row,

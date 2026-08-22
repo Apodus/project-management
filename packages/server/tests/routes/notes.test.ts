@@ -329,10 +329,10 @@ describe("Notes API", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 403 when a different ai_agent tries to dismiss another agent's note", async () => {
+    it("lets a different ai_agent dismiss another agent's note (200, attributed)", async () => {
       const project = createTestProject(testApp.db);
       const author = createTestAiAgent(testApp.db);
-      const other = createTestAiAgent(testApp.db);
+      const fixer = createTestAiAgent(testApp.db);
 
       const created = await (
         await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
@@ -345,9 +345,50 @@ describe("Notes API", () => {
         testApp.app,
         "POST",
         `/api/v1/notes/${created.data.id}/dismiss`,
-        { token: other.token, body: { reason: "sweep" } },
+        { token: fixer.token, body: { reason: "fixed in 82e7c77" } },
       );
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.triageOutcome).toBe("dismissed");
+      expect(body.data.triagedBy).toBe(fixer.user.id);
+      expect(body.data.triageReason).toBe("fixed in 82e7c77");
+    });
+
+    it("still requires a non-empty reason (400)", async () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestAiAgent(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          token: author.token,
+          body: { kind: "bug", title: "needs a reason" },
+        })
+      ).json();
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/notes/${created.data.id}/dismiss`,
+        { token: author.token, body: { reason: "" } },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("still rejects an UNAUTHENTICATED dismiss (401)", async () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestAiAgent(testApp.db);
+      const created = await (
+        await authRequest(testApp.app, "POST", `/api/v1/projects/${project.id}/notes`, {
+          token: author.token,
+          body: { kind: "bug", title: "auth still required" },
+        })
+      ).json();
+
+      const res = await testApp.app.request(`/api/v1/notes/${created.data.id}/dismiss`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: "anon" }),
+      });
+      expect(res.status).toBe(401);
     });
 
     it("returns 404 for an unknown note id", async () => {

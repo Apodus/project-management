@@ -334,7 +334,7 @@ const dismissNoteRoute = createRoute({
   tags: ["Notes"],
   summary: "Dismiss note",
   description:
-    "Terminally dismiss a mutable note (open or needs_human) — triage outcome `dismissed`. Anti-signal-burying: only the note's author OR a human may dismiss.",
+    "Terminally dismiss a mutable note (open or needs_human) — triage outcome `dismissed`. No authz gate — any authenticated caller may dismiss, author or not, human or ai_agent (the agent that FIXES a reported bug is rarely the one that reported it). `reason` is required and recorded, `triagedBy` records who, and dismissal is reversible via reopen (human-only), so a dismissal is attributable and undoable rather than restricted.",
   request: {
     params: z.object({ id: noteIdParam }),
     body: {
@@ -349,10 +349,6 @@ const dismissNoteRoute = createRoute({
     },
     400: {
       description: "Validation error",
-      content: { "application/json": { schema: errorEnvelope } },
-    },
-    403: {
-      description: "Caller is not allowed to dismiss this note",
       content: { "application/json": { schema: errorEnvelope } },
     },
     404: {

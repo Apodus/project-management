@@ -3492,7 +3492,7 @@ export interface paths {
     put?: never;
     /**
      * Dismiss note
-     * @description Terminally dismiss a mutable note (open or needs_human) — triage outcome `dismissed`. Anti-signal-burying: only the note's author OR a human may dismiss.
+     * @description Terminally dismiss a mutable note (open or needs_human) — triage outcome `dismissed`. No authz gate — any authenticated caller may dismiss, author or not, human or ai_agent (the agent that FIXES a reported bug is rarely the one that reported it). `reason` is required and recorded, `triagedBy` records who, and dismissal is reversible via reopen (human-only), so a dismissal is attributable and undoable rather than restricted.
      */
     post: {
       parameters: {
@@ -3522,20 +3522,6 @@ export interface paths {
         };
         /** @description Validation error */
         400: {
-          headers: {
-            [name: string]: unknown;
-          };
-          content: {
-            "application/json": {
-              error: {
-                code: string;
-                message: string;
-              };
-            };
-          };
-        };
-        /** @description Caller is not allowed to dismiss this note */
-        403: {
           headers: {
             [name: string]: unknown;
           };

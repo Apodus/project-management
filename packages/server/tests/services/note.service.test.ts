@@ -431,24 +431,31 @@ describe("note service", () => {
       expect(dismissed.triagedBy).toBe(human.id);
     });
 
-    it("throws 403 FORBIDDEN when a DIFFERENT ai_agent tries to dismiss (anti-signal-burying)", () => {
+    // THE CASE THE OLD GATE BROKE (2026-08-22): the agent that FIXES a reported
+    // bug is rarely the agent that reported it, and it is the one holding the
+    // evidence that the note is resolved. Under author-or-human this 403'd, and
+    // six client notes about one fixed defect had to stay open.
+    it("lets a DIFFERENT ai_agent (non-author, no triage config) dismiss — and records WHO", () => {
       const project = createTestProject(testApp.db);
       const author = createTestUser(testApp.db, { type: "ai_agent" });
-      const other = createTestUser(testApp.db, { type: "ai_agent" });
+      const fixer = createTestUser(testApp.db, { type: "ai_agent" });
       const created = noteService.create(
         project.id,
         { kind: "bug", title: "not yours" },
         author.id,
       );
 
-      try {
-        noteService.dismiss(created.id, { id: other.id, type: "ai_agent" }, "sweep it");
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(AppError);
-        expect((err as AppError).statusCode).toBe(403);
-        expect((err as AppError).code).toBe("FORBIDDEN");
-      }
+      const dismissed = noteService.dismiss(
+        created.id,
+        { id: fixer.id, type: "ai_agent" },
+        "fixed in 82e7c77",
+      );
+
+      expect(dismissed.status).toBe("triaged");
+      expect(dismissed.triageOutcome).toBe("dismissed");
+      // Attribution is what replaced the gate: a dismissal is never anonymous.
+      expect(dismissed.triagedBy).toBe(fixer.id);
+      expect(dismissed.triageReason).toBe("fixed in 82e7c77");
     });
 
     it("throws 409 INVALID_STATUS when dismissing an already-triaged note", () => {
@@ -501,82 +508,65 @@ describe("note service", () => {
       expect(dismissed!.projectId).toBe(project.id);
     });
 
-    // ── T1·P3: designated triage identity may dismiss while enabled ──
-    it("lets the designated triage identity (non-author ai_agent) dismiss when enabled", () => {
+    // ── notesTriage settings are IRRELEVANT to dismissal authz (2026-08-22) ──
+    // These four cases 403'd under the old author-or-human + designated-triage-
+    // identity gate. They are kept, inverted, as the seal that the gate stays
+    // removed: dismissal must behave identically whether or not a project runs
+    // the triager, so no project can re-acquire a private dismissal policy by
+    // toggling a setting. `triageAgentId` still scopes triage METRICS; it grants
+    // nothing here.
+    it.each([
+      ["enabled:false with a triageAgentId set", { enabled: false, mode: "on", withAgent: true }],
+      ["enabled:true with a triageAgentId set", { enabled: true, mode: "on", withAgent: true }],
+      ["enabled:true with NO triageAgentId", { enabled: true, mode: "on", withAgent: false }],
+    ])("lets any ai_agent dismiss regardless of notesTriage (%s)", (_label, cfg) => {
       const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
       const project = createTestProject(testApp.db, {
-        settings: { notesTriage: { enabled: true, mode: "on", triageAgentId: triageAgent.id } },
-      });
-      const author = createTestUser(testApp.db, { type: "ai_agent" });
-      const created = noteService.create(
-        project.id,
-        { kind: "bug", title: "triage can dismiss" },
-        author.id,
-      );
-
-      const dismissed = noteService.dismiss(
-        created.id,
-        { id: triageAgent.id, type: "ai_agent" },
-        "triaged away",
-      );
-
-      expect(dismissed.status).toBe("triaged");
-      expect(dismissed.triageOutcome).toBe("dismissed");
-      expect(dismissed.triagedBy).toBe(triageAgent.id);
-    });
-
-    // THE INVARIANT TEST: disabled ⇒ the triage identity grants NOTHING (byte-
-    // identical to today). A triageAgentId set on a disabled project must 403.
-    it("throws 403 when notesTriage.enabled:false even if actor is the triageAgentId", () => {
-      const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
-      const project = createTestProject(testApp.db, {
-        settings: { notesTriage: { enabled: false, mode: "on", triageAgentId: triageAgent.id } },
-      });
-      const author = createTestUser(testApp.db, { type: "ai_agent" });
-      const created = noteService.create(
-        project.id,
-        { kind: "bug", title: "disabled blocks triage" },
-        author.id,
-      );
-
-      try {
-        noteService.dismiss(created.id, { id: triageAgent.id, type: "ai_agent" }, "should fail");
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(AppError);
-        expect((err as AppError).statusCode).toBe(403);
-        expect((err as AppError).code).toBe("FORBIDDEN");
-      }
-    });
-
-    it("throws 403 for an ordinary non-author ai_agent (id ≠ triageAgentId) when enabled", () => {
-      const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
-      const project = createTestProject(testApp.db, {
-        settings: { notesTriage: { enabled: true, mode: "on", triageAgentId: triageAgent.id } },
+        settings: {
+          notesTriage: {
+            enabled: cfg.enabled,
+            mode: cfg.mode,
+            ...(cfg.withAgent ? { triageAgentId: triageAgent.id } : {}),
+          },
+        },
       });
       const author = createTestUser(testApp.db, { type: "ai_agent" });
       const other = createTestUser(testApp.db, { type: "ai_agent" });
       const created = noteService.create(
         project.id,
-        { kind: "bug", title: "not the triage agent" },
+        { kind: "bug", title: "triage settings do not gate dismissal" },
         author.id,
       );
 
-      try {
-        noteService.dismiss(created.id, { id: other.id, type: "ai_agent" }, "sweep");
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(AppError);
-        expect((err as AppError).statusCode).toBe(403);
-        expect((err as AppError).code).toBe("FORBIDDEN");
-      }
+      const dismissed = noteService.dismiss(
+        created.id,
+        { id: other.id, type: "ai_agent" },
+        "resolved elsewhere",
+      );
+      expect(dismissed.triageOutcome).toBe("dismissed");
+      expect(dismissed.triagedBy).toBe(other.id);
     });
 
-    it("still lets the author ai_agent dismiss when notesTriage is enabled", () => {
-      const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
-      const project = createTestProject(testApp.db, {
-        settings: { notesTriage: { enabled: true, mode: "on", triageAgentId: triageAgent.id } },
-      });
+    it("lets a non-author ai_agent dismiss when the project has NO notesTriage block", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const other = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "no triage config" },
+        author.id,
+      );
+
+      const dismissed = noteService.dismiss(
+        created.id,
+        { id: other.id, type: "ai_agent" },
+        "resolved",
+      );
+      expect(dismissed.triageOutcome).toBe("dismissed");
+    });
+
+    it("still lets the author ai_agent dismiss", () => {
+      const project = createTestProject(testApp.db);
       const author = createTestUser(testApp.db, { type: "ai_agent" });
       const created = noteService.create(
         project.id,
@@ -592,11 +582,8 @@ describe("note service", () => {
       expect(dismissed.triageOutcome).toBe("dismissed");
     });
 
-    it("still lets a human non-author dismiss when notesTriage is enabled", () => {
-      const triageAgent = createTestUser(testApp.db, { type: "ai_agent" });
-      const project = createTestProject(testApp.db, {
-        settings: { notesTriage: { enabled: true, mode: "on", triageAgentId: triageAgent.id } },
-      });
+    it("still lets a human non-author dismiss", () => {
+      const project = createTestProject(testApp.db);
       const author = createTestUser(testApp.db, { type: "ai_agent" });
       const human = createTestUser(testApp.db, { type: "human" });
       const created = noteService.create(
@@ -609,39 +596,43 @@ describe("note service", () => {
       expect(dismissed.triagedBy).toBe(human.id);
     });
 
-    it("throws 403 for a non-author ai_agent when no notesTriage block exists", () => {
+    // The REAL brake on dismissal churn is the terminal guard, not authz: a
+    // dismissed note cannot be re-dismissed by the next passer-by.
+    it("still 409s when a non-author ai_agent re-dismisses an already-triaged note", () => {
+      const project = createTestProject(testApp.db);
+      const author = createTestUser(testApp.db, { type: "ai_agent" });
+      const a = createTestUser(testApp.db, { type: "ai_agent" });
+      const b = createTestUser(testApp.db, { type: "ai_agent" });
+      const created = noteService.create(
+        project.id,
+        { kind: "bug", title: "terminal guard survives" },
+        author.id,
+      );
+      noteService.dismiss(created.id, { id: a.id, type: "ai_agent" }, "first");
+
+      try {
+        noteService.dismiss(created.id, { id: b.id, type: "ai_agent" }, "second");
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).statusCode).toBe(409);
+      }
+    });
+
+    // The undo stays strictly harder to reach than the do.
+    it("reopen remains HUMAN-ONLY, so an ai_agent cannot undo its own dismissal", () => {
       const project = createTestProject(testApp.db);
       const author = createTestUser(testApp.db, { type: "ai_agent" });
       const other = createTestUser(testApp.db, { type: "ai_agent" });
       const created = noteService.create(
         project.id,
-        { kind: "bug", title: "no triage config" },
+        { kind: "bug", title: "asymmetric undo" },
         author.id,
       );
+      noteService.dismiss(created.id, { id: other.id, type: "ai_agent" }, "dismissed by a bot");
 
       try {
-        noteService.dismiss(created.id, { id: other.id, type: "ai_agent" }, "sweep");
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(AppError);
-        expect((err as AppError).statusCode).toBe(403);
-      }
-    });
-
-    it("throws 403 for a non-author ai_agent when enabled but triageAgentId is absent", () => {
-      const project = createTestProject(testApp.db, {
-        settings: { notesTriage: { enabled: true, mode: "on" } },
-      });
-      const author = createTestUser(testApp.db, { type: "ai_agent" });
-      const other = createTestUser(testApp.db, { type: "ai_agent" });
-      const created = noteService.create(
-        project.id,
-        { kind: "bug", title: "no triage agent id" },
-        author.id,
-      );
-
-      try {
-        noteService.dismiss(created.id, { id: other.id, type: "ai_agent" }, "sweep");
+        noteService.reopen(created.id, { id: other.id, type: "ai_agent" });
         expect.unreachable("should have thrown");
       } catch (err) {
         expect(err).toBeInstanceOf(AppError);
