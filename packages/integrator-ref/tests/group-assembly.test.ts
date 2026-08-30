@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
 import { createGitOps } from "../src/git-ops.js";
+import { applyGitLocalPolicy } from "../src/git-policy.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { assembleGroup } from "../src/group-assembly.js";
 import { makePhaseProbe } from "./phase-probe.js";
@@ -273,6 +274,13 @@ describe.skipIf(!GIT_AVAILABLE)("materialize populates nested submodules", () =>
     //    `submodule update --init --recursive` here itself. ──
     const innerPoolWt = path.join(tmpRoot, "inner-pool-0");
     await simpleGit().clone(innerBare, innerPoolWt);
+    // Production applies this to every pool slot at ensureExists(); apply it
+    // here so this suite proves, through production code, that suppressing
+    // AUTOMATIC recursion does not disturb materialize's EXPLICIT
+    // `submodule update --init --recursive` below. (This fixture is a
+    // first-init, not a nested-gitlink advance — the advance case is pinned
+    // separately in git-recursion-suppressed.test.ts.)
+    await applyGitLocalPolicy(simpleGit(innerPoolWt));
     expect(existsSync(path.join(innerPoolWt, "external", "dep", "dep.txt"))).toBe(false);
 
     // ── OUTER repo with the gitlink ──
