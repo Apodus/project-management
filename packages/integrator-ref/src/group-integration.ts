@@ -36,7 +36,7 @@
 import type { Logger } from "./logger.js";
 import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
-import type { MergeRequestView } from "@pm/shared";
+import { MERGE_INCIDENT_TYPE_BY_DIRECTION, type MergeRequestView } from "@pm/shared";
 import type { PmClient, RejectCategory } from "./pm-client.js";
 import {
   assembleGroup,
@@ -44,6 +44,7 @@ import {
   type AssembledGroupOk,
   type AssembleGroupDeps,
 } from "./group-assembly.js";
+import type { MainGitlinkVerdict } from "./git-ops.js";
 import { categorize, failureExcerpt } from "./categorize.js";
 // Campaign 2026-08-15 §S1: the group lane is a second CALLER of the 2026-08-04
 // kill seam's helpers, never a second copy of them.
@@ -688,6 +689,268 @@ export const ASSEMBLY_REJECT_CATEGORY: Record<AssembledGroupErr["reason"], Rejec
   assembly_error: "assembly_error",
 };
 
+// ─── §S2 main-gitlink observation + cure text (campaign 2026-08-30) ───
+
+/** What `observeMainGitlink` needs. A subset of GroupIntegrationDeps, so the
+ *  helper can be reasoned about (and, in the tests, driven) on its own. */
+interface MainGitlinkObserverCtx {
+  pmClient: PmClient;
+  logger: Logger;
+  /** Absent ⇒ an unconfigured caller: observe nothing, open nothing, close nothing. */
+  projectId?: string;
+  innerLane: RepoLane;
+  outerLane: RepoLane;
+}
+
+/**
+ * Record what the §S2 gate measured about the LANE, in both directions.
+ *
+ * Driven by the HEALTH half of the verdict, never by the reject path, and
+ * called ABOVE the `asm.ok` branch on purpose: a `heals` group is a SUCCESSFUL
+ * assembly of a BROKEN lane, and hanging the open off the reject path would
+ * lose exactly the case the train repairs — `pm_list_merge_incidents` would
+ * again say "No merge incidents" about a lane that had one.
+ *
+ * Non-fatal by construction (the `noteOuterConverted` precedent): every PM call
+ * is wrapped, and nothing here can change an outcome. Returns the incident id
+ * the reject text names, or null when nothing was opened.
+ *
+ * Idempotence is ENTIRELY the server's: PM dedups OPEN incidents on
+ * (project, type, innerRepo, outerRepo, orphanedSha, groupId), all stable
+ * across passes here, so a blocked lane calling this every pass opens one row
+ * and a restarted daemon cannot duplicate. This helper keeps no state.
+ */
+async function observeMainGitlink(
+  ctx: MainGitlinkObserverCtx,
+  groupId: string,
+  verdict: MainGitlinkVerdict | undefined,
+): Promise<{ incidentId: string | null }> {
+  const { pmClient, logger, projectId, innerLane, outerLane } = ctx;
+
+  if (verdict?.kind === "undecided") {
+    // WARN, not debug: a persistently undecided probe means the gate is
+    // protecting nothing, and an operator needs to know. Design lock 5 — it
+    // opens no incident and closes none either.
+    logger.warn(
+      { groupId, ...verdict },
+      "main-gitlink invariant check could not decide; proceeding with the pre-gate behaviour (fail-open)",
+    );
+  }
+  if (!projectId || verdict === undefined || verdict.kind === "undecided") {
+    return { incidentId: null };
+  }
+
+  if (verdict.kind === "holds") {
+    // The lane is sane again — close whatever this direction left open. The
+    // TYPE filter is load-bearing in one direction (an `orphaned_inner` is a
+    // DIFFERENT broken invariant this check has not measured, and the two are
+    // not mutually exclusive), and the repo filter in the other (a project with
+    // two cross-repo lanes must not close the other lane's incident;
+    // listMergeIncidents has no repo filter).
+    let open: Awaited<ReturnType<PmClient["listMergeIncidents"]>>;
+    try {
+      open = await pmClient.listMergeIncidents(projectId, {
+        state: "open",
+        type: MERGE_INCIDENT_TYPE_BY_DIRECTION.outer_ahead_of_inner,
+      });
+    } catch (err) {
+      // Nothing observed, nothing changed; the next pass retries. Debug, per
+      // recoverOrphanedInner's "retry next pass" precedent.
+      logger.debug(
+        { groupId, err: errMessage(err) },
+        "listMergeIncidents failed while observing the main-gitlink invariant (retry next pass)",
+      );
+      return { incidentId: null };
+    }
+    for (const incident of open) {
+      if (incident.innerRepo !== innerLane.name || incident.outerRepo !== outerLane.name) continue;
+      try {
+        await pmClient.resolveIncident(incident.id, {
+          // NOT auto_rollforward: that mode asserts the train PUSHED something,
+          // and on this path it did not. The train observed a cure; a human
+          // applied it.
+          mode: "auto_observed",
+          resolvedByGroupId: groupId,
+          note:
+            `Observed cured during group ${groupId}: outer main ${verdict.outerMainSha} commits ` +
+            `gitlink ${verdict.gitlinkPath} -> ${verdict.target}, which is reachable from inner ` +
+            `main ${verdict.innerMainSha}. The train observed this; it did not apply a cure.`,
+        });
+        // INFO, not debug: an incident whose type declares `curedBy: "human"`
+        // just closed, and its open logged warn + escalation. Closing it
+        // silently would leave no operator-visible trace — the observability
+        // gap this campaign is against.
+        logger.info(
+          {
+            groupId,
+            incidentId: incident.id,
+            target: verdict.target,
+            outerMainSha: verdict.outerMainSha,
+            innerMainSha: verdict.innerMainSha,
+          },
+          "main-gitlink invariant holds again; dangling_gitlink incident resolved (observed, not applied)",
+        );
+      } catch (err) {
+        // The row stays open; the next pass tries again. One failure must not
+        // abort the loop over the others.
+        logger.debug(
+          { groupId, incidentId: incident.id, err: errMessage(err) },
+          "resolveIncident failed while observing the main-gitlink invariant (retry next pass)",
+        );
+      }
+    }
+    return { incidentId: null };
+  }
+
+  // `dangling` or `heals` — main is broken RIGHT NOW either way.
+  try {
+    const { incident, created } = await pmClient.openIncident({
+      projectId,
+      // Design lock 6 at the call site: declare the DIRECTION measured and let
+      // the row type follow. Resolves to "dangling_gitlink".
+      type: MERGE_INCIDENT_TYPE_BY_DIRECTION.outer_ahead_of_inner,
+      innerRepo: innerLane.name,
+      outerRepo: outerLane.name,
+      // orphaned_sha carries the DANGLING GITLINK TARGET for this type. The
+      // column name predates the second direction; @pm/shared's
+      // MERGE_INCIDENT_TYPE_INFO.dangling_gitlink.shaMeaning is the documented
+      // reuse, in the one place every renderer reads.
+      orphanedSha: verdict.target,
+      // LANE-SCOPED: no group produced this state and no request is responsible
+      // for it. A group link would tie a standing property of main to whichever
+      // request happened to be queued first, and would defeat the server's
+      // open-incident dedup (groupId participates in the key) — one incident
+      // per pass on a blocked lane.
+      groupId: null,
+      innerRequestId: null,
+      // No task comment: on the reject path the author already receives a
+      // merge_rejection naming this incident, and on the `heals` path no task
+      // is involved at all.
+      taskId: null,
+    });
+    if (!created) {
+      logger.debug(
+        { groupId, incidentId: incident.id, verdict: verdict.kind },
+        "dangling_gitlink incident already open; nothing new to announce",
+      );
+    } else if (verdict.kind === "heals") {
+      // INFO and NO escalation: no human action is required, and the alert
+      // channel must not page for something this very land fixes.
+      logger.info(
+        {
+          groupId,
+          incidentId: incident.id,
+          target: verdict.target,
+          outerMainSha: verdict.outerMainSha,
+          innerMainSha: verdict.innerMainSha,
+          landingInnerSha: verdict.landingInnerSha,
+        },
+        "outer main's gitlink is not on inner main; this group's landing inner contains it, so the land repairs the lane",
+      );
+    } else {
+      logger.warn(
+        {
+          groupId,
+          incidentId: incident.id,
+          escalation: true,
+          target: verdict.target,
+          presence: verdict.presence,
+          outerMainSha: verdict.outerMainSha,
+          innerMainSha: verdict.innerMainSha,
+          landingInnerSha: verdict.landingInnerSha,
+        },
+        "outer main's gitlink is not reachable from inner main; the lane is blocked until it is cured",
+      );
+    }
+    return { incidentId: incident.id };
+  } catch (err) {
+    logger.warn(
+      { groupId, err: errMessage(err) },
+      "openIncident(dangling_gitlink) failed (non-fatal); continuing",
+    );
+    return { incidentId: null };
+  }
+}
+
+/**
+ * The one thing S2 APPENDS to a group reject: the cure, how to submit it, and
+ * the incident that tracks the lane. Empty for every other reason.
+ *
+ * Ownership across three authors, so nothing is said twice: S4 owns the
+ * incident's own `summary()`, S3 owns the `why` (the finding and the verdict),
+ * and this owns the detail's cure half. It repeats none of the `why`'s clauses
+ * — a test pins each at exactly one occurrence in the composed paragraph.
+ *
+ * BEGINS with ". " on purpose: `verdict.why` is a clause and the composition
+ * leaves it unterminated, so appending a sentence without supplying the
+ * terminator would produce a run-on.
+ *
+ * The prescribed submission is CONSTRUCTIBLE, which took two corrections to get
+ * right. `synthesize_outer: true` is required for a single-member group
+ * (mcp-server merge-groups.ts) — without it the submission 400s. And the
+ * condition is FAST-FORWARD, not merely "inner main is an ancestor": `git
+ * rebase <base>` preserves the checked-out commits only when the range is ALSO
+ * linear, so a branch built the obvious way on a diverged main
+ * (`checkout -b cure <main>; merge <target>`) has main as an ancestor, contains
+ * the target, passes an ancestor-only check — and is then flattened, rewriting
+ * the target, rejecting the author for following our own instructions.
+ * Reachability is therefore stated as contingent on THE CHECK rather than on
+ * descent: a `<target>` that is itself a merge commit descends from inner main
+ * and still admits no satisfying branch.
+ */
+function mainGitlinkCureText(asm: AssembledGroupErr, incidentId: string | null): string {
+  if (asm.reason !== "main_gitlink_dangling") return "";
+  const v = asm.evidence;
+  const check =
+    `git merge-base --is-ancestor ${v.target} <branch>` +
+    ` && git merge-base --is-ancestor ${v.innerMainSha} <branch>` +
+    ` && test "$(git rev-list --count --merges ${v.innerMainSha}..<branch>)" = 0`;
+  // What the branch must satisfy, and why — identical in both variants, since
+  // the mechanism does not depend on whether the objects are reachable today.
+  const mechanism =
+    `The branch must FAST-FORWARD inner main ${v.innerMainSha}: inner main an ancestor of it AND ` +
+    `no merge commit in the range, because the rebase preserves commits only when the range is ` +
+    `linear, and only then does ${v.target} survive into what lands. One check, all three ` +
+    `conditions: ${check}.`;
+  const refused =
+    `Anything else is rejected here again, including a group that only reverts the gitlink: step ` +
+    `8 authors the gitlink identically for every group, so the gate cannot tell a deliberate ` +
+    `revert from an accidental regression.`;
+  const outerCure =
+    `point outer main's gitlink at a commit already on inner main, an ordinary outer-repo change ` +
+    `landed however this project lands outer-repo changes.`;
+  // A reject that names no incident is DEGRADED, not wrong.
+  const tail =
+    incidentId === null
+      ? ` The train re-checks the invariant on every cross-repo group and stops rejecting once it holds.`
+      : ` Incident ${incidentId} tracks this and closes on its own once the invariant holds again.`;
+
+  if (v.presence === "absent") {
+    return (
+      `. ${v.target} is in no clone the daemon can reach, so landing it needs someone who still ` +
+      `has that commit: push it to the inner repo, then — if a branch can satisfy the check ` +
+      `below — submit a merge group (pm_request_merge_group with synthesize_outer: true) whose ` +
+      `single inner member is a branch ending at ${v.target}, or at a linear descendant of it. ` +
+      `No outer member is needed, the train synthesizes one. ${mechanism} ${refused} If that ` +
+      `commit is gone for good, or no branch can satisfy the check — ${v.target} and inner main ` +
+      `have diverged, or the range from inner main to ${v.target} contains a merge commit — the ` +
+      `only cure is to ${outerCure}${tail}`
+    );
+  }
+  return (
+    `. The cure that keeps outer main compiling as it does today is to land ${v.target} on inner ` +
+    `main, and it is reachable through the train whenever a branch can satisfy the check below: ` +
+    `submit a merge group (pm_request_merge_group with synthesize_outer: true) whose single ` +
+    `inner member is a branch ending at ${v.target}, or at a linear descendant of it — no outer ` +
+    `member is needed, the train synthesizes one. ${mechanism} If no branch can satisfy it, this ` +
+    `cure is out of the train's reach: that is the case when ${v.target} and inner main have ` +
+    `diverged, and also when the range from inner main to ${v.target} contains a merge commit, ` +
+    `because either way the rebase rewrites ${v.target} and the gitlink still dangles. ` +
+    `${refused} The other cure — the only one when the inner work is being abandoned or is out ` +
+    `of the train's reach — is to ${outerCure}${tail}`
+  );
+}
+
 // ─── rejectGroupLegibly (the single group-reject choke-point) ─────────
 
 /**
@@ -786,6 +1049,23 @@ export async function runGroupIntegration(
   };
   const asm = await assembleGroup(asmDeps);
 
+  // ── §S2 observation site (campaign 2026-08-30). ONE site, both directions,
+  //    ABOVE the asm.ok branch on purpose: `heals` is a SUCCESSFUL assembly of
+  //    a BROKEN lane, and hanging the open off the reject path would lose
+  //    exactly the case the train repairs. Non-fatal by construction; returns
+  //    the incident id the reject text needs (null when nothing was opened). ──
+  const { incidentId: mainGitlinkIncidentId } = await observeMainGitlink(
+    {
+      pmClient,
+      logger,
+      projectId: deps.projectId,
+      innerLane,
+      outerLane,
+    },
+    group.id,
+    asm.mainGitlink,
+  );
+
   if (!asm.ok) {
     if (asm.reason === "backpressure") {
       // Pool exhaustion — nothing acquired-and-held, PM untouched. The group
@@ -814,7 +1094,10 @@ export async function runGroupIntegration(
     const verdict = assemblyResolutionEligibility(asm.reason);
     const reason =
       `group assembly failed (${asm.reason})${asm.detail ? `: ${asm.detail}` : ""}` +
-      ` — ${verdict.why}`;
+      ` — ${verdict.why}` +
+      // §S2: "" for every reason but main_gitlink_dangling. The `why` above is
+      // consumed VERBATIM and never restated here.
+      mainGitlinkCureText(asm, mainGitlinkIncidentId);
     logger.warn(
       { groupId: group.id, reason },
       "group assembly failed pre-pickup; rejecting from forming",

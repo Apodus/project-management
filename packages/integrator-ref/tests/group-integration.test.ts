@@ -188,6 +188,16 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
       state.calls.push("recordVerifyCache");
       return {};
     },
+    // Campaign 2026-08-30 §S2: the cross-repo cache test is the one case here
+    // that configures a projectId, so it is the one that reaches the
+    // main-gitlink observation site. Its outer main gitlink sits on inner main
+    // (verdict `holds`), which lists this direction's open incidents — stubbed
+    // empty so the healthy path runs the real code instead of the helper's
+    // non-fatal catch.
+    async listMergeIncidents(): Promise<unknown[]> {
+      state.calls.push("listMergeIncidents");
+      return [];
+    },
     async emitVerifyCacheMismatch(): Promise<void> {
       state.calls.push("emitVerifyCacheMismatch");
     },

@@ -565,6 +565,10 @@ describe.skipIf(!GIT_AVAILABLE)("assembleGroup (real two-repo)", () => {
       "assemble/assert",
       "assemble/inner:reset",
       "assemble/outer:classify",
+      // Campaign 2026-08-30 §S2: the invariant gate is git work that DECIDES
+      // an arm, so it is measured like outer:classify rather than hidden in
+      // whichever arm it happened to pick.
+      "assemble/outer:main-gitlink",
       "assemble/outer:reset",
       "materialize/gitlink",
       "materialize/objects",
@@ -753,11 +757,22 @@ describe.skipIf(!GIT_AVAILABLE)("assembleGroup (real two-repo)", () => {
       releaseInner: (wt) => innerPool.release(wt),
       acquireOuter: () => outerPool.acquire(),
       releaseOuter: (wt) => outerPool.release(wt),
-      // readSubmoduleGitlink is called ONLY by the §11 assertion, so this
-      // fixture reaches the assertion with everything else genuinely done.
-      gitOps: opsWith(() => ({
-        readSubmoduleGitlink: () => Promise.resolve(bogus),
-      })),
+      // readSubmoduleGitlink has TWO callers since campaign 2026-08-30: the
+      // §S2 invariant gate reads outer main's committed gitlink before any arm
+      // runs, and the §11 assertion reads the assembled one. Only the second
+      // is corrupted here — answering the first with a bogus sha would reject
+      // the group as main_gitlink_dangling and the assertion under test would
+      // never run.
+      gitOps: opsWith((p) => {
+        const real = createGitOps(simpleGit(p));
+        let reads = 0;
+        return {
+          readSubmoduleGitlink: (gitlinkPath: string) => {
+            reads += 1;
+            return reads === 1 ? real.readSubmoduleGitlink(gitlinkPath) : Promise.resolve(bogus);
+          },
+        };
+      }),
       innerRef: innerFeatureSha,
       outerRef: outerFeatureSha,
       gitlinkPath: GITLINK_PATH,

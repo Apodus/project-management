@@ -79,6 +79,29 @@ export const MERGE_INCIDENT_TYPE_INFO: Record<MergeIncidentType, MergeIncidentTy
 };
 
 /**
+ * The INVERSE of MERGE_INCIDENT_TYPE_INFO's `direction`. Two total Records over
+ * the two halves of one relation: adding a direction is a compile error until
+ * it has a detector, and adding a type is a compile error until it names a
+ * direction. Design lock 6, made mechanical (campaign 2026-08-30 §S2).
+ *
+ * The indirection is the point at the call site: a detector declares the
+ * DIRECTION it measured and lets the row type follow, rather than naming a row
+ * to write. Roadmap finding 4 was that nothing asserted every direction HAS a
+ * detector; this is that assertion, as far as a type can carry it.
+ *
+ * Honest limit: this makes a MISSING detector for a DECLARED direction
+ * uncompilable. It cannot make anyone declare a direction that has not occurred
+ * to them.
+ */
+export const MERGE_INCIDENT_TYPE_BY_DIRECTION: Record<
+  MergeIncidentTypeInfo["direction"],
+  MergeIncidentType
+> = {
+  inner_ahead_of_outer: "orphaned_inner",
+  outer_ahead_of_inner: "dangling_gitlink",
+};
+
+/**
  * Total, string-tolerant lookup. DB rows type `type` as plain `string`, so
  * server-side consumers need this rather than an index expression. An
  * unrecognized value returns undefined and the caller must then state nothing

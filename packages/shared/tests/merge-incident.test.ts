@@ -3,6 +3,7 @@ import {
   MERGE_INCIDENT_STATES,
   MERGE_INCIDENT_TYPES,
   MERGE_INCIDENT_TYPE_INFO,
+  MERGE_INCIDENT_TYPE_BY_DIRECTION,
   MERGE_INCIDENT_RESOLUTION_MODES,
   mergeIncidentTypeInfo,
   mergeIncidentSchema,
@@ -73,6 +74,32 @@ describe("MERGE_INCIDENT_TYPE_INFO", () => {
       expect(text).not.toMatch(/not (a|in) (defect|the change|your)/i);
       expect(text).not.toMatch(/defect in the train/i);
     }
+  });
+});
+
+// ─── MERGE_INCIDENT_TYPE_BY_DIRECTION (campaign 2026-08-30 §S2) ────
+
+describe("MERGE_INCIDENT_TYPE_BY_DIRECTION", () => {
+  it("is the exact inverse of MERGE_INCIDENT_TYPE_INFO's direction, both ways", () => {
+    // Forward: every DIRECTION resolves to a type that declares it — i.e.
+    // every declared direction HAS a detector (roadmap finding 4).
+    for (const [direction, type] of Object.entries(MERGE_INCIDENT_TYPE_BY_DIRECTION)) {
+      expect(MERGE_INCIDENT_TYPE_INFO[type].direction, direction).toBe(direction);
+    }
+    // Backward: every TYPE is the one its own direction maps to, so the two
+    // maps cannot drift into a many-to-one that silently drops a detector.
+    for (const type of MERGE_INCIDENT_TYPES) {
+      expect(MERGE_INCIDENT_TYPE_BY_DIRECTION[MERGE_INCIDENT_TYPE_INFO[type].direction], type).toBe(
+        type,
+      );
+    }
+  });
+
+  it("covers both halves of the relation and nothing else", () => {
+    expect(Object.keys(MERGE_INCIDENT_TYPE_BY_DIRECTION).sort()).toEqual([
+      "inner_ahead_of_outer",
+      "outer_ahead_of_inner",
+    ]);
   });
 });
 

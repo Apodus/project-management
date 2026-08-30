@@ -1701,3 +1701,218 @@ export async function classifyOuterGitlinkDiff(
     return { kind: "legacy", reason: errText(err) };
   }
 }
+
+// ─── The main-gitlink invariant gate (campaign 2026-08-30 §S2) ────────
+
+/** The five facts every DECIDED verdict carries. */
+export interface MainGitlinkFacts {
+  gitlinkPath: string;
+  /** The 160000 target committed on outer main. */
+  target: string;
+  /** Live outer main — the commit whose gitlink was read (a LABEL, no git call). */
+  outerMainSha: string;
+  /** Live inner main (`baseInnerSha`) — the HEALTH comparand. */
+  innerMainSha: string;
+  /** `Ri`, the inner commit this group would land — the LANDING comparand. */
+  landingInnerSha: string;
+}
+
+export type MainGitlinkVerdict =
+  /** HEALTH holds (⟹ landing holds). Main is sane; nothing to record. */
+  | ({ kind: "holds" } & MainGitlinkFacts)
+  /**
+   * HEALTH fails, LANDING holds. Main is dangling RIGHT NOW — something pushed
+   * a gitlink past the train — but `Ri` contains the target, so this group's
+   * land moves the pointer forward and repairs the lane. The incident opens;
+   * assembly proceeds. `presence` is always "present": an absent object cannot
+   * be an ancestor of anything.
+   */
+  | ({ kind: "heals"; presence: "present" } & MainGitlinkFacts)
+  /**
+   * Both fail. Landing would move the gitlink off the commit outer main names.
+   * The incident opens; the group is rejected.
+   *  `present`: in the inner store, but on neither inner main nor `Ri`.
+   *  `absent`:  still missing after an all-refs fetch — never pushed, or gone.
+   */
+  | ({ kind: "dangling"; presence: "present" | "absent" } & MainGitlinkFacts)
+  /** No probe decided. Fail open: no gate, no incident, no resolve. */
+  | {
+      kind: "undecided";
+      gitlinkPath: string;
+      outerMainSha: string;
+      innerMainSha: string;
+      landingInnerSha: string;
+      detail: string;
+    };
+
+export interface MainGitlinkGateArgs {
+  /** Bound to the outer worktree, which MUST be sitting at live outer main. */
+  outerGitOps: GitOps;
+  /** Bound to the inner worktree; its object store holds inner main and `Ri`. */
+  innerGitOps: GitOps;
+  gitlinkPath: string;
+  /** Live outer main — a LABEL only (no git call); names the commit judged. */
+  outerMainSha: string;
+  /** Live inner main — `baseInnerSha`. The HEALTH comparand. */
+  innerMainSha: string;
+  /** `Ri`. The LANDING comparand. Equals `innerMainSha` on the synthetic-inner arm. */
+  landingInnerSha: string;
+  gitRemote: string;
+}
+
+/**
+ * Campaign 2026-08-30 §S2. TWO questions about one gitlink, answered in one
+ * pass:
+ *
+ *   HEALTH  — is outer main's committed gitlink target on inner main RIGHT NOW?
+ *             A property of the LANE, true or false independent of any group.
+ *             Drives the durable incident.
+ *   LANDING — is that target contained in `Ri`, the inner commit this group
+ *             would land? Step 8 authors the committed gitlink to `Ri`, so this
+ *             is exactly "would landing move the pointer off the commit main
+ *             names?" Drives the gate.
+ *
+ * They are not the same question and must not share a predicate: a group whose
+ * inner already CONTAINS the target heals a dangling main, and gating on health
+ * would reject the only cure the train can take.
+ *
+ * HEALTH ⟹ LANDING is a theorem, not a coincidence: `Ri` is `innerRef` rebased
+ * onto `baseInnerSha`, so `baseInnerSha` is always an ancestor of `Ri` (and
+ * equals it on the synthetic-inner arm). The impossible fourth combination —
+ * healthy main, unsafe landing — is therefore not representable in the verdict
+ * above, and the probe order exploits it: a true HEALTH answer skips the
+ * LANDING probe. `group-main-gitlink-gate.test.ts` pins that premise on all
+ * three assembly arms, because the short-circuit is a CORRECTNESS dependency:
+ * an `Ri` that stopped descending from `baseInnerSha` would make this report a
+ * safe landing it never measured.
+ *
+ * The MIRROR of what group-recovery.ts asks. Recovery asks whether outer's
+ * gitlink can roll FORWARD onto a landed inner (inner ahead of outer). This
+ * asks whether outer main's committed gitlink is reachable from the inner side
+ * at all (outer ahead of inner). Design lock 6: this check watches
+ * `outer_ahead_of_inner`; the other direction is covered by `orphaned_inner`.
+ *
+ * DETECTION ONLY — reads git state, never mutates a worktree, ref, or DB. The
+ * whole body is wrapped so no probe error can escape into `assembleGroup`'s
+ * catch-all: an escaped throw would surface as `assembly_error`, which reports
+ * "nothing was decided" about a check that ran. Design lock 5: fail OPEN on an
+ * undecided check, hard-gate on a decided one.
+ *
+ * Cost on a healthy lane: 3 spawns (`ls-tree`, `cat-file -e`, `merge-base
+ * --is-ancestor`). A 4th `is-ancestor` and, on the absent branch, an all-refs
+ * fetch happen only once main is already broken.
+ */
+export async function checkMainGitlinkInvariant(
+  args: MainGitlinkGateArgs,
+): Promise<MainGitlinkVerdict> {
+  const {
+    outerGitOps,
+    innerGitOps,
+    gitlinkPath,
+    outerMainSha,
+    innerMainSha,
+    landingInnerSha,
+    gitRemote,
+  } = args;
+  const site = { gitlinkPath, outerMainSha, innerMainSha, landingInnerSha };
+  const undecided = (detail: string): MainGitlinkVerdict => ({
+    kind: "undecided",
+    ...site,
+    detail,
+  });
+
+  try {
+    // ── 1. what outer main COMMITS at the managed path (HEAD-bound by
+    //       contract; the caller guarantees HEAD == outerMainSha) ──
+    let target: string;
+    try {
+      target = await outerGitOps.readSubmoduleGitlink(gitlinkPath);
+    } catch (err) {
+      // This also swallows the legitimate "no 160000 entry here" case — a lane
+      // configured with a gitlinkPath outer main does not carry. A
+      // misconfiguration and a git failure are equally UNDECIDED, and neither
+      // may reject a group.
+      return undecided(`could not read outer main's gitlink at ${gitlinkPath}: ${errText(err)}`);
+    }
+    const facts: MainGitlinkFacts = { ...site, target };
+
+    // ── 2-3. presence in the INNER store, then ONE all-refs fetch (never
+    //         fetch-by-sha) and a re-probe ──
+    let present: boolean;
+    try {
+      present = await innerGitOps.objectPresent(target);
+    } catch (err) {
+      return undecided(`present-probe error: ${errText(err)}`);
+    }
+    if (!present) {
+      try {
+        await innerGitOps.fetch(gitRemote);
+      } catch (err) {
+        // Transport/auth is transient — never a terminal reject.
+        return undecided(`inner fetch transport error: ${errText(err)}`);
+      }
+      try {
+        present = await innerGitOps.objectPresent(target);
+      } catch (err) {
+        return undecided(`present-probe error: ${errText(err)}`);
+      }
+      // No landing probe: an object the store does not hold is in no commit's
+      // history, so both questions are already answered.
+      if (!present) return { kind: "dangling", presence: "absent", ...facts };
+    }
+
+    // ── 4. HEALTH. isAncestor THROWS on exit ∉ {0,1}; catching it here is the
+    //       single most important catch in this function. An unreadable
+    //       ancestry is what group-recovery.ts ESCALATES on; inverted into a
+    //       gate it must not reject, and must not open or close an incident. ──
+    let healthy: boolean;
+    try {
+      healthy = await innerGitOps.isAncestor(target, innerMainSha);
+    } catch (err) {
+      return undecided(`health isAncestor threw: ${errText(err)}`);
+    }
+    // The happy path stops here — 3 spawns, and HEALTH ⟹ LANDING is what makes
+    // the second probe redundant rather than skipped.
+    if (healthy) return { kind: "holds", ...facts };
+
+    // ── 5. LANDING. On the synthetic-inner arm (and after a no-op rebase)
+    //       landingInnerSha IS innerMainSha, so the health answer already
+    //       decided it; a second identical spawn would be pure waste. ──
+    let willHold: boolean;
+    if (landingInnerSha === innerMainSha) {
+      willHold = healthy;
+    } else {
+      try {
+        willHold = await innerGitOps.isAncestor(target, landingInnerSha);
+      } catch (err) {
+        return undecided(`landing isAncestor threw: ${errText(err)}`);
+      }
+    }
+
+    return willHold
+      ? { kind: "heals", presence: "present", ...facts }
+      : { kind: "dangling", presence: "present", ...facts };
+  } catch (err) {
+    // Totality is the contract.
+    return undecided(errText(err));
+  }
+}
+
+/**
+ * The `asm.detail` half of a `main_gitlink_dangling` reject: what was measured,
+ * naming ALL THREE commits the gate judged. The 2026-08-22 lesson
+ * (§14.21/§14.22) is that "the rejection named no commit" is why three client
+ * notes across seven weeks were each investigated as a conflict in the author's
+ * change; this verdict depends on `Ri`, so omitting `Ri` would repeat it.
+ *
+ * Ends WITHOUT terminal punctuation: the reject composition appends
+ * ` — <why>` next.
+ */
+export function describeDanglingMainGitlink(
+  v: Extract<MainGitlinkVerdict, { kind: "dangling" }>,
+): string {
+  const head = `outer main ${v.outerMainSha} commits gitlink ${v.gitlinkPath} -> ${v.target}`;
+  return v.presence === "present"
+    ? `${head}; that commit is present in the inner repo but is on neither inner main ${v.innerMainSha} nor this group's landing inner ${v.landingInnerSha}, so landing would move the gitlink off it`
+    : `${head}; that commit is absent from the inner repo even after an all-refs fetch, so it is on neither inner main ${v.innerMainSha} nor this group's landing inner ${v.landingInnerSha}`;
+}

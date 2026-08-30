@@ -1,8 +1,11 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import {
+  checkMainGitlinkInvariant,
   classifyOuterGitlinkDiff,
+  describeDanglingMainGitlink,
   type GitOps,
+  type MainGitlinkVerdict,
   type OuterGitlinkClassification,
 } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
@@ -62,6 +65,20 @@ export interface AssembledGroupOk {
    * mutates the DB `synthetic` flag.
    */
   outerGitlinkNormalized: boolean;
+  /**
+   * Campaign 2026-08-30 §S2: the invariant gate's reading, taken before any arm
+   * ran. REQUIRED, and narrowed so a `dangling` verdict is not CONSTRUCTIBLE on
+   * a success — i.e. an assembly that never ran the gate, or ran it and saw a
+   * verdict that forbids landing, cannot be reported as a success. `heals` is a
+   * legal success: main was broken and this assembly repairs it.
+   *
+   * The honest ceiling: this does not make the gate unfakeable. A fabricated
+   * `{ kind: "holds", target: "", ... }` still compiles. What it prevents is a
+   * refactor quietly tidying the check into one arm — the same ceiling S3 wrote
+   * down for GitlinkMismatchEvidence, and the correct one, because the
+   * 2026-08-29 defect was a SHRUG, not a lie.
+   */
+  mainGitlink: Exclude<MainGitlinkVerdict, { kind: "dangling" }>;
   /** Release BOTH correlated worktree slots back to their pools. */
   release(): void;
 }
@@ -138,6 +155,20 @@ interface AssemblyErrBase {
     ref: string;
     conflictingFiles: string[];
   };
+  /**
+   * Campaign 2026-08-30 §S2: the invariant gate's reading, when it RAN this
+   * pass. Absent on `backpressure` (nothing leased), on `inner_conflict` (that
+   * arm returns above the gate) and on `assembly_error` (the catch-all measured
+   * nothing). Optional ON THE BASE for the same reason `conflict` is: the
+   * observation site reads it off the union, and a bare property access
+   * requires the property on every constituent.
+   *
+   * This is the OBSERVATION channel, distinct from the `evidence` an arm
+   * carries to back its OWN claim. It exists so a pass that assembles fine — or
+   * fails for an unrelated reason — can still report the lane's health and let
+   * an open incident open or close itself.
+   */
+  mainGitlink?: MainGitlinkVerdict;
   /** Release whatever slots were taken (no-op when nothing was acquired). */
   release(): void;
 }
@@ -160,8 +191,18 @@ interface AssemblyErrBase {
  * fault had been ruled out of their change.
  */
 export type AssembledGroupErr =
-  | (AssemblyErrBase & { reason: Exclude<DiagnosedAssemblyReason, "gitlink_mismatch"> })
+  | (AssemblyErrBase & {
+      reason: Exclude<DiagnosedAssemblyReason, "gitlink_mismatch" | "main_gitlink_dangling">;
+    })
   | (AssemblyErrBase & { reason: "gitlink_mismatch"; evidence: GitlinkMismatchEvidence })
+  // Campaign 2026-08-30 §S2, the same rule one arm further: this claim's facts
+  // ARE the verdict — which gitlink, which target, which three commits (outer
+  // main, inner main, landing inner), and whether the target exists at all. A
+  // site holding none of that cannot make the claim.
+  | (AssemblyErrBase & {
+      reason: "main_gitlink_dangling";
+      evidence: Extract<MainGitlinkVerdict, { kind: "dangling" }>;
+    })
   | (AssemblyErrBase & { reason: UnclassifiedAssemblyReason; evidence: { cause: unknown } });
 
 export type AssembledGroup = AssembledGroupOk | AssembledGroupErr;
@@ -368,6 +409,11 @@ async function assembleGroupClassified(
           release,
         };
       }
+      // `Ri` is `innerRef` REBASED ONTO `baseInnerSha`, so baseInnerSha is always
+      // an ancestor of it. The §S2 gate's short-circuit (a true HEALTH answer
+      // skips the LANDING probe) depends on that; a squash, a cherry-pick-based
+      // assembly, or a rebase onto anything but live inner main would break it
+      // silently. Pinned by `group-main-gitlink-gate.test.ts` on all three arms.
       Ri = innerRebase.treeSha;
     } else {
       // SYNTHETIC inner (outer-only group, campaign umbrella-widening P4): the
@@ -386,6 +432,101 @@ async function assembleGroupClassified(
       outerWt.resetForAttempt(),
     );
     const baseOuterSha = await outerGitOps.resolveRef("HEAD"); // = Mo (live outer main)
+
+    // ── §S2 INVARIANT GATE (campaign 2026-08-30) ──
+    // MUST stay HERE. `Ri` is computed above and the outer worktree was reset
+    // immediately above, which is the only point where its HEAD is provably
+    // live outer main (readSubmoduleGitlink is HEAD-bound by contract, so
+    // `outerMainSha: baseOuterSha` below is a LABEL for a fact this line
+    // already holds — no extra spawn, no new GitOps member). It must also stay
+    // ABOVE the arm fork below: one call site covers the two-member,
+    // lone-outer and inner-only arms, and step 8 — which rewrites the committed
+    // gitlink to Ri on ALL THREE — is unreachable past a `dangling` verdict.
+    //
+    // NOT redundant with classifyOuterGitlinkDiff. That asks whether the
+    // SUBMITTED outer branch's proposed bump is sane, on the lone-outer arm
+    // only; this asks whether outer MAIN's committed gitlink is sane, on every
+    // arm — including the inner-only arm, where no gitlink check existed at
+    // all. Outer main dangling + a branch bumping to a good target is exactly
+    // the case classify calls `pure_bump` and step 8 then drags the pointer
+    // backward: only this gate catches it.
+    //
+    // Measured like outer:classify — git work that DECIDES an arm.
+    const mainGitlink = await phases.time(
+      {
+        phase: "assemble",
+        label: "outer:main-gitlink",
+        ...outerSpan,
+        detail: (v) => ({ kind: v?.kind ?? "error" }),
+      },
+      () =>
+        checkMainGitlinkInvariant({
+          outerGitOps,
+          innerGitOps,
+          gitlinkPath: deps.gitlinkPath,
+          outerMainSha: baseOuterSha,
+          innerMainSha: baseInnerSha, // HEALTH — a property of the LANE
+          landingInnerSha: Ri, // LANDING — a property of THIS candidate
+          gitRemote: deps.gitRemote,
+        }),
+    );
+    if (mainGitlink.kind === "dangling") {
+      // WHAT THIS BLOCKS, AND WHAT IT DELIBERATELY PERMITS.
+      //
+      // The harm is step 8: it authors the committed gitlink to `Ri` on all
+      // three arms. So the question that decides the group is whether `Ri`
+      // still contains the commit outer main currently names.
+      //   - contained  → the pointer moves forward or stays. No harm, and if
+      //                  main was dangling this group REPAIRS it. That is
+      //                  `heals`: assembly proceeds, and the incident still
+      //                  opens (group-integration.ts's observation site),
+      //                  because main is broken right now.
+      //   - not        → step 8 moves the pointer backward or sideways,
+      //                  silently changing what consumers of outer main
+      //                  compile. That is THE ORDERING TRAP, and the state the
+      //                  client's owner refused on purpose. Reject.
+      //
+      // Why `Ri` and not `baseInnerSha` (live inner main), which was the first
+      // design: `baseInnerSha` is the right predicate for "is main healthy" —
+      // and it IS what the incident uses — but as a GATE it over-blocks.
+      // `git rebase <base>` preserves the checked-out commits when `base` is an
+      // ancestor of the ref AND the range is LINEAR (a merge commit in between
+      // is flattened and every commit rewritten). So an inner-only group whose
+      // branch fast-forwards inner main and ends at the target lands
+      // `Ri == target`, step 8 rewrites nothing, and the lane is CURED. Gating
+      // on health would reject that group — the one cure the train can take —
+      // and leave the author nothing but an out-of-band push. Splitting the two
+      // predicates costs one conditional `merge-base` call and nothing on the
+      // happy path.
+      //
+      // Why REJECT rather than re-queue. The 2026-08-15 "a race is not a
+      // verdict" rule re-queues drift and non_fast_forward because those are
+      // LOST RACES the next pass wins by itself. This is not a race: nothing
+      // about the next pass differs — same gitlink, same main, same `Ri`, same
+      // answer — so a re-queue would burn the bounded 4 integration attempts
+      // (MAX_GROUP_INTEGRATION_ATTEMPTS, group-land.ts) and then reject anyway
+      // with a worse sentence, blaming the lane's THROUGHPUT for a broken
+      // pointer.
+      //
+      // What is still refused on purpose: a lone-outer group that merely
+      // REVERTS the gitlink would make main self-consistent, and is rejected
+      // anyway. Step 8 authors the gitlink identically for every group, so the
+      // gate cannot distinguish that deliberate revert from an accidental
+      // regression — and it is the cure design lock 2 reserves for a human,
+      // because it drops the inner work outer main already depends on. The
+      // reject text says so and points at the outer-repo route.
+      return {
+        ok: false,
+        reason: "main_gitlink_dangling",
+        detail: describeDanglingMainGitlink(mainGitlink),
+        // Two field names, one object, deliberately: `evidence` is the facts
+        // backing THIS claim (S3's rule for the other diagnosed arms);
+        // `mainGitlink` is the lane observation reported on every outcome.
+        evidence: mainGitlink,
+        mainGitlink,
+        release,
+      };
+    }
 
     // Direction-C conversion (campaign xrepo-gitlink-bump-autoconvert): a REAL outer
     // member whose NET contribution over its fork point is EXACTLY the gitlink is
@@ -466,6 +607,7 @@ async function assembleGroupClassified(
             ok: false,
             reason: "outer_conflict",
             detail: applied.conflictingFiles.join(", "),
+            mainGitlink,
             release,
           };
         }
@@ -522,6 +664,7 @@ async function assembleGroupClassified(
             ok: false,
             reason: "gitlink_diverged",
             detail: `managed gitlink ${cls.path} targets ${cls.target}, not an ancestor of the landing inner ${Ri}`,
+            mainGitlink,
             release,
           };
         }
@@ -530,6 +673,7 @@ async function assembleGroupClassified(
             ok: false,
             reason: "gitlink_unreachable",
             detail: `managed gitlink ${cls.path} target ${cls.target} is unreachable (absent after an all-refs fetch)`,
+            mainGitlink,
             release,
           };
         }
@@ -561,6 +705,7 @@ async function assembleGroupClassified(
               ok: false,
               reason: "outer_conflict",
               detail: applied.conflictingFiles.join(", "),
+              mainGitlink,
               release,
             };
           }
@@ -590,6 +735,7 @@ async function assembleGroupClassified(
           ok: false,
           reason: "outer_conflict",
           detail: outerRebase.conflictingFiles.join(", "),
+          mainGitlink,
           release,
         };
       }
@@ -660,6 +806,7 @@ async function assembleGroupClassified(
         reason: "gitlink_mismatch",
         detail: `committed gitlink ${committedGitlink} != Ri ${Ri}`,
         evidence: { asserted: "committed_gitlink", committed: committedGitlink, expected: Ri },
+        mainGitlink,
         release,
       };
     }
@@ -671,6 +818,7 @@ async function assembleGroupClassified(
         reason: "gitlink_mismatch",
         detail: `working tree at ${deps.gitlinkPath} is empty after materialize`,
         evidence: { asserted: "worktree_populated", gitlinkPath: deps.gitlinkPath },
+        mainGitlink,
         release,
       };
     }
@@ -688,6 +836,7 @@ async function assembleGroupClassified(
       gitlinkPath: deps.gitlinkPath,
       outerConverted,
       outerGitlinkNormalized,
+      mainGitlink,
       release,
     };
   } catch (err) {

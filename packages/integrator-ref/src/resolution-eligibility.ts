@@ -27,8 +27,9 @@
  *    "you did not push", and converts a clear, immediately actionable answer
  *    into a slow confusing one.
  *  - `lane_blocked` — the fault is in the shared state of the LANE, measured.
- *    Nobody who can resubmit can clear it; a human with authority over main
- *    chooses the cure.
+ *    The train will not repair it; a submission that carries the repair may
+ *    land, and otherwise a human with authority over one of the two mains
+ *    applies it.
  *  - `train_bug` — `gitlink_mismatch` is a post-assembly assertion failure:
  *    the train built something inconsistent. Handing that to a resolver
  *    destroys the evidence and hides a defect that should be loud.
@@ -100,10 +101,12 @@ export type EligibilityClass =
   | "author_only"
   /**
    * The fault is in the LANE's shared state (main) rather than in the submitted
-   * change or the train's own code. Nobody who can resubmit can clear it; a
-   * human with authority over main must choose a cure. This is the ONLY class
-   * licensed to say where the fault is NOT — because it is the only class that
-   * has measured it.
+   * change or the train's own code. The train will not repair it on its own. A
+   * submission that happens to CARRY the repair may still land — that is a
+   * property of the submission, not a cure the train chose (campaign
+   * 2026-08-30 §S2) — but nothing a resolver can do reaches it. This is the
+   * ONLY class licensed to say where the fault is NOT, because it is the only
+   * class that has measured it.
    */
   | "lane_blocked"
   /** A train defect. Resolving it would paper over the evidence. */
@@ -203,13 +206,24 @@ export function assemblyResolutionEligibility(reason: GroupAssemblyReason): Elig
       return {
         eligible: false,
         class: "lane_blocked",
+        // The three falsified clauses were replaced when §S2 gave this reason a
+        // PRODUCER (campaign 2026-08-30). The gate permits a group whose landing
+        // inner CONTAINS the target — it repairs the lane — so "neither a
+        // resubmission nor a resolver can clear it", "every cure changes what
+        // consumers compile" and "the train refuses rather than picking" were all
+        // false, and the reject's own next sentence names the resubmission that
+        // clears it. What replaces them is narrower and true: THIS GROUP does not
+        // repair it, and the compile clause is attached only to the cure it is
+        // true of. "not this change" stays, in its canonical wording: it is still
+        // measured, and it is the sole phrase that keeps the anti-exoneration
+        // sweep's licensed branch non-vacuous.
         why:
-          "the lane's shared state is broken, not this change: outer main's committed " +
-          "gitlink references an inner commit that is not reachable from inner main. That " +
-          "was measured, not inferred. Neither a resubmission by the author nor a resolver " +
-          "session can clear it — every cure moves one of the two mains and changes what " +
-          "consumers of outer main compile, so the train detects and refuses rather than " +
-          "picking one",
+          "the lane's shared state is broken, not this change, and this group does not repair " +
+          "it: outer main's committed gitlink references an inner commit that is not reachable " +
+          "from inner main, nor from what this group would land. That was measured, not " +
+          "inferred. A resolver session cannot help, because nothing here is a textual conflict " +
+          "to reconcile, and the train will not move the gitlink off the commit outer main " +
+          "already names, because doing so silently changes what consumers of outer main compile",
         repo: null,
       };
 
