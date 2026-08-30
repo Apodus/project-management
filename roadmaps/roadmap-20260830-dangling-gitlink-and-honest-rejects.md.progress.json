@@ -1,0 +1,68 @@
+{
+  "roadmap": "roadmaps/roadmap-20260830-dangling-gitlink-and-honest-rejects.md",
+  "branch": "campaign/dangling-gitlink-and-honest-rejects",
+  "started": "2026-08-30",
+  "steps": [
+    { "id": "S1", "title": "Stop git chasing the gitlink on our own fetches", "state": "verifying" },
+    {
+      "id": "S2",
+      "title": "Assert the invariant, in the direction nobody watches",
+      "state": "pending",
+      "depends_on": ["S3", "S4"]
+    },
+    {
+      "id": "S3",
+      "title": "Split the catch-all from the assertion, drop the exoneration",
+      "state": "pending"
+    },
+    { "id": "S4", "title": "Make pm_list_merge_incidents tell the truth", "state": "verifying" },
+    { "id": "S5", "title": "The periodic probe", "state": "pending", "depends_on": ["S2"] },
+    {
+      "id": "S6",
+      "title": "Seal",
+      "state": "pending",
+      "depends_on": ["S1", "S2", "S3", "S4", "S5"]
+    }
+  ],
+  "completed": [],
+  "current": ["S1", "S4"],
+  "parallelism": "S1 (integrator worktree/clone lifecycle) and S4 (shared/server/mcp/web) have disjoint file sets; planned and verified concurrently.",
+  "plans": {
+    "S1": "scratchpad/plan-s1.md",
+    "S4": "scratchpad/plan-s4.md"
+  },
+  "open_issues": [],
+  "commander_decisions": [
+    {
+      "id": "D-S1-purge",
+      "decision": "Keep outer pool gitlinkPurgePaths: [] and do NOT add a purge step or the 'purge before fetch' reorder.",
+      "why": "The purge loop runs AFTER the fetch in resetForAttempt (fetch :152, purge :156-158), so it structurally cannot protect the failing call. Once S1 lands the fetch never recurses, so the reorder would defend nothing while adding reordering risk."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "source": "plan-s1 empirical reproduction, git 2.53 real repos",
+      "finding": "The dangling gitlink target is NOT a necessary condition for the fetch failure. Conditions are (a) fetch advances main across a commit that CHANGES the managed gitlink, and (b) the gitlink path is populated but not an openable repo. (b) is what materializeSubmoduleWorktree leaves in the outer slot permanently (outer pool built with gitlinkPurgePaths: []).",
+      "consequence": "The outer slot is poisoned from its first cross-repo assembly onward; any later gitlink bump on main kills the next fetch, INCLUDING one the train itself landed. Most plausible account of game_one's 'wrong five times that week for a different cause'. Roadmap amended as finding 2b.",
+      "binding_on": ["S2", "S4", "S6"],
+      "rule": "S2 must not assume 'fetch succeeded => gitlink is fine'. No surface text may equate an unclassifiable assembly failure with a dangling gitlink, nor treat an empty incident list as proof the lane's main is sane."
+    },
+    {
+      "id": "F2",
+      "source": "plan-s1",
+      "finding": "Inner lane needs the config too, on evidence not symmetry: the inner slot's nested submodules ARE real openable checkouts, so on-demand recursion does not error there - it silently re-fetches every vendored submodule from its own URL on every attempt.",
+      "binding_on": ["S1"]
+    },
+    {
+      "id": "F3",
+      "source": "plan-s4 consumer audit",
+      "finding": "merge-group.service.ts:950 (corruption fence) and train.service.ts:802 (forceLand) filter incidents on groupId+state but NOT type, while their comments claim orphaned_inner scope. Only accidentally safe (new type carries groupId null; eq(groupId,id) never matches NULL).",
+      "binding_on": ["S4"]
+    }
+  ],
+  "notes": [
+    "Design lock 1: S1 must not be DEPLOYED without S2. Both land on this branch before any redeploy.",
+    "Roadmap committed at 6f4777e; amended with finding 2b (uncommitted at time of writing)."
+  ]
+}

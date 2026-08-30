@@ -35,6 +35,36 @@ The client's pasted reject detail is the proof — the fetch's own progress line
 `submodule.c`'s fetch-recursion message, not ours. It throws inside
 `assembleGroup`'s `try`, **before any classification runs**.
 
+**2b. AMENDED 2026-08-30 after empirical reproduction (git 2.53, real repos).**
+The dangling target is **not a necessary condition**. The fetch fails when BOTH:
+(a) the fetch advances main across a commit that *changes* the managed gitlink —
+reachable or dangling, it does not matter; and (b) the gitlink path in the slot
+is **populated but not an openable repo**. Condition (b) is exactly what
+`materializeSubmoduleWorktree` (`git-ops.ts:1133`) leaves in the OUTER slot
+**permanently**: the outer pool is constructed with `gitlinkPurgePaths: []` on
+purpose (`index.ts:331`), and `reset --hard` / `clean -fdx` are blind to content
+at a committed gitlink path. Measured: empty dir + dangling target → exit 0;
+populated overlay + dangling → exit 1; populated overlay + **reachable** target →
+exit 1; `fetch.recurseSubmodules=no` → exit 0 in every case.
+
+Two consequences, both load-bearing for this campaign:
+
+- **The outer slot is poisoned from its first cross-repo assembly onward**, and
+  any later gitlink bump on main kills the next fetch in that slot — **including
+  a bump the train itself just landed**. This is a standing, self-inflicted,
+  recurring lane-killer independent of the invariant this campaign is named
+  after, and it is the most plausible account of the part of the client's report
+  the original analysis could not explain: *"it had already been wrong five times
+  that week for a different cause."* A lane that lands cross-repo groups poisons
+  its own next fetch.
+- **S2 MUST NOT assume "the fetch succeeded ⇒ the gitlink is fine."** The two
+  conditions are orthogonal. S2's gate is not implied by S1's fix and must stand
+  on its own reading of the invariant.
+
+S1 is therefore independently valuable, not merely the enabler for S2. The
+ordering trap below is UNCHANGED — S1 alone still lets assembly rewrite main's
+pointer backward — so the sequencing does not move, only the stakes.
+
 **3. The exoneration is one line, reached by a catch-all.**
 `group-assembly.ts:627-640` catches **any** throw mid-assembly and maps it to
 `reason: "gitlink_mismatch"` — a reason whose own doc comment (`:81`) says "the
