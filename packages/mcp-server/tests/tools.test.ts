@@ -4174,6 +4174,7 @@ describe("MCP Tools", () => {
 
       expect(mockListMergeIncidents).toHaveBeenCalledWith("P1", {
         state: undefined,
+        type: undefined,
       });
       const text = (result.content as Array<{ text: string }>)[0].text;
       expect(text).toContain("inc_001");
@@ -4192,6 +4193,7 @@ describe("MCP Tools", () => {
 
       expect(mockListMergeIncidents).toHaveBeenCalledWith("P1", {
         state: "open",
+        type: undefined,
       });
     });
 
@@ -4221,6 +4223,85 @@ describe("MCP Tools", () => {
       expect(text).toContain("T1");
       expect(text).toContain("outer-land");
       expect(text).toContain("fixed by hand");
+    });
+
+    it("pm_list_merge_incidents passes a concrete type filter and maps all→undefined", async () => {
+      mockListMergeIncidents.mockResolvedValue([]);
+
+      await client.callTool({
+        name: "pm_list_merge_incidents",
+        arguments: { project_id: "P1", type: "dangling_gitlink" },
+      });
+
+      expect(mockListMergeIncidents).toHaveBeenCalledWith("P1", {
+        state: undefined,
+        type: "dangling_gitlink",
+      });
+    });
+
+    it("pm_list_merge_incidents names the type and states the direction per row", async () => {
+      mockListMergeIncidents.mockResolvedValue([
+        {
+          ...sampleIncident,
+          id: "inc_dg",
+          type: "dangling_gitlink",
+          groupId: null,
+          innerRequestId: null,
+          taskId: null,
+        },
+      ]);
+
+      const result = await client.callTool({
+        name: "pm_list_merge_incidents",
+        arguments: { project_id: "P1" },
+      });
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("[dangling_gitlink]");
+      expect(text).toContain("Dangling gitlink: outer main's gitlink points at orphan99");
+      expect(text).toContain("not on inner main");
+      // The identity line is unchanged — both repos and the SHA are real facts
+      // for either direction.
+      expect(text).toContain("inner@orphan99 -> outer");
+    });
+
+    it("pm_list_merge_incidents describes BOTH directions (the regression a client hit)", async () => {
+      const tools = await client.listTools();
+      const listIncidents = tools.tools.find((t) => t.name === "pm_list_merge_incidents");
+      expect(listIncidents).toBeDefined();
+      const desc = listIncidents!.description ?? "";
+      expect(desc).toContain("orphaned_inner");
+      expect(desc).toContain("dangling_gitlink");
+      expect(desc).toContain("EITHER direction");
+      // It must NOT invite the reading that an empty list proves main is sane.
+      expect(desc).toContain("an empty list is not evidence");
+    });
+
+    it("pm_get_merge_incident states the direction, the SHA's meaning and who cures it", async () => {
+      mockGetMergeIncident.mockResolvedValue({
+        ...sampleIncident,
+        id: "inc_dg",
+        type: "dangling_gitlink",
+        groupId: null,
+        innerRequestId: null,
+        taskId: null,
+      });
+
+      const result = await client.callTool({
+        name: "pm_get_merge_incident",
+        arguments: { incident_id: "inc_dg" },
+      });
+
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Type:     dangling_gitlink");
+      expect(text).toContain("Direction:");
+      expect(text).toContain("outer main's gitlink is ahead of (or off) inner main");
+      expect(text).toContain("SHA means:");
+      expect(text).toContain("not reachable from inner main");
+      expect(text).toContain("Cure:");
+      expect(text).toContain("a HUMAN must decide");
+      // The identity line is preserved for both types.
+      expect(text).toContain("inner @ orphan99");
     });
   });
 

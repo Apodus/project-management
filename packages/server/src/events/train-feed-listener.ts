@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { mergeIncidentTypeInfo } from "@pm/shared";
 import { getDb, mergeRequests, tasks, users } from "../db/index.js";
 import { postDiscord } from "./alerts-listener.js";
 import { EVENT_NAMES, getEventBus, type EventName, type EventPayload } from "./event-bus.js";
@@ -326,15 +327,26 @@ export function formatTrainFeedEvent(event: EventName, payload: EventPayload): s
       const type = String(e.type ?? "incident");
       const inner = String(e.innerRepo ?? "inner");
       const outer = String(e.outerRepo ?? "outer");
-      const detail =
-        type === "orphaned_inner"
-          ? `\`${inner}\` main landed \`${shortSha(e.orphanedSha)}\` but the \`${outer}\` gitlink did NOT follow`
-          : `\`${inner}\` @ \`${shortSha(e.orphanedSha)}\` vs \`${outer}\``;
+      // One descriptor per incident type, owned by @pm/shared, so the feed
+      // narrates the DIRECTION rather than shrugging. The vague line survives
+      // as the defensive fallback for a wire string this build doesn't know.
+      const info = mergeIncidentTypeInfo(type);
+      const detail = info
+        ? info.summary({ innerRepo: inner, outerRepo: outer, sha: shortSha(e.orphanedSha) })
+        : `\`${inner}\` @ \`${shortSha(e.orphanedSha)}\` vs \`${outer}\``;
       return [
         `:rotating_light: **Merge incident opened** — ${type}`,
         detail,
+        // The operator reading this at 2am is exactly who needs to know the
+        // train will not fix this one. No cure advice here — that belongs to
+        // the reject comment.
+        info?.curedBy === "human"
+          ? "the train will NOT auto-heal this — a human must decide"
+          : null,
         `incident \`${payload.entityId}\``,
-      ].join(" · ");
+      ]
+        .filter(Boolean)
+        .join(" · ");
     }
 
     case EVENT_NAMES.TRAIN_PAUSED: {

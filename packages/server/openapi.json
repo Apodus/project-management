@@ -6840,7 +6840,8 @@
           "type": {
             "type": "string",
             "enum": [
-              "orphaned_inner"
+              "orphaned_inner",
+              "dangling_gitlink"
             ]
           },
           "innerRepo": {
@@ -6883,6 +6884,7 @@
                 "type": "string",
                 "enum": [
                   "auto_rollforward",
+                  "auto_observed",
                   "human"
                 ]
               },
@@ -6931,7 +6933,8 @@
           "type": {
             "type": "string",
             "enum": [
-              "orphaned_inner"
+              "orphaned_inner",
+              "dangling_gitlink"
             ],
             "default": "orphaned_inner"
           },
@@ -6973,6 +6976,7 @@
             "type": "string",
             "enum": [
               "auto_rollforward",
+              "auto_observed",
               "human"
             ]
           },
@@ -29296,8 +29300,8 @@
         "tags": [
           "Merge Incidents"
         ],
-        "summary": "Integrator opens an orphaned-inner incident",
-        "description": "Durable PM record that inner main landed at orphanedSha but the outer gitlink was NOT updated. Atomically inserts the incident (state 'open') and, when taskId is set, a merge_incident comment. Integrator (ai_agent) only.",
+        "summary": "Integrator opens a merge incident",
+        "description": "Durable PM record that the inner/outer gitlink invariant is broken on main, in either direction. type='orphaned_inner': inner main landed at orphanedSha but the outer gitlink was NOT updated. type='dangling_gitlink': outer main's gitlink points at orphanedSha, which is not on inner main (groupId/innerRequestId are null — no group produced it). Atomically inserts the incident (state 'open') and, when taskId is set, a merge_incident comment. IDEMPOTENT: an OPEN incident with the same (type, innerRepo, outerRepo, orphanedSha, groupId) is reused — 200 with created=false and no second comment or event — so a blocked lane may call this on every pass. Dedup is open-only: a recurrence after a resolution opens a fresh incident. Integrator (ai_agent) only.",
         "parameters": [
           {
             "schema": {
@@ -29321,6 +29325,36 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Existing open incident reused (idempotent open)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "incident": {
+                          "$ref": "#/components/schemas/MergeIncident"
+                        },
+                        "created": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "incident",
+                        "created"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
           "201": {
             "description": "Opened incident",
             "content": {
@@ -29329,7 +29363,19 @@
                   "type": "object",
                   "properties": {
                     "data": {
-                      "$ref": "#/components/schemas/MergeIncident"
+                      "type": "object",
+                      "properties": {
+                        "incident": {
+                          "$ref": "#/components/schemas/MergeIncident"
+                        },
+                        "created": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "incident",
+                        "created"
+                      ]
                     }
                   },
                   "required": [
@@ -29466,7 +29512,7 @@
           "Merge Incidents"
         ],
         "summary": "List merge incidents in a project",
-        "description": "Returns incidents for the project ordered by openedAt asc. Optional filters: state, type, groupId.",
+        "description": "Returns incidents for the project ordered by openedAt asc. Incidents record the inner/outer gitlink invariant broken in EITHER direction (orphaned_inner, dangling_gitlink), so a caller that means one direction must pass `type`. Optional filters: state, type, groupId.",
         "parameters": [
           {
             "schema": {
@@ -29495,7 +29541,8 @@
             "schema": {
               "type": "string",
               "enum": [
-                "orphaned_inner"
+                "orphaned_inner",
+                "dangling_gitlink"
               ]
             },
             "required": false,
@@ -29703,7 +29750,7 @@
           "Merge Incidents"
         ],
         "summary": "Resolve a merge incident",
-        "description": "open → auto_resolved (auto-rollforward, ai_agent only) OR open → human_resolved (manual, admin only). The authz split is deliberate. Idempotent on same-terminal resolve.",
+        "description": "open → auto_resolved (mode auto_rollforward or auto_observed, ai_agent only) OR open → human_resolved (mode human, admin only). The two auto modes differ in what the train DID: auto_rollforward means it applied a cure (the follow-up outer land); auto_observed means it observed a cure it did not apply (the invariant holds again — the only honest auto mode for an incident a human must cure). The authz split is deliberate. Idempotent on same-terminal resolve; cross-terminal is a 409.",
         "parameters": [
           {
             "schema": {

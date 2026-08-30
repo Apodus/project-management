@@ -12134,13 +12134,13 @@ export interface paths {
     };
     /**
      * List merge incidents in a project
-     * @description Returns incidents for the project ordered by openedAt asc. Optional filters: state, type, groupId.
+     * @description Returns incidents for the project ordered by openedAt asc. Incidents record the inner/outer gitlink invariant broken in EITHER direction (orphaned_inner, dangling_gitlink), so a caller that means one direction must pass `type`. Optional filters: state, type, groupId.
      */
     get: {
       parameters: {
         query?: {
           state?: "open" | "auto_resolved" | "human_resolved";
-          type?: "orphaned_inner";
+          type?: "orphaned_inner" | "dangling_gitlink";
           groupId?: string;
         };
         header?: never;
@@ -12194,8 +12194,8 @@ export interface paths {
     };
     put?: never;
     /**
-     * Integrator opens an orphaned-inner incident
-     * @description Durable PM record that inner main landed at orphanedSha but the outer gitlink was NOT updated. Atomically inserts the incident (state 'open') and, when taskId is set, a merge_incident comment. Integrator (ai_agent) only.
+     * Integrator opens a merge incident
+     * @description Durable PM record that the inner/outer gitlink invariant is broken on main, in either direction. type='orphaned_inner': inner main landed at orphanedSha but the outer gitlink was NOT updated. type='dangling_gitlink': outer main's gitlink points at orphanedSha, which is not on inner main (groupId/innerRequestId are null — no group produced it). Atomically inserts the incident (state 'open') and, when taskId is set, a merge_incident comment. IDEMPOTENT: an OPEN incident with the same (type, innerRepo, outerRepo, orphanedSha, groupId) is reused — 200 with created=false and no second comment or event — so a blocked lane may call this on every pass. Dedup is open-only: a recurrence after a resolution opens a fresh incident. Integrator (ai_agent) only.
      */
     post: {
       parameters: {
@@ -12212,6 +12212,20 @@ export interface paths {
         };
       };
       responses: {
+        /** @description Existing open incident reused (idempotent open) */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                incident: components["schemas"]["MergeIncident"];
+                created: boolean;
+              };
+            };
+          };
+        };
         /** @description Opened incident */
         201: {
           headers: {
@@ -12219,7 +12233,10 @@ export interface paths {
           };
           content: {
             "application/json": {
-              data: components["schemas"]["MergeIncident"];
+              data: {
+                incident: components["schemas"]["MergeIncident"];
+                created: boolean;
+              };
             };
           };
         };
@@ -12369,7 +12386,7 @@ export interface paths {
     put?: never;
     /**
      * Resolve a merge incident
-     * @description open → auto_resolved (auto-rollforward, ai_agent only) OR open → human_resolved (manual, admin only). The authz split is deliberate. Idempotent on same-terminal resolve.
+     * @description open → auto_resolved (mode auto_rollforward or auto_observed, ai_agent only) OR open → human_resolved (mode human, admin only). The two auto modes differ in what the train DID: auto_rollforward means it applied a cure (the follow-up outer land); auto_observed means it observed a cure it did not apply (the invariant holds again — the only honest auto mode for an incident a human must cure). The authz split is deliberate. Idempotent on same-terminal resolve; cross-terminal is a 409.
      */
     post: {
       parameters: {
@@ -16861,7 +16878,7 @@ export interface components {
       projectId: string;
       groupId: string | null;
       /** @enum {string} */
-      type: "orphaned_inner";
+      type: "orphaned_inner" | "dangling_gitlink";
       innerRepo: string;
       orphanedSha: string;
       outerRepo: string;
@@ -16873,7 +16890,7 @@ export interface components {
       resolvedAt: string | null;
       resolution: {
         /** @enum {string} */
-        mode: "auto_rollforward" | "human";
+        mode: "auto_rollforward" | "auto_observed" | "human";
         outerLandedSha?: string;
         resolvedByGroupId?: string;
         note?: string;
@@ -16886,7 +16903,7 @@ export interface components {
        * @default orphaned_inner
        * @enum {string}
        */
-      type: "orphaned_inner";
+      type: "orphaned_inner" | "dangling_gitlink";
       innerRepo: string;
       orphanedSha: string;
       outerRepo: string;
@@ -16896,7 +16913,7 @@ export interface components {
     };
     MergeIncidentResolve: {
       /** @enum {string} */
-      mode: "auto_rollforward" | "human";
+      mode: "auto_rollforward" | "auto_observed" | "human";
       outerLandedSha?: string;
       resolvedByGroupId?: string;
       note?: string;

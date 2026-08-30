@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMergeRequestTimeline } from "@/hooks/use-train";
 import { formatDurationMs, formatRelativeTime, formatStatus, getStatusColor } from "@/lib/format";
+import { incidentTypeDisplay } from "@/lib/merge-incident-types";
 import { cn } from "@/lib/utils";
 import type { MergeRequest, MergeRequestTimelineEvent } from "@/lib/api";
 
@@ -232,11 +233,18 @@ function AuditBody({ event }: { event: MergeRequestTimelineEvent }) {
 }
 
 function IncidentBody({ event }: { event: MergeRequestTimelineEvent }) {
+  // A timeline incident is always an orphaned_inner today (a lane-scoped
+  // dangling_gitlink carries a null innerRequestId and so never reaches a
+  // request timeline). This is a correctness-of-labelling fix, not a feature:
+  // the hard-coded word "orphaned" below asserted a direction the type no
+  // longer implies. `event.type` is an optional plain string on the wire, so
+  // an unknown value falls back to formatStatus and says nothing directional.
+  const display = incidentTypeDisplay(event.type);
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-red-600 dark:text-red-400">
-          {event.type ? formatStatus(event.type) : "Incident"}
+          {display?.label ?? (event.type ? formatStatus(event.type) : "Incident")}
         </span>
         {event.state && (
           <Badge
@@ -249,7 +257,10 @@ function IncidentBody({ event }: { event: MergeRequestTimelineEvent }) {
       </div>
       <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
         {event.orphanedSha && (
-          <span className="font-mono">orphaned {shortSha(event.orphanedSha)}</span>
+          <span className="font-mono">
+            {display ? `${display.shaLabel} ` : ""}
+            {shortSha(event.orphanedSha)}
+          </span>
         )}
         {event.resolvedAt && <span>resolved {safeRelative(event.resolvedAt)}</span>}
         {event.resolution != null && <span>resolution: {String(event.resolution)}</span>}

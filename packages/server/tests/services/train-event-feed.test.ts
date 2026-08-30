@@ -370,6 +370,62 @@ describe("Discord merge-train event feed", () => {
     expect(partial).toContain("outer push failed after inner landed");
   });
 
+  // ── 5b. Incidents narrate their DIRECTION ─────────────────────────
+
+  it("narrates an orphaned_inner open in the inner→outer direction", () => {
+    const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+    const content = formatTrainFeedEvent(EVENT_NAMES.MERGE_INCIDENT_OPENED, {
+      ...payload(project.id, "inc-orphan", {
+        type: "orphaned_inner",
+        innerRepo: "rynx",
+        outerRepo: "game",
+        orphanedSha: "0rphaned5ha000000000",
+      }),
+      entityType: "merge_incident",
+    });
+    expect(content).toContain("orphaned_inner");
+    expect(content).toContain("Orphaned inner: rynx@0rphane");
+    expect(content).toContain("game's gitlink was not updated to it");
+    // The train DOES auto-heal this one — no human-decision clause.
+    expect(content).not.toContain("a human must decide");
+  });
+
+  it("narrates a dangling_gitlink open outer→inner and says the train will not heal it", () => {
+    const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+    const content = formatTrainFeedEvent(EVENT_NAMES.MERGE_INCIDENT_OPENED, {
+      ...payload(project.id, "inc-dangling", {
+        type: "dangling_gitlink",
+        innerRepo: "rynx",
+        outerRepo: "game",
+        orphanedSha: "1ba6a1ffd6000000000",
+      }),
+      entityType: "merge_incident",
+    });
+    expect(content).toContain("dangling_gitlink");
+    expect(content).toContain("Dangling gitlink: game main's gitlink points at 1ba6a1f");
+    expect(content).toContain("not on rynx main");
+    expect(content).toContain("a human must decide");
+    // NOT the old vague fallback.
+    expect(content).not.toContain(" vs ");
+  });
+
+  it("falls back to the vague line for a type this build does not know", () => {
+    const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+    const content = formatTrainFeedEvent(EVENT_NAMES.MERGE_INCIDENT_OPENED, {
+      ...payload(project.id, "inc-x", {
+        type: "from_the_future",
+        innerRepo: "rynx",
+        outerRepo: "game",
+        orphanedSha: "abcdef0123456789",
+      }),
+      entityType: "merge_incident",
+    });
+    expect(content).toContain("from_the_future");
+    expect(content).toContain(" vs ");
+    // Says nothing directional about a type it cannot describe.
+    expect(content).not.toContain("a human must decide");
+  });
+
   // ── 6. The feed gate is independent of the alert gate ──────────────
 
   it("train_events_enabled=false silences the feed but NOT the alerts", async () => {

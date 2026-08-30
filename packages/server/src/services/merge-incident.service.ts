@@ -1,6 +1,11 @@
-import { and, asc, eq } from "drizzle-orm";
-import { createId } from "@pm/shared";
-import type { MergeIncidentResolution, MergeIncidentType, MergeIncidentView } from "@pm/shared";
+import { and, asc, eq, isNull } from "drizzle-orm";
+import { createId, MERGE_INCIDENT_TYPE_INFO, mergeIncidentTypeInfo } from "@pm/shared";
+import type {
+  MergeIncidentResolution,
+  MergeIncidentResolutionMode,
+  MergeIncidentType,
+  MergeIncidentView,
+} from "@pm/shared";
 import { comments, getDb, mergeIncidents, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
@@ -27,8 +32,18 @@ export interface ListIncidentsParams {
   groupId?: string;
 }
 
+export interface OpenIncidentResult {
+  incident: MergeIncidentView;
+  /**
+   * False when an identical OPEN incident already existed and was reused. The
+   * integrator uses it to log "already open" instead of re-announcing an
+   * opening on every gate pass of a blocked lane.
+   */
+  created: boolean;
+}
+
 export interface ResolveIncidentParams {
-  mode: "auto_rollforward" | "human";
+  mode: MergeIncidentResolutionMode;
   outerLandedSha?: string;
   resolvedByGroupId?: string;
   note?: string;
@@ -66,6 +81,16 @@ function ensureProjectExists(projectId: string): void {
   if (!project) {
     throw new AppError(404, "NOT_FOUND", `Project not found: ${projectId}`);
   }
+}
+
+/**
+ * Both auto modes (`auto_rollforward` = the train applied a cure,
+ * `auto_observed` = the train observed one it did not apply) are ai_agent-gated
+ * and terminate at `auto_resolved`. One predicate so the four mode comparisons
+ * in resolve() cannot drift apart.
+ */
+function isAutoMode(mode: MergeIncidentResolutionMode): boolean {
+  return mode === "auto_rollforward" || mode === "auto_observed";
 }
 
 function readIncident(id: string): MergeIncidentRow | null {
@@ -175,20 +200,42 @@ function toView(row: MergeIncidentRow): MergeIncidentView {
 // ─── Public API ───────────────────────────────────────────────────
 
 /**
- * Open an orphaned-inner incident — the durable PM record that inner main
- * landed at `orphanedSha` but the outer gitlink was NOT updated (§6.5 / §4.3).
+ * Open a merge incident — the durable PM record that the inner/outer gitlink
+ * invariant is broken on main, in whichever direction `params.type` names
+ * (§6.5 / §4.3; the per-type wording lives in @pm/shared's
+ * MERGE_INCIDENT_TYPE_INFO).
  *
  * Authz: integrator (actor.type === "ai_agent").
  *
- * Side effects (atomic — §4.3, mirrors 7.1's merge_rejection comment):
+ * IDEMPOTENT. A blocked lane re-evaluates its gate on every pass, so this
+ * DEDUPS against OPEN incidents on
+ * (projectId, type, innerRepo, outerRepo, orphanedSha, groupId) and returns
+ * `created: false` with the existing row — no second INSERT, no second comment,
+ * no second event. Notes on that key:
+ *   - merge_incidents has no `resource` column (see train-trace.service.ts,
+ *     which resolves a lane through the group/request FKs instead), so
+ *     innerRepo + outerRepo IS the lane's repo pair and the faithful stand-in.
+ *   - groupId participates so orphaned_inner is preserved byte-for-byte: two
+ *     groups orphaning the same SHA stay two incidents, each with its own
+ *     meaningful group link. Lane-scoped types carry groupId null and collapse.
+ *   - OPEN-ONLY. A recurrence after a cure opens a FRESH incident; a resolved
+ *     incident is a closed fact and is never revived.
+ *   - The SELECT and the INSERT share one transaction and better-sqlite3 is
+ *     synchronous in a single-process server, so concurrent integrator passes
+ *     cannot race. (Several server processes over one DB file is outside this
+ *     system's design and is not defended here.)
+ *
+ * Side effects when it does create (atomic — §4.3, mirrors 7.1's
+ * merge_rejection comment):
  *   1. INSERT the merge_incidents row at state "open".
  *   2. If taskId !== null: INSERT a comments row (commentType "merge_incident",
  *      templated body, structured metadata) — the "detectable from PM alone"
  *      surfacing, committed in the SAME txn as the incident row.
  *
- * Event MERGE_INCIDENT_OPENED emits AFTER the txn commits (§10).
+ * Event MERGE_INCIDENT_OPENED emits AFTER the txn commits (§10), and only on a
+ * real create.
  */
-export function openIncident(params: OpenIncidentParams, actor: Actor): MergeIncidentView {
+export function openIncident(params: OpenIncidentParams, actor: Actor): OpenIncidentResult {
   if (actor.type !== "ai_agent") {
     throw new AppError(
       403,
@@ -206,8 +253,29 @@ export function openIncident(params: OpenIncidentParams, actor: Actor): MergeInc
   const innerRequestId = params.innerRequestId ?? null;
   const taskId = params.taskId ?? null;
   let commentId: string | null = null;
+  let existingId: string | null = null;
 
   db.transaction((tx) => {
+    const existing = tx
+      .select({ id: mergeIncidents.id })
+      .from(mergeIncidents)
+      .where(
+        and(
+          eq(mergeIncidents.projectId, params.projectId),
+          eq(mergeIncidents.type, params.type),
+          eq(mergeIncidents.innerRepo, params.innerRepo),
+          eq(mergeIncidents.outerRepo, params.outerRepo),
+          eq(mergeIncidents.orphanedSha, params.orphanedSha),
+          groupId === null ? isNull(mergeIncidents.groupId) : eq(mergeIncidents.groupId, groupId),
+          eq(mergeIncidents.state, "open"),
+        ),
+      )
+      .get();
+    if (existing) {
+      existingId = existing.id;
+      return;
+    }
+
     tx.insert(mergeIncidents)
       .values({
         id,
@@ -230,10 +298,16 @@ export function openIncident(params: OpenIncidentParams, actor: Actor): MergeInc
 
     if (taskId !== null) {
       commentId = createId();
+      const info = MERGE_INCIDENT_TYPE_INFO[params.type];
       const commentBody =
-        `Orphaned inner: ${params.innerRepo}@${params.orphanedSha} landed but ` +
-        `${params.outerRepo} gitlink was not updated. Awaiting auto-rollforward ` +
-        `on the next group integration, or human resolution.`;
+        `${info.summary({
+          innerRepo: params.innerRepo,
+          outerRepo: params.outerRepo,
+          sha: params.orphanedSha,
+        })} ` +
+        (info.curedBy === "train"
+          ? "Awaiting auto-rollforward on the next group integration, or human resolution."
+          : "A human must decide; the train detects this and will not pick a cure.");
       tx.insert(comments)
         .values({
           id: commentId,
@@ -245,6 +319,7 @@ export function openIncident(params: OpenIncidentParams, actor: Actor): MergeInc
           metadata: {
             incidentId: id,
             groupId,
+            type: params.type,
             innerRepo: params.innerRepo,
             orphanedSha: params.orphanedSha,
             outerRepo: params.outerRepo,
@@ -256,6 +331,10 @@ export function openIncident(params: OpenIncidentParams, actor: Actor): MergeInc
         .run();
     }
   });
+
+  if (existingId !== null) {
+    return { incident: toView(readIncidentOrThrow(existingId)), created: false };
+  }
 
   const row = readIncidentOrThrow(id);
   emit(EVENT_NAMES.MERGE_INCIDENT_OPENED, row, actor.id, {
@@ -269,7 +348,7 @@ export function openIncident(params: OpenIncidentParams, actor: Actor): MergeInc
     taskId,
     commentId,
   });
-  return toView(row);
+  return { incident: toView(row), created: true };
 }
 
 /**
@@ -283,9 +362,13 @@ export function getById(id: string): MergeIncidentView {
  * List incidents for a project, optionally filtered by state/type/groupId,
  * ordered by openedAt asc. 404 if the project is missing.
  *
- * This is the Step-12 recovery query: `state="open"` + `type="orphaned_inner"`
- * + openedAt asc hits idx_merge_incidents_open (§4.1, §7.2) — the oldest-first
- * sweep order is load-bearing.
+ * Incidents record the inner/outer gitlink invariant broken in EITHER
+ * direction, so a caller that means one direction MUST pass `type` — an
+ * unfiltered read of "open incidents" is a read of both.
+ *
+ * `state` + `type` + openedAt asc hits idx_merge_incidents_open (§4.1, §7.2).
+ * For the Step-12 recovery query (`state="open"`, `type="orphaned_inner"`) the
+ * oldest-first sweep order is load-bearing.
  */
 export function list(projectId: string, params: ListIncidentsParams = {}): MergeIncidentView[] {
   ensureProjectExists(projectId);
@@ -309,12 +392,19 @@ export function list(projectId: string, params: ListIncidentsParams = {}): Merge
 }
 
 /**
- * Resolve an incident — open → auto_resolved (auto-rollforward, §7) OR
+ * Resolve an incident — open → auto_resolved (either auto mode) OR
  * open → human_resolved (manual, §7.5).
  *
+ * The two auto modes differ in WHAT THE TRAIN DID, not in authz or terminal:
+ *   - auto_rollforward — the train APPLIED a cure (the §7 follow-up outer land).
+ *   - auto_observed    — the train OBSERVED a cure it did not apply: the
+ *                        invariant holds again. Design lock 2 — for a dangling
+ *                        gitlink only a human cures; recording that as a
+ *                        rollforward would narrate a push that never happened.
+ *
  * Authz is SPLIT (pinned, §4.2): the asymmetry is deliberate.
- *   - auto_rollforward requires actor.type === "ai_agent" (the integrator
- *     recovery path); a human admin CANNOT auto-resolve.
+ *   - both auto modes require actor.type === "ai_agent" (the integrator);
+ *     a human admin CANNOT auto-resolve.
  *   - human requires actor.role === "admin"; an ai_agent CANNOT human-resolve.
  *
  * Side effects (atomic — §4.3):
@@ -331,7 +421,8 @@ export function resolve(
   params: ResolveIncidentParams,
   actor: Actor,
 ): MergeIncidentView {
-  if (params.mode === "auto_rollforward") {
+  const auto = isAutoMode(params.mode);
+  if (auto) {
     if (actor.type !== "ai_agent") {
       throw new AppError(
         403,
@@ -346,13 +437,13 @@ export function resolve(
   }
 
   const row = readIncidentOrThrow(id);
-  const op = params.mode === "auto_rollforward" ? "resolveAuto" : "resolveHuman";
+  const op = auto ? "resolveAuto" : "resolveHuman";
   const result = assertCanTransition(row.state, op, id);
   if (result.kind === "idempotent_noop") {
     return toView(row);
   }
 
-  const terminal = params.mode === "auto_rollforward" ? "auto_resolved" : "human_resolved";
+  const terminal = auto ? "auto_resolved" : "human_resolved";
   const resolution: MergeIncidentResolution = {
     mode: params.mode,
     ...(params.outerLandedSha ? { outerLandedSha: params.outerLandedSha } : {}),
@@ -368,7 +459,7 @@ export function resolve(
   });
 
   const updated = readIncidentOrThrow(id);
-  if (params.mode === "auto_rollforward") {
+  if (auto) {
     emit(EVENT_NAMES.MERGE_INCIDENT_AUTO_RESOLVED, updated, actor.id, {
       incidentId: id,
       groupId: updated.groupId,
@@ -396,12 +487,18 @@ type TxHandle = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0
 
 /**
  * The minimal incident-row shape the tx-internal resolve needs. A full
- * `merge_incidents` row (read inside the caller's tx) satisfies it.
+ * `merge_incidents` row (read inside the caller's tx) satisfies it — both
+ * callers pass one, so this stays declaration-only. `type` is `string`, not
+ * MergeIncidentType, because that is what the DB column is; read it through
+ * the total `mergeIncidentTypeInfo()` helper.
  */
 export interface ResolvableIncidentRow {
   id: string;
   groupId: string | null;
   taskId: string | null;
+  type: string;
+  innerRepo: string;
+  orphanedSha: string;
   outerRepo: string;
 }
 
@@ -432,9 +529,22 @@ function applyResolveInTx(
     .run();
 
   if (row.taskId !== null) {
+    // Name the incident, then say what the resolution actually DID. The old
+    // single sentence claimed "outer gitlink now at <sha>" for every mode,
+    // which is false for a cure the train only observed — and it named no
+    // incident, so a reader could not tell which direction was resolved.
+    const info = mergeIncidentTypeInfo(row.type);
+    const modeClause =
+      params.mode === "auto_rollforward"
+        ? `Outer gitlink now at ${params.outerLandedSha ?? "(unspecified)"}.`
+        : params.mode === "auto_observed"
+          ? "The invariant holds again; the train observed the cure and applied none."
+          : params.outerLandedSha
+            ? `Resolved by a human. Outer gitlink now at ${params.outerLandedSha}.`
+            : "Resolved by a human.";
     const commentBody =
-      `Incident resolved (${params.mode}): ${row.outerRepo} gitlink now at ` +
-      `${params.outerLandedSha ?? "(unspecified)"}.`;
+      `Incident resolved (${params.mode}): ${info?.label ?? row.type} — ` +
+      `${row.innerRepo}@${row.orphanedSha} / ${row.outerRepo}. ${modeClause}`;
     tx.insert(comments)
       .values({
         id: createId(),
@@ -446,6 +556,7 @@ function applyResolveInTx(
         metadata: {
           incidentId: row.id,
           groupId: row.groupId,
+          type: row.type,
           mode: params.mode,
           ...(params.outerLandedSha ? { outerLandedSha: params.outerLandedSha } : {}),
           ...(params.resolvedByGroupId ? { resolvedByGroupId: params.resolvedByGroupId } : {}),

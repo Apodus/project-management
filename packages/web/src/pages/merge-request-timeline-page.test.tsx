@@ -153,6 +153,15 @@ function orphanTimeline(): MergeRequestTimeline {
   };
 }
 
+/** The orphan fixture with its incident retyped — the labelling is the subject. */
+function incidentTimelineOfType(type: string): MergeRequestTimeline {
+  const base = orphanTimeline();
+  return {
+    ...base,
+    events: base.events.map((e) => (e.kind === "incident" ? { ...e, type } : e)),
+  };
+}
+
 // An attempt with no logUrl AND no logExcerpt → must render without crashing.
 function nullSafeTimeline(): MergeRequestTimeline {
   const now = new Date().toISOString();
@@ -311,6 +320,25 @@ describe("MergeRequestTimelinePage — orphan incident", () => {
     expect(screen.getByText("Orphaned Inner")).toBeInTheDocument();
     expect(screen.getByText(/0rph4n5ha9/)).toBeInTheDocument();
     expect(screen.getByText("Open")).toBeInTheDocument();
+    expect(screen.getByText(/orphaned 0rph4n5ha9/)).toBeInTheDocument();
+  });
+});
+
+describe("MergeRequestTimelinePage — incident type labelling", () => {
+  it("labels a dangling_gitlink by its own direction, never 'orphaned'", () => {
+    mocks.useMergeRequestTimeline.mockReturnValue(q(incidentTimelineOfType("dangling_gitlink")));
+    render(<MergeRequestTimelinePage />);
+    expect(screen.getByText("Dangling Gitlink")).toBeInTheDocument();
+    expect(screen.getByText(/gitlink target 0rph4n5ha9/)).toBeInTheDocument();
+    expect(screen.queryByText(/orphaned 0rph4n5ha9/)).not.toBeInTheDocument();
+  });
+
+  it("an unknown type falls back to formatStatus and says nothing directional", () => {
+    mocks.useMergeRequestTimeline.mockReturnValue(q(incidentTimelineOfType("from_the_future")));
+    render(<MergeRequestTimelinePage />);
+    expect(screen.getByText("From The Future")).toBeInTheDocument();
+    // The bare SHA, with no direction word in front of it.
+    expect(screen.getByText("0rph4n5ha9")).toBeInTheDocument();
   });
 });
 

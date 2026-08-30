@@ -696,11 +696,18 @@ export const mergeRequestGroups = sqliteTable(
 );
 
 // ─── merge_incidents ───────────────────────────────────────────────
-// Phase 7.3: a recorded orphaned-inner event. When a group's inner repo
-// lands but the outer push fails (§6.5), the inner main now references a
-// commit the outer gitlink does not — an incident is opened to track and
-// heal the divergence (auto-rollforward §7, or human resolution §7.5).
-// PM-owned; survives group deletion (the orphan is a fact about main).
+// A durable record that the inner/outer gitlink invariant is BROKEN on main,
+// in EITHER direction (the enum + the per-type wording live in @pm/shared,
+// MERGE_INCIDENT_TYPE_INFO):
+//   orphaned_inner   — Phase 7.3. A group's inner repo landed but the outer
+//                      push failed (§6.5), so inner main references a commit
+//                      the outer gitlink does not. Healed by auto-rollforward
+//                      (§7) or human resolution (§7.5).
+//   dangling_gitlink — the opposite direction. Outer main's committed gitlink
+//                      points at a commit that is NOT on inner main. The train
+//                      detects and refuses; only a human cures it (both cures
+//                      change what consumers of main compile).
+// PM-owned; survives group deletion (a broken main is a fact about main).
 //
 // Lifecycle:
 //   open → auto_resolved | human_resolved
@@ -711,20 +718,31 @@ export const mergeIncidents = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id),
-    // The group whose land produced the orphan. ON DELETE SET NULL so a
-    // deleted group never cascade-deletes the incident.
+    // The group whose land produced the orphan. NULL for lane-scoped types
+    // like dangling_gitlink, where no group produced the broken state — it was
+    // already on main when the lane looked. ON DELETE SET NULL so a deleted
+    // group never cascade-deletes the incident.
     groupId: text("group_id").references(() => mergeRequestGroups.id, {
       onDelete: "set null",
     }),
-    // Incident type. For 7.3 the only value is "orphaned_inner"; enum
-    // (MERGE_INCIDENT_TYPES) so 7.4+ can add types without a schema change.
+    // Incident type. Bare text HERE, enum (MERGE_INCIDENT_TYPES) in
+    // @pm/shared — no CHECK constraint, so a NEW TYPE NEEDS NO MIGRATION.
     type: text("type").notNull(),
     innerRepo: text("inner_repo").notNull(),
-    // The orphaned inner commit SHA: inner main landed here, outer gitlink
-    // does NOT yet reference it. The heart of the incident.
+    // The SHA at the heart of the incident. Its meaning is PER TYPE — read
+    // MERGE_INCIDENT_TYPE_INFO[type].shaMeaning rather than the column name:
+    //   orphaned_inner   — the inner commit that landed on inner main while
+    //                      the outer gitlink stayed behind.
+    //   dangling_gitlink — the gitlink target recorded on OUTER main that is
+    //                      not reachable from inner main (the opposite
+    //                      direction).
+    // The name predates the second type and is deliberately kept rather than
+    // migrated; renaming a column to chase wording is not worth a migration in
+    // this repo's history (see CLAUDE.md §Migrations).
     orphanedSha: text("orphaned_sha").notNull(),
     outerRepo: text("outer_repo").notNull(),
-    // The inner member request whose land orphaned. ON DELETE SET NULL.
+    // The inner member request whose land orphaned. NULL for lane-scoped
+    // types (see groupId). ON DELETE SET NULL.
     innerRequestId: text("inner_request_id").references(() => mergeRequests.id, {
       onDelete: "set null",
     }),
@@ -738,9 +756,11 @@ export const mergeIncidents = sqliteTable(
     openedAt: text("opened_at").notNull(),
     resolvedAt: text("resolved_at"),
     // Structured resolution. JSON: { mode, outerLandedSha?,
-    // resolvedByGroupId?, note? }. Null while open.
+    // resolvedByGroupId?, note? }. Null while open. `auto_observed` records a
+    // cure the train OBSERVED but did not apply (MERGE_INCIDENT_RESOLUTION_MODES).
+    // $type is a TS annotation on a json text column — no DDL, no migration.
     resolution: text("resolution", { mode: "json" }).$type<{
-      mode: "auto_rollforward" | "human";
+      mode: "auto_rollforward" | "auto_observed" | "human";
       outerLandedSha?: string;
       resolvedByGroupId?: string;
       note?: string;
@@ -751,8 +771,8 @@ export const mergeIncidents = sqliteTable(
   (table) => [
     index("idx_merge_incidents_project_state").on(table.projectId, table.state),
     index("idx_merge_incidents_group").on(table.groupId),
-    // The recovery sweep's hot path: open orphaned_inner incidents for
-    // this project, oldest first.
+    // The recovery sweep's hot path: open incidents of one type for this
+    // project, oldest first.
     index("idx_merge_incidents_open").on(table.projectId, table.state, table.type, table.openedAt),
   ],
 );

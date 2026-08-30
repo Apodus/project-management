@@ -584,9 +584,19 @@ export class PmClient {
   }
 
   /**
-   * Open an orphaned-inner incident — the durable PM record that inner main
-   * landed at `orphanedSha` but the outer gitlink was NOT updated (§6.5 step 2 /
-   * §4.3). Returns the created MergeIncidentView (capture `.id`).
+   * Open a merge incident — the durable PM record that the inner/outer gitlink
+   * invariant is broken on main, in whichever direction `type` names:
+   *   orphaned_inner   — inner main landed at `orphanedSha` but the outer
+   *                      gitlink was NOT updated (§6.5 step 2 / §4.3).
+   *   dangling_gitlink — outer main's gitlink points at `orphanedSha`, which is
+   *                      not on inner main. Lane-scoped: no group produced it,
+   *                      so groupId / innerRequestId are null.
+   *
+   * IDEMPOTENT server-side: PM dedups on
+   * (project, type, innerRepo, outerRepo, orphanedSha, groupId) among OPEN
+   * incidents, so calling this on every gate pass of a blocked lane is safe.
+   * `created: false` means the incident was ALREADY open — do not re-announce
+   * it. (Dedup is open-only: a recurrence after a cure opens a fresh one.)
    * POST /api/v1/projects/{projectId}/merge-incidents.
    */
   openIncident(params: {
@@ -598,9 +608,11 @@ export class PmClient {
     groupId?: string | null;
     innerRequestId?: string | null;
     taskId?: string | null;
-  }): Promise<MergeIncidentView> {
+  }): Promise<{ incident: MergeIncidentView; created: boolean }> {
     const { projectId, ...body } = params;
-    return this.request<MergeIncidentView>(
+    // The composite result rides INSIDE `data` — `request()` returns `json.data`
+    // and would drop a sibling field.
+    return this.request<{ incident: MergeIncidentView; created: boolean }>(
       "POST",
       `/projects/${encodeURIComponent(projectId)}/merge-incidents`,
       body,
@@ -635,15 +647,21 @@ export class PmClient {
   }
 
   /**
-   * Resolve a merge incident — the §7.3 step-6 auto-rollforward resolution
-   * (`mode: "auto_rollforward"`, ai_agent-gated server-side). `outerLandedSha`
-   * is the verified roll-forward outer SHA just pushed; `resolvedByGroupId` is
-   * the integrating group's id (if any). POST /api/v1/merge-incidents/{id}/resolve.
+   * Resolve a merge incident. Both auto modes are ai_agent-gated server-side
+   * and terminate at `auto_resolved`; they differ in what the train DID:
+   *   auto_rollforward — the §7.3 step-6 roll-forward: the train APPLIED the
+   *                      cure. `outerLandedSha` is the verified outer SHA it
+   *                      just pushed; `resolvedByGroupId` is the integrating
+   *                      group's id (if any).
+   *   auto_observed    — the train OBSERVED a cure it never applied: the
+   *                      invariant holds again. The honest mode for an incident
+   *                      only a human can cure; put what was observed in `note`.
+   * POST /api/v1/merge-incidents/{id}/resolve.
    */
   resolveIncident(
     incidentId: string,
     body: {
-      mode: "auto_rollforward" | "human";
+      mode: "auto_rollforward" | "auto_observed" | "human";
       outerLandedSha?: string;
       resolvedByGroupId?: string;
       note?: string;

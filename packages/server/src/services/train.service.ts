@@ -799,11 +799,19 @@ export function forceLand(requestId: string, body: ForceLandBody, actor: Actor):
         )
         .all();
       if (stuckSiblings.length === 0) {
+        // orphaned_inner ONLY: force-landing the outer member cures the
+        // ORPHAN, nothing else. Incidents now record the gitlink invariant
+        // broken in either direction, and a human-cured direction must not be
+        // silently marked resolved by an unrelated force-land.
         const openIncidents = tx
           .select()
           .from(mergeIncidents)
           .where(
-            and(eq(mergeIncidents.groupId, groupCheck.groupId), eq(mergeIncidents.state, "open")),
+            and(
+              eq(mergeIncidents.groupId, groupCheck.groupId),
+              eq(mergeIncidents.type, "orphaned_inner"),
+              eq(mergeIncidents.state, "open"),
+            ),
           )
           .all();
         for (const incident of openIncidents) {
