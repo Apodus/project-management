@@ -283,19 +283,74 @@ The assertion, in the client's own terms: **`outer main gitlink ∈ inner main`.
 - Web: the incident surface must render the new type without falling through to
   a blank or an `orphaned_inner` label.
 
-## S5 — The periodic probe (R2's "cheap enough for a timer")
+## S5 — The periodic probe: DEFERRED, and what shipped instead
 
-S2 fires only when a group is submitted — which is when it matters most, but it
-means a lane with no traffic hides a broken main until someone tries to land.
+**Decision (2026-08-30, ratified): the probe is NOT built.** The section below is
+the record, so the next reader finds a decision rather than an oversight. S6
+lifts it into §14.23.
 
-- Evaluate the same assertion on a low-frequency schedule in the group lane.
-  **Mind the fast path:** `batch.ts:2737-2762` deliberately avoids taking the
-  lane lock when there is no forming group and no open incident. A probe that
-  leases an outer worktree every pass would destroy that. Prefer: piggyback on
-  passes that already lease worktrees, plus a coarse interval (a new knob in the
-  §14.17 style, or reuse the existing sweep cadence) for the idle case.
-- Decide whether this is worth its own step or should be deferred. **It is
-  strictly less valuable than S2** and should not be allowed to delay it.
+**Why not.** S2's gate fires at group ASSEMBLY, before the pointer can move, and
+hands the submitter a reject naming the target, inner main, both cures, the check
+that distinguishes them, and the incident id. A probe's only gain over that is
+DETECTION LATENCY on an IDLE lane — and an idle lane has no submitter waiting, so
+its only reach is a Discord page (there is no open-incident card in the web UI).
+That is the one shape in this design that can misfire with no human on the other
+end: a false `dangling` verdict pages someone to go fix a healthy lane, and the
+type's `curedBy: "human"` makes them believe it. It would also put the invariant
+on a SECOND substrate (a `--mirror` clone vs the gate's freshly-reset worktree)
+that can disagree with the first — design lock 6's bug class, one layer up.
+
+**Built in its place** (integrator-side, ~25 lines, no knob, no timer, no lock, no
+migration): a cross-repo group that LANDS resolves the open `dangling_gitlink`
+incident for its lane, `mode: "auto_observed"`. The defect it closes is one S2
+creates — a `heals` group opens a row that only a LATER group's `holds` verdict
+could close, so on a lane with no further cross-repo traffic it stayed open
+forever, telling every reader of `pm_list_merge_incidents` that a healthy lane
+needs a human. Post-land health is ENTAILED, not probed: assembly's §11
+post-assembly assertion refuses to land at all unless outer's committed gitlink
+IS the landing inner commit, and both pushes are fast-forward, so `landed` means
+outer main is Ro and inner main is Ri. The train applies no cure (design lock 2)
+— it records that a condition it reported is no longer observable.
+
+**Also deferred, independently buildable:** §9.8's `cureReachability` field
+(telling the author WHICH of the two cures their history admits). Its consumer is
+S2's reject text, which shipped a false green days ago; a third variant there for
+a readability gain is the wrong risk this week. The reject already names both
+cures and prints the one command that distinguishes them.
+
+**What would make the probe worth building** (revisit triggers):
+
+- A second direct push to outer main after this campaign ships — i.e. the
+  forge-side fix (branch protection / pre-receive, out of scope here) does not
+  happen — **on a lane whose cross-repo cadence makes the reject latency days
+  rather than hours.** Measurable: compare an incident's `openedAt` with the push
+  time of the commit in `orphanedSha`.
+- The web dashboard gains an open-incidents card. Today there is none, so both
+  detection and closure latency currently cost nothing continuously.
+- A lane where cross-repo traffic is rare but outer-main consumers are many.
+
+**If it is built, build the mirror form, not the roadmap's piggyback.** The HEALTH
+predicate needs no worktree: `ls-tree <ref>`, `cat-file -e` and
+`merge-base --is-ancestor` all work in the `--mirror` binding clones the daemon
+already maintains per linked repo. No worktree lease, no lane lock, no contention
+with a running verify — the `batch.ts` lock-free fast path stays untouched. Reuse
+`checkMainGitlinkInvariant` verbatim with `landingInnerSha === innerMainSha` (so
+`heals` is unreachable and the probe can only say holds/dangling/undecided) and
+reuse the existing `resolveDanglingGitlinkIncidents` helper for `holds`. Never
+write a second detector or a second dedup. Three primitive caveats, all found the
+cheap way:
+
+- **A `--mirror` clone carries no `refs/remotes/*`.** A mirror-based probe must
+  read `refs/heads/<gitMainBranch>`, never `<remote>/<branch>` — the latter
+  simply does not exist there, and a probe that reads a DIFFERENT commit than the
+  gate reads is its own bug class (§14.21 is the precedent).
+- `readSubmoduleGitlink` is HEAD-bound, and a mirror's `HEAD` is the remote's
+  default branch, which need not be `gitMainBranch`. Add a ref-taking form over
+  the existing `lsTreeGitlinkTarget` and pass `gitMainBranch` explicitly.
+- The mirror's remote is `origin` (from `git clone --mirror`); a lane configured
+  with a different `gitRemote` throws on fetch and would read `undecided`
+  forever. Detect that once, loudly. And fetch-or-fail-undecided: a stale mirror
+  is the only realistic route to a FALSE `dangling`.
 
 ## S6 — Seal
 
@@ -309,12 +364,24 @@ means a lane with no traffic hides a broken main until someone tries to land.
 - **Deployment guide**: a new §14.23 covering the invariant, both incident
   directions, the two human cures and their trade-off, and why the train refuses
   to pick. Amend §14.8 to state that automatic submodule recursion is disabled on
-  the integrator's own git operations (S1) and why.
+  the integrator's own git operations (S1) and why. §14.23 must also state, from
+  S5: WHERE the check runs and where it does not (at cross-repo group assembly,
+  not on a timer — an idle lane's broken main is found at the next submission);
+  the three ways an incident CLOSES (a later assembly observing the invariant
+  hold, the group that lands the cure, or an admin via
+  `POST /merge-incidents/{id}/resolve` with `mode: "human"`); and the two stated
+  limitations — no periodic probe, and the reject names both cures without
+  running the check that distinguishes them. Note alongside them that
+  `merge_incidents` carries no `resource`, so two lanes in one project sharing a
+  repo PAIR share a dedup key and a lane filter.
 - **CLAUDE.md** capability index.
 - **Write back to game_one**: reply on note `01M18QWM9RAFVQNFX4FE461B23` with what
   shipped, the R1/R5 corrections above, and — the part they most need — that
   their three-dot rule should be **retired in favor of the train's own check**,
-  not supplemented by a second command every submitter has to remember.
+  not supplemented by a second command every submitter has to remember. The write-back must
+  NOT imply a timer: say plainly that we took R2's substance — the assertion is
+  the train's now, and it BLOCKS rather than warns — and deliberately skipped the
+  periodic half, with S5's revisit triggers attached.
 - **Deployment**: no migration, but a PM-server redeploy (new incident type +
   reject category on the wire) **and** a bundle redistribute + daemon restart
   (S1/S2/S3 are integrator-side). State both in the guide, in the §14.11

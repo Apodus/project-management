@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import { mergeIncidentTypeInfo } from "@pm/shared";
+import { mergeIncidentTypeInfo, type MergeIncidentResolutionMode } from "@pm/shared";
 import { getDb, mergeRequests, tasks, users } from "../db/index.js";
 import { postDiscord } from "./alerts-listener.js";
 import { EVENT_NAMES, getEventBus, type EventName, type EventPayload } from "./event-bus.js";
@@ -59,6 +59,31 @@ function ageSince(iso: unknown, nowIso: string): string | null {
   const ms = Date.parse(nowIso) - Date.parse(iso);
   if (!Number.isFinite(ms) || ms < 0) return null;
   return humanDuration(ms);
+}
+
+/**
+ * What the train ACTUALLY DID, per resolution mode. A Record over the union, so
+ * a mode added later cannot silently inherit another mode's claim — the
+ * distinction is the whole point of the line: `auto_rollforward` is a push the
+ * train made, `auto_observed` is a cure it only looked at.
+ *
+ * Read through an own-key check, never a bare index: `mode` arrives from a JSON
+ * DB column and is an untrusted string here. An unrecognized value says nothing
+ * about who cured it (design lock 4 — a catch-all is not a diagnosis).
+ */
+const RESOLUTION_MODE_PHRASE: Record<MergeIncidentResolutionMode, string> = {
+  auto_rollforward: "the train APPLIED the cure (roll-forward)",
+  auto_observed: "the train OBSERVED it cured — it applied no cure itself",
+  // Deliberately not "cured": a manual resolution records a human DECISION,
+  // which need not be a repair.
+  human: "closed by a human",
+};
+
+function resolutionModePhrase(mode: unknown): string | null {
+  return typeof mode === "string" &&
+    Object.prototype.hasOwnProperty.call(RESOLUTION_MODE_PHRASE, mode)
+    ? (RESOLUTION_MODE_PHRASE as Record<string, string>)[mode]
+    : null;
 }
 
 // ─── Enrichment reads (all sync, all post-commit) ─────────────────
@@ -349,6 +374,42 @@ export function formatTrainFeedEvent(event: EventName, payload: EventPayload): s
         .join(" · ");
     }
 
+    // An incident OPENS loudly ("a human must decide") and used to close in
+    // total silence — no case, no subscription. Harmless while a dangling
+    // gitlink was cured by hand days later; not harmless once a `heals` group
+    // opens the row and lands its cure minutes later, which sends the operator
+    // who read the page to investigate an already-clean lane. Same harm as the
+    // open line getting it wrong, pointing the other way.
+    case EVENT_NAMES.MERGE_INCIDENT_AUTO_RESOLVED:
+    case EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED: {
+      const type = String(e.type ?? "incident");
+      const info = mergeIncidentTypeInfo(type);
+      const inner = String(e.innerRepo ?? "inner");
+      const outer = String(e.outerRepo ?? "outer");
+      const res = (e.resolution ?? {}) as Record<string, unknown>;
+      // Past tense, and NOT the type's `summary()`: that sentence states the
+      // broken invariant in the present, which is exactly what is no longer
+      // true on this line.
+      const subject = info
+        ? `${info.label} on \`${outer}\`/\`${inner}\` @ \`${shortSha(e.orphanedSha)}\``
+        : `\`${inner}\` @ \`${shortSha(e.orphanedSha)}\` vs \`${outer}\``;
+      const open = ageSince(e.openedAt, at);
+      const by =
+        typeof res.resolvedByGroupId === "string" && res.resolvedByGroupId
+          ? `by group \`${res.resolvedByGroupId}\``
+          : null;
+      return [
+        `:white_check_mark: **Merge incident resolved** — ${type}`,
+        subject,
+        resolutionModePhrase(res.mode),
+        open ? `open for ${open}` : null,
+        by,
+        `incident \`${payload.entityId}\``,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
+
     case EVENT_NAMES.TRAIN_PAUSED: {
       const who = readActorName(payload.actorId);
       return [
@@ -387,6 +448,8 @@ const FEED_EVENTS: EventName[] = [
   EVENT_NAMES.MERGE_GROUP_LANDED,
   EVENT_NAMES.MERGE_GROUP_REJECTED,
   EVENT_NAMES.MERGE_INCIDENT_OPENED,
+  EVENT_NAMES.MERGE_INCIDENT_AUTO_RESOLVED,
+  EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED,
   EVENT_NAMES.TRAIN_PAUSED,
   EVENT_NAMES.TRAIN_RESUMED,
 ];

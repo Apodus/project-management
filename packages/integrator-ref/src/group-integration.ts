@@ -36,7 +36,11 @@
 import type { Logger } from "./logger.js";
 import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
-import { MERGE_INCIDENT_TYPE_BY_DIRECTION, type MergeRequestView } from "@pm/shared";
+import {
+  MERGE_INCIDENT_TYPE_BY_DIRECTION,
+  type MergeIncidentView,
+  type MergeRequestView,
+} from "@pm/shared";
 import type { PmClient, RejectCategory } from "./pm-client.js";
 import {
   assembleGroup,
@@ -703,6 +707,101 @@ interface MainGitlinkObserverCtx {
 }
 
 /**
+ * Close every OPEN `dangling_gitlink` incident belonging to THIS lane, recording
+ * that the invariant was OBSERVED to hold — never that the train applied a cure
+ * (design lock 2: for this direction a human picks the cure, the train only
+ * looks). Returns how many rows actually closed.
+ *
+ * Two call sites observe that same fact from opposite sides, which is why this
+ * is one function and not two loops:
+ *   - `observeMainGitlink`'s `holds` branch — a later assembly MEASURED the lane
+ *     and found it sane;
+ *   - the cross-repo land in `batch.ts` — the group that just landed CARRIED the
+ *     cure, so the row is stale the instant both pushes return.
+ *
+ * The TYPE filter is load-bearing in one direction (an `orphaned_inner` is a
+ * DIFFERENT broken invariant neither caller has measured, and it is the input to
+ * the §7.2 rollforward sweep), and the REPO filter in the other
+ * (`listMergeIncidents` has no repo filter, and a project with two cross-repo
+ * lanes must not close the other lane's incident).
+ *
+ * NEVER THROWS, and that is a contract this body has to keep structurally rather
+ * than by luck: the land call site sits inside `runGroupLaneOnce`'s try, so an
+ * escaping error would downgrade a `landed` return to `{ kind: "error" }` —
+ * reporting a successful atomic land as a failure. Every PM call is wrapped; a
+ * failure is `debug` + "retry next pass" (the `recoverOrphanedInner` precedent)
+ * and the row simply stays open for the next observation.
+ */
+export async function resolveDanglingGitlinkIncidents(
+  ctx: { pmClient: PmClient; logger: Logger; projectId: string },
+  lane: { innerRepo: string; outerRepo: string },
+  resolution: {
+    groupId: string;
+    /** The note stored on the row. A function of the incident so it can name
+     *  WHICH dangling target closed — §14.21's lesson is that a message naming
+     *  no commit survives three investigations. */
+    note: (incident: MergeIncidentView) => string;
+    /** Each caller observed the cure a different way and must say which. */
+    logMsg: string;
+    /** Extra structured fields for that log (the observation's own evidence). */
+    logFields?: Record<string, unknown>;
+  },
+): Promise<number> {
+  const { pmClient, logger, projectId } = ctx;
+  const { groupId } = resolution;
+  let open: MergeIncidentView[];
+  try {
+    open = await pmClient.listMergeIncidents(projectId, {
+      state: "open",
+      type: MERGE_INCIDENT_TYPE_BY_DIRECTION.outer_ahead_of_inner,
+    });
+  } catch (err) {
+    // Nothing observed, nothing changed; the next pass retries. Debug, per
+    // recoverOrphanedInner's "retry next pass" precedent.
+    logger.debug(
+      { groupId, err: errMessage(err) },
+      "listMergeIncidents failed while observing the main-gitlink invariant (retry next pass)",
+    );
+    return 0;
+  }
+  let resolved = 0;
+  for (const incident of open) {
+    if (incident.innerRepo !== lane.innerRepo || incident.outerRepo !== lane.outerRepo) continue;
+    try {
+      await pmClient.resolveIncident(incident.id, {
+        // NOT auto_rollforward: that mode asserts the train PUSHED a recovery,
+        // and on neither of these paths did it. The train observed a cure.
+        mode: "auto_observed",
+        resolvedByGroupId: groupId,
+        note: resolution.note(incident),
+      });
+      resolved += 1;
+      // INFO, not debug: an incident whose type declares `curedBy: "human"`
+      // just closed, and its open logged warn + escalation. Closing it silently
+      // would leave no operator-visible trace — the observability gap this
+      // campaign is against.
+      logger.info(
+        {
+          groupId,
+          incidentId: incident.id,
+          incidentTarget: incident.orphanedSha,
+          ...resolution.logFields,
+        },
+        resolution.logMsg,
+      );
+    } catch (err) {
+      // The row stays open; the next pass tries again. One failure must not
+      // abort the loop over the others.
+      logger.debug(
+        { groupId, incidentId: incident.id, err: errMessage(err) },
+        "resolveIncident failed while observing the main-gitlink invariant (retry next pass)",
+      );
+    }
+  }
+  return resolved;
+}
+
+/**
  * Record what the §S2 gate measured about the LANE, in both directions.
  *
  * Driven by the HEALTH half of the verdict, never by the reject path, and
@@ -742,63 +841,26 @@ async function observeMainGitlink(
 
   if (verdict.kind === "holds") {
     // The lane is sane again — close whatever this direction left open. The
-    // TYPE filter is load-bearing in one direction (an `orphaned_inner` is a
-    // DIFFERENT broken invariant this check has not measured, and the two are
-    // not mutually exclusive), and the repo filter in the other (a project with
-    // two cross-repo lanes must not close the other lane's incident;
-    // listMergeIncidents has no repo filter).
-    let open: Awaited<ReturnType<PmClient["listMergeIncidents"]>>;
-    try {
-      open = await pmClient.listMergeIncidents(projectId, {
-        state: "open",
-        type: MERGE_INCIDENT_TYPE_BY_DIRECTION.outer_ahead_of_inner,
-      });
-    } catch (err) {
-      // Nothing observed, nothing changed; the next pass retries. Debug, per
-      // recoverOrphanedInner's "retry next pass" precedent.
-      logger.debug(
-        { groupId, err: errMessage(err) },
-        "listMergeIncidents failed while observing the main-gitlink invariant (retry next pass)",
-      );
-      return { incidentId: null };
-    }
-    for (const incident of open) {
-      if (incident.innerRepo !== innerLane.name || incident.outerRepo !== outerLane.name) continue;
-      try {
-        await pmClient.resolveIncident(incident.id, {
-          // NOT auto_rollforward: that mode asserts the train PUSHED something,
-          // and on this path it did not. The train observed a cure; a human
-          // applied it.
-          mode: "auto_observed",
-          resolvedByGroupId: groupId,
-          note:
-            `Observed cured during group ${groupId}: outer main ${verdict.outerMainSha} commits ` +
-            `gitlink ${verdict.gitlinkPath} -> ${verdict.target}, which is reachable from inner ` +
-            `main ${verdict.innerMainSha}. The train observed this; it did not apply a cure.`,
-        });
-        // INFO, not debug: an incident whose type declares `curedBy: "human"`
-        // just closed, and its open logged warn + escalation. Closing it
-        // silently would leave no operator-visible trace — the observability
-        // gap this campaign is against.
-        logger.info(
-          {
-            groupId,
-            incidentId: incident.id,
-            target: verdict.target,
-            outerMainSha: verdict.outerMainSha,
-            innerMainSha: verdict.innerMainSha,
-          },
+    // list/filter/resolve half lives in `resolveDanglingGitlinkIncidents` below,
+    // because the group LAND observes the very same fact from the other side.
+    await resolveDanglingGitlinkIncidents(
+      { pmClient, logger, projectId },
+      { innerRepo: innerLane.name, outerRepo: outerLane.name },
+      {
+        groupId,
+        note: () =>
+          `Observed cured during group ${groupId}: outer main ${verdict.outerMainSha} commits ` +
+          `gitlink ${verdict.gitlinkPath} -> ${verdict.target}, which is reachable from inner ` +
+          `main ${verdict.innerMainSha}. The train observed this; it did not apply a cure.`,
+        logMsg:
           "main-gitlink invariant holds again; dangling_gitlink incident resolved (observed, not applied)",
-        );
-      } catch (err) {
-        // The row stays open; the next pass tries again. One failure must not
-        // abort the loop over the others.
-        logger.debug(
-          { groupId, incidentId: incident.id, err: errMessage(err) },
-          "resolveIncident failed while observing the main-gitlink invariant (retry next pass)",
-        );
-      }
-    }
+        logFields: {
+          target: verdict.target,
+          outerMainSha: verdict.outerMainSha,
+          innerMainSha: verdict.innerMainSha,
+        },
+      },
+    );
     return { incidentId: null };
   }
 

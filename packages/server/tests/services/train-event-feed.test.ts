@@ -409,6 +409,78 @@ describe("Discord merge-train event feed", () => {
     expect(content).not.toContain(" vs ");
   });
 
+  it("narrates a dangling_gitlink RESOLVE, and says the train applied no cure", () => {
+    const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+    const content = formatTrainFeedEvent(EVENT_NAMES.MERGE_INCIDENT_AUTO_RESOLVED, {
+      ...payload(project.id, "inc-dangling", {
+        type: "dangling_gitlink",
+        innerRepo: "rynx",
+        outerRepo: "game",
+        orphanedSha: "1ba6a1ffd6000000000",
+        openedAt: new Date(Date.parse(NOW) - 15 * 60_000).toISOString(),
+        resolution: { mode: "auto_observed", resolvedByGroupId: "grp-7" },
+      }),
+      entityType: "merge_incident",
+    });
+    // The counterpart of the OPEN line — without this case a `heals` group
+    // pages "a human must decide" and is cured minutes later in total silence.
+    expect(content).toContain("Merge incident resolved");
+    expect(content).toContain("dangling_gitlink");
+    expect(content).toContain("Dangling gitlink on `game`/`rynx` @ `1ba6a1ff`");
+    expect(content).toContain("it applied no cure itself");
+    expect(content).toContain("open for 15m");
+    expect(content).toContain("by group `grp-7`");
+    // Not the OPEN line's present-tense claim: the invariant is no longer broken.
+    expect(content).not.toContain("a human must decide");
+    expect(content).not.toContain("which is not on rynx main");
+  });
+
+  it("distinguishes a roll-forward the train APPLIED from a human close", () => {
+    const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+    const applied = formatTrainFeedEvent(EVENT_NAMES.MERGE_INCIDENT_AUTO_RESOLVED, {
+      ...payload(project.id, "inc-orphan", {
+        type: "orphaned_inner",
+        innerRepo: "rynx",
+        outerRepo: "game",
+        orphanedSha: "0rphaned5ha000000000",
+        resolution: { mode: "auto_rollforward", outerLandedSha: "deadbeef" },
+      }),
+      entityType: "merge_incident",
+    });
+    expect(applied).toContain("the train APPLIED the cure");
+
+    const byHand = formatTrainFeedEvent(EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED, {
+      ...payload(project.id, "inc-orphan", {
+        type: "orphaned_inner",
+        innerRepo: "rynx",
+        outerRepo: "game",
+        orphanedSha: "0rphaned5ha000000000",
+        resolution: { mode: "human", note: "fixed by hand" },
+      }),
+      entityType: "merge_incident",
+    });
+    expect(byHand).toContain("closed by a human");
+    expect(byHand).not.toContain("APPLIED");
+  });
+
+  it("says nothing about who cured a resolution mode this build does not know", () => {
+    const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+    const content = formatTrainFeedEvent(EVENT_NAMES.MERGE_INCIDENT_AUTO_RESOLVED, {
+      ...payload(project.id, "inc-x", {
+        type: "dangling_gitlink",
+        innerRepo: "rynx",
+        outerRepo: "game",
+        orphanedSha: "abcdef0123456789",
+        resolution: { mode: "from_the_future" },
+      }),
+      entityType: "merge_incident",
+    });
+    expect(content).toContain("Merge incident resolved");
+    // A catch-all is not a diagnosis: it names no actor at all.
+    expect(content).not.toContain("train");
+    expect(content).not.toContain("human");
+  });
+
   it("falls back to the vague line for a type this build does not know", () => {
     const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
     const content = formatTrainFeedEvent(EVENT_NAMES.MERGE_INCIDENT_OPENED, {
