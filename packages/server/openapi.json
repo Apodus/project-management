@@ -5573,6 +5573,8 @@
               "other",
               "gitlink_unreachable",
               "gitlink_diverged",
+              "assembly_error",
+              "main_gitlink_dangling",
               null
             ]
           },
@@ -5815,6 +5817,8 @@
               "other",
               "gitlink_unreachable",
               "gitlink_diverged",
+              "assembly_error",
+              "main_gitlink_dangling",
               null
             ]
           },
@@ -6248,7 +6252,9 @@
                   "policy",
                   "other",
                   "gitlink_unreachable",
-                  "gitlink_diverged"
+                  "gitlink_diverged",
+                  "assembly_error",
+                  "main_gitlink_dangling"
                 ]
               },
               "failureReason": {
@@ -6323,7 +6329,9 @@
               "policy",
               "other",
               "gitlink_unreachable",
-              "gitlink_diverged"
+              "gitlink_diverged",
+              "assembly_error",
+              "main_gitlink_dangling"
             ]
           },
           "reason": {

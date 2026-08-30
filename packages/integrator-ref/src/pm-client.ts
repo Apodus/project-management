@@ -123,7 +123,13 @@ export type RejectCategory =
   | "policy"
   | "other"
   | "gitlink_unreachable"
-  | "gitlink_diverged";
+  | "gitlink_diverged"
+  // Campaign 2026-08-30 §S3, same lockstep with MERGE_REJECT_CATEGORIES.
+  // `assembly_error`: something threw mid-assembly and NO check decided — it
+  // names WHERE, never why. `main_gitlink_dangling`: outer main's committed
+  // gitlink references a commit not reachable from inner main.
+  | "assembly_error"
+  | "main_gitlink_dangling";
 
 export type MergeRequestDetailView = MergeRequestView & {
   attempts: MergeAttemptView[];

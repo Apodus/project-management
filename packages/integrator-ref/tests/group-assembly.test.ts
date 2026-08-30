@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
-import { createGitOps } from "../src/git-ops.js";
+import { createGitOps, type GitOps } from "../src/git-ops.js";
 import { applyGitLocalPolicy } from "../src/git-policy.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { assembleGroup } from "../src/group-assembly.js";
@@ -657,6 +657,158 @@ describe.skipIf(!GIT_AVAILABLE)("assembleGroup (real two-repo)", () => {
     if (i) innerPool.release(i);
     if (o) outerPool.release(o);
   }, 60_000);
+
+  // ── Campaign 2026-08-30 §S3: the catch-all is not a diagnosis ────────────
+  //
+  // Until 2026-08-30 ANY throw mid-assembly returned `gitlink_mismatch` — a
+  // reason whose own verdict asserts that the §11 post-assembly assertion was
+  // measured and failed. So an unclassified git failure reached its author as a
+  // train fault that had already ruled their change out, five times in one week.
+
+  /** A gitOps factory that behaves normally except for one overridden method. */
+  const opsWith = (override: (worktreePath: string) => Partial<GitOps>) => (p: string) => ({
+    ...createGitOps(simpleGit(p)),
+    ...override(p),
+  });
+
+  const boom = new Error("materialize exploded (simulated infra failure)");
+
+  it("a throw mid-assembly is 'assembly_error', never the §11 assertion's reason", async () => {
+    const result = await assembleGroup({
+      acquireInner: () => innerPool.acquire(),
+      releaseInner: (wt) => innerPool.release(wt),
+      acquireOuter: () => outerPool.acquire(),
+      releaseOuter: (wt) => outerPool.release(wt),
+      // materialize is called on the OUTER ops only; overriding it everywhere
+      // is harmless and keeps the fixture honest about WHERE the throw came
+      // from: nowhere a check had run.
+      gitOps: opsWith(() => ({
+        materializeSubmoduleWorktree: () => Promise.reject(boom),
+      })),
+      innerRef: innerFeatureSha,
+      outerRef: outerFeatureSha,
+      gitlinkPath: GITLINK_PATH,
+      gitRemote: "origin",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected the assembly to fail");
+    expect(result.reason).toBe("assembly_error");
+    // Said explicitly, because THIS is the regression: the reason that means
+    // "a measurement was taken and failed" must not be borrowed by a site that
+    // took no measurement.
+    expect(result.reason).not.toBe("gitlink_mismatch");
+    expect(result.detail).toContain("materialize exploded");
+    // The one fact a catch-all genuinely holds — and, by type, the only one it
+    // is allowed to carry.
+    if (result.reason !== "assembly_error") throw new Error("narrowing failed");
+    expect(result.evidence.cause).toBe(boom);
+  }, 40_000);
+
+  it("a throw mid-assembly releases BOTH correlated slots", async () => {
+    // THE load-bearing test for the release-before-rethrow. The release now
+    // lives in a catch that rethrows into a wrapper which cannot see it; drop
+    // that one line and both slots leak for the life of the process, killing a
+    // parallelism-1 lane while the daemon keeps heartbeating (the 2026-08-02
+    // wedge, deployment guide §14.15). Asserted on its own run, not as a side
+    // effect of the reason test above.
+    const result = await assembleGroup({
+      acquireInner: () => innerPool.acquire(),
+      releaseInner: (wt) => innerPool.release(wt),
+      acquireOuter: () => outerPool.acquire(),
+      releaseOuter: (wt) => outerPool.release(wt),
+      gitOps: opsWith(() => ({
+        materializeSubmoduleWorktree: () => Promise.reject(boom),
+      })),
+      innerRef: innerFeatureSha,
+      outerRef: outerFeatureSha,
+      gitlinkPath: GITLINK_PATH,
+      gitRemote: "origin",
+    });
+    expect(result.ok).toBe(false);
+
+    // NOT via result.release() — the catch-all's release is a documented no-op,
+    // so the slots must ALREADY be back before anyone calls it.
+    const i = innerPool.acquire();
+    const o = outerPool.acquire();
+    expect(i, "inner slot leaked past the rethrow").not.toBeNull();
+    expect(o, "outer slot leaked past the rethrow").not.toBeNull();
+    if (i) innerPool.release(i);
+    if (o) outerPool.release(o);
+
+    // And the documented no-op is genuinely a no-op: calling it must not
+    // double-release a slot that is already back in its pool.
+    result.release();
+    const i2 = innerPool.acquire();
+    expect(i2).not.toBeNull();
+    if (i2) innerPool.release(i2);
+  }, 40_000);
+
+  it("the §11 assertion still mints gitlink_mismatch — committed-gitlink half", async () => {
+    // Without this, the test above could pass merely because nothing produces
+    // the reason at all.
+    const bogus = "0".repeat(40);
+    const result = await assembleGroup({
+      acquireInner: () => innerPool.acquire(),
+      releaseInner: (wt) => innerPool.release(wt),
+      acquireOuter: () => outerPool.acquire(),
+      releaseOuter: (wt) => outerPool.release(wt),
+      // readSubmoduleGitlink is called ONLY by the §11 assertion, so this
+      // fixture reaches the assertion with everything else genuinely done.
+      gitOps: opsWith(() => ({
+        readSubmoduleGitlink: () => Promise.resolve(bogus),
+      })),
+      innerRef: innerFeatureSha,
+      outerRef: outerFeatureSha,
+      gitlinkPath: GITLINK_PATH,
+      gitRemote: "origin",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected the assertion to fail");
+    expect(result.reason).toBe("gitlink_mismatch");
+    if (result.reason !== "gitlink_mismatch") throw new Error("narrowing failed");
+    // The evidence is what the site MEASURED — the whole point of requiring it
+    // is that a catch block could not have produced these values.
+    expect(result.evidence.asserted).toBe("committed_gitlink");
+    if (result.evidence.asserted !== "committed_gitlink") throw new Error("narrowing failed");
+    expect(result.evidence.committed).toBe(bogus);
+    expect(result.evidence.expected).toMatch(/^[0-9a-f]{40}$/);
+    expect(result.evidence.expected).not.toBe(bogus);
+    result.release();
+  }, 40_000);
+
+  it("the §11 assertion still mints gitlink_mismatch — unpopulated-worktree half", async () => {
+    const result = await assembleGroup({
+      acquireInner: () => innerPool.acquire(),
+      releaseInner: (wt) => innerPool.release(wt),
+      acquireOuter: () => outerPool.acquire(),
+      releaseOuter: (wt) => outerPool.release(wt),
+      // Step 9 "runs" and leaves the gitlink path EMPTY. It deletes rather than
+      // no-ops on purpose: `reset --hard` / `clean -fdx` are blind to content
+      // at a committed gitlink path, so a slot that assembled earlier in this
+      // suite would still be populated and the assertion would not fire.
+      gitOps: opsWith((p) => ({
+        materializeSubmoduleWorktree: (gitlinkPath: string) => {
+          rmSync(path.join(p, ...gitlinkPath.split("/")), { recursive: true, force: true });
+          return Promise.resolve();
+        },
+      })),
+      innerRef: innerFeatureSha,
+      outerRef: outerFeatureSha,
+      gitlinkPath: GITLINK_PATH,
+      gitRemote: "origin",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected the assertion to fail");
+    expect(result.reason).toBe("gitlink_mismatch");
+    if (result.reason !== "gitlink_mismatch") throw new Error("narrowing failed");
+    expect(result.evidence.asserted).toBe("worktree_populated");
+    if (result.evidence.asserted !== "worktree_populated") throw new Error("narrowing failed");
+    expect(result.evidence.gitlinkPath).toBe(GITLINK_PATH);
+    result.release();
+  }, 40_000);
 });
 
 // ─── materialize is LFS-aware (real git + git-lfs, NO network) ─────────

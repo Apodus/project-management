@@ -1537,7 +1537,9 @@ default — a new assembly reason is a compile error until someone decides:
 | `outer_conflict` | **yes** | same, in the outer repo. Only reachable when the outer member carries REAL content: a synthetic outer has no ref to rebase, and a pure gitlink bump is auto-converted (§14.10) |
 | `gitlink_diverged` | **yes** | a stale bump branch; an agent with both repos can rebase it onto the landing inner |
 | `gitlink_unreachable` | **no** | the inner commit was never pushed. Its objects are in no clone the daemon can reach, so no agent can materialize them — **push the inner branch and resubmit** |
-| `gitlink_mismatch` | **no** | a post-assembly assertion failure = a train defect. A resolver would paper over the evidence |
+| `gitlink_mismatch` | **no** | the post-assembly assertion failed: the committed gitlink did not equal the landing inner, or the gitlink path was left unpopulated. A resolver would rewrite that tree and destroy the record |
+| `main_gitlink_dangling` | **no** | outer main's committed gitlink is not reachable from inner main — the lane's shared state, not this change. Every cure moves one of the two mains, so a human chooses (§14.23) |
+| `assembly_error` | **no** | nothing was classified. Read the raw git error first; a resolver has nothing to replay |
 | `backpressure` | **no** | not a failure; the group retries next pass |
 
 Those sentences are not just documentation — they are the same strings the

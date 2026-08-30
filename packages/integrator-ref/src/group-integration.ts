@@ -38,7 +38,12 @@ import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
 import type { MergeRequestView } from "@pm/shared";
 import type { PmClient, RejectCategory } from "./pm-client.js";
-import { assembleGroup, type AssembledGroupOk, type AssembleGroupDeps } from "./group-assembly.js";
+import {
+  assembleGroup,
+  type AssembledGroupErr,
+  type AssembledGroupOk,
+  type AssembleGroupDeps,
+} from "./group-assembly.js";
 import { categorize, failureExcerpt } from "./categorize.js";
 // Campaign 2026-08-15 §S1: the group lane is a second CALLER of the 2026-08-04
 // kill seam's helpers, never a second copy of them.
@@ -652,6 +657,37 @@ function startGroupVerifyWatcher(opts: {
   return { stop: (): void => clearInterval(timer) };
 }
 
+// ─── assembly reason → wire reject category ───────────────────────────
+
+/**
+ * A Record, NOT a ternary chain with a trailing `: "other"`. That fallback was
+ * the same design lock 4 violation the assembly catch-all was, one level up: a
+ * reason added later silently inherited "other", which is exactly how the
+ * gitlink categories became invisible before their own campaign. Omission here
+ * is now a compile error.
+ *
+ * Keyed on `AssembledGroupErr["reason"]` (the PRODUCER) rather than the
+ * `resolution-eligibility.ts` mirror, so this map cannot drift from what
+ * assembly can actually return.
+ *
+ * Deliberately NOT folded into `resolution-eligibility.ts`: that module's value
+ * is being a standalone statement of RESOLVER policy, and `RejectCategory` is a
+ * wire type — folding it in would make the policy file depend on transport.
+ */
+export const ASSEMBLY_REJECT_CATEGORY: Record<AssembledGroupErr["reason"], RejectCategory> = {
+  // Unreachable: backpressure returns above, before this map is read. Listed
+  // because the Record demands every key — an honest dead entry beats a cast.
+  backpressure: "other",
+  inner_conflict: "conflict",
+  outer_conflict: "conflict",
+  gitlink_diverged: "gitlink_diverged",
+  gitlink_unreachable: "gitlink_unreachable",
+  // The §11 assertion. No dedicated wire value; unchanged from the ternary.
+  gitlink_mismatch: "other",
+  main_gitlink_dangling: "main_gitlink_dangling",
+  assembly_error: "assembly_error",
+};
+
 // ─── rejectGroupLegibly (the single group-reject choke-point) ─────────
 
 /**
@@ -761,19 +797,13 @@ export async function runGroupIntegration(
       return { kind: "backpressure" };
     }
     // inner_conflict / outer_conflict / gitlink_diverged / gitlink_unreachable /
-    // gitlink_mismatch: a PRE-PICKUP assembly failure → reject straight from
-    // FORMING (FIX 2; do NOT markGroupIntegrating — forming→rejected is a legal
-    // §3.3 edge, no 409). Map each assembly reason to its OWN reject category so
-    // the Tier-2 gitlink rejects surface with the right category (not collapsed
-    // to "other"); the conflicts stay "conflict", the §11 mismatch stays "other".
-    const category: RejectCategory =
-      asm.reason === "inner_conflict" || asm.reason === "outer_conflict"
-        ? "conflict"
-        : asm.reason === "gitlink_diverged"
-          ? "gitlink_diverged"
-          : asm.reason === "gitlink_unreachable"
-            ? "gitlink_unreachable"
-            : "other";
+    // gitlink_mismatch / main_gitlink_dangling / assembly_error: a PRE-PICKUP
+    // assembly failure → reject straight from FORMING (FIX 2; do NOT
+    // markGroupIntegrating — forming→rejected is a legal §3.3 edge, no 409). Map
+    // each assembly reason to its OWN reject category so the Tier-2 gitlink
+    // rejects surface with the right category (not collapsed to "other"); the
+    // conflicts stay "conflict", the §11 mismatch stays "other".
+    const category: RejectCategory = ASSEMBLY_REJECT_CATEGORY[asm.reason];
     // Campaign 2026-08-15 §S4: the assembly reason alone tells an author what
     // BROKE but never what to DO, and "group assembly failed
     // (gitlink_unreachable)" is the worst of them — it reads as a train fault

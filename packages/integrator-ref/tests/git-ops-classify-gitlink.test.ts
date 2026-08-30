@@ -349,7 +349,8 @@ describe.skipIf(!GIT_AVAILABLE)("git-ops classifyOuterGitlinkDiff (real two-repo
     const o = await newOuter("c12", { gitlinks: [[GITLINK_PATH, inner.gAnc]] });
     const r = await classifyOuterGitlinkDiff({ ...baseArgs(o), innerLandingSha: BOGUS_INNER_SHA });
     // A bad-object isAncestor exit-128 THROW must route to fail-open legacy —
-    // never bubble up as diverged/unreachable (which would surface gitlink_mismatch).
+    // never bubble up as diverged/unreachable (which would surface the catch-all
+    // `assembly_error` — legible, but a lost classification).
     expect(r).toEqual({ kind: "legacy", reason: "isAncestor threw" });
   }, 40_000);
 });

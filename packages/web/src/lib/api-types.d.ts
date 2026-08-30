@@ -16539,6 +16539,8 @@ export interface components {
         | "other"
         | "gitlink_unreachable"
         | "gitlink_diverged"
+        | "assembly_error"
+        | "main_gitlink_dangling"
         | null;
       rejectReason: string | null;
       failedFiles: string[] | null;
@@ -16601,6 +16603,8 @@ export interface components {
         | "other"
         | "gitlink_unreachable"
         | "gitlink_diverged"
+        | "assembly_error"
+        | "main_gitlink_dangling"
         | null;
       failureReason: string | null;
       failedFiles: string[] | null;
@@ -16729,7 +16733,9 @@ export interface components {
             | "policy"
             | "other"
             | "gitlink_unreachable"
-            | "gitlink_diverged";
+            | "gitlink_diverged"
+            | "assembly_error"
+            | "main_gitlink_dangling";
           failureReason: string;
           failedFiles?: string[];
           logExcerpt?: string;
@@ -16755,7 +16761,9 @@ export interface components {
         | "policy"
         | "other"
         | "gitlink_unreachable"
-        | "gitlink_diverged";
+        | "gitlink_diverged"
+        | "assembly_error"
+        | "main_gitlink_dangling";
       reason: string;
       failedFiles?: string[];
       logExcerpt?: string;

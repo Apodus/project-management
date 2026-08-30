@@ -66,29 +66,57 @@ export interface AssembledGroupOk {
   release(): void;
 }
 
-export interface AssembledGroupErr {
+/**
+ * Evidence the §11 post-assembly assertion produces. Only a site that RAN the
+ * assertion holds these values; a catch block holds neither.
+ */
+export type GitlinkMismatchEvidence =
+  | { asserted: "committed_gitlink"; committed: string; expected: string }
+  | { asserted: "worktree_populated"; gitlinkPath: string };
+
+/**
+ * Reasons a CHECK decided. Each names a measurement that was actually made.
+ *
+ * - `backpressure`: a correlated pool slot was unavailable (§5.1). Retry next
+ *   integration; nothing was acquired-and-held.
+ * - `inner_conflict` / `outer_conflict`: the inner/outer rebase conflicted.
+ *   (`outer_conflict` is structurally unreachable when the outer member is
+ *   synthetic — there is no outer ref to rebase; see AssembleGroupDeps.outerRef.)
+ * - `gitlink_diverged` / `gitlink_unreachable`: a lone-outer group (campaign
+ *   umbrella-widening P4) whose managed gitlink target is present-but-not-an-
+ *   ancestor of the landing inner (`diverged`) or absent even after an all-refs
+ *   fetch (`unreachable`) — DELIBERATE Tier-2 conservative rejects, never a land.
+ * - `gitlink_mismatch`: the §11 post-assembly assertion failed (committed
+ *   gitlink != Ri, or the working tree at gitlinkPath was not populated).
+ *   EXCLUSIVELY that assertion, since 2026-08-30: the catch-all used to borrow
+ *   this reason, which is how an unclassified throw came to be reported as a
+ *   post-assembly measurement nobody had taken.
+ * - `main_gitlink_dangling`: outer main's committed gitlink references an inner
+ *   commit that is not reachable from inner main. DECLARED here by campaign
+ *   2026-08-30 §S3 with its verdict and category; PRODUCED by §S2's gate. A
+ *   union member with no producer is expected until then.
+ */
+export type DiagnosedAssemblyReason =
+  | "backpressure"
+  | "inner_conflict"
+  | "outer_conflict"
+  | "gitlink_diverged"
+  | "gitlink_unreachable"
+  | "gitlink_mismatch"
+  | "main_gitlink_dangling";
+
+/**
+ * The one reason that means "no check decided". Design lock 4, as a type.
+ *
+ * - `assembly_error`: something threw mid-assembly and NO check decided. It
+ *   names WHERE, never why. Constructible in exactly one place
+ *   (`unclassifiedAssembly`).
+ */
+export type UnclassifiedAssemblyReason = "assembly_error";
+
+interface AssemblyErrBase {
   ok: false;
-  /**
-   * - `backpressure`: a correlated pool slot was unavailable (§5.1). Retry next
-   *   integration; nothing was acquired-and-held.
-   * - `inner_conflict` / `outer_conflict`: the inner/outer rebase conflicted.
-   *   (`outer_conflict` is structurally unreachable when the outer member is
-   *   synthetic — there is no outer ref to rebase; see AssembleGroupDeps.outerRef.)
-   * - `gitlink_diverged` / `gitlink_unreachable`: a lone-outer group (campaign
-   *   umbrella-widening P4) whose managed gitlink target is present-but-not-an-
-   *   ancestor of the landing inner (`diverged`) or absent even after an all-refs
-   *   fetch (`unreachable`) — DELIBERATE Tier-2 conservative rejects, never a land.
-   * - `gitlink_mismatch`: the §11 post-assembly assertion failed (committed
-   *   gitlink != Ri, or the working tree at gitlinkPath was not populated).
-   */
-  reason:
-    | "backpressure"
-    | "inner_conflict"
-    | "outer_conflict"
-    | "gitlink_diverged"
-    | "gitlink_unreachable"
-    | "gitlink_mismatch";
-  /** Extra detail for logging (conflicting files / mismatch detail). */
+  /** Extra detail for logging (conflicting files / mismatch detail / raw error). */
   detail?: string;
   /**
    * Campaign 2026-08-15 §R4: the inputs a resolver needs to REPRODUCE a
@@ -99,6 +127,11 @@ export interface AssembledGroupErr {
    * end: `materializeConflict(baseSha, ref)` cannot replay anything, and the
    * hook would have to re-derive a base from a worktree the failed assembly
    * has already released.
+   *
+   * Declared OPTIONAL ON THE BASE on purpose: the reject choke-point reads
+   * `asm.conflict` on a union that still contains arms which never carry it,
+   * and a bare property access requires the property on every constituent.
+   * Moving it onto the conflict arms does not compile.
    */
   conflict?: {
     baseSha: string;
@@ -108,6 +141,28 @@ export interface AssembledGroupErr {
   /** Release whatever slots were taken (no-op when nothing was acquired). */
   release(): void;
 }
+
+/**
+ * A reason is a CLAIM ABOUT FACTS. The two arms whose claim was contested on
+ * 2026-08-29 now require the facts, so a site holding none cannot make the
+ * claim by accident:
+ *
+ *  - `gitlink_mismatch` requires the assertion record (what was compared, to what).
+ *  - `assembly_error` requires the thrown cause, and nothing else — because a
+ *    catch block holds nothing else.
+ *
+ * What this DOES buy: a catch-all can no longer accidentally inherit a
+ * diagnosis. What it does NOT buy: immunity. Fabricating
+ * `{ committed: "", expected: "" }` still compiles. The point is that doing so
+ * stops being a shrug and becomes a deliberate lie a reader can see — the
+ * correct ceiling, because the 2026-08-29 defect WAS a shrug: git-ops threw,
+ * the catch named the nearest specific reason, and five authors were told the
+ * fault had been ruled out of their change.
+ */
+export type AssembledGroupErr =
+  | (AssemblyErrBase & { reason: Exclude<DiagnosedAssemblyReason, "gitlink_mismatch"> })
+  | (AssemblyErrBase & { reason: "gitlink_mismatch"; evidence: GitlinkMismatchEvidence })
+  | (AssemblyErrBase & { reason: UnclassifiedAssemblyReason; evidence: { cause: unknown } });
 
 export type AssembledGroup = AssembledGroupOk | AssembledGroupErr;
 
@@ -225,8 +280,17 @@ async function resolveDetectRef(
  * ONE assembly function, no forked code path: the synthetic arm is the same
  * sequence with the single outer-rebase step conditional on `outerRef !== null`.
  * Does NOT verify (§5.3 / Step 10) and does NOT push (§6 / Step 11).
+ *
+ * This is the CLASSIFIER. Its return type deliberately EXCLUDES
+ * `assembly_error`: every `return` in this body is a site that RAN something,
+ * so none of them may name the reason that means "nothing was decided". A
+ * `return { reason: "assembly_error" }` here is a compile error — the half of
+ * design lock 4 a type CAN carry. The complementary half (a catch may name ONLY
+ * that reason) is `unclassifiedAssembly`, below. Callers use `assembleGroup`.
  */
-export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledGroup> {
+async function assembleGroupClassified(
+  deps: AssembleGroupDeps,
+): Promise<AssembledGroupOk | (AssembledGroupErr & { reason: DiagnosedAssemblyReason })> {
   const phases = deps.phases ?? NOOP_PHASE_SPANS;
   const innerSpan = { requestId: deps.innerRequestId };
   const outerSpan = { requestId: deps.outerRequestId };
@@ -595,6 +659,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
         ok: false,
         reason: "gitlink_mismatch",
         detail: `committed gitlink ${committedGitlink} != Ri ${Ri}`,
+        evidence: { asserted: "committed_gitlink", committed: committedGitlink, expected: Ri },
         release,
       };
     }
@@ -605,6 +670,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
         ok: false,
         reason: "gitlink_mismatch",
         detail: `working tree at ${deps.gitlinkPath} is empty after materialize`,
+        evidence: { asserted: "worktree_populated", gitlinkPath: deps.gitlinkPath },
         release,
       };
     }
@@ -625,17 +691,50 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
       release,
     };
   } catch (err) {
-    // Any unexpected git failure mid-assembly: release the slots and surface as
-    // a mismatch (assembly precedes any push, so nothing landed — §11 fs-full
-    // row semantics: reject this pass). Re-rethrow would strand the slots.
+    // RELEASE BEFORE RETHROW — load-bearing. The wrapper below cannot see
+    // `release`, and a throw that escapes without releasing strands BOTH
+    // correlated slots for the life of the process (the 2026-08-02 wedge,
+    // deployment guide §14.15). `release` is idempotent, so the wrapper's
+    // no-op release is safe. Assembly precedes any push, so nothing landed —
+    // §11 fs-full row semantics: reject this pass rather than retry.
     release();
-    return {
-      ok: false,
-      reason: "gitlink_mismatch",
-      detail: err instanceof Error ? err.message : String(err),
-      release: () => {},
-    };
+    throw err;
   }
+}
+
+/**
+ * Assemble a cross-repo group. Thin by design: it owns the ONLY catch-all in
+ * the assembly path, and the only failure that catch may construct is the one
+ * that says nothing was classified.
+ */
+export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledGroup> {
+  try {
+    return await assembleGroupClassified(deps);
+  } catch (err) {
+    // Design lock 4: a catch-all is never a diagnosis. This site established
+    // NOTHING. Until 2026-08-30 it named `gitlink_mismatch` — a reason whose
+    // own verdict asserts that a specific post-assembly assertion was measured
+    // and failed — so every unclassified git failure reached its author as a
+    // train fault that had already ruled their change out. The return type
+    // below is what keeps that from happening by accident again: an accidental
+    // inherited diagnosis is no longer constructible here, while a deliberate
+    // one still is. A shrug becomes a deliberate lie a reader can see.
+    return unclassifiedAssembly(err);
+  }
+}
+
+/** The ONLY failure a catch may construct. Pinned to `assembly_error` by type. */
+function unclassifiedAssembly(
+  err: unknown,
+): AssembledGroupErr & { reason: UnclassifiedAssemblyReason } {
+  return {
+    ok: false,
+    reason: "assembly_error",
+    detail: err instanceof Error ? err.message : String(err),
+    evidence: { cause: err },
+    // The classifier already released both slots before rethrowing.
+    release: () => {},
+  };
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────

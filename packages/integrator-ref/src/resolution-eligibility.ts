@@ -13,21 +13,34 @@
  * inheriting an answer — which is the whole reason this is an exhaustive switch
  * over a closed union instead of a lookup table with a fallback.
  *
- * Three classes, per the campaign's tier taxonomy:
+ * Six classes, one line each:
  *
- *  - **Mechanical** — the correct answer is well-defined and does not require
+ *  - `mechanical` — the correct answer is well-defined and does not require
  *    changing anyone's intent. A conflict is the canonical case: two edits, one
  *    file, a reconciliation. This is the grunt work the resolver exists to
  *    absorb, and it is where widening pays.
- *  - **Unfixable-by-anyone-but-the-author** — the inputs the resolver would
- *    need do not exist. `gitlink_unreachable` is the sharp example: the inner
- *    commit was never pushed, so the objects are not in any clone the daemon
- *    can reach. No agent can materialize them. A resolver session here burns
- *    budget to rediscover "you did not push", and converts a clear, immediately
- *    actionable answer into a slow confusing one.
- *  - **Our bug** — `gitlink_mismatch` is a post-assembly assertion failure: the
- *    train built something inconsistent. Handing that to a resolver destroys
- *    the evidence and hides a defect that should be loud.
+ *  - `not_a_failure` — nothing broke; the group simply retries next pass.
+ *  - `author_only` — the inputs the resolver would need do not exist.
+ *    `gitlink_unreachable` is the sharp example: the inner commit was never
+ *    pushed, so the objects are not in any clone the daemon can reach. No agent
+ *    can materialize them. A resolver session here burns budget to rediscover
+ *    "you did not push", and converts a clear, immediately actionable answer
+ *    into a slow confusing one.
+ *  - `lane_blocked` — the fault is in the shared state of the LANE, measured.
+ *    Nobody who can resubmit can clear it; a human with authority over main
+ *    chooses the cure.
+ *  - `train_bug` — `gitlink_mismatch` is a post-assembly assertion failure:
+ *    the train built something inconsistent. Handing that to a resolver
+ *    destroys the evidence and hides a defect that should be loud.
+ *  - `unknown` — no check decided. Campaign 2026-08-30 design lock 4: an
+ *    unclassified error gets a class that SAYS unclassified, and nothing
+ *    decided is ever filed under `unknown` — the moment it holds a finding it
+ *    stops meaning unknown and the next reader learns nothing from it.
+ *
+ * Design lock 3 lives here too: a `why` states what was observed and what to
+ * check. It may name a probable cause; it may not pre-emptively rule one out.
+ * The types make a shrug VISIBLE, not impossible — a verdict can still be
+ * written dishonestly, it just cannot happen by inheritance any more.
  *
  * NOT decided here (deliberately): whether the resolver can EXECUTE an eligible
  * job. Eligibility is about whether it *should* be tried; capability is the
@@ -35,7 +48,7 @@
  * tested before the cross-repo executor exists.
  */
 
-import type { AssembledGroupErr } from "./group-assembly.js";
+import type { AssembledGroupErr, UnclassifiedAssemblyReason } from "./group-assembly.js";
 
 /** The closed set of assembly outcomes, mirroring `AssembledGroupErr.reason`. */
 export type GroupAssemblyReason =
@@ -44,7 +57,16 @@ export type GroupAssemblyReason =
   | "outer_conflict"
   | "gitlink_diverged"
   | "gitlink_unreachable"
-  | "gitlink_mismatch";
+  | "gitlink_mismatch"
+  | "main_gitlink_dangling"
+  | "assembly_error";
+
+/**
+ * The mirror's unclassified half, pinned separately: a future reason that is
+ * really a shrug must be declared as one here, or the `unknown`-purity test
+ * stops meaning anything.
+ */
+export type UnclassifiedGroupAssemblyReason = "assembly_error";
 
 /**
  * The mirror is PINNED, both directions. Re-declaring the union here (rather
@@ -62,6 +84,12 @@ type _AssemblyReasonMirrorIsExact = AssertMutuallyAssignable<
   AssembledGroupErr["reason"],
   GroupAssemblyReason
 >;
+// The same pin for the unclassified HALF — see UnclassifiedGroupAssemblyReason.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _UnclassifiedMirrorIsExact = AssertMutuallyAssignable<
+  UnclassifiedAssemblyReason,
+  UnclassifiedGroupAssemblyReason
+>;
 
 export type EligibilityClass =
   /** Worth a resolver: the answer is mechanical and the inputs all exist. */
@@ -70,8 +98,23 @@ export type EligibilityClass =
   | "not_a_failure"
   /** Only the author can fix it; a resolver would burn budget to say so. */
   | "author_only"
+  /**
+   * The fault is in the LANE's shared state (main) rather than in the submitted
+   * change or the train's own code. Nobody who can resubmit can clear it; a
+   * human with authority over main must choose a cure. This is the ONLY class
+   * licensed to say where the fault is NOT — because it is the only class that
+   * has measured it.
+   */
+  | "lane_blocked"
   /** A train defect. Resolving it would paper over the evidence. */
-  | "train_bug";
+  | "train_bug"
+  /**
+   * No check decided. NOT a diagnosis — the class exists so an unclassified
+   * failure never has to borrow a diagnosed reason's answer (campaign
+   * 2026-08-30 design lock 4). Nothing decided may ever be filed here; a test
+   * pins that.
+   */
+  | "unknown";
 
 export interface EligibilityVerdict {
   eligible: boolean;
@@ -129,11 +172,64 @@ export function assemblyResolutionEligibility(reason: GroupAssemblyReason): Elig
         repo: null,
       };
 
+    // The exonerating half of this sentence was removed on 2026-08-30 (design
+    // lock 3): it ruled a cause out before anyone had looked, and it was bolted
+    // to the reason that was ALSO the dumping ground for every unclassified
+    // error, so five authors were handed a measurement nobody had taken. The
+    // class is still `train_bug` — the taxonomy may hold that judgement — but
+    // the author-facing string states the assertion and the failure and stops.
     case "gitlink_mismatch":
       return {
         eligible: false,
         class: "train_bug",
-        why: "the post-assembly assertion failed (committed gitlink != the landing inner, or the gitlink path was left unpopulated). That is a defect in the train, not in the change — a resolver session would paper over the evidence",
+        why:
+          "the post-assembly assertion failed: after assembly, the committed gitlink did " +
+          "not equal the landing inner commit, or the gitlink path was left unpopulated. " +
+          "Assembly authors both, so the tree it produced does not match what it claims — " +
+          "this reject names which half failed. A resolver session would rewrite that tree " +
+          "and destroy the record of how it came to be wrong",
+        repo: null,
+      };
+
+    // `lane_blocked`, not `unknown`: the gate DECIDED — it measured "present,
+    // not an ancestor". Filing a decided finding under a class named "we do not
+    // know" is design lock 4 run backwards, and it corrupts the one class whose
+    // entire value is purity. It is equally not `author_only` (the author
+    // cannot fix main), not `train_bug` (the train cannot create this state),
+    // not `mechanical` (design lock 2 forbids the train picking a cure), and
+    // not `not_a_failure` (it is a hard gate). None of the five other classes
+    // can hold it.
+    case "main_gitlink_dangling":
+      return {
+        eligible: false,
+        class: "lane_blocked",
+        why:
+          "the lane's shared state is broken, not this change: outer main's committed " +
+          "gitlink references an inner commit that is not reachable from inner main. That " +
+          "was measured, not inferred. Neither a resubmission by the author nor a resolver " +
+          "session can clear it — every cure moves one of the two mains and changes what " +
+          "consumers of outer main compile, so the train detects and refuses rather than " +
+          "picking one",
+        repo: null,
+      };
+
+    // The catch-all's reason. It names WHERE, never why, so its `why` hands the
+    // reader the raw error FIRST (the only evidence that exists) and then names
+    // checks to RUN. It must not imply a cause: an unclassified throw is not
+    // evidence of any particular broken invariant.
+    case "assembly_error":
+      return {
+        eligible: false,
+        class: "unknown",
+        why:
+          "an unexpected git failure during assembly. NOTHING was classified — this is " +
+          "what the train says when no check decided, so read it as a lead, not a " +
+          "finding. Start with the raw git error in this reject's detail; it is the only " +
+          "evidence there is. If that does not settle it, check the lane's own state " +
+          "before assuming a train defect: `git -C <outer> ls-tree HEAD <gitlink path>` " +
+          "for the committed gitlink target, then `git -C <inner> merge-base " +
+          "--is-ancestor <target> origin/main`. No resolver is opened — an unclassified " +
+          "throw leaves one nothing to replay",
         repo: null,
       };
 

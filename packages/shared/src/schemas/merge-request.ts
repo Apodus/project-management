@@ -59,6 +59,16 @@ export const MERGE_REJECT_CATEGORIES = [
   "other",
   "gitlink_unreachable",
   "gitlink_diverged",
+  // Campaign 2026-08-30. `assembly_error`: something threw mid-assembly and NO
+  // check decided — it names WHERE, never why (design lock 4: a catch-all is
+  // never a diagnosis), and is deliberately not folded into `other`, which also
+  // carries binding, push and cancellation failures, so "how often does assembly
+  // throw something we cannot classify" would be unanswerable.
+  // `main_gitlink_dangling`: outer main's committed gitlink references a commit
+  // not reachable from inner main — a measured verdict about the LANE's state,
+  // not about the change.
+  "assembly_error",
+  "main_gitlink_dangling",
 ] as const;
 export type MergeRejectCategory = (typeof MERGE_REJECT_CATEGORIES)[number];
 

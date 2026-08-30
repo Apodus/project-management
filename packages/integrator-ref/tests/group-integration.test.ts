@@ -26,6 +26,7 @@ import { createLogger } from "../src/logger.js";
 import { makePhaseProbe } from "./phase-probe.js";
 import {
   runGroupIntegration,
+  ASSEMBLY_REJECT_CATEGORY,
   type GroupIntegrationDeps,
   type RepoLane,
 } from "../src/group-integration.js";
@@ -1039,7 +1040,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     // actionable, and it is the same source of truth that decides whether a
     // resolver is worth spinning.
     // Asserted generically over WHICH reason the fixture produced (it can be
-    // inner_conflict or gitlink_mismatch depending on how far assembly gets):
+    // inner_conflict or assembly_error depending on how far assembly gets):
     // the property is that whatever failed, its guidance sentence reached the
     // author — not that this fixture fails one particular way.
     const rejectReason = state.rejectPayload?.reason ?? "";
@@ -1128,4 +1129,31 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
     expect(innerVerify.requestId).toBe("req-inner");
     for (const row of rows) expect(row.groupId).toBe("grp-p2-rej");
   }, 30_000);
+});
+
+// ─── Campaign 2026-08-30 §S3: every assembly reason has a wire category ──
+//
+// The ternary chain this Record replaces ended in `: "other"`, so a reason
+// added later silently inherited it — the same "a default is not a decision"
+// failure as the assembly catch-all, one level up, and how the gitlink
+// categories were invisible before their own campaign. The Record makes
+// omission a compile error; this pins that no VALUE regressed with it.
+describe("ASSEMBLY_REJECT_CATEGORY", () => {
+  it("keeps every pre-existing reason on the category the ternary gave it", () => {
+    expect(ASSEMBLY_REJECT_CATEGORY.backpressure).toBe("other");
+    expect(ASSEMBLY_REJECT_CATEGORY.inner_conflict).toBe("conflict");
+    expect(ASSEMBLY_REJECT_CATEGORY.outer_conflict).toBe("conflict");
+    expect(ASSEMBLY_REJECT_CATEGORY.gitlink_diverged).toBe("gitlink_diverged");
+    expect(ASSEMBLY_REJECT_CATEGORY.gitlink_unreachable).toBe("gitlink_unreachable");
+    // The §11 assertion has no dedicated wire value — unchanged from the ternary.
+    expect(ASSEMBLY_REJECT_CATEGORY.gitlink_mismatch).toBe("other");
+  });
+
+  it("neither new reason collapses into 'other'", () => {
+    // "How often does assembly throw something we cannot classify" has to be
+    // answerable, and `other` also carries binding, push and cancellation
+    // failures — invisibility is the client's core complaint.
+    expect(ASSEMBLY_REJECT_CATEGORY.assembly_error).toBe("assembly_error");
+    expect(ASSEMBLY_REJECT_CATEGORY.main_gitlink_dangling).toBe("main_gitlink_dangling");
+  });
 });

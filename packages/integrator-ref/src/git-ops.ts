@@ -365,7 +365,8 @@ export interface GitOps {
    * (→ assembleGroup mints `outer_conflict`). A clean apply that stages nothing
    * (the source net is empty — a pure bump reaching this path) returns HEAD
    * without an empty commit. A merge-base/diff INFRA failure THROWS (→
-   * assembleGroup's catch → gitlink_mismatch), never a false conflict.
+   * `assembleGroup`'s catch → `assembly_error`, the unclassified catch-all),
+   * never a false conflict.
    */
   applyExcludingGitlink(
     baseSha: string,
@@ -1173,8 +1174,8 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     // worktree instead — a REAL clone where `submodule update` works, checked
     // out at `sha` by the assembly, and persistent across attempts (the
     // per-attempt `git clean` skips dirs carrying a .git). A failure here
-    // throws → the assembly rejects this pass (gitlink_mismatch detail),
-    // nothing pushed.
+    // throws → the assembly rejects this pass as `assembly_error`, with the
+    // raw error as detail; nothing pushed.
     let nestedPaths: string[] = [];
     if (innerWorktreePath) {
       await runGit(
@@ -1505,7 +1506,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
 
     // (1) merge-base(baseSha, outerRef). A non-zero exit / malformed sha is a
     //     genuine INFRA error (unresolvable ref / unrelated history) — THROW so
-    //     assembleGroup's catch surfaces gitlink_mismatch, never a false
+    //     `assembleGroup`'s catch surfaces `assembly_error`, never a false
     //     conflict. (Assembly only calls this AFTER splitGitlinkDiff already
     //     resolved the same merge-base, so this is defense-in-depth.)
     const mb = await runGitCapture(["merge-base", baseSha, outerRef], topLevel);
@@ -1623,7 +1624,8 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
  * The whole body is wrapped so ANY escape (a thrown probe, an isAncestor throw
  * on a bad object, an unexpected error) routes to `legacy` — fail-open is TOTAL,
  * so no detection error can bubble into `assembleGroup`'s catch (which would
- * surface as `gitlink_mismatch`) or, worse, cause a land.
+ * surface as `assembly_error` — legible, but a lost classification) or, worse,
+ * cause a land.
  *
  * Gate (safety invariant 1): each CHANGED managed gitlink target G must be
  * present in the inner store AND `isAncestor(G, Ri)`. A present-but-not-ancestor
@@ -1683,7 +1685,8 @@ export async function classifyOuterGitlinkDiff(
         ancestor = await innerGitOps.isAncestor(target, innerLandingSha);
       } catch {
         // isAncestor THROWS on exit ≠ 0/1 (bad object → 128). Catch it here so
-        // it never bubbles into assembleGroup's catch as `gitlink_mismatch`.
+        // it never bubbles into `assembleGroup`'s catch as an unclassified
+        // `assembly_error`.
         return { kind: "legacy", reason: "isAncestor threw" };
       }
       if (!ancestor) return { kind: "diverged", path: gitlinkPath, target };
