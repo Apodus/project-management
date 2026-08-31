@@ -256,11 +256,12 @@ function makeFakePm(state: FakePm): GroupIntegrationDeps["pmClient"] {
       groupId?: string | null;
       innerRequestId?: string | null;
       taskId?: string | null;
-    }): Promise<{ id: string }> {
+    }): Promise<{ incident: { id: string }; created: boolean }> {
       state.calls.push("openIncident");
       incidentSeq += 1;
       state.incident = { id: `inc-${incidentSeq}`, ...params };
-      return { id: state.incident.id };
+      // The open is idempotent server-side: { incident, created }.
+      return { incident: { id: state.incident.id }, created: true };
     },
     async markPartiallyLanded(
       _groupId: string,

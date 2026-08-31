@@ -69,6 +69,11 @@ interface FakeIncidentStore {
   incidents: MergeIncidentView[];
   /** Ordered call log. */
   calls: string[];
+  /** The filters each listMergeIncidents call received. The production filter
+   *  is what stands between a dangling_gitlink incident and the train
+   *  auto-rolling forward a cure only a human may pick (design lock 2), so it
+   *  has to be observable, not merely honored. */
+  listFilters: { state?: string; type?: string }[];
   /** Recorded resolveIncident calls. */
   resolves: {
     incidentId: string;
@@ -106,6 +111,7 @@ function makeFakePm(store: FakeIncidentStore): RecoverOrphanedInnerDeps["pmClien
       filters?: { state?: string; type?: string },
     ): Promise<MergeIncidentView[]> {
       store.calls.push("listMergeIncidents");
+      store.listFilters.push({ state: filters?.state, type: filters?.type });
       return store.incidents.filter(
         (i) =>
           (!filters?.state || i.state === filters.state) &&
@@ -410,6 +416,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     const store: FakeIncidentStore = {
       incidents: [makeIncident({ orphanedSha: innerO })],
       calls: [],
+      listFilters: [],
       resolves: [],
     };
     const deps = depsFor(store);
@@ -453,6 +460,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     const store: FakeIncidentStore = {
       incidents: [makeIncident({ orphanedSha: innerO })],
       calls: [],
+      listFilters: [],
       resolves: [],
     };
     const deps = depsFor(store);
@@ -484,6 +492,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     const store: FakeIncidentStore = {
       incidents: [makeIncident({ orphanedSha: innerO })],
       calls: [],
+      listFilters: [],
       resolves: [],
     };
     const deps = depsFor(store, {
@@ -516,6 +525,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     const store: FakeIncidentStore = {
       incidents: [makeIncident({ orphanedSha: innerO })],
       calls: [],
+      listFilters: [],
       resolves: [],
     };
     const deps = depsFor(store, {
@@ -551,6 +561,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     const store: FakeIncidentStore = {
       incidents: [],
       calls: [],
+      listFilters: [],
       resolves: [],
     };
     const deps = depsFor(store);
@@ -564,6 +575,76 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
     expect(await bareMainSha(innerBare)).toBe(innerBefore);
 
     // Worktrees never leased → still reacquirable.
+    assertPoolsReacquirable();
+  }, 30_000);
+
+  // ── (f2) DESIGN LOCK 2: the train never cures a dangling gitlink ──
+  it("a dangling_gitlink incident is invisible to rollforward: no outcome, no resolve, nothing touched", async () => {
+    await restoreOuterToP();
+    const outerBefore = await bareMainSha(outerBare);
+    const innerBefore = await bareMainSha(innerBare);
+
+    // The OTHER direction of the same invariant, and the only thing keeping
+    // rollforward off it is `type: "orphaned_inner"` in group-recovery.ts.
+    // Both cures for it change what consumers of main compile, so the train
+    // must detect and refuse — never pick one.
+    const store: FakeIncidentStore = {
+      incidents: [
+        makeIncident({
+          id: "inc-dangling",
+          type: "dangling_gitlink",
+          orphanedSha: innerC,
+          groupId: null,
+          innerRequestId: null,
+          taskId: null,
+        }),
+      ],
+      calls: [],
+      listFilters: [],
+      resolves: [],
+    };
+    const deps = depsFor(store);
+
+    const result = await recoverOrphanedInner({ projectId: "proj-1", resource: "main" }, deps);
+
+    // THE load-bearing assertion: rollforward was never even attempted. (A
+    // dropped type filter can escalate on the ancestry check instead of
+    // resolving, so an empty `resolves` alone would not catch it.)
+    expect(result.outcomes).toEqual([]);
+    expect(store.resolves).toEqual([]);
+    expect(store.incidents[0].state).toBe("open");
+    // And the filter that does the work, named directly.
+    expect(store.listFilters[0]).toEqual({ state: "open", type: "orphaned_inner" });
+
+    expect(await bareMainSha(outerBare)).toBe(outerBefore);
+    expect(await bareMainSha(innerBare)).toBe(innerBefore);
+    assertPoolsReacquirable();
+  }, 30_000);
+
+  it("a mixed store rolls forward the orphan and leaves the dangling gitlink alone", async () => {
+    await restoreOuterToP();
+    const store: FakeIncidentStore = {
+      incidents: [
+        makeIncident({ id: "inc-orphan", orphanedSha: innerO }),
+        makeIncident({
+          id: "inc-dangling",
+          type: "dangling_gitlink",
+          orphanedSha: innerC,
+          groupId: null,
+        }),
+      ],
+      calls: [],
+      listFilters: [],
+      resolves: [],
+    };
+    const deps = depsFor(store);
+
+    const result = await recoverOrphanedInner({ projectId: "proj-1", resource: "main" }, deps);
+
+    expect(result.outcomes).toHaveLength(1);
+    expect(result.outcomes[0].kind).toBe("auto_resolved");
+    expect(store.resolves.map((r) => r.incidentId)).toEqual(["inc-orphan"]);
+    expect(store.incidents.find((i) => i.id === "inc-dangling")?.state).toBe("open");
     assertPoolsReacquirable();
   }, 30_000);
 

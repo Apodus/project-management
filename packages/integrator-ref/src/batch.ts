@@ -33,6 +33,7 @@ import { categorize, classifyVerifyFailure, failureExcerpt } from "./categorize.
 import { runPipeline, toVerifyStepResults } from "./verify-pipeline.js";
 import { isApiError, errMessage } from "./loop.js";
 import {
+  resolveDanglingGitlinkIncidents,
   runGroupIntegration,
   type RepoLane,
   type GroupIntegrationOutcome,
@@ -2950,6 +2951,63 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
           phases: groupPhases,
         },
       );
+
+      if (landResult.kind === "landed") {
+        // A narrowed const, because the note below is a CLOSURE: TypeScript's
+        // narrowing of the mutable `landResult` does not survive into it.
+        const landed = landResult;
+        // Campaign 2026-08-30 §S5. A `dangling_gitlink` incident is opened by
+        // the §S2 gate and closed by a later assembly OBSERVING the invariant
+        // hold — which needs another group. So the group that LANDS the cure
+        // (the gate's `heals` verdict: main is broken now, and this very land
+        // repairs it) leaves its own incident open, possibly forever on a lane
+        // with no further cross-repo traffic — telling every reader of
+        // `pm_list_merge_incidents` that a healthy lane needs a human, since the
+        // row's `curedBy` is "human". That is this campaign's own named harm, a
+        // record that misdirects investigation, pointing the other way.
+        //
+        // Post-land health is ENTAILED, not probed. Assembly's §11
+        // post-assembly assertion (group-assembly.ts: the committed gitlink it
+        // reads back must EQUAL Ri, else `gitlink_mismatch` and no land at all)
+        // makes "outer's committed gitlink IS the landing inner commit" a hard
+        // precondition of an assembly that got this far — on every arm,
+        // including a converted pure-bump, a normalized MIXED outer, and a
+        // synthesized member. Both pushes are `HEAD:<branch>` WITHOUT --force,
+        // so `landed` means outer main IS Ro and inner main IS Ri. Cite that
+        // assertion, not the step that authors the gitlink: a future reader who
+        // changes how step 8 writes the pointer has not invalidated this — the
+        // assertion still refuses to land anything that disagrees.
+        //
+        // NOT on `orphaned`: the outer push failed there, so outer main's
+        // gitlink is UNCHANGED and a dangling target still dangles.
+        //
+        // Cannot change the land outcome: `resolveDanglingGitlinkIncidents` is
+        // contractually throw-free (a throw here would reach the catch below and
+        // report a successful atomic land as `{ kind: "error" }`), and its
+        // return value is deliberately unused.
+        await resolveDanglingGitlinkIncidents(
+          { pmClient, logger, projectId },
+          { innerRepo: groupLane.innerLane.name, outerRepo: groupLane.outerLane.name },
+          {
+            groupId: group.id,
+            note: (incident) =>
+              `Observed cured by the atomic land of group ${group.id}: both pushes succeeded, ` +
+              `so outer main ${landed.outerLandedSha} commits the managed gitlink to ` +
+              `${landed.innerLandedSha}, ` +
+              `which is inner main. This incident recorded the gitlink target ` +
+              `${incident.orphanedSha}. Entailed by the land, not re-measured after it: ` +
+              `assembly asserts that outer's committed gitlink equals the inner commit the ` +
+              `group lands, and refuses to land at all when it does not. The train applied no ` +
+              `cure for this incident.`,
+            logMsg:
+              "cross-repo group landed; dangling_gitlink incident resolved (entailed by the land, not applied)",
+            logFields: {
+              innerLandedSha: landed.innerLandedSha,
+              outerLandedSha: landed.outerLandedSha,
+            },
+          },
+        );
+      }
     }
 
     return { kind: "resolved", outcome, land: landResult, recovery };

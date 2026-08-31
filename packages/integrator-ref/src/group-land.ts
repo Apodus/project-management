@@ -397,7 +397,7 @@ export async function landAssembledGroup(
     // b. inner member → orphaned (group-land-family op).
     await pmClient.markInnerOrphaned(innerMember.id, innerLandedSha);
     // c. THE durable orphan record — capture incident.id.
-    const incident = await pmClient.openIncident({
+    const { incident } = await pmClient.openIncident({
       projectId,
       type: "orphaned_inner",
       innerRepo: innerRepoName,

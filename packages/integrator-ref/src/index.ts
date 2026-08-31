@@ -147,6 +147,7 @@ async function main(): Promise<void> {
     gitMainBranch: cfg.gitMainBranch,
     cleanKeep: cfg.cleanKeep,
     gitlinkPurgePaths,
+    logger,
   });
   const makeGitOps = (p: string) => createGitOps(simpleGit(p), { gitRemote: cfg.gitRemote });
 
@@ -329,6 +330,7 @@ async function main(): Promise<void> {
         // purge managed gitlink overlays. The outer worktree owns the gitlink
         // entry and is normalized by group assembly itself.
         gitlinkPurgePaths: repo.role === "outer" ? [] : gitlinkPurgePaths,
+        logger,
       });
       // Binding clone: a LOCAL `--mirror` clone of the linked repo, used ONLY to
       // resolve a member's ref (commitSha/branch). `repo.path` may be a remote
@@ -344,7 +346,7 @@ async function main(): Promise<void> {
       // binding resolves in exactly one repo. Extracted + unit-tested in
       // ./binding-clone.ts (the file:// URL case guards the remote-URL regression).
       const bindDir = path.join(cfg.worktreeRoot, `bind-${repo.name}.git`);
-      const binding = createBindingResolver(repo.path, bindDir);
+      const binding = createBindingResolver(repo.path, bindDir, logger);
       const lane: RepoLane = {
         role: repo.role,
         name: repo.name,

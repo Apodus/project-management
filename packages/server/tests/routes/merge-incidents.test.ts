@@ -45,7 +45,8 @@ describe("Merge Incidents API", () => {
     );
     expect(res.status).toBe(201);
     const json = await res.json();
-    return json.data.id as string;
+    expect(json.data.created).toBe(true);
+    return json.data.incident.id as string;
   }
 
   // ─── A. POST open ────────────────────────────────────────────────
@@ -93,6 +94,67 @@ describe("Merge Incidents API", () => {
       expect(incidentComment).toBeTruthy();
       const meta = incidentComment?.metadata as Record<string, unknown>;
       expect(meta.incidentId).toBe(incidentId);
+    });
+
+    it("201 for a lane-scoped dangling_gitlink with every FK null", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+
+      const res = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-incidents`,
+        {
+          token: agent.token,
+          body: {
+            type: "dangling_gitlink",
+            innerRepo: "inner",
+            orphanedSha: "d4ngl1",
+            outerRepo: "outer",
+            groupId: null,
+            innerRequestId: null,
+            taskId: null,
+          },
+        },
+      );
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json.data.created).toBe(true);
+      expect(json.data.incident.type).toBe("dangling_gitlink");
+      expect(json.data.incident.groupId).toBeNull();
+    });
+
+    it("idempotent open: 201 then 200, same row, created flips to false", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const body = {
+        type: "dangling_gitlink",
+        innerRepo: "inner",
+        orphanedSha: "d4ngl1",
+        outerRepo: "outer",
+      };
+
+      const first = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-incidents`,
+        { token: agent.token, body },
+      );
+      const second = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-incidents`,
+        { token: agent.token, body },
+      );
+
+      expect(first.status).toBe(201);
+      expect(second.status).toBe(200);
+      const firstJson = await first.json();
+      const secondJson = await second.json();
+      expect(firstJson.data.created).toBe(true);
+      expect(secondJson.data.created).toBe(false);
+      expect(secondJson.data.incident.id).toBe(firstJson.data.incident.id);
+      expect(testApp.db.select().from(mergeIncidents).all()).toHaveLength(1);
     });
   });
 
@@ -185,6 +247,37 @@ describe("Merge Incidents API", () => {
       const noneJson = await none.json();
       expect(noneJson.data).toHaveLength(0);
     });
+
+    it("200 filtered by type=dangling_gitlink — the direction filter is real", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      await openIncident(project.id, agent.token);
+      const danglingRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/projects/${project.id}/merge-incidents`,
+        {
+          token: agent.token,
+          body: {
+            type: "dangling_gitlink",
+            innerRepo: "inner",
+            orphanedSha: "d4ngl1",
+            outerRepo: "outer",
+          },
+        },
+      );
+      const danglingId = (await danglingRes.json()).data.incident.id as string;
+
+      const res = await authRequest(
+        testApp.app,
+        "GET",
+        `/api/v1/projects/${project.id}/merge-incidents?state=open&type=dangling_gitlink`,
+        { token: agent.token },
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.map((i: { id: string }) => i.id)).toEqual([danglingId]);
+    });
   });
 
   // ─── D. POST resolve — authz SPLIT both directions ───────────────
@@ -213,6 +306,33 @@ describe("Merge Incidents API", () => {
       expect(agentRes.status).toBe(200);
       const json = await agentRes.json();
       expect(json.data.state).toBe("auto_resolved");
+    });
+
+    it("auto_observed: admin → 403, ai_agent → 200 (auto_resolved terminal)", async () => {
+      const project = createTestProject(testApp.db);
+      const agent = createTestAiAgent(testApp.db);
+      const incidentId = await openIncident(project.id, agent.token, {
+        type: "dangling_gitlink",
+      });
+
+      const adminRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-incidents/${incidentId}/resolve`,
+        { token: testApp.testToken, body: { mode: "auto_observed", note: "invariant holds" } },
+      );
+      expect(adminRes.status).toBe(403);
+
+      const agentRes = await authRequest(
+        testApp.app,
+        "POST",
+        `/api/v1/merge-incidents/${incidentId}/resolve`,
+        { token: agent.token, body: { mode: "auto_observed", note: "invariant holds" } },
+      );
+      expect(agentRes.status).toBe(200);
+      const json = await agentRes.json();
+      expect(json.data.state).toBe("auto_resolved");
+      expect(json.data.resolution.mode).toBe("auto_observed");
     });
 
     it("human: ai_agent → 403, admin → 200", async () => {

@@ -1315,6 +1315,8 @@ import type {
   MergeRequestStatus,
   MergeRequestGroupView,
   MergeIncidentView,
+  MergeIncidentState,
+  MergeIncidentType,
   IntegratorLiveness,
   ClaimState,
   Note,
@@ -1561,8 +1563,9 @@ export interface MergeGroupRequestBody {
 }
 
 export interface MergeIncidentListFilters {
-  state?: string;
-  type?: string;
+  state?: MergeIncidentState;
+  /** Which DIRECTION of the inner/outer gitlink invariant to list. */
+  type?: MergeIncidentType;
   groupId?: string;
 }
 

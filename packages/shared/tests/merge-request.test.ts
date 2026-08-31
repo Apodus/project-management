@@ -69,6 +69,14 @@ describe("MERGE_REJECT_CATEGORIES", () => {
       "other",
       "gitlink_unreachable",
       "gitlink_diverged",
+      // Campaign 2026-08-30 §S3. `assembly_error`: something threw mid-assembly
+      // and NO check decided — it names WHERE, never why, and is deliberately
+      // not folded into `other`, which also carries binding, push and
+      // cancellation failures. `main_gitlink_dangling`: outer main's committed
+      // gitlink references a commit not reachable from inner main — a measured
+      // verdict about the LANE's state, not about the change.
+      "assembly_error",
+      "main_gitlink_dangling",
     ]);
   });
 });

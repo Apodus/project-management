@@ -946,11 +946,22 @@ export function resetGroup(
 
   // CORRUPTION FENCE: an integrating group with an OPEN orphaned_inner incident
   // is a REAL orphan (§6.5 ran), recovered by §7 rollforward — NEVER reset it.
+  // The type predicate is load-bearing, not decoration: incidents now record
+  // the gitlink invariant broken in EITHER direction, and only the orphan
+  // direction says "this group half-landed". A lane-scoped incident carries a
+  // null groupId today, so this is what keeps the fence honest for a future
+  // type that does carry one.
   const db = getDb();
   const openIncident = db
     .select({ id: mergeIncidents.id })
     .from(mergeIncidents)
-    .where(and(eq(mergeIncidents.groupId, id), eq(mergeIncidents.state, "open")))
+    .where(
+      and(
+        eq(mergeIncidents.groupId, id),
+        eq(mergeIncidents.type, "orphaned_inner"),
+        eq(mergeIncidents.state, "open"),
+      ),
+    )
     .get();
   if (openIncident) {
     throw new AppError(

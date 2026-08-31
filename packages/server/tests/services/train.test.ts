@@ -497,7 +497,7 @@ describe("train service", () => {
           landedSha?: string | null;
           taskId?: string | null;
         }[];
-        incident?: { state: string; taskId?: string | null };
+        incident?: { state: string; taskId?: string | null; type?: string };
       },
     ): { groupId: string; memberIds: string[]; incidentId: string | null } {
       const submitter = createTestUser(testApp.db);
@@ -543,7 +543,7 @@ describe("train service", () => {
             id: incidentId,
             projectId: project.id,
             groupId,
-            type: "orphaned_inner",
+            type: opts.incident.type ?? "orphaned_inner",
             innerRepo: "rynx",
             orphanedSha: "inner-orphan-sha",
             outerRepo: "game",
@@ -758,6 +758,35 @@ describe("train service", () => {
         .where(eq(auditLog.action, "force_land"))
         .all();
       expect(audits).toHaveLength(1);
+      expect((audits[0].metadataAfter as Record<string, unknown>).resolvedIncidentIds).toEqual([]);
+    });
+
+    it("force-land resolves the ORPHAN only: a dangling_gitlink incident on the group is left open", () => {
+      const project = createTestProject(testApp.db);
+      const { memberIds, incidentId } = groupedFixture(project, {
+        groupState: "partially_landed",
+        members: [{ status: "rejected" }, { status: "landed", landedSha: "inner1" }],
+        // Carries a groupId on purpose: the type predicate, not a null FK, is
+        // what stops force-land silently closing a direction only a human cures.
+        incident: { state: "open", type: "dangling_gitlink" },
+      });
+      const resolved = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED, resolved);
+
+      const view = svc.forceLand(
+        memberIds[0],
+        { landedSha: "outer-final", reason: "reconciled by hand" },
+        adminActor(testApp),
+      );
+
+      expect(view.status).toBe("landed");
+      expect(readIncidentRow(incidentId!).state).toBe("open");
+      expect(resolved).not.toHaveBeenCalled();
+      const audits = testApp.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "force_land"))
+        .all();
       expect((audits[0].metadataAfter as Record<string, unknown>).resolvedIncidentIds).toEqual([]);
     });
 

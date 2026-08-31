@@ -104,8 +104,14 @@ interface FakeState {
   formingGroups?: { id: string }[];
   /** Members getMergeGroup returns for the forming group. */
   groupMembers?: MergeRequestView[];
-  /** Open incidents listMergeIncidents returns (drives recovery + the lock). */
-  openIncidents?: { id: string }[];
+  /** Open incidents listMergeIncidents returns (drives recovery + the lock).
+   *  A row with no `type` reads as "orphaned_inner" — the fake FILTERS on the
+   *  requested type, so a seed of the other direction must not silently drive
+   *  the lock. */
+  openIncidents?: { id: string; type?: string }[];
+  /** Filters each listMergeIncidents call received (the lock fast path is
+   *  type-scoped and that scoping has to be observable). */
+  incidentListFilters?: { state?: string; type?: string }[];
   // ── Phase 7.5 Step 6 verify-cache fakes ──
   /**
    * In-memory verify_cache keyed by the 5-tuple string. Seed rows here to plant
@@ -349,9 +355,15 @@ function makeFakeClient(state: FakeState): PmClient {
       state.calls.push("listMergeGroups");
       return state.formingGroups ?? [];
     },
-    async listMergeIncidents(): Promise<unknown[]> {
+    async listMergeIncidents(
+      _projectId: string,
+      filters?: { state?: string; type?: string },
+    ): Promise<unknown[]> {
       state.calls.push("listMergeIncidents");
-      return state.openIncidents ?? [];
+      (state.incidentListFilters ??= []).push({ state: filters?.state, type: filters?.type });
+      return (state.openIncidents ?? []).filter(
+        (i) => !filters?.type || (i.type ?? "orphaned_inner") === filters.type,
+      );
     },
     async getMergeGroup(groupId: string): Promise<unknown> {
       state.calls.push("getMergeGroup");
@@ -3377,6 +3389,30 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     // The forming group was NOT integrated (suppressed while paused).
     expect(state.calls).not.toContain("getMergeGroup");
     expect(state.calls).not.toContain("markGroupIntegrating");
+  });
+
+  it("an open dangling_gitlink incident does NOT drive the lane lock (the fast path survives)", async () => {
+    const root = path.join(tmpRoot, "wt-s12-grp-dangling");
+    const state: FakeState = {
+      requests: [],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      formingGroups: [],
+      // The OTHER direction of the invariant. It is not in-flight cross-repo
+      // work and there is no rollforward to drain, so it must not force the
+      // lane lock — the lock-free fast path of §7.2 / §8 is what keeps an idle
+      // group lane cheap.
+      openIncidents: [{ id: "inc-dangling", type: "dangling_gitlink" }],
+    };
+    const deps = await groupDepsFor(state, root);
+
+    const outcome = await runGroupLaneOnce(deps);
+
+    expect(outcome.kind).toBe("no_group");
+    expect(state.calls).not.toContain("acquireLock");
+    expect(state.calls).not.toContain("markGroupIntegrating");
+    expect(state.incidentListFilters?.[0]).toEqual({ state: "open", type: "orphaned_inner" });
   });
 
   // ───────────────────────────────────────────────────────────────────

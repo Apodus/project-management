@@ -209,6 +209,7 @@ export function createResolverPool(opts: ResolverPoolOptions): ResolverPool {
       gitMainBranch: opts.gitMainBranch,
       cleanKeep: opts.cleanKeep,
       gitlinkPurgePaths: opts.gitlinkPurgePaths,
+      logger: opts.logger,
     }),
   }));
 

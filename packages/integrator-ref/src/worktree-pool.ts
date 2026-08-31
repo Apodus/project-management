@@ -1,5 +1,6 @@
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import type { Logger } from "./logger.js";
 import { createWorktree, type Worktree } from "./worktree.js";
 
 export interface WorktreePoolOptions {
@@ -12,6 +13,8 @@ export interface WorktreePoolOptions {
   cleanKeep: string[];
   /** See WorktreeOptions.gitlinkPurgePaths — passed through to every slot. */
   gitlinkPurgePaths?: string[];
+  /** See WorktreeOptions.logger — passed through to every slot. */
+  logger?: Logger;
 }
 
 export interface WorktreePool {
@@ -57,6 +60,7 @@ export function createWorktreePool(opts: WorktreePoolOptions): WorktreePool {
       gitMainBranch: opts.gitMainBranch,
       cleanKeep: opts.cleanKeep,
       gitlinkPurgePaths: opts.gitlinkPurgePaths,
+      logger: opts.logger,
     }),
   }));
 

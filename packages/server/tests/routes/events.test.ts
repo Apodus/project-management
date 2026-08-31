@@ -807,7 +807,7 @@ describe("SSE Events API", () => {
       setTimeout(() => {
         const { group, m1 } = makeGroup(project, submitter);
         groupId = group.id;
-        const inc = mergeIncidentSvc.openIncident(
+        const { incident: inc } = mergeIncidentSvc.openIncident(
           {
             projectId: project.id,
             groupId: group.id,
@@ -855,7 +855,7 @@ describe("SSE Events API", () => {
       setTimeout(() => {
         const { group, m1 } = makeGroup(projectA, submitterA);
         groupIdA = group.id;
-        const inc = mergeIncidentSvc.openIncident(
+        const { incident: inc } = mergeIncidentSvc.openIncident(
           {
             projectId: projectA.id,
             groupId: group.id,
@@ -909,7 +909,7 @@ describe("SSE Events API", () => {
       setTimeout(() => {
         const { group, m1 } = makeGroup(projectB, submitterB);
         groupIdB = group.id;
-        const inc = mergeIncidentSvc.openIncident(
+        const { incident: inc } = mergeIncidentSvc.openIncident(
           {
             projectId: projectB.id,
             groupId: group.id,

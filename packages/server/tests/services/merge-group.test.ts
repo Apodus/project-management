@@ -1698,6 +1698,28 @@ describe("merge-group service", () => {
       expect(svc.getById(g.id).state).toBe("integrating");
     });
 
+    it("the fence is orphaned_inner-SCOPED: a dangling_gitlink incident does NOT block a reset", () => {
+      const { g, project, integrator, members } = setupIntegrating();
+      // Incidents record the gitlink invariant broken in EITHER direction, and
+      // only the orphan direction says "this group half-landed". Constructed
+      // WITH a groupId on purpose: the type predicate, not a null FK, is what
+      // keeps the fence honest.
+      incidentSvc.openIncident(
+        {
+          projectId: project.id,
+          groupId: g.id,
+          type: "dangling_gitlink",
+          innerRepo: "rynx-inner",
+          orphanedSha: "b".repeat(40),
+          outerRepo: "app-outer",
+          innerRequestId: members[0].id,
+          taskId: null,
+        },
+        AGENT(integrator.user.id),
+      );
+      expect(svc.resetGroup(g.id, AGENT(integrator.user.id)).state).toBe("forming");
+    });
+
     it("landed group → 409 INVALID_TRANSITION (terminal, never reset)", () => {
       const { g, integrator, members } = setupIntegrating();
       svc.landGroup(

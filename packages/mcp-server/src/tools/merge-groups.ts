@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { MERGE_INCIDENT_STATES } from "@pm/shared";
+import { MERGE_INCIDENT_STATES, MERGE_INCIDENT_TYPES, mergeIncidentTypeInfo } from "@pm/shared";
 import {
   requestMergeGroup,
   getMergeGroup,
@@ -15,6 +15,20 @@ const resourceDesc =
   "Lock resource name (default: 'main'). Names the train lane. Use 'main' unless told otherwise.";
 
 const INCIDENT_STATE_FILTER_VALUES = [...MERGE_INCIDENT_STATES, "all"] as const;
+const INCIDENT_TYPE_FILTER_VALUES = [...MERGE_INCIDENT_TYPES, "all"] as const;
+
+/**
+ * The one-line direction sentence for an incident row, from @pm/shared's
+ * per-type descriptor. Undefined for a type this build does not know — a
+ * catch-all is never a diagnosis, so the caller prints nothing directional.
+ */
+function incidentSummary(incident: MergeIncidentView): string | undefined {
+  return mergeIncidentTypeInfo(incident.type)?.summary({
+    innerRepo: incident.innerRepo,
+    outerRepo: incident.outerRepo,
+    sha: incident.orphanedSha,
+  });
+}
 
 // See merge-requests.ts §clockNote — a group verifying two repos is the exact
 // case where a mis-subtracted timezone offset got read as a wedged train.
@@ -198,7 +212,7 @@ export function registerMergeGroupTools(server: McpServer): void {
 
   server.tool(
     "pm_list_merge_incidents",
-    "List merge incidents for a project — durable records that an inner repo's main landed but the outer gitlink was NOT updated (an orphaned inner). Optional state filter (open/auto_resolved/human_resolved/all). One line per incident.",
+    "List merge incidents for a project — durable records that the inner/outer gitlink invariant is broken on main, in EITHER direction. 'orphaned_inner': an inner repo's main landed but the outer gitlink was NOT updated to it. 'dangling_gitlink': outer main's gitlink points at a commit that is NOT on inner main, which blocks every cross-repo land on that lane until a human decides (the train detects this and refuses to pick a cure). Optional state filter (open/auto_resolved/human_resolved/all) and type filter. NOTE: this check runs when a cross-repo group is assembled, and other faults produce the same lane symptoms — an empty list is not evidence that the lane's main is sane. One line per incident.",
     {
       project_id: z.string().describe("The project ID."),
       state: z
@@ -208,11 +222,22 @@ export function registerMergeGroupTools(server: McpServer): void {
         .describe(
           'State filter. Default "all" returns every state. Use "open" to see unresolved incidents.',
         ),
+      type: z
+        .enum(INCIDENT_TYPE_FILTER_VALUES)
+        .optional()
+        .default("all")
+        .describe(
+          'Type filter. Default "all" returns both directions. "orphaned_inner" = inner main is ahead of the outer gitlink; "dangling_gitlink" = the outer gitlink on main is ahead of (or off) inner main.',
+        ),
     },
-    async ({ project_id, state }) => {
+    async ({ project_id, state, type }) => {
       const stateFilter = state === "all" || state === undefined ? undefined : state;
+      const typeFilter = type === "all" || type === undefined ? undefined : type;
 
-      const rows = await listMergeIncidents(project_id, { state: stateFilter });
+      const rows = await listMergeIncidents(project_id, {
+        state: stateFilter,
+        type: typeFilter,
+      });
 
       if (rows.length === 0) {
         return {
@@ -231,12 +256,15 @@ export function registerMergeGroupTools(server: McpServer): void {
         "",
       ];
       rows.forEach((r, i) => {
-        out.push(
-          `  ${i + 1}. ${r.id}   ${r.state}`,
-          `     ${r.innerRepo}@${r.orphanedSha} -> ${r.outerRepo}`,
-          `     opened ${formatInstant(r.openedAt)}`,
-          "",
-        );
+        // The type is printed on the header line and spelled out beneath it:
+        // without it every row read as an orphaned inner regardless of which
+        // direction it recorded. The identity line below is unchanged — both
+        // repos and the SHA are real facts for either direction.
+        const summary = incidentSummary(r);
+        out.push(`  ${i + 1}. ${r.id}   ${r.state}   [${r.type}]`);
+        if (summary) out.push(`     ${summary}`);
+        out.push(`     ${r.innerRepo}@${r.orphanedSha} -> ${r.outerRepo}`);
+        out.push(`     opened ${formatInstant(r.openedAt)}`, "");
       });
       return {
         content: [{ type: "text" as const, text: out.join("\n").trimEnd() }],
@@ -248,7 +276,7 @@ export function registerMergeGroupTools(server: McpServer): void {
 
   server.tool(
     "pm_get_merge_incident",
-    "Get full detail for a merge incident — the orphaned inner repo/SHA, the outer repo whose gitlink was not updated, the linked task, and the resolution (if resolved).",
+    "Get full detail for a merge incident — its type and which direction of the inner/outer gitlink invariant it records, what its SHA means for that type, who can cure it, the linked task, and the resolution (if resolved).",
     {
       incident_id: z.string().describe("The merge incident ID."),
     },
@@ -262,6 +290,25 @@ export function registerMergeGroupTools(server: McpServer): void {
       lines.push("");
       lines.push(`  Project:  ${incident.projectId}`);
       lines.push(`  Type:     ${incident.type}`);
+      // The per-type descriptor from @pm/shared. Absent for a type this build
+      // does not know, and then nothing directional is printed about it.
+      const info = mergeIncidentTypeInfo(incident.type);
+      if (info) {
+        lines.push(`  ${incidentSummary(incident)}`);
+        lines.push(
+          `  Direction: ${
+            info.direction === "inner_ahead_of_outer"
+              ? "inner main is ahead of the outer gitlink"
+              : "outer main's gitlink is ahead of (or off) inner main"
+          }`,
+        );
+        lines.push(`  SHA means: ${info.shaMeaning}`);
+        lines.push(
+          info.curedBy === "train"
+            ? "  Cure:     the train auto-rolls this forward on the next group integration (a human may also resolve it)."
+            : "  Cure:     a HUMAN must decide — both cures change what consumers of main compile, so the train detects and refuses to pick one. The incident is re-evaluated on the next cross-repo assembly, so an idle lane's cure is not noticed until the next group.",
+        );
+      }
       lines.push(`  Inner:    ${incident.innerRepo} @ ${incident.orphanedSha}`);
       lines.push(`  Outer:    ${incident.outerRepo}`);
       if (incident.groupId) lines.push(`  Group:    ${incident.groupId}`);

@@ -1,5 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { MERGE_INCIDENT_STATES, MERGE_INCIDENT_TYPES } from "@pm/shared";
+import {
+  MERGE_INCIDENT_RESOLUTION_MODES,
+  MERGE_INCIDENT_STATES,
+  MERGE_INCIDENT_TYPES,
+} from "@pm/shared";
 import type { AppVariables, AuthUser } from "../types.js";
 import { AppError } from "../types.js";
 import * as incidentSvc from "../services/merge-incident.service.js";
@@ -7,7 +11,7 @@ import * as incidentSvc from "../services/merge-incident.service.js";
 // ─── Response schemas ─────────────────────────────────────────────
 
 const mergeIncidentResolutionSchema = z.object({
-  mode: z.enum(["auto_rollforward", "human"]),
+  mode: z.enum(MERGE_INCIDENT_RESOLUTION_MODES),
   outerLandedSha: z.string().optional(),
   resolvedByGroupId: z.string().optional(),
   note: z.string().optional(),
@@ -35,6 +39,13 @@ const mergeIncidentSchema = z
 
 const mergeIncidentDataEnvelope = z.object({ data: mergeIncidentSchema });
 const mergeIncidentListEnvelope = z.object({ data: z.array(mergeIncidentSchema) });
+// The open response is composite: `created` distinguishes a real open from an
+// idempotent reuse. It rides INSIDE `data` (the merge-phases.ts precedent)
+// because the integrator's pm-client unwraps `json.data` and would silently
+// drop a sibling field.
+const mergeIncidentOpenEnvelope = z.object({
+  data: z.object({ incident: mergeIncidentSchema, created: z.boolean() }),
+});
 
 const errorEnvelope = z.object({
   error: z.object({ code: z.string(), message: z.string() }),
@@ -84,7 +95,7 @@ const openIncidentBody = z
 
 const resolveIncidentBody = z
   .object({
-    mode: z.enum(["auto_rollforward", "human"]),
+    mode: z.enum(MERGE_INCIDENT_RESOLUTION_MODES),
     outerLandedSha: z.string().optional(),
     resolvedByGroupId: z.string().optional(),
     note: z.string().optional(),
@@ -97,17 +108,21 @@ const openIncidentRoute = createRoute({
   method: "post",
   path: "/api/v1/projects/{projectId}/merge-incidents",
   tags: ["Merge Incidents"],
-  summary: "Integrator opens an orphaned-inner incident",
+  summary: "Integrator opens a merge incident",
   description:
-    "Durable PM record that inner main landed at orphanedSha but the outer gitlink was NOT updated. Atomically inserts the incident (state 'open') and, when taskId is set, a merge_incident comment. Integrator (ai_agent) only.",
+    "Durable PM record that the inner/outer gitlink invariant is broken on main, in either direction. type='orphaned_inner': inner main landed at orphanedSha but the outer gitlink was NOT updated. type='dangling_gitlink': outer main's gitlink points at orphanedSha, which is not on inner main (groupId/innerRequestId are null — no group produced it). Atomically inserts the incident (state 'open') and, when taskId is set, a merge_incident comment. IDEMPOTENT: an OPEN incident with the same (type, innerRepo, outerRepo, orphanedSha, groupId) is reused — 200 with created=false and no second comment or event — so a blocked lane may call this on every pass. Dedup is open-only: a recurrence after a resolution opens a fresh incident. Integrator (ai_agent) only.",
   request: {
     params: z.object({ projectId: projectIdParam }),
     body: { content: { "application/json": { schema: openIncidentBody } }, required: true },
   },
   responses: {
+    200: {
+      description: "Existing open incident reused (idempotent open)",
+      content: { "application/json": { schema: mergeIncidentOpenEnvelope } },
+    },
     201: {
       description: "Opened incident",
-      content: { "application/json": { schema: mergeIncidentDataEnvelope } },
+      content: { "application/json": { schema: mergeIncidentOpenEnvelope } },
     },
     400: {
       description: "Validation error",
@@ -157,7 +172,7 @@ const listIncidentsRoute = createRoute({
   tags: ["Merge Incidents"],
   summary: "List merge incidents in a project",
   description:
-    "Returns incidents for the project ordered by openedAt asc. Optional filters: state, type, groupId.",
+    "Returns incidents for the project ordered by openedAt asc. Incidents record the inner/outer gitlink invariant broken in EITHER direction (orphaned_inner, dangling_gitlink), so a caller that means one direction must pass `type`. Optional filters: state, type, groupId.",
   request: { params: z.object({ projectId: projectIdParam }), query: listQuery },
   responses: {
     200: {
@@ -181,7 +196,7 @@ const resolveIncidentRoute = createRoute({
   tags: ["Merge Incidents"],
   summary: "Resolve a merge incident",
   description:
-    "open → auto_resolved (auto-rollforward, ai_agent only) OR open → human_resolved (manual, admin only). The authz split is deliberate. Idempotent on same-terminal resolve.",
+    "open → auto_resolved (mode auto_rollforward or auto_observed, ai_agent only) OR open → human_resolved (mode human, admin only). The two auto modes differ in what the train DID: auto_rollforward means it applied a cure (the follow-up outer land); auto_observed means it observed a cure it did not apply (the invariant holds again — the only honest auto mode for an incident a human must cure). The authz split is deliberate. Idempotent on same-terminal resolve; cross-terminal is a 409.",
   request: {
     params: z.object({ id: incidentIdParam }),
     body: { content: { "application/json": { schema: resolveIncidentBody } }, required: true },
@@ -238,7 +253,7 @@ export function createMergeIncidentRoutes(): OpenAPIHono<{
     const { projectId } = c.req.valid("param");
     const user = requireUser(c.get("currentUser") as AuthUser | null);
     const body = c.req.valid("json");
-    const view = incidentSvc.openIncident(
+    const { incident, created } = incidentSvc.openIncident(
       {
         projectId,
         type: body.type,
@@ -251,7 +266,12 @@ export function createMergeIncidentRoutes(): OpenAPIHono<{
       },
       actorOf(user),
     );
-    return c.json({ data: view }, 201);
+    // Two returns, not one c.json(..., created ? 201 : 200): @hono/zod-openapi
+    // types the handler's return against the literal status.
+    if (created) {
+      return c.json({ data: { incident, created } }, 201);
+    }
+    return c.json({ data: { incident, created } }, 200);
   });
 
   router.openapi(getIncidentRoute, (c) => {

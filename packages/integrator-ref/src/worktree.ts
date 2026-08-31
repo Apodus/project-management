@@ -1,6 +1,8 @@
 import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
+import { applyGitLocalPolicy } from "./git-policy.js";
+import type { Logger } from "./logger.js";
 
 export interface Worktree {
   readonly path: string;
@@ -32,6 +34,13 @@ export interface WorktreeOptions {
    * (each inner repo's gitlink_path); default [] = no-op.
    */
   gitlinkPurgePaths?: string[];
+  /**
+   * Optional — used only to warn when the repo-local git recursion policy
+   * cannot be written (see git-policy.ts). The daemon has no logger singleton
+   * (index.ts creates one and injects it), and every existing test constructs
+   * worktrees without one, so it stays optional; production always passes it.
+   */
+  logger?: Logger;
 }
 
 /**
@@ -141,6 +150,19 @@ export function createWorktree(opts: WorktreeOptions): Worktree {
     } else {
       rebind();
     }
+
+    // Suppress automatic submodule recursion in THIS clone. Unconditional and
+    // OUTSIDE the needsClone branch on purpose: a deployed daemon's slots
+    // already exist, so they take the reuse branch above forever — a
+    // clone-time-only write (`git clone -c k=v` does persist, and is otherwise
+    // tempting) would ship a fix that never reaches the machine that has the
+    // bug. That is the stale-local-branch defect verbatim, whose accepted cure
+    // was "a poisoned slot self-heals on first use, no pool wipe". One daemon
+    // restart heals every existing slot, and repair() routes back through here.
+    // Deliberately NOT re-asserted per attempt: boot is the right altitude.
+    // applyGitLocalPolicy never throws — see the contract in git-policy.ts, and
+    // do not "tidy" a throw back into it.
+    await applyGitLocalPolicy(requireGit(), opts.logger?.child({ worktree: wtPath }));
 
     await mkdir(path.normalize(logsDir), { recursive: true });
   }

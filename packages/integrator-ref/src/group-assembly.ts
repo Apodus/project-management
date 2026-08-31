@@ -1,8 +1,11 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import {
+  checkMainGitlinkInvariant,
   classifyOuterGitlinkDiff,
+  describeDanglingMainGitlink,
   type GitOps,
+  type MainGitlinkVerdict,
   type OuterGitlinkClassification,
 } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
@@ -62,33 +65,75 @@ export interface AssembledGroupOk {
    * mutates the DB `synthetic` flag.
    */
   outerGitlinkNormalized: boolean;
+  /**
+   * Campaign 2026-08-30 §S2: the invariant gate's reading, taken before any arm
+   * ran. REQUIRED, and narrowed so a `dangling` verdict is not CONSTRUCTIBLE on
+   * a success — i.e. an assembly that never ran the gate, or ran it and saw a
+   * verdict that forbids landing, cannot be reported as a success. `heals` is a
+   * legal success: main was broken and this assembly repairs it.
+   *
+   * The honest ceiling: this does not make the gate unfakeable. A fabricated
+   * `{ kind: "holds", target: "", ... }` still compiles. What it prevents is a
+   * refactor quietly tidying the check into one arm — the same ceiling S3 wrote
+   * down for GitlinkMismatchEvidence, and the correct one, because the
+   * 2026-08-29 defect was a SHRUG, not a lie.
+   */
+  mainGitlink: Exclude<MainGitlinkVerdict, { kind: "dangling" }>;
   /** Release BOTH correlated worktree slots back to their pools. */
   release(): void;
 }
 
-export interface AssembledGroupErr {
+/**
+ * Evidence the §11 post-assembly assertion produces. Only a site that RAN the
+ * assertion holds these values; a catch block holds neither.
+ */
+export type GitlinkMismatchEvidence =
+  | { asserted: "committed_gitlink"; committed: string; expected: string }
+  | { asserted: "worktree_populated"; gitlinkPath: string };
+
+/**
+ * Reasons a CHECK decided. Each names a measurement that was actually made.
+ *
+ * - `backpressure`: a correlated pool slot was unavailable (§5.1). Retry next
+ *   integration; nothing was acquired-and-held.
+ * - `inner_conflict` / `outer_conflict`: the inner/outer rebase conflicted.
+ *   (`outer_conflict` is structurally unreachable when the outer member is
+ *   synthetic — there is no outer ref to rebase; see AssembleGroupDeps.outerRef.)
+ * - `gitlink_diverged` / `gitlink_unreachable`: a lone-outer group (campaign
+ *   umbrella-widening P4) whose managed gitlink target is present-but-not-an-
+ *   ancestor of the landing inner (`diverged`) or absent even after an all-refs
+ *   fetch (`unreachable`) — DELIBERATE Tier-2 conservative rejects, never a land.
+ * - `gitlink_mismatch`: the §11 post-assembly assertion failed (committed
+ *   gitlink != Ri, or the working tree at gitlinkPath was not populated).
+ *   EXCLUSIVELY that assertion, since 2026-08-30: the catch-all used to borrow
+ *   this reason, which is how an unclassified throw came to be reported as a
+ *   post-assembly measurement nobody had taken.
+ * - `main_gitlink_dangling`: outer main's committed gitlink references an inner
+ *   commit that is not reachable from inner main. DECLARED here by campaign
+ *   2026-08-30 §S3 with its verdict and category; PRODUCED by §S2's gate. A
+ *   union member with no producer is expected until then.
+ */
+export type DiagnosedAssemblyReason =
+  | "backpressure"
+  | "inner_conflict"
+  | "outer_conflict"
+  | "gitlink_diverged"
+  | "gitlink_unreachable"
+  | "gitlink_mismatch"
+  | "main_gitlink_dangling";
+
+/**
+ * The one reason that means "no check decided". Design lock 4, as a type.
+ *
+ * - `assembly_error`: something threw mid-assembly and NO check decided. It
+ *   names WHERE, never why. Constructible in exactly one place
+ *   (`unclassifiedAssembly`).
+ */
+export type UnclassifiedAssemblyReason = "assembly_error";
+
+interface AssemblyErrBase {
   ok: false;
-  /**
-   * - `backpressure`: a correlated pool slot was unavailable (§5.1). Retry next
-   *   integration; nothing was acquired-and-held.
-   * - `inner_conflict` / `outer_conflict`: the inner/outer rebase conflicted.
-   *   (`outer_conflict` is structurally unreachable when the outer member is
-   *   synthetic — there is no outer ref to rebase; see AssembleGroupDeps.outerRef.)
-   * - `gitlink_diverged` / `gitlink_unreachable`: a lone-outer group (campaign
-   *   umbrella-widening P4) whose managed gitlink target is present-but-not-an-
-   *   ancestor of the landing inner (`diverged`) or absent even after an all-refs
-   *   fetch (`unreachable`) — DELIBERATE Tier-2 conservative rejects, never a land.
-   * - `gitlink_mismatch`: the §11 post-assembly assertion failed (committed
-   *   gitlink != Ri, or the working tree at gitlinkPath was not populated).
-   */
-  reason:
-    | "backpressure"
-    | "inner_conflict"
-    | "outer_conflict"
-    | "gitlink_diverged"
-    | "gitlink_unreachable"
-    | "gitlink_mismatch";
-  /** Extra detail for logging (conflicting files / mismatch detail). */
+  /** Extra detail for logging (conflicting files / mismatch detail / raw error). */
   detail?: string;
   /**
    * Campaign 2026-08-15 §R4: the inputs a resolver needs to REPRODUCE a
@@ -99,15 +144,66 @@ export interface AssembledGroupErr {
    * end: `materializeConflict(baseSha, ref)` cannot replay anything, and the
    * hook would have to re-derive a base from a worktree the failed assembly
    * has already released.
+   *
+   * Declared OPTIONAL ON THE BASE on purpose: the reject choke-point reads
+   * `asm.conflict` on a union that still contains arms which never carry it,
+   * and a bare property access requires the property on every constituent.
+   * Moving it onto the conflict arms does not compile.
    */
   conflict?: {
     baseSha: string;
     ref: string;
     conflictingFiles: string[];
   };
+  /**
+   * Campaign 2026-08-30 §S2: the invariant gate's reading, when it RAN this
+   * pass. Absent on `backpressure` (nothing leased), on `inner_conflict` (that
+   * arm returns above the gate) and on `assembly_error` (the catch-all measured
+   * nothing). Optional ON THE BASE for the same reason `conflict` is: the
+   * observation site reads it off the union, and a bare property access
+   * requires the property on every constituent.
+   *
+   * This is the OBSERVATION channel, distinct from the `evidence` an arm
+   * carries to back its OWN claim. It exists so a pass that assembles fine — or
+   * fails for an unrelated reason — can still report the lane's health and let
+   * an open incident open or close itself.
+   */
+  mainGitlink?: MainGitlinkVerdict;
   /** Release whatever slots were taken (no-op when nothing was acquired). */
   release(): void;
 }
+
+/**
+ * A reason is a CLAIM ABOUT FACTS. The two arms whose claim was contested on
+ * 2026-08-29 now require the facts, so a site holding none cannot make the
+ * claim by accident:
+ *
+ *  - `gitlink_mismatch` requires the assertion record (what was compared, to what).
+ *  - `assembly_error` requires the thrown cause, and nothing else — because a
+ *    catch block holds nothing else.
+ *
+ * What this DOES buy: a catch-all can no longer accidentally inherit a
+ * diagnosis. What it does NOT buy: immunity. Fabricating
+ * `{ committed: "", expected: "" }` still compiles. The point is that doing so
+ * stops being a shrug and becomes a deliberate lie a reader can see — the
+ * correct ceiling, because the 2026-08-29 defect WAS a shrug: git-ops threw,
+ * the catch named the nearest specific reason, and five authors were told the
+ * fault had been ruled out of their change.
+ */
+export type AssembledGroupErr =
+  | (AssemblyErrBase & {
+      reason: Exclude<DiagnosedAssemblyReason, "gitlink_mismatch" | "main_gitlink_dangling">;
+    })
+  | (AssemblyErrBase & { reason: "gitlink_mismatch"; evidence: GitlinkMismatchEvidence })
+  // Campaign 2026-08-30 §S2, the same rule one arm further: this claim's facts
+  // ARE the verdict — which gitlink, which target, which three commits (outer
+  // main, inner main, landing inner), and whether the target exists at all. A
+  // site holding none of that cannot make the claim.
+  | (AssemblyErrBase & {
+      reason: "main_gitlink_dangling";
+      evidence: Extract<MainGitlinkVerdict, { kind: "dangling" }>;
+    })
+  | (AssemblyErrBase & { reason: UnclassifiedAssemblyReason; evidence: { cause: unknown } });
 
 export type AssembledGroup = AssembledGroupOk | AssembledGroupErr;
 
@@ -225,8 +321,17 @@ async function resolveDetectRef(
  * ONE assembly function, no forked code path: the synthetic arm is the same
  * sequence with the single outer-rebase step conditional on `outerRef !== null`.
  * Does NOT verify (§5.3 / Step 10) and does NOT push (§6 / Step 11).
+ *
+ * This is the CLASSIFIER. Its return type deliberately EXCLUDES
+ * `assembly_error`: every `return` in this body is a site that RAN something,
+ * so none of them may name the reason that means "nothing was decided". A
+ * `return { reason: "assembly_error" }` here is a compile error — the half of
+ * design lock 4 a type CAN carry. The complementary half (a catch may name ONLY
+ * that reason) is `unclassifiedAssembly`, below. Callers use `assembleGroup`.
  */
-export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledGroup> {
+async function assembleGroupClassified(
+  deps: AssembleGroupDeps,
+): Promise<AssembledGroupOk | (AssembledGroupErr & { reason: DiagnosedAssemblyReason })> {
   const phases = deps.phases ?? NOOP_PHASE_SPANS;
   const innerSpan = { requestId: deps.innerRequestId };
   const outerSpan = { requestId: deps.outerRequestId };
@@ -304,6 +409,11 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
           release,
         };
       }
+      // `Ri` is `innerRef` REBASED ONTO `baseInnerSha`, so baseInnerSha is always
+      // an ancestor of it. The §S2 gate's short-circuit (a true HEALTH answer
+      // skips the LANDING probe) depends on that; a squash, a cherry-pick-based
+      // assembly, or a rebase onto anything but live inner main would break it
+      // silently. Pinned by `group-main-gitlink-gate.test.ts` on all three arms.
       Ri = innerRebase.treeSha;
     } else {
       // SYNTHETIC inner (outer-only group, campaign umbrella-widening P4): the
@@ -322,6 +432,101 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
       outerWt.resetForAttempt(),
     );
     const baseOuterSha = await outerGitOps.resolveRef("HEAD"); // = Mo (live outer main)
+
+    // ── §S2 INVARIANT GATE (campaign 2026-08-30) ──
+    // MUST stay HERE. `Ri` is computed above and the outer worktree was reset
+    // immediately above, which is the only point where its HEAD is provably
+    // live outer main (readSubmoduleGitlink is HEAD-bound by contract, so
+    // `outerMainSha: baseOuterSha` below is a LABEL for a fact this line
+    // already holds — no extra spawn, no new GitOps member). It must also stay
+    // ABOVE the arm fork below: one call site covers the two-member,
+    // lone-outer and inner-only arms, and step 8 — which rewrites the committed
+    // gitlink to Ri on ALL THREE — is unreachable past a `dangling` verdict.
+    //
+    // NOT redundant with classifyOuterGitlinkDiff. That asks whether the
+    // SUBMITTED outer branch's proposed bump is sane, on the lone-outer arm
+    // only; this asks whether outer MAIN's committed gitlink is sane, on every
+    // arm — including the inner-only arm, where no gitlink check existed at
+    // all. Outer main dangling + a branch bumping to a good target is exactly
+    // the case classify calls `pure_bump` and step 8 then drags the pointer
+    // backward: only this gate catches it.
+    //
+    // Measured like outer:classify — git work that DECIDES an arm.
+    const mainGitlink = await phases.time(
+      {
+        phase: "assemble",
+        label: "outer:main-gitlink",
+        ...outerSpan,
+        detail: (v) => ({ kind: v?.kind ?? "error" }),
+      },
+      () =>
+        checkMainGitlinkInvariant({
+          outerGitOps,
+          innerGitOps,
+          gitlinkPath: deps.gitlinkPath,
+          outerMainSha: baseOuterSha,
+          innerMainSha: baseInnerSha, // HEALTH — a property of the LANE
+          landingInnerSha: Ri, // LANDING — a property of THIS candidate
+          gitRemote: deps.gitRemote,
+        }),
+    );
+    if (mainGitlink.kind === "dangling") {
+      // WHAT THIS BLOCKS, AND WHAT IT DELIBERATELY PERMITS.
+      //
+      // The harm is step 8: it authors the committed gitlink to `Ri` on all
+      // three arms. So the question that decides the group is whether `Ri`
+      // still contains the commit outer main currently names.
+      //   - contained  → the pointer moves forward or stays. No harm, and if
+      //                  main was dangling this group REPAIRS it. That is
+      //                  `heals`: assembly proceeds, and the incident still
+      //                  opens (group-integration.ts's observation site),
+      //                  because main is broken right now.
+      //   - not        → step 8 moves the pointer backward or sideways,
+      //                  silently changing what consumers of outer main
+      //                  compile. That is THE ORDERING TRAP, and the state the
+      //                  client's owner refused on purpose. Reject.
+      //
+      // Why `Ri` and not `baseInnerSha` (live inner main), which was the first
+      // design: `baseInnerSha` is the right predicate for "is main healthy" —
+      // and it IS what the incident uses — but as a GATE it over-blocks.
+      // `git rebase <base>` preserves the checked-out commits when `base` is an
+      // ancestor of the ref AND the range is LINEAR (a merge commit in between
+      // is flattened and every commit rewritten). So an inner-only group whose
+      // branch fast-forwards inner main and ends at the target lands
+      // `Ri == target`, step 8 rewrites nothing, and the lane is CURED. Gating
+      // on health would reject that group — the one cure the train can take —
+      // and leave the author nothing but an out-of-band push. Splitting the two
+      // predicates costs one conditional `merge-base` call and nothing on the
+      // happy path.
+      //
+      // Why REJECT rather than re-queue. The 2026-08-15 "a race is not a
+      // verdict" rule re-queues drift and non_fast_forward because those are
+      // LOST RACES the next pass wins by itself. This is not a race: nothing
+      // about the next pass differs — same gitlink, same main, same `Ri`, same
+      // answer — so a re-queue would burn the bounded 4 integration attempts
+      // (MAX_GROUP_INTEGRATION_ATTEMPTS, group-land.ts) and then reject anyway
+      // with a worse sentence, blaming the lane's THROUGHPUT for a broken
+      // pointer.
+      //
+      // What is still refused on purpose: a lone-outer group that merely
+      // REVERTS the gitlink would make main self-consistent, and is rejected
+      // anyway. Step 8 authors the gitlink identically for every group, so the
+      // gate cannot distinguish that deliberate revert from an accidental
+      // regression — and it is the cure design lock 2 reserves for a human,
+      // because it drops the inner work outer main already depends on. The
+      // reject text says so and points at the outer-repo route.
+      return {
+        ok: false,
+        reason: "main_gitlink_dangling",
+        detail: describeDanglingMainGitlink(mainGitlink),
+        // Two field names, one object, deliberately: `evidence` is the facts
+        // backing THIS claim (S3's rule for the other diagnosed arms);
+        // `mainGitlink` is the lane observation reported on every outcome.
+        evidence: mainGitlink,
+        mainGitlink,
+        release,
+      };
+    }
 
     // Direction-C conversion (campaign xrepo-gitlink-bump-autoconvert): a REAL outer
     // member whose NET contribution over its fork point is EXACTLY the gitlink is
@@ -402,6 +607,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
             ok: false,
             reason: "outer_conflict",
             detail: applied.conflictingFiles.join(", "),
+            mainGitlink,
             release,
           };
         }
@@ -458,6 +664,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
             ok: false,
             reason: "gitlink_diverged",
             detail: `managed gitlink ${cls.path} targets ${cls.target}, not an ancestor of the landing inner ${Ri}`,
+            mainGitlink,
             release,
           };
         }
@@ -466,6 +673,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
             ok: false,
             reason: "gitlink_unreachable",
             detail: `managed gitlink ${cls.path} target ${cls.target} is unreachable (absent after an all-refs fetch)`,
+            mainGitlink,
             release,
           };
         }
@@ -497,6 +705,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
               ok: false,
               reason: "outer_conflict",
               detail: applied.conflictingFiles.join(", "),
+              mainGitlink,
               release,
             };
           }
@@ -526,6 +735,7 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
           ok: false,
           reason: "outer_conflict",
           detail: outerRebase.conflictingFiles.join(", "),
+          mainGitlink,
           release,
         };
       }
@@ -595,6 +805,8 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
         ok: false,
         reason: "gitlink_mismatch",
         detail: `committed gitlink ${committedGitlink} != Ri ${Ri}`,
+        evidence: { asserted: "committed_gitlink", committed: committedGitlink, expected: Ri },
+        mainGitlink,
         release,
       };
     }
@@ -605,6 +817,8 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
         ok: false,
         reason: "gitlink_mismatch",
         detail: `working tree at ${deps.gitlinkPath} is empty after materialize`,
+        evidence: { asserted: "worktree_populated", gitlinkPath: deps.gitlinkPath },
+        mainGitlink,
         release,
       };
     }
@@ -622,20 +836,54 @@ export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledG
       gitlinkPath: deps.gitlinkPath,
       outerConverted,
       outerGitlinkNormalized,
+      mainGitlink,
       release,
     };
   } catch (err) {
-    // Any unexpected git failure mid-assembly: release the slots and surface as
-    // a mismatch (assembly precedes any push, so nothing landed — §11 fs-full
-    // row semantics: reject this pass). Re-rethrow would strand the slots.
+    // RELEASE BEFORE RETHROW — load-bearing. The wrapper below cannot see
+    // `release`, and a throw that escapes without releasing strands BOTH
+    // correlated slots for the life of the process (the 2026-08-02 wedge,
+    // deployment guide §14.15). `release` is idempotent, so the wrapper's
+    // no-op release is safe. Assembly precedes any push, so nothing landed —
+    // §11 fs-full row semantics: reject this pass rather than retry.
     release();
-    return {
-      ok: false,
-      reason: "gitlink_mismatch",
-      detail: err instanceof Error ? err.message : String(err),
-      release: () => {},
-    };
+    throw err;
   }
+}
+
+/**
+ * Assemble a cross-repo group. Thin by design: it owns the ONLY catch-all in
+ * the assembly path, and the only failure that catch may construct is the one
+ * that says nothing was classified.
+ */
+export async function assembleGroup(deps: AssembleGroupDeps): Promise<AssembledGroup> {
+  try {
+    return await assembleGroupClassified(deps);
+  } catch (err) {
+    // Design lock 4: a catch-all is never a diagnosis. This site established
+    // NOTHING. Until 2026-08-30 it named `gitlink_mismatch` — a reason whose
+    // own verdict asserts that a specific post-assembly assertion was measured
+    // and failed — so every unclassified git failure reached its author as a
+    // train fault that had already ruled their change out. The return type
+    // below is what keeps that from happening by accident again: an accidental
+    // inherited diagnosis is no longer constructible here, while a deliberate
+    // one still is. A shrug becomes a deliberate lie a reader can see.
+    return unclassifiedAssembly(err);
+  }
+}
+
+/** The ONLY failure a catch may construct. Pinned to `assembly_error` by type. */
+function unclassifiedAssembly(
+  err: unknown,
+): AssembledGroupErr & { reason: UnclassifiedAssemblyReason } {
+  return {
+    ok: false,
+    reason: "assembly_error",
+    detail: err instanceof Error ? err.message : String(err),
+    evidence: { cause: err },
+    // The classifier already released both slots before rethrowing.
+    release: () => {},
+  };
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────

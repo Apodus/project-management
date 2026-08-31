@@ -903,10 +903,11 @@ function collectIncidents(
 ): ArmResult {
   // merge_incidents has NO resource column, so the lane is resolved through the
   // group, else the inner member request, else the default lane. Both FKs are
-  // ON DELETE SET NULL, so the last fallback only fires for an incident whose
-  // group AND inner request are both gone — and an incident is precisely the
-  // thing an operator must not lose, so it fails OPEN onto the default lane
-  // rather than vanishing from every lane.
+  // ON DELETE SET NULL, so the last fallback fires for an incident whose group
+  // AND inner request are both gone — and for a LANE-SCOPED type such as
+  // dangling_gitlink, which carries neither (no group produced it). An incident
+  // is precisely the thing an operator must not lose, so it fails OPEN onto the
+  // default lane rather than vanishing from every lane.
   const rows = getDb()
     .select({
       id: mergeIncidents.id,
@@ -947,7 +948,9 @@ function collectIncidents(
       subjectType: "incident",
       subjectId: row.id,
       // An incident has no task and no branch — name it by the divergence it
-      // records, which is the only thing an operator can act on.
+      // records, which is the only thing an operator can act on. `detail` is
+      // the raw type, so the renderer stays type-agnostic as new directions of
+      // the invariant are added.
       subjectName: sha === null ? row.innerRepo : `${row.innerRepo} @ ${sha}`,
       actorId: null,
       reason: null,
