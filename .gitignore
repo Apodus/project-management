@@ -26,3 +26,8 @@ recovery-*.log
 # the runtime-reported version). See packages/*/scripts/gen-version.mjs.
 packages/mcp-server/src/version.ts
 packages/integrator-ref/src/version.ts
+
+# Pinned server deployment artifact (scripts/deploy-server.mjs).
+# Deliberately NOT tracked: it is a machine-local snapshot of a build, and its
+# MANIFEST.json records which commit it came from.
+packages/server/.deploy/

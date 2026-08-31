@@ -10,8 +10,9 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "start": "node packages/server/dist/index.js",
-    "start:prod": "cross-env NODE_ENV=production node packages/server/dist/index.js",
+    "start": "node packages/server/.deploy/server/index.js",
+    "deploy:server": "pnpm build && node scripts/deploy-server.mjs",
+    "start:prod": "cross-env NODE_ENV=production PM_WEB_DIST_PATH=packages/server/.deploy/web node packages/server/.deploy/server/index.js",
     "test": "turbo test",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",

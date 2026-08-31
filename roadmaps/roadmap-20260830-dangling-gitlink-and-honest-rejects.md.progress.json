@@ -98,7 +98,13 @@
     {
       "id": "D-S6-writeback",
       "decision": "Write back to game_one as a NEW note in project 01KSMSZVN87QWZZBY7AR7QV149 referencing their note 01M18QWM9RAFVQNFX4FE461B23, and DO NOT dismiss, resolve or otherwise touch their note.",
-      "why": "The plan proposed post-then-dismiss; overridden by the user. Their note still carries one LIVE action that is theirs (forge branch protection on outer main), so closing it is their call, not ours. Posting the note is the only outward-facing action taken in the client's project."
+      "why": "The plan proposed post-then-dismiss; overridden by the user. Their note still carries one LIVE action that is theirs (forge branch protection on outer main), so closing it is their call, not ours.",
+      "status": "NOT YET DELIVERED as of the S6 commit. The PM API on localhost:3000 was down when S6 ran, and starting it would have deployed the campaign's PM-server half uncoupled from the daemon bundle. The commander posts the note after the coupled redeploy from main. The finished text is scratchpad/s6-writeback.md. ZERO outward-facing actions were taken in the client's project by S6."
+    },
+    {
+      "id": "D-deploy-pinned",
+      "decision": "Deployed PM server now runs from packages/server/.deploy/ (pinned), not from packages/server/dist.",
+      "why": "A build is not a deployment. Verified by probing the pinned copy on a spare port against a COPY of the live DB before cutting over - the first cutover attempt failed on missing migrations and was caught because service was restored in ~20s, then probed rather than retried blind."
     }
   ],
   "findings": [
@@ -201,6 +207,24 @@
       "binding_on": [
         "S6"
       ]
+    },
+    {
+      "id": "F12",
+      "source": "commander, live measurement 2026-08-31",
+      "finding": "F1/finding-2b confirmed IN PRODUCTION on a HEALTHY main. Merge group 01M1A8W510ZRZKR0Z6V2GDRJ7K (branch codex/live-midi-synth-c4-p6-tearoff, outer 796d23a1, inner 2fd01958) was rejected 2026-08-30T21:23:47Z with the fetch-progress-then-'Could not access submodule rynx at commit 796d23a153' signature, categorized gitlink_mismatch and carrying the exonerating sentence. Live measurement at the time: outer main's gitlink is 82bce156 and inner origin/main IS 82bce156 - identical, invariant holds, nothing dangling.",
+      "consequence": "The poisoned-slot defect is SUFFICIENT ON ITS OWN; the dangling gitlink played no part in that rejection. At least one recent client rejection was purely our defect with nothing wrong with the branch. Does NOT upgrade the hedge on their five earlier rejections - it confirms the mechanism exists in production, not which of the five had which cause. Recurs on any cross-repo group whose fetch advances the slot across a managed-gitlink change until the bundle is redistributed and the daemon restarted.",
+      "binding_on": [
+        "S6"
+      ]
+    },
+    {
+      "id": "F13",
+      "source": "commander, 2026-08-31 post-deploy",
+      "finding": "The deployed PM server ran directly from packages/server/dist, AND resolveMigrationsFolder() fell back to ../../src/db/migrations - so the live server read its migration history out of the WORKING TREE. playwright.config.ts webServer command starts with `pnpm build`, so `pnpm test:e2e` silently rewrote the deployed artifact; turbo cache hid it except when the tree differed from the last build, i.e. exactly when running e2e from a feature branch.",
+      "consequence": "Fixed by pinning: scripts/deploy-server.mjs copies server dist + web dist + migrations into packages/server/.deploy/, and start:prod runs from there with PM_WEB_DIST_PATH. Copying migrations adjacent to the module satisfies resolveMigrationsFolder first check so src/ is never consulted. NOT fixed by giving e2e its own build output - an e2e test SHOULD build the real artifact; the coupling belonged on the deployment side.",
+      "binding_on": [
+        "ops"
+      ]
     }
   ],
   "notes": [
@@ -210,6 +234,6 @@
     "S4 deploy coupling: an old daemon reading the new openIncident envelope gets {incident, created} where it expects a view. PM-server redeploy and bundle redistribute must ship together. Carry to S6.",
     "F8 and F9 are carried into the SHIPPED docs, not just this file: F8 (post-land HEALTH is entailed by the SS11 post-assembly assertion, NOT by step 8) is stated as an explicit 'cite that assertion, not step 8' aside in guide SS14.23 'How an incident closes' step 2 and in the CLAUDE.md entry; F9 (a --mirror carries no refs/remotes/*, so a future probe must read refs/heads/<branch>; HEALTH is computable from the two binding mirrors, lock-free and lease-free) is in SS14.23 limitation 1 and roadmap SS5.",
     "Deployment ORDER (extends the S4 coupling note): stop the integrator daemon(s) -> redeploy the PM server -> redistribute the bundle and restart the daemon(s). Stopping first is what closes the old-daemon-on-new-server window, where the pre-S4 daemon reads .id off the new {incident, created} envelope and gets undefined, breaking the SS14.5 orphaned-inner open path. Recorded in guide SS14.23 'Deployment note'.",
-    "OPERATOR-VISIBLE consequence of S1, stated in guide SS14.8 and in the client write-back: fetch.recurseSubmodules=no is repo-local IN THE VERIFY SLOT, and verify runs with cwd set to that slot, so a verify command that relied on git's default on-demand recursion must now recurse explicitly. game_one's pm-verify.bat is opaque to us; the write-back tells them how to check rather than claiming nothing changes on their side."
+    "OPERATOR-VISIBLE consequence of S1, stated in guide SS14.8 and in the DRAFTED (not yet posted) client write-back: fetch.recurseSubmodules=no is repo-local IN THE VERIFY SLOT, and verify runs with cwd set to that slot, so a verify command that relied on git's default on-demand recursion must now recurse explicitly. game_one's pm-verify.bat is opaque to us; the drafted write-back tells them how to check rather than claiming nothing changes on their side."
   ]
 }
