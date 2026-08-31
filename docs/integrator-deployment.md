@@ -732,6 +732,71 @@ real initialized submodule checkout or a tracked directory is never touched. Han
 pool slot is therefore never needed (and never was effective — the next assembly re-materializes
 by design).
 
+**The train's own half of the contract: automatic submodule recursion is DISABLED
+(2026-08-30).** The integrator writes two keys into the repo-local config of every
+clone it owns — pool slots (default, lane, and resolver) and the per-repo binding
+mirrors:
+
+```
+fetch.recurseSubmodules = no
+submodule.recurse       = false
+```
+
+**Why.** The integrator manages the cross-repo gitlink by hand: assembly authors
+the `160000` entry, materialize populates the path, and the operator contract
+above already forbids the verify command from touching it. Git chasing that
+pointer on its own initiative is pure liability, and it was actively killing
+lanes. Measured against real repositories (git 2.53): `git fetch` exits 1 with
+`Could not access submodule '<path>'` whenever **both** (a) the fetch advances
+`main` across a commit that _changes_ the managed gitlink, and (b) the gitlink
+path in the slot is **populated but is not an openable git repo**.
+
+Condition (b) is exactly what the materialized overlay leaves behind in the
+**outer** slot, permanently and by design — the outer pool declares no purge
+paths, and `reset --hard` / `clean -fdx` are blind to content at a committed
+gitlink path (see "Overlay hygiene" above). So an outer slot was poisoned from its
+**first cross-repo assembly onward**, and any later gitlink bump on outer main
+killed the next fetch in that slot — **including a bump the train itself had just
+landed**. A lane that lands cross-repo groups was poisoning its own next fetch,
+per slot, which at `parallelism > 1` reads as intermittent. The failure lands
+inside assembly's `try` **before any classification runs**, so it surfaced as the
+unclassified catch-all rather than as anything an operator could act on.
+
+Note what is **not** in that list: whether the gitlink target is reachable. The
+fetch fails byte-identically either way. "The fetch succeeded" is therefore **not**
+evidence that the gitlink is sane — that question is §14.23's, and it is asked
+separately.
+
+`submodule.recurse=false` is the inner lane's half, on evidence rather than
+symmetry: the inner slot's nested submodules _are_ real openable checkouts, so
+on-demand recursion does not error there — but with a global
+`submodule.recurse=true` in the operator's `~/.gitconfig` and a nested gitlink
+advanced past what the clone holds, the per-attempt `reset --hard` fails exit 128
+one step _past_ the fetch. Writing the policy **repo-locally** is what defeats a
+machine-wide global in both directions.
+
+**What it does not change.** Materialize's **explicit**
+`git submodule update --init --recursive` in the inner worktree is unaffected —
+`git submodule update` takes no `--recurse-submodules` option, so
+`submodule.recurse` does not apply to it — and nested submodules are still
+initialized and exported exactly as described above. **Existing slots need no
+wipe:** the keys are written on the clone lifecycle's _reuse_ path, so a deployed
+slot picks them up on the first pass after a daemon restart. A failure to write
+them is warned, never thrown — a slot with an unwritable config is left working
+rather than taking the daemon down at boot.
+
+> **One thing for operators to check.** These keys are repo-local **in the slot**,
+> and the verify command runs with its working directory set to that slot — so
+> they apply to any git command your verify runs there too. Git's default is
+> `fetch.recurseSubmodules=on-demand`; it is now `no`. **A verify that relied on
+> automatic recursion — a bare `git fetch` that pulled nested submodules along —
+> must now recurse explicitly** (`git fetch --recurse-submodules`, or an explicit
+> `git submodule update --init --recursive`). A verify that already runs
+> `git submodule update --init --recursive`, as the contract above prescribes, is
+> unaffected. To check: grep your verify script for `git fetch` / `git pull` and
+> confirm nothing downstream depends on nested submodule content that no explicit
+> command populates.
+
 ### 14.9 Inner-only groups: the synthetic outer member (operator view)
 
 An inner-only group's outer member is **synthetic**: a real `merge_requests` row whose
@@ -1705,6 +1770,252 @@ unverified work. Push the commit, or submit the branch alone.
 PM-server change. They reach a lane on a **bundle redistribute + daemon
 restart**.
 
+### 14.23 A gitlink on outer main that inner main does not have (fixed 2026-08-30)
+
+**The invariant.** On a cross-repo lane, the commit that outer `main` records at
+`gitlink_path` must be reachable from inner `main`. Written the way the client
+who reported it wrote it: **`outer main gitlink ∈ inner main`**.
+
+The train maintains that invariant by construction on every land it performs —
+assembly step 8 authors the committed gitlink to the landing inner commit `Ri`
+in _every_ arm, and §14.3 pushes inner before outer — so a train land either
+yields gitlink→landed-inner or fails before the outer push. Failing _between_
+the two pushes is the orphaned-inner row below: the same invariant broken the
+other way, and the one direction the train cures itself. The invariant can
+otherwise only be broken by a push that **bypassed the train**, and it can break
+in two directions:
+
+| direction            | incident type      | what it means                                                         | who cures it                                    |
+| -------------------- | ------------------ | --------------------------------------------------------------------- | ----------------------------------------------- |
+| inner ahead of outer | `orphaned_inner`   | inner `main` landed `O`; the outer gitlink never followed             | **the train** — the §14.5 verified roll-forward |
+| outer ahead of inner | `dangling_gitlink` | outer `main`'s gitlink names a commit that is **not** on inner `main` | **a human** — the two cures below               |
+
+Until 2026-08-30 only the first direction had a detector. On 2026-08-29/30 a lane
+broke in the second direction — a hand-pushed outer commit moved the gitlink to a
+commit that lived only on a feature branch — and every cross-repo group failed at
+assembly for days while `pm_list_merge_incidents` reported **"No merge
+incidents"**, because there was no code path anywhere that evaluated this
+direction. The reject those authors received named a train defect and ruled their
+own change out before anyone had looked. Both halves are now closed.
+
+**Where the check runs.** In `assembleGroup`, immediately after live outer `main`
+is resolved and **before** the outer classify/rebase and before step 8 can author
+anything. Both worktrees are already leased and already reset, so on a healthy
+lane the gate costs **three git queries** — `ls-tree`, `cat-file -e`,
+`merge-base --is-ancestor` — which is **five processes**, because each of the last
+two is prefixed by a `rev-parse --show-toplevel`. No new plumbing. Detection
+only: it reads git state and never mutates a worktree, a ref, or the database.
+One thing is new on the healthy path besides git: a `holds` verdict issues one
+`listMergeIncidents` read per cross-repo assembly, to close any row this
+direction left open.
+
+**Where it does not run.** There is **no timer and no background probe.** The
+invariant is evaluated when a cross-repo group is assembled, and at no other
+time. On a lane with no cross-repo traffic, a broken `main` is found at the next
+submission — not before. See "Stated limitations" below.
+
+**The four verdicts.** The gate asks two different questions about one gitlink,
+in one pass, because collapsing them into a single ancestry test would reject the
+only cure the train can take:
+
+- **HEALTH** — is the recorded target on inner `main` _right now_? A property of
+  the **lane**, true or false independent of any group. It drives the incident.
+- **LANDING** — is the target contained in `Ri`, the inner commit this group
+  would land? Step 8 authors the gitlink to `Ri`, so this is exactly "would
+  landing move the pointer off the commit outer main names?" It drives the gate.
+
+| verdict     | meaning                                                                                                                                                                                       | gate                                               | incident                                                 |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------- |
+| `holds`     | HEALTH true (⟹ LANDING true). Main is sane                                                                                                                                                    | proceed; the assembly path is byte-identical to pre-2026-08-30 | closes any open `dangling_gitlink` for this lane          |
+| `heals`     | HEALTH false, LANDING true. Main is broken **now**, and this group's inner already contains the target, so its land repairs the lane                                                           | proceed                                            | opens (or reuses) one — main _is_ broken at this instant  |
+| `dangling`  | both false. Landing would move the gitlink off the commit outer main names. `present` = in the inner store but on neither inner main nor `Ri`; `absent` = still missing after an all-refs fetch | **reject**                                         | opens (or reuses) one                                     |
+| `undecided` | no probe answered — a spawn error, an unreadable ancestry, a `gitlink_path` outer main does not carry                                                                                          | **proceed** — today's behaviour, unchanged         | opens nothing, closes nothing; logged at WARN             |
+
+`HEALTH ⟹ LANDING` is a theorem, not a coincidence — `Ri` is the inner ref
+rebased onto live inner main, so live inner main is always an ancestor of `Ri` —
+which is why a `holds` answer skips the second probe, and why the fourth
+combination (healthy main, unsafe landing) is not representable.
+
+**Fail open on an undecided check, hard-gate on a decided one.** A probe that
+cannot answer must leave today's behaviour intact — a broken probe must never
+wedge a healthy lane. A _successful_ not-an-ancestor answer is a hard stop. If
+you see the WARN line `main-gitlink invariant check could not decide` repeatedly,
+the gate is protecting nothing and wants investigating; it is not itself blocking
+anything.
+
+**Why a dangling verdict rejects instead of re-queuing.** §14.19 ("a race is not
+a verdict") sends drift and lost pushes back to `forming`, because the next pass
+self-heals them. This is not that. A broken `main` does not repair itself between
+passes; re-queuing would spin to the bounded four integration attempts and end in
+a worse-worded reject, with the queue blocked in the meantime. The lane is
+blocked until someone changes one of the two mains, and the reject says so.
+
+**The two cures, and why the train picks neither.**
+
+1. **Land the inner commit** — push the dangling target onto inner `main`, so the
+   gitlink resolves. This keeps outer `main` compiling exactly as it does today,
+   because outer main already references that commit; everyone building main is
+   already building it. It is reachable _through the train_: submit a merge group
+   (`pm_request_merge_group` with `synthesize_outer: true`) whose single inner
+   member is a branch ending at the target, or at a linear descendant of it.
+2. **Revert the gitlink on outer `main`** — point it at a commit that is already
+   on inner main. An ordinary outer-repo change, landed however that project
+   lands outer-repo changes.
+
+They are not interchangeable, and the difference is not one the train can
+measure: cure 2 **changes what consumers of outer main compile**. In the 2026-08
+incident two landed outer commits depended on the inner code the gitlink named,
+so reverting the pointer would have traded an assembly failure for a compile
+failure for everyone on main. Only someone who knows whether that inner work is
+ready can choose. **The train detects and refuses; it never picks, and it never
+auto-heals this direction.** (Contrast §14.5, where the train _does_ apply the
+roll-forward cure — because there the outer pointer only ever moves forward onto
+a commit that already landed.)
+
+Cure 1 carries one constraint the reject spells out, because getting it wrong
+looks like the train rejecting a correct fix: the submitted branch must
+**fast-forward** inner main — inner main an ancestor of it **and** no merge commit
+in the range — because the assembly rebase preserves the checked-out commits only
+when the range is linear, and only then does the target survive into what lands.
+A cure branch built the obvious way (`checkout -b cure <main>; merge <target>`)
+satisfies an ancestor-only check and is then flattened, rewriting the target. The
+reject prints one command that tests all three conditions at once.
+
+**What the reject says.** A `main_gitlink_dangling` reject carries, in the
+author's `merge_rejection` task comment: the four commits the gate judged (outer
+main, the gitlink target, inner main, and this group's landing inner); that the
+lane's shared state is broken and this group does not repair it; both cures, with
+the constraint above and the command that tests it; a warning that anything else
+is rejected here again (step 8 authors the gitlink identically for every group,
+so the gate cannot tell a deliberate revert from an accidental regression); and
+the incident id that tracks the lane. A reject that could not open an incident is
+**degraded, not wrong** — it says the train re-checks on every cross-repo group
+instead of naming a row.
+
+**How an incident closes.** Three ways, and only three:
+
+1. **A later assembly observes the invariant hold.** The gate returns `holds`,
+   and every open `dangling_gitlink` for that `(innerRepo, outerRepo)` pair is
+   resolved `auto_observed`, with a note naming what was observed.
+2. **The group that lands the cure closes it.** A `heals` group opens a row and
+   then lands the repair; on a lane with no further cross-repo traffic nothing
+   else would ever close it, and a stale-open row whose type says
+   `curedBy: "human"` tells every reader that a healthy lane needs a human. So a
+   successful cross-repo **land** resolves it too, `auto_observed`. This is
+   _entailed_, not re-probed: assembly's §11 post-assembly assertion refuses to
+   land at all unless outer's committed gitlink equals the inner commit being
+   landed, and both pushes are non-forced fast-forwards — so `landed` means outer
+   main commits the gitlink to inner main's new tip. **Cite that assertion, not
+   step 8:** a future change to how step 8 authors the pointer does _not_
+   invalidate the entailment, because the assertion still refuses to land
+   anything that disagrees. An `orphaned` land closes nothing: the outer push
+   failed there, so outer main's gitlink never moved.
+3. **An admin resolves it by hand** —
+   `POST /api/v1/merge-incidents/{id}/resolve` with `mode: "human"` (admin-only;
+   the two auto modes are `ai_agent`-only, and a cross-terminal resolve 409s).
+
+`auto_observed` is a distinct resolution mode from §14.5's `auto_rollforward`
+precisely so the record never claims a push the train did not make. Dedup is
+**open-only** — a recurrence after a cure opens a fresh incident rather than
+re-using the closed one.
+
+**What an operator sees, including one wrinkle worth expecting.** An incident
+open reaches Discord as
+`:rotating_light: Merge incident opened — dangling_gitlink · … · the train will NOT auto-heal this — a human must decide`,
+and a resolve now reaches it too
+(`:white_check_mark: Merge incident resolved — … the train OBSERVED it cured — it applied no cure itself`)
+— both rows are in the §15.4a feed inventory. On a **`heals`** group you will see
+both, minutes apart: the lane really was broken when the group assembled, and
+that group's own land fixed it. That pair is expected and needs no action. Before
+2026-08-30 the resolve half was silent, which sent operators to investigate lanes
+that were already clean.
+
+**A catch-all is never a diagnosis.** Two reject reasons changed shape:
+
+- `assembly_error` (**new**) — the reason for any throw mid-assembly that no
+  check classified. It names **where**, never why. Its reject hands the reader
+  the raw git error first (the only evidence that exists) and then names the
+  checks to run; no resolver is opened, because an unclassified throw leaves
+  nothing to replay.
+- `gitlink_mismatch` — now **only** the §11 post-assembly assertion, which is
+  what its own definition always claimed it was. Previously it was also the
+  dumping ground for every unclassified throw, and it was hard-wired to a verdict
+  that ruled out the author's change. That sentence is gone from every
+  author-facing string, and a source-text guard fails the build if it returns — a
+  guard that caught two drift attempts during this campaign, one of them from the
+  plan of the step that wrote the guard.
+
+A reject may name a probable cause. It may not pre-emptively rule one out. The
+only class licensed to say where the fault is **not** is `lane_blocked`, and only
+because it measured it.
+
+**Automatic submodule recursion is off (see §14.8).** The integrator now writes
+`fetch.recurseSubmodules=no` and `submodule.recurse=false` into the repo-local
+config of every clone it owns. That fix is what lets a broken gitlink _reach_ this
+gate at all — before it, the fetch died first and the failure surfaced as an
+unclassifiable throw — and it independently closes a self-inflicted lane-killer
+described in §14.8. **The two must ship together:** with the fetch fixed and the
+gate absent, assembly proceeds and step 8 rewrites outer main's gitlink to live
+inner main, moving the submodule pointer **backward** — converting a loud
+unclassifiable stall into a silent submodule regression that breaks the outer
+build for everyone on main. Both are on one branch and one bundle; never
+cherry-pick one. §14.8 also names the one consequence an **operator** must check:
+those keys are repo-local in the verify slot, so a verify command that relied on
+git's default on-demand recursion must now recurse explicitly.
+
+**Stated limitations.** Three, deliberately:
+
+1. **No periodic probe.** The invariant is asserted at cross-repo group assembly
+   and nowhere else, so detection latency on an _idle_ lane is unbounded. This
+   was a considered decision, not an omission: a probe's only gain over the gate
+   is latency on a lane with no submitter waiting, where its sole reach is a
+   Discord page — and a false `dangling` verdict there pages someone to go fix a
+   healthy lane, with the type's `curedBy: "human"` telling them to believe it.
+   It would also put one invariant on a second git substrate (a `--mirror` clone
+   vs the gate's freshly-reset worktree) that can disagree with the first. Revisit
+   triggers are recorded in
+   `roadmaps/roadmap-20260830-dangling-gitlink-and-honest-rejects.md` §S5. If it
+   is ever built, build the **mirror** form — HEALTH is fully computable from the
+   two binding mirrors, lock-free and lease-free — reuse
+   `checkMainGitlinkInvariant` and the existing resolve helper rather than writing
+   a second detector, and note that a `--mirror` clone carries **no**
+   `refs/remotes/*`: it must read `refs/heads/<git_main_branch>`. A probe that
+   reads a different commit than the gate reads is its own bug class (§14.21 is
+   the precedent).
+2. **The reject names both cures without running the check that distinguishes
+   them.** It prints the command; it does not execute it. So an author is told
+   "cure 1 is available whenever a branch can satisfy this check" rather than
+   "cure 1 is available". Telling them which one their history admits is a
+   readability gain, and buildable independently.
+3. **`merge_incidents` carries no `resource` column.** Incidents are keyed by
+   project plus the repo pair. Two lanes in the same project that share the same
+   inner/outer **repo pair** therefore share a dedup key and a lane filter: one
+   lane's `dangling_gitlink` row will be observed-closed by the other lane's
+   healthy assembly. Lanes on distinct repo pairs are unaffected. No deployment
+   today has that shape; it is recorded so nobody discovers it the hard way.
+
+**Deployment note.** There is **NO DB migration** — `merge_incidents.type` is a
+bare `text NOT NULL` column with no CHECK, and the new reject categories are plain
+text. But a **PM-server redeploy AND a bundle redistribute + daemon restart are
+both required, and they are COUPLED — ship them together, in this order:**
+
+1. **stop the integrator daemon(s)** for the affected lanes;
+2. **redeploy the PM server** (new incident type, new `auto_observed` resolution
+   mode, the composite `{ incident, created }` open response, the
+   `main_gitlink_dangling` / `assembly_error` reject categories, the incident
+   `type` filter, the resolve-event Discord narration);
+3. **redistribute the bundle and restart the daemon(s)** (the integrator-side
+   halves: the git policy, the gate, and the reason split).
+
+Neither half tolerates the other being old. A **new daemon against an old server**
+gets a 400 on `type: "dangling_gitlink"`, a 400 on the two new reject categories
+— so the reject itself fails — and a bare view where it expects
+`{ incident, created }`. An **old daemon against a new server** reads `.id` off
+that composite envelope and gets `undefined`, breaking the §14.5 orphaned-inner
+open path. Existing pool slots need no wipe: the git policy is written on the
+**reuse** path of the slot lifecycle, so a deployed slot self-heals on the first
+`ensureExists()` after restart.
+
 ---
 
 ## 15. Observability + Break-glass (Phase 7.4)
@@ -1831,7 +2142,8 @@ The alerts above only fire when something is **wrong**. The event feed is the se
 | `merge.request.rejected`                             | `❌ **Rejected** … · [verify_failed] <the real reason> · 5m since pickup · id \`…\``           |
 | `merge.group.rejected`                               | `❌ **Group rejected** … · <reason> · group \`…\`` — or `🚨 **Group PARTIALLY landed**` on the `partially_landed` outcome (inner landed, outer did not) |
 | `merge.request.requeued` / `merge.request.abandoned` | `🔄 **Re-queued**` / `🚫 **Abandoned**`, each with its reason                                 |
-| `merge.incident.opened`                              | `🚨 **Merge incident opened** — orphaned_inner · \`inner\` main landed \`sha\` but the \`outer\` gitlink did NOT follow` |
+| `merge.incident.opened`                              | `🚨 **Merge incident opened** — <type> · <the type's own direction sentence> · the train will NOT auto-heal this — a human must decide · incident \`…\`` — the direction sentence and the auto-heal warning are both **type-driven**: `orphaned_inner` names the inner sha whose gitlink did not follow; `dangling_gitlink` names the outer gitlink inner main does not have (§14.23). The warning line appears only for a type a human must cure |
+| `merge.incident.auto_resolved` / `.human_resolved`   | `✅ **Merge incident resolved** — <type> · <label> on \`outer\`/\`inner\` @ \`sha\` · <what the train actually did> · open for 12m · by group \`…\` · incident \`…\`` — the middle clause is per resolution mode and never overstates it: `auto_rollforward` = "the train APPLIED the cure (roll-forward)", `auto_observed` = "the train OBSERVED it cured — it applied no cure itself", `human` = "closed by a human". **Added 2026-08-30** — a resolve used to be silent, so a `heals` group (§14.23) paged an operator and was then cured minutes later with nothing said |
 | `train.paused` / `train.resumed`                     | `⏸️ **Train paused**` / `▶️ **Train resumed**`, with reason + operator name                   |
 
 Deliberately **not** narrated (noise without decision value): `merge.request.queued` (a worker submitting), per-attempt start/complete, the Phase-7.2 speculative batch markers, and per-member group landings — the single `merge.group.landed` line already names every member.

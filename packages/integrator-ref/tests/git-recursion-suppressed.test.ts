@@ -129,7 +129,7 @@ describe.skipIf(!GIT_AVAILABLE)("git recursion suppressed in every clone we own"
     // Without the policy this rejects at `git fetch origin` with exit 1,
     // "Could not access submodule 'vendor/rynx'" — the failure lands inside
     // assembleGroup's try before any classification runs, so it surfaced as the
-    // catch-all `gitlink_mismatch` reason.
+    // catch-all reason (`gitlink_mismatch` then; `assembly_error` since §S3).
     await expect(wt.resetForAttempt()).resolves.toBeUndefined();
   });
 

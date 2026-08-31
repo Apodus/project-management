@@ -39,6 +39,15 @@ const UNCLASSIFIED: Record<UnclassifiedGroupAssemblyReason, true> = { assembly_e
  * be one, and "your patch is fine" would sail straight past it. It is a
  * REGRESSION GUARD: this family of pre-emptive exonerations does not come back
  * into this module.
+ *
+ * The criterion it enforces is the reporter's, verbatim — game_one, in the note
+ * that opened this campaign (`01M18QWM9RAFVQNFX4FE461B23`):
+ *
+ *   "a message asserting its own innocence trains readers to stop
+ *    investigating"
+ *
+ * Which is why the one licensed exception below is a MEASUREMENT and not a
+ * reassurance: `lane_blocked` may say where the fault is not, because it looked.
  */
 const EXONERATION =
   /defect in the train|not in (the|your) change|nothing (is )?wrong with (the|your) change|not this change/i;

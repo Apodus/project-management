@@ -36,8 +36,10 @@ import type { Logger } from "./logger.js";
  * evidence that the gitlink is sane.
  *
  * The failure lands inside `assembleGroup`'s try BEFORE any classification runs,
- * which is why the outage surfaced as `gitlink_mismatch` — the catch-all reason
- * — carrying a reject that asserted its own innocence.
+ * which is why the outage surfaced as the catch-all reason — `gitlink_mismatch`
+ * at the time, `assembly_error` since §S3 split the catch-all from the §11
+ * assertion — carrying a reject that ruled the author's change out before
+ * anyone had looked.
  *
  * `submodule.recurse=false` is here for the INNER lane, whose vendored nested
  * submodules `materializeSubmoduleWorktree` deliberately initializes into real,

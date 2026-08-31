@@ -357,6 +357,52 @@ verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   resolver executor** (resolver pool is single-repo; `merge_resolutions` is
   single-origin). Guide §14.17/§14.18 /
   `roadmaps/roadmap-20260815-group-path-parity.md`.
+- **A gitlink outer main has and inner main does not** — the cross-repo invariant
+  `outer main gitlink ∈ inner main` had **no detector in that direction**, so on
+  2026-08-29/30 a lane died for every group for days while
+  `pm_list_merge_incidents` said "No merge incidents", and every author got a
+  reject that ruled their own change out before anyone had looked. Four things
+  ship together, and **must** (design lock 1: the fetch fix must never be
+  deployed without the gate). (1) **Automatic submodule recursion is OFF** on every clone the
+  integrator owns (`fetch.recurseSubmodules=no` + `submodule.recurse=false`,
+  written repo-locally on the clone lifecycle's REUSE path, so deployed slots
+  self-heal at restart with no wipe). Measured, and broader than this campaign's
+  name: the fetch dies when main advances across ANY managed-gitlink change while
+  the slot's gitlink path is populated-but-not-an-openable-repo — which the
+  materialized overlay leaves in the OUTER slot permanently — so the lane
+  poisoned its own next fetch, **including after a bump the train itself
+  landed**, per slot (intermittent at `parallelism > 1`). Reachability of the
+  target is irrelevant to it: "the fetch succeeded" is NOT evidence the gitlink
+  is sane. **Verify contract:** those keys are repo-local in the slot the verify
+  command runs in, so a verify that relied on git's default on-demand recursion
+  must now recurse EXPLICITLY (§14.8). (2) **The gate** —
+  `checkMainGitlinkInvariant` at group assembly, before anything can author the
+  pointer; three git queries (five processes) on a healthy lane. FOUR verdicts,
+  because HEALTH (is the target on inner main?) and LANDING (is it in `Ri`?) are
+  different questions: `heals` lets the group CARRYING the cure land, and gating
+  on health would have rejected the only cure the train can take. `undecided`
+  fails OPEN; a decided not-ancestor is a hard **reject, never a re-queue** —
+  §14.19's "a race is not a verdict" does not apply, because a broken main does
+  not self-heal between passes. (3) **`dangling_gitlink` incident** — the mirror
+  direction of `orphaned_inner`, no migration (`type` is bare text), server-side
+  OPEN dedup, and a new `auto_observed` resolve mode so the record never claims a
+  push the train did not make. Closes three ways: a later assembly observing
+  `holds`, the group that LANDS the cure (entailed by the §11 post-assembly
+  assertion, **not** by step 8), or an admin. Both cures are a human's: cure 2
+  changes what consumers of outer main compile, so **the train detects and
+  refuses, it never picks**. (4) **A catch-all is never a diagnosis** — the
+  assembly catch-all mints `assembly_error` (class `unknown`, raw git error
+  first) instead of borrowing `gitlink_mismatch`'s train-bug verdict; the
+  exonerating sentence is gone from every author-facing string and a source-text
+  guard fails the build if it returns (it caught two drift attempts during the
+  campaign). **Periodic probe DEFERRED** — the check runs at assembly, so an idle
+  lane's broken main is found at the next submission; revisit triggers in the
+  roadmap §S5, and a future probe must be the mirror form (a `--mirror` carries
+  no `refs/remotes/*`). No migration, but a PM-server redeploy AND a bundle
+  redistribute + daemon restart, **COUPLED** — the `openIncident` envelope and
+  two reject categories changed, so neither half tolerates the other being old.
+  Guide §14.23 + §14.8 /
+  `roadmaps/roadmap-20260830-dangling-gitlink-and-honest-rejects.md`.
 
 **Claim liveness (Campaigns C1–C3)** — `docs/design/phase-c*.md`.
 

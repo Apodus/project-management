@@ -1798,9 +1798,10 @@ export interface MainGitlinkGateArgs {
  * "nothing was decided" about a check that ran. Design lock 5: fail OPEN on an
  * undecided check, hard-gate on a decided one.
  *
- * Cost on a healthy lane: 3 spawns (`ls-tree`, `cat-file -e`, `merge-base
- * --is-ancestor`). A 4th `is-ancestor` and, on the absent branch, an all-refs
- * fetch happen only once main is already broken.
+ * Cost on a healthy lane: 3 git QUERIES (`ls-tree`, `cat-file -e`, `merge-base
+ * --is-ancestor`) — 5 processes, because `objectPresent` and `isAncestor` each
+ * prefix theirs with a `rev-parse --show-toplevel`. A 4th `is-ancestor` and, on
+ * the absent branch, an all-refs fetch happen only once main is already broken.
  */
 export async function checkMainGitlinkInvariant(
   args: MainGitlinkGateArgs,
@@ -1900,7 +1901,8 @@ export async function checkMainGitlinkInvariant(
 
 /**
  * The `asm.detail` half of a `main_gitlink_dangling` reject: what was measured,
- * naming ALL THREE commits the gate judged. The 2026-08-22 lesson
+ * naming ALL FOUR commits the gate judged (outer main, the gitlink target,
+ * inner main, and this group's landing inner `Ri`). The 2026-08-22 lesson
  * (§14.21/§14.22) is that "the rejection named no commit" is why three client
  * notes across seven weeks were each investigated as a conflict in the author's
  * change; this verdict depends on `Ri`, so omitting `Ri` would repeat it.

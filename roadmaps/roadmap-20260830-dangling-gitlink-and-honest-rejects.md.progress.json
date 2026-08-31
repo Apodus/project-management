@@ -3,33 +3,75 @@
   "branch": "campaign/dangling-gitlink-and-honest-rejects",
   "started": "2026-08-30",
   "steps": [
-    { "id": "S1", "title": "Stop git chasing the gitlink on our own fetches", "state": "verifying" },
+    {
+      "id": "S1",
+      "title": "Stop git chasing the gitlink on our own fetches",
+      "state": "done",
+      "commit": "008fc8d"
+    },
     {
       "id": "S2",
       "title": "Assert the invariant, in the direction nobody watches",
-      "state": "pending",
-      "depends_on": ["S3", "S4"]
+      "state": "done",
+      "depends_on": [
+        "S3",
+        "S4"
+      ],
+      "commit": "766f44c"
     },
     {
       "id": "S3",
       "title": "Split the catch-all from the assertion, drop the exoneration",
-      "state": "pending"
+      "state": "done",
+      "commit": "bf1511f"
     },
-    { "id": "S4", "title": "Make pm_list_merge_incidents tell the truth", "state": "verifying" },
-    { "id": "S5", "title": "The periodic probe", "state": "pending", "depends_on": ["S2"] },
+    {
+      "id": "S4",
+      "title": "Make pm_list_merge_incidents tell the truth",
+      "state": "done",
+      "commit": "d89a02c"
+    },
+    {
+      "id": "S5",
+      "title": "The periodic probe",
+      "state": "done",
+      "depends_on": [
+        "S2"
+      ],
+      "scope": "REDUCED - periodic probe DEFERRED",
+      "commit": "ff7fc34"
+    },
     {
       "id": "S6",
       "title": "Seal",
-      "state": "pending",
-      "depends_on": ["S1", "S2", "S3", "S4", "S5"]
+      "state": "done",
+      "depends_on": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5"
+      ],
+      "commit": "the seal commit itself (branch tip); every other step's sha was recorded by its successor"
     }
   ],
-  "completed": [],
-  "current": ["S1", "S4"],
+  "completed": [
+    "S4",
+    "S1",
+    "S3",
+    "S2",
+    "S5",
+    "S6"
+  ],
+  "current": [],
   "parallelism": "S1 (integrator worktree/clone lifecycle) and S4 (shared/server/mcp/web) have disjoint file sets; planned and verified concurrently.",
   "plans": {
-    "S1": "scratchpad/plan-s1.md",
-    "S4": "scratchpad/plan-s4.md"
+    "S1": "scratchpad/plan-s1b.md (revised, approved)",
+    "S4": "scratchpad/plan-s4b.md (revised, approved)",
+    "S3": "scratchpad/plan-s3b.md (revised, approved)",
+    "S2": "scratchpad/plan-s2b.md (r3, split predicates)",
+    "S5": "scratchpad/plan-s5.md (DEFER + reduced build)",
+    "S6": "scratchpad/plan-s6.md (+ verify-s6 errata, all applied)"
   },
   "open_issues": [],
   "commander_decisions": [
@@ -37,6 +79,26 @@
       "id": "D-S1-purge",
       "decision": "Keep outer pool gitlinkPurgePaths: [] and do NOT add a purge step or the 'purge before fetch' reorder.",
       "why": "The purge loop runs AFTER the fetch in resetForAttempt (fetch :152, purge :156-158), so it structurally cannot protect the failing call. Once S1 lands the fetch never recurses, so the reorder would defend nothing while adding reordering risk."
+    },
+    {
+      "id": "D-S2-predicate",
+      "decision": "SPLIT the predicate. HEALTH (target in ancestors(baseInnerSha)) drives the INCIDENT; LANDING (target in ancestors(Ri)) drives the GATE.",
+      "why": "Comparing the gate against baseInnerSha OVER-BLOCKS: a group whose inner branch already contains the dangling target rebases to a no-op (Ri == target) and would CURE the lane - the exact game_one shape (2f448c0a ahead of inner main 0d82eba4). Step 8 authors gitlink->Ri, so Ri is the predicate that blocks exactly the groups leaving main broken and permits exactly those fixing it. Found by plan-s2b measuring; overturned both my instruction and verify-s2 confirmation."
+    },
+    {
+      "id": "D-S2-string-routing",
+      "decision": "S2 owns the amendment of S3 why strings that the predicate split falsifies.",
+      "why": "S3 introduces main_gitlink_dangling with NO producer by design, so its why is unreachable stub text when S3 lands. S2 gives the reason a producer and must make its text true. Also avoids reopening a step mid-commit."
+    },
+    {
+      "id": "D-S5-defer",
+      "decision": "DEFER the periodic probe. Build only the land-time incident resolve (~25 lines). Do NOT build the cureReachability field either.",
+      "why": "The probe gains only detection latency on an IDLE lane, where nobody waits; game_one outage was on a busy lane so the gate fires within one submission. A stale-open dangling incident is operationally INERT (all three integrator readers plus two server queries filter orphaned_inner). Cost is a knob, a timer lifecycle, a SECOND substrate for one invariant, and the only shape that can page a human with no submitter. Client R2 asked for every-landing AND a timer; we deliver every-landing. S6 write-back must say so plainly."
+    },
+    {
+      "id": "D-S6-writeback",
+      "decision": "Write back to game_one as a NEW note in project 01KSMSZVN87QWZZBY7AR7QV149 referencing their note 01M18QWM9RAFVQNFX4FE461B23, and DO NOT dismiss, resolve or otherwise touch their note.",
+      "why": "The plan proposed post-then-dismiss; overridden by the user. Their note still carries one LIVE action that is theirs (forge branch protection on outer main), so closing it is their call, not ours. Posting the note is the only outward-facing action taken in the client's project."
     }
   ],
   "findings": [
@@ -45,24 +107,109 @@
       "source": "plan-s1 empirical reproduction, git 2.53 real repos",
       "finding": "The dangling gitlink target is NOT a necessary condition for the fetch failure. Conditions are (a) fetch advances main across a commit that CHANGES the managed gitlink, and (b) the gitlink path is populated but not an openable repo. (b) is what materializeSubmoduleWorktree leaves in the outer slot permanently (outer pool built with gitlinkPurgePaths: []).",
       "consequence": "The outer slot is poisoned from its first cross-repo assembly onward; any later gitlink bump on main kills the next fetch, INCLUDING one the train itself landed. Most plausible account of game_one's 'wrong five times that week for a different cause'. Roadmap amended as finding 2b.",
-      "binding_on": ["S2", "S4", "S6"],
+      "binding_on": [
+        "S2",
+        "S4",
+        "S6"
+      ],
       "rule": "S2 must not assume 'fetch succeeded => gitlink is fine'. No surface text may equate an unclassifiable assembly failure with a dangling gitlink, nor treat an empty incident list as proof the lane's main is sane."
     },
     {
       "id": "F2",
       "source": "plan-s1",
       "finding": "Inner lane needs the config too, on evidence not symmetry: the inner slot's nested submodules ARE real openable checkouts, so on-demand recursion does not error there - it silently re-fetches every vendored submodule from its own URL on every attempt.",
-      "binding_on": ["S1"]
+      "binding_on": [
+        "S1"
+      ]
     },
     {
       "id": "F3",
       "source": "plan-s4 consumer audit",
       "finding": "merge-group.service.ts:950 (corruption fence) and train.service.ts:802 (forceLand) filter incidents on groupId+state but NOT type, while their comments claim orphaned_inner scope. Only accidentally safe (new type carries groupId null; eq(groupId,id) never matches NULL).",
-      "binding_on": ["S4"]
+      "binding_on": [
+        "S4"
+      ]
+    },
+    {
+      "id": "F4",
+      "source": "verify-s3b",
+      "finding": "The release-before-rethrow in assembleGroup is NOT pinned by any existing test. group-assembly.test.ts:626-658 exercises the phase-recorder swallow and returns ok:true on both arms, so assembly catch never runs.",
+      "consequence": "S3 must add net-new coverage; a leaked slot here reproduces the 14.15 nine-hour lane wedge.",
+      "binding_on": [
+        "S3"
+      ]
+    },
+    {
+      "id": "F5",
+      "source": "commander",
+      "finding": "After S1 the fetch no longer fails on a dangling gitlink, so a dangling gitlink now sails SILENTLY into assembly. S2 gate is the only thing that catches it.",
+      "consequence": "Raises S2 from important to mandatory before any redeploy. Design lock 1 restated in operational terms.",
+      "binding_on": [
+        "S2",
+        "S6"
+      ]
+    },
+    {
+      "id": "F6",
+      "source": "exec-s3 + plan-s2b",
+      "finding": "The anti-exoneration source-text guard built in S3 has already caught TWO drift attempts: plan-s2b r2 rewording that would have made the license branch dead, and S3 plan own lane_blocked class doc containing the banned phrase.",
+      "consequence": "Design lock 3 is enforced in practice, not just asserted. Mutation-verified: planting the phrase in a comment fails the guard; deleting release() before the rethrow fails the slot-leak test.",
+      "binding_on": [
+        "S6"
+      ]
+    },
+    {
+      "id": "F7",
+      "source": "verify-s5",
+      "finding": "train-feed-listener.ts narrates MERGE_INCIDENT_OPENED (a human must decide) but has NO subscription or case for resolve events. Every heals group would page Discord and be silently cured minutes later.",
+      "consequence": "The campaign own failure mode in the observability layer. Fixed as an S5 erratum.",
+      "binding_on": [
+        "S5",
+        "S6"
+      ]
+    },
+    {
+      "id": "F8",
+      "source": "verify-s5",
+      "finding": "Post-land HEALTH entailment rests on the SS11 post-assembly assertion (committed === Ri else gitlink_mismatch), NOT on step 8 arms. A future reader fixing step 8 must not think they invalidated it.",
+      "binding_on": [
+        "S5",
+        "S6"
+      ]
+    },
+    {
+      "id": "F9",
+      "source": "verify-s5",
+      "finding": "A --mirror clone carries no refs/remotes/*, so a future mirror-based HEALTH probe must read refs/heads/<gitMainBranch>, never <remote>/<branch>. HEALTH is fully computable from the two binding mirrors (index.ts:348) - lock-free, lease-free, so the roadmap suggested worktree piggyback is dominated.",
+      "binding_on": [
+        "S6"
+      ]
+    },
+    {
+      "id": "F10",
+      "source": "plan-s6 + verify-s6 test audit",
+      "finding": "The roadmap listed seven tests under S6; S1-S5 front-loaded all seven. Only the cross-module reject-text guard (tests/reject-text-honesty.test.ts, widening the anti-exoneration source sweep to group-integration.ts and git-ops.ts) was net-new.",
+      "consequence": "S6's thin test diff is coverage already banked, not a skipped gate. Recorded so a future reader does not read it as one.",
+      "binding_on": [
+        "S6"
+      ]
+    },
+    {
+      "id": "F11",
+      "source": "verify-s6",
+      "finding": "Two counting errors shipped in comments and drafts: the gate costs three git QUERIES but five PROCESSES (objectPresent and isAncestor each prefix a rev-parse --show-toplevel), and describeDanglingMainGitlink names FOUR commits, not three. Both corrected in the source comments and in SS14.23/CLAUDE.md.",
+      "binding_on": [
+        "S6"
+      ]
     }
   ],
   "notes": [
     "Design lock 1: S1 must not be DEPLOYED without S2. Both land on this branch before any redeploy.",
-    "Roadmap committed at 6f4777e; amended with finding 2b (uncommitted at time of writing)."
+    "Roadmap committed at 6f4777e; amended with finding 2b (uncommitted at time of writing).",
+    "Executors are SERIALIZED: they commit to one working tree, so only one runs at a time. Planning/verification legs may still overlap.",
+    "S4 deploy coupling: an old daemon reading the new openIncident envelope gets {incident, created} where it expects a view. PM-server redeploy and bundle redistribute must ship together. Carry to S6.",
+    "F8 and F9 are carried into the SHIPPED docs, not just this file: F8 (post-land HEALTH is entailed by the SS11 post-assembly assertion, NOT by step 8) is stated as an explicit 'cite that assertion, not step 8' aside in guide SS14.23 'How an incident closes' step 2 and in the CLAUDE.md entry; F9 (a --mirror carries no refs/remotes/*, so a future probe must read refs/heads/<branch>; HEALTH is computable from the two binding mirrors, lock-free and lease-free) is in SS14.23 limitation 1 and roadmap SS5.",
+    "Deployment ORDER (extends the S4 coupling note): stop the integrator daemon(s) -> redeploy the PM server -> redistribute the bundle and restart the daemon(s). Stopping first is what closes the old-daemon-on-new-server window, where the pre-S4 daemon reads .id off the new {incident, created} envelope and gets undefined, breaking the SS14.5 orphaned-inner open path. Recorded in guide SS14.23 'Deployment note'.",
+    "OPERATOR-VISIBLE consequence of S1, stated in guide SS14.8 and in the client write-back: fetch.recurseSubmodules=no is repo-local IN THE VERIFY SLOT, and verify runs with cwd set to that slot, so a verify command that relied on git's default on-demand recursion must now recurse explicitly. game_one's pm-verify.bat is opaque to us; the write-back tells them how to check rather than claiming nothing changes on their side."
   ]
 }
