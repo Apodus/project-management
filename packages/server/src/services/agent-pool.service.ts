@@ -10,6 +10,50 @@ import { AppError } from "../types.js";
 const CLAIM_TTL_MS = 60 * 60 * 1000; // 1 hour
 const BCRYPT_ROUNDS = 10;
 
+/**
+ * How long past its claim expiry a KEYED binding stays reserved for its worker
+ * before the identity may be recycled under pressure. Default 24h.
+ *
+ * A keyed binding reserves its identity expiry-independently (C1's structural
+ * guarantee against identity-sharing — see FREE_AGENT_SQL). That is correct for
+ * a bounded, stable set of worker keys, but a deployment that mints a FRESH key
+ * per task/session leaks one identity per session, permanently, until the pool
+ * reads empty and every request fails. The grace bounds the reservation without
+ * weakening the guarantee where it matters: reclamation is LAZY (only when no
+ * genuinely free agent exists) and takes the coldest binding first, so stable
+ * identity survives intact whenever the pool has any slack at all.
+ */
+const DEFAULT_BIND_GRACE_SEC = 24 * 60 * 60;
+
+/**
+ * Read the reservation grace (seconds) from PM_AGENT_BIND_GRACE_SEC.
+ *
+ * `off` (case-insensitive) disables reclamation entirely — the pre-2026-09
+ * behavior, where a keyed binding is reserved forever. A non-negative integer
+ * sets the grace; `0` recycles as soon as the claim TTL lapses. Anything else
+ * falls back to the default. Read per-call, not at module load, so an operator
+ * can change it with a restart and tests can set it per-case.
+ */
+export function bindGraceSec(): number | "off" {
+  const raw = process.env.PM_AGENT_BIND_GRACE_SEC?.trim();
+  if (raw === undefined || raw === "") return DEFAULT_BIND_GRACE_SEC;
+  if (raw.toLowerCase() === "off") return "off";
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_BIND_GRACE_SEC;
+  return parsed;
+}
+
+/**
+ * The instant at or before which a lapsed keyed binding is recyclable, as an
+ * ISO string — i.e. `now - grace`. Returns null when reclamation is disabled,
+ * which every caller must read as "nothing is ever reclaimable".
+ */
+function reclaimCutoff(nowMs: number): string | null {
+  const grace = bindGraceSec();
+  if (grace === "off") return null;
+  return new Date(nowMs - grace * 1000).toISOString();
+}
+
 const GREEK_NAMES = [
   "Alpha",
   "Beta",
@@ -34,10 +78,39 @@ export interface PoolInfo {
   createdBy: string | null;
 }
 
+/**
+ * The four states an agent identity can be in, in PRIORITY order — an agent is
+ * classified by the first one that matches, so the buckets are disjoint and sum
+ * to agentCount (pinned by test).
+ *
+ *  - `inactive`  — deactivated (`is_active = 0`). Not claimable, and won't be.
+ *  - `claimed`   — a live claim (keyed or not). In use right now.
+ *  - `reserved`  — a KEYED binding whose claim TTL lapsed. Still held for its
+ *                  worker, so NOT claimable by anyone else; recyclable only
+ *                  once past the reservation grace, and only under pressure.
+ *  - `available` — free to claim right now.
+ *
+ * `reserved` is the state that had no name before 2026-09: it was reported as
+ * available by the per-agent view (which only asked "is there a live claim?")
+ * while the pool summary counted it in neither bucket, so it surfaced as
+ * "inactive" residue. Twenty-three of them silently drained a live pool.
+ */
+export type PoolAgentState = "inactive" | "claimed" | "reserved" | "available";
+
 export interface PoolSummary extends PoolInfo {
   agentCount: number;
   claimedCount: number;
   availableCount: number;
+  /** Keyed bindings whose TTL lapsed — held for their worker, not claimable. */
+  reservedCount: number;
+  /**
+   * The subset of `reservedCount` already past the grace, i.e. recyclable on
+   * the next claim that would otherwise fail. `availableCount +
+   * reclaimableCount` is what actually answers "will the next claim succeed?".
+   */
+  reclaimableCount: number;
+  /** Deactivated identities (`is_active = 0`). */
+  inactiveCount: number;
 }
 
 export interface PoolAgentStatus {
@@ -49,10 +122,23 @@ export interface PoolAgentStatus {
     isActive: boolean;
     poolId: string | null;
   };
+  /**
+   * Live claim only. Retained for backward compatibility; it is NOT the
+   * complement of claimable — a `reserved` agent reads `claimed: false` and
+   * cannot be claimed. Read `state` instead.
+   */
   claimed: boolean;
+  state: PoolAgentState;
   claimedAt: string | null;
   expiresAt: string | null;
   heartbeatAt: string | null;
+  /** The bound worker key, when this identity is keyed. */
+  workerKey: string | null;
+  /**
+   * When a `reserved` identity becomes recyclable. Null when the state is not
+   * `reserved`, or when reclamation is disabled (reserved forever).
+   */
+  reclaimableAt: string | null;
 }
 
 export interface ClaimResult {
@@ -224,21 +310,31 @@ export function getPool(poolId: string): PoolInfo | null {
 export function listPools(): PoolSummary[] {
   const rawDb = getRawDb();
   const now = new Date().toISOString();
+  // No cutoff ⇒ reclamation disabled ⇒ nothing is reclaimable. An ISO string
+  // ordered below every real timestamp makes that fall out of the same SQL.
+  const cutoff = reclaimCutoff(Date.now()) ?? "";
 
+  // The four CASE arms mirror the PRIORITY order documented on PoolAgentState,
+  // each one excluding the arms above it, so the buckets are disjoint and sum
+  // to agent_count. reclaimable_count is an OVERLAY on reserved_count, not a
+  // fifth bucket — it deliberately does not participate in that sum.
   const rows = rawDb
     .prepare(
       `SELECT
          p.id, p.name, p.description, p.created_at, p.updated_at, p.created_by,
          COUNT(u.id) AS agent_count,
-         COUNT(CASE WHEN ac.id IS NOT NULL AND ac.expires_at >= ? THEN 1 END) AS claimed_count,
-         COUNT(CASE WHEN u.is_active = 1 AND ac.worker_key IS NULL AND (ac.id IS NULL OR ac.expires_at < ?) THEN 1 END) AS available_count
+         COUNT(CASE WHEN u.is_active = 0 THEN 1 END) AS inactive_count,
+         COUNT(CASE WHEN u.is_active = 1 AND ac.expires_at >= ? THEN 1 END) AS claimed_count,
+         COUNT(CASE WHEN u.is_active = 1 AND ac.expires_at < ? AND ac.worker_key IS NOT NULL THEN 1 END) AS reserved_count,
+         COUNT(CASE WHEN u.is_active = 1 AND (ac.id IS NULL OR (ac.expires_at < ? AND ac.worker_key IS NULL)) THEN 1 END) AS available_count,
+         COUNT(CASE WHEN u.is_active = 1 AND ac.worker_key IS NOT NULL AND ac.expires_at < ? THEN 1 END) AS reclaimable_count
        FROM agent_pools p
        LEFT JOIN users u ON u.pool_id = p.id AND u.type = 'ai_agent'
        LEFT JOIN agent_claims ac ON ac.user_id = u.id
        GROUP BY p.id
        ORDER BY p.name ASC`,
     )
-    .all(now, now) as Array<{
+    .all(now, now, now, cutoff) as Array<{
     id: string;
     name: string;
     description: string | null;
@@ -246,8 +342,11 @@ export function listPools(): PoolSummary[] {
     updated_at: string;
     created_by: string | null;
     agent_count: number;
+    inactive_count: number;
     claimed_count: number;
+    reserved_count: number;
     available_count: number;
+    reclaimable_count: number;
   }>;
 
   return rows.map((r) => ({
@@ -260,6 +359,9 @@ export function listPools(): PoolSummary[] {
     agentCount: r.agent_count,
     claimedCount: r.claimed_count,
     availableCount: r.available_count,
+    reservedCount: r.reserved_count,
+    reclaimableCount: r.reclaimable_count,
+    inactiveCount: r.inactive_count,
   }));
 }
 
@@ -394,12 +496,93 @@ const FREE_AGENT_SQL = `SELECT u.id, u.username, u.display_name, u.role, u.type
    ORDER BY u.username ASC
    LIMIT 1`;
 
+/**
+ * Reclamation candidate: an active agent whose KEYED binding lapsed longer ago
+ * than the reservation grace. Ordered oldest-lapse-first so recycling always
+ * takes the coldest identity in the pool.
+ *
+ * This is the only query that can return an already-bound agent, and it runs
+ * ONLY when FREE_AGENT_SQL found nothing (see takeFreeAgent). The identity
+ * transfer is safe because minting the new claimant's token overwrites
+ * `users.api_token_hash` — the single per-user hash — so the previous worker's
+ * token stops validating the moment the reclaim completes. There is no window
+ * in which two live tokens address one identity.
+ */
+const RECLAIMABLE_AGENT_SQL = `SELECT u.id, u.username, u.display_name, u.role, u.type,
+          ac.id AS claim_id, ac.worker_key AS prior_worker_key, ac.expires_at AS prior_expires_at
+   FROM users u
+   JOIN agent_claims ac ON ac.user_id = u.id
+   WHERE u.type = 'ai_agent'
+     AND u.pool_id = ?
+     AND u.is_active = 1
+     AND ac.worker_key IS NOT NULL
+     AND ac.expires_at < ?
+   ORDER BY ac.expires_at ASC
+   LIMIT 1`;
+
 interface AgentCandidate {
   id: string;
   username: string;
   display_name: string;
   role: string;
   type: string;
+}
+
+interface ReclaimCandidate extends AgentCandidate {
+  claim_id: string;
+  prior_worker_key: string;
+  prior_expires_at: string;
+}
+
+/**
+ * Resolve one agent to hand out, preferring a genuinely free identity and
+ * falling back to recycling the coldest dead reservation.
+ *
+ * MUST be called inside the caller's transaction: the reclaim DELETEs the prior
+ * binding row, and only transactional isolation stops two concurrent claims
+ * from stealing the same identity.
+ *
+ * Reclamation is deliberately LAZY rather than a background reaper. A reaper
+ * would expire bindings on a clock even when the pool has slack, weakening C1's
+ * stable identity for no gain; taking one only when the alternative is failing
+ * the request preserves stable identity in every case that isn't already an
+ * outage.
+ */
+function takeFreeAgent(
+  rawDb: ReturnType<typeof getRawDb>,
+  poolId: string,
+  poolName: string,
+  now: string,
+  logger: Pick<Console, "info"> = console,
+): AgentCandidate | null {
+  const free = rawDb.prepare(FREE_AGENT_SQL).get(poolId, now) as AgentCandidate | undefined;
+  if (free) return free;
+
+  const cutoff = reclaimCutoff(Date.parse(now));
+  if (cutoff === null) return null; // PM_AGENT_BIND_GRACE_SEC=off
+
+  const stale = rawDb.prepare(RECLAIMABLE_AGENT_SQL).get(poolId, cutoff) as
+    | ReclaimCandidate
+    | undefined;
+  if (!stale) return null;
+
+  rawDb.prepare(`DELETE FROM agent_claims WHERE id = ?`).run(stale.claim_id);
+
+  // Never silent: an identity changed hands, and the only trace otherwise would
+  // be a worker key that quietly stopped resolving to the same agent.
+  logger.info(
+    `[agent-pool] recycled identity ${stale.username} in pool "${poolName}": ` +
+      `reservation for worker key "${stale.prior_worker_key}" lapsed at ${stale.prior_expires_at}, ` +
+      `past the grace cutoff ${cutoff}, and no free agent remained`,
+  );
+
+  return {
+    id: stale.id,
+    username: stale.username,
+    display_name: stale.display_name,
+    role: stale.role,
+    type: stale.type,
+  };
 }
 
 /**
@@ -455,9 +638,7 @@ export async function claimAgent(
         .prepare(`DELETE FROM agent_claims WHERE expires_at < ? AND worker_key IS NULL`)
         .run(now);
 
-      const candidate = rawDb.prepare(FREE_AGENT_SQL).get(pool.id, now) as
-        | AgentCandidate
-        | undefined;
+      const candidate = takeFreeAgent(rawDb, pool.id, pool.name, now);
 
       if (!candidate) {
         return null;
@@ -523,10 +704,10 @@ export async function claimAgent(
       }
 
       // 3. First bind: grab a free agent (same predicate as keyless, INCLUDING
-      //    the worker_key-bound exclusion) and create the binding row.
-      const candidate = rawDb.prepare(FREE_AGENT_SQL).get(pool.id, now) as
-        | AgentCandidate
-        | undefined;
+      //    the worker_key-bound exclusion), falling back to recycling the
+      //    coldest dead reservation. A fresh key arriving at an exhausted pool
+      //    is the exact shape of the leak this fallback exists for.
+      const candidate = takeFreeAgent(rawDb, pool.id, pool.name, now);
 
       if (!candidate) {
         return null;
@@ -647,6 +828,59 @@ export function heartbeat(userId: string): void {
 }
 
 /**
+ * Classify one agent + its (possibly lapsed) claim row into a PoolAgentStatus.
+ *
+ * The priority order here is the SAME one listPools' CASE arms encode; keeping
+ * one classifier for the detail view and mirroring it in the summary SQL is
+ * what stops the two surfaces disagreeing again. `claimedAt`/`expiresAt`/
+ * `heartbeatAt` are now reported for a lapsed claim too — on a `reserved` row
+ * those timestamps ARE the finding (how long the reservation has been dead),
+ * and blanking them was half of why this state was invisible.
+ */
+function toAgentStatus(
+  agent: typeof users.$inferSelect,
+  claim: typeof agentClaims.$inferSelect | undefined,
+  now: string,
+  cutoff: string | null,
+): PoolAgentStatus {
+  const live = claim != null && claim.expiresAt >= now;
+  const reserved = claim != null && !live && claim.workerKey != null;
+
+  const state: PoolAgentState = !agent.isActive
+    ? "inactive"
+    : live
+      ? "claimed"
+      : reserved
+        ? "reserved"
+        : "available";
+
+  return {
+    user: {
+      id: agent.id,
+      username: agent.username,
+      displayName: agent.displayName,
+      type: agent.type,
+      isActive: agent.isActive,
+      poolId: agent.poolId,
+    },
+    claimed: state === "claimed",
+    state,
+    claimedAt: claim?.claimedAt ?? null,
+    expiresAt: claim?.expiresAt ?? null,
+    heartbeatAt: claim?.heartbeatAt ?? null,
+    workerKey: claim?.workerKey ?? null,
+    // Reserved-only, and null when reclamation is off — the UI must be able to
+    // say "reserved forever" rather than imply a recycle that will never come.
+    reclaimableAt:
+      state === "reserved" && cutoff !== null && claim != null
+        ? new Date(
+            Date.parse(claim.expiresAt) + (Date.parse(now) - Date.parse(cutoff)),
+          ).toISOString()
+        : null,
+  };
+}
+
+/**
  * Get the status of all AI agents in a specific pool.
  */
 export function getPoolStatus(poolId: string): PoolAgentStatus[] {
@@ -660,31 +894,17 @@ export function getPoolStatus(poolId: string): PoolAgentStatus[] {
     .where(and(eq(users.type, "ai_agent"), eq(users.poolId, poolId)))
     .all();
 
-  // Get all active (non-expired) claims
-  const activeClaims = db.select().from(agentClaims).all();
+  // All claim rows, live or lapsed — a lapsed keyed row is the whole point.
+  const claimMap = new Map(
+    db
+      .select()
+      .from(agentClaims)
+      .all()
+      .map((c) => [c.userId, c]),
+  );
+  const cutoff = reclaimCutoff(Date.now());
 
-  const claimMap = new Map(activeClaims.map((c) => [c.userId, c]));
-
-  return agents.map((agent) => {
-    const claim = claimMap.get(agent.id);
-    const isExpired = claim ? new Date(claim.expiresAt) < new Date(now) : false;
-    const isClaimed = claim && !isExpired;
-
-    return {
-      user: {
-        id: agent.id,
-        username: agent.username,
-        displayName: agent.displayName,
-        type: agent.type,
-        isActive: agent.isActive,
-        poolId: agent.poolId,
-      },
-      claimed: !!isClaimed,
-      claimedAt: isClaimed ? claim.claimedAt : null,
-      expiresAt: isClaimed ? claim.expiresAt : null,
-      heartbeatAt: isClaimed ? claim.heartbeatAt : null,
-    };
-  });
+  return agents.map((agent) => toAgentStatus(agent, claimMap.get(agent.id), now, cutoff));
 }
 
 /**
@@ -702,31 +922,16 @@ export function getAllPoolStatus(): PoolAgentStatus[] {
     .all()
     .filter((u) => u.poolId != null);
 
-  // Get all claims
-  const activeClaims = db.select().from(agentClaims).all();
+  const claimMap = new Map(
+    db
+      .select()
+      .from(agentClaims)
+      .all()
+      .map((c) => [c.userId, c]),
+  );
+  const cutoff = reclaimCutoff(Date.now());
 
-  const claimMap = new Map(activeClaims.map((c) => [c.userId, c]));
-
-  return agents.map((agent) => {
-    const claim = claimMap.get(agent.id);
-    const isExpired = claim ? new Date(claim.expiresAt) < new Date(now) : false;
-    const isClaimed = claim && !isExpired;
-
-    return {
-      user: {
-        id: agent.id,
-        username: agent.username,
-        displayName: agent.displayName,
-        type: agent.type,
-        isActive: agent.isActive,
-        poolId: agent.poolId,
-      },
-      claimed: !!isClaimed,
-      claimedAt: isClaimed ? claim.claimedAt : null,
-      expiresAt: isClaimed ? claim.expiresAt : null,
-      heartbeatAt: isClaimed ? claim.heartbeatAt : null,
-    };
-  });
+  return agents.map((agent) => toAgentStatus(agent, claimMap.get(agent.id), now, cutoff));
 }
 
 // ─── Remove agent from pool ────────────────────────────────────────

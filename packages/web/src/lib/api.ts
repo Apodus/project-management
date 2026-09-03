@@ -1011,7 +1011,16 @@ export interface AgentPoolSummary extends AgentPoolInfo {
   agentCount: number;
   claimedCount: number;
   availableCount: number;
+  /** Keyed bindings whose TTL lapsed — held for their worker, not claimable. */
+  reservedCount: number;
+  /** Subset of reservedCount past the grace, i.e. recyclable under pressure. */
+  reclaimableCount: number;
+  /** Deactivated identities. */
+  inactiveCount: number;
 }
+
+/** Mirrors the server's PoolAgentState (packages/server/.../agent-pool.service.ts). */
+export type PoolAgentState = "inactive" | "claimed" | "reserved" | "available";
 
 export interface PoolAgentStatus {
   user: {
@@ -1022,10 +1031,14 @@ export interface PoolAgentStatus {
     isActive: boolean;
     poolId: string | null;
   };
+  /** Live claim only — NOT the complement of claimable. Prefer `state`. */
   claimed: boolean;
+  state: PoolAgentState;
   claimedAt: string | null;
   expiresAt: string | null;
   heartbeatAt: string | null;
+  workerKey: string | null;
+  reclaimableAt: string | null;
 }
 
 export interface PoolDetailResponse {

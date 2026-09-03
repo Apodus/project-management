@@ -10068,6 +10068,15 @@
                           },
                           "availableCount": {
                             "type": "number"
+                          },
+                          "reservedCount": {
+                            "type": "number"
+                          },
+                          "reclaimableCount": {
+                            "type": "number"
+                          },
+                          "inactiveCount": {
+                            "type": "number"
                           }
                         },
                         "required": [
@@ -10079,7 +10088,10 @@
                           "createdBy",
                           "agentCount",
                           "claimedCount",
-                          "availableCount"
+                          "availableCount",
+                          "reservedCount",
+                          "reclaimableCount",
+                          "inactiveCount"
                         ]
                       }
                     }
@@ -10256,6 +10268,15 @@
                               "claimed": {
                                 "type": "boolean"
                               },
+                              "state": {
+                                "type": "string",
+                                "enum": [
+                                  "inactive",
+                                  "claimed",
+                                  "reserved",
+                                  "available"
+                                ]
+                              },
                               "claimedAt": {
                                 "type": "string",
                                 "nullable": true
@@ -10267,14 +10288,25 @@
                               "heartbeatAt": {
                                 "type": "string",
                                 "nullable": true
+                              },
+                              "workerKey": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "reclaimableAt": {
+                                "type": "string",
+                                "nullable": true
                               }
                             },
                             "required": [
                               "user",
                               "claimed",
+                              "state",
                               "claimedAt",
                               "expiresAt",
-                              "heartbeatAt"
+                              "heartbeatAt",
+                              "workerKey",
+                              "reclaimableAt"
                             ]
                           }
                         }
@@ -11591,6 +11623,15 @@
                           },
                           "availableCount": {
                             "type": "number"
+                          },
+                          "reservedCount": {
+                            "type": "number"
+                          },
+                          "reclaimableCount": {
+                            "type": "number"
+                          },
+                          "inactiveCount": {
+                            "type": "number"
                           }
                         },
                         "required": [
@@ -11602,7 +11643,10 @@
                           "createdBy",
                           "agentCount",
                           "claimedCount",
-                          "availableCount"
+                          "availableCount",
+                          "reservedCount",
+                          "reclaimableCount",
+                          "inactiveCount"
                         ]
                       }
                     }

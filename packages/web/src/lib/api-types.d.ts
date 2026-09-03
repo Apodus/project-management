@@ -349,6 +349,9 @@ export interface paths {
                 agentCount: number;
                 claimedCount: number;
                 availableCount: number;
+                reservedCount: number;
+                reclaimableCount: number;
+                inactiveCount: number;
               }[];
             };
           };
@@ -521,9 +524,13 @@ export interface paths {
                     poolId: string | null;
                   };
                   claimed: boolean;
+                  /** @enum {string} */
+                  state: "inactive" | "claimed" | "reserved" | "available";
                   claimedAt: string | null;
                   expiresAt: string | null;
                   heartbeatAt: string | null;
+                  workerKey: string | null;
+                  reclaimableAt: string | null;
                 }[];
               };
             };
@@ -1283,6 +1290,9 @@ export interface paths {
                 agentCount: number;
                 claimedCount: number;
                 availableCount: number;
+                reservedCount: number;
+                reclaimableCount: number;
+                inactiveCount: number;
               }[];
             };
           };

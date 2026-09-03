@@ -1251,9 +1251,12 @@ function PoolAgentRow({
       poolId: string | null;
     };
     claimed: boolean;
+    state: "inactive" | "claimed" | "reserved" | "available";
     claimedAt: string | null;
     expiresAt: string | null;
     heartbeatAt: string | null;
+    workerKey: string | null;
+    reclaimableAt: string | null;
   };
   poolId: string;
 }) {
@@ -1365,20 +1368,39 @@ function PoolAgentRow({
           </div>
         </TableCell>
         <TableCell>
-          {!agent.user.isActive ? (
+          {agent.state === "inactive" ? (
             <Badge
               variant="secondary"
               className="border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-400"
             >
               Inactive
             </Badge>
-          ) : agent.claimed ? (
+          ) : agent.state === "claimed" ? (
             <Badge
               variant="secondary"
               className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400"
             >
               <CircleDot className="size-3" />
               Claimed
+            </Badge>
+          ) : agent.state === "reserved" ? (
+            <Badge
+              variant="secondary"
+              className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              title={
+                `Held for worker key "${agent.workerKey ?? "?"}" since its claim lapsed` +
+                (agent.reclaimableAt
+                  ? Date.parse(agent.reclaimableAt) <= Date.now()
+                    ? ". Past the grace — recycles on the next claim that would otherwise fail."
+                    : `. Recyclable ${new Date(agent.reclaimableAt).toLocaleString()}.`
+                  : ". Reclamation is disabled (PM_AGENT_BIND_GRACE_SEC=off), so it is held indefinitely.")
+              }
+            >
+              <Lock className="size-3" />
+              Reserved
+              {agent.reclaimableAt && Date.parse(agent.reclaimableAt) <= Date.now()
+                ? " · recyclable"
+                : ""}
             </Badge>
           ) : (
             <Badge
@@ -1404,13 +1426,19 @@ function PoolAgentRow({
                 <Pencil className="mr-2 size-4" />
                 Rename
               </DropdownMenuItem>
-              {agent.claimed && (
+              {/*
+                Offered for `reserved` too, not just `claimed`. Gating this on
+                `claimed` alone meant the identities that actually needed
+                releasing — those held by a dead worker key — were the only ones
+                with no release action anywhere in the UI.
+              */}
+              {(agent.state === "claimed" || agent.state === "reserved") && (
                 <DropdownMenuItem
                   onClick={handleForceRelease}
                   disabled={forceReleaseMutation.isPending}
                 >
                   <Unlock className="mr-2 size-4" />
-                  Force Release
+                  {agent.state === "reserved" ? "Release Reservation" : "Force Release"}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -1638,6 +1666,9 @@ function PoolCard({
     agentCount: number;
     claimedCount: number;
     availableCount: number;
+    reservedCount: number;
+    reclaimableCount: number;
+    inactiveCount: number;
   };
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -1689,12 +1720,34 @@ function PoolCard({
                 {pool.claimedCount} claimed
               </Badge>
             )}
-            {pool.agentCount - pool.availableCount - pool.claimedCount > 0 && (
+            {/*
+              These counts are named by the server, not derived by subtraction.
+              The old residual (agentCount - available - claimed) was labelled
+              "inactive" but was mostly RESERVED identities — active agents held
+              by a dead worker key — which is why a draining pool read as a
+              cosmetic accounting quirk right up until it hit zero.
+            */}
+            {pool.reservedCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="border-amber-500/30 bg-amber-500/10 text-xs text-amber-700 dark:text-amber-400"
+                title={
+                  `${pool.reservedCount} identit${pool.reservedCount === 1 ? "y is" : "ies are"} held for a worker key whose claim lapsed. ` +
+                  (pool.reclaimableCount > 0
+                    ? `${pool.reclaimableCount} past the grace and will be recycled automatically when a claim would otherwise fail.`
+                    : "None are past the reservation grace yet.")
+                }
+              >
+                {pool.reservedCount} reserved
+                {pool.reclaimableCount > 0 ? ` (${pool.reclaimableCount} recyclable)` : ""}
+              </Badge>
+            )}
+            {pool.inactiveCount > 0 && (
               <Badge
                 variant="secondary"
                 className="border-gray-500/30 bg-gray-500/10 text-xs text-gray-700 dark:text-gray-400"
               >
-                {pool.agentCount - pool.availableCount - pool.claimedCount} inactive
+                {pool.inactiveCount} inactive
               </Badge>
             )}
           </div>

@@ -417,6 +417,27 @@ verify_steps`) + PM-owned `verify_cache` (`cache_enabled` **default false**,
   stale/yours) on REST + MCP + web badges; pick-next skips live / reclaims stale;
   stale-claim alert; release-to / request-takeover handoffs (live is never
   stomped). The claims page also has a plain **Release** action.
+- **A pool identity is a lease, not a freehold (2026-09-03)** — a KEYED binding
+  reserved its identity **expiry-independently and forever** (C1's structural
+  guard against identity-sharing), and nothing ever reaped one. That is correct
+  for a bounded set of worker keys, but game*one mints a key per \_task/session*
+  (`codex-rocket-fx-merge`, …), so the pool leaked one identity per session for
+  seven weeks until all 35 read empty and every request 503'd. Now a reservation
+  is bounded by **`PM_AGENT_BIND_GRACE_SEC`** (default 24h) and reclamation is
+  **LAZY** — consulted only when no free agent exists, taking the COLDEST
+  reservation first — so stable identity is untouched whenever the pool has any
+  slack. Safe because minting the new claimant's token overwrites the single
+  per-user `users.api_token_hash`, so the displaced worker's token stops
+  validating at the instant of transfer (pinned by test). The fourth state is
+  now **named**: `reserved` (≠ inactive, ≠ available) on `PoolAgentState` +
+  `reservedCount`/`reclaimableCount`/`inactiveCount` on the pool summary, and
+  Force Release reaches it. Every surface previously lied in the same direction
+  — the per-agent view reported `claimed: false` and the UI rendered a green
+  **Available** badge for an unclaimable identity, while the summary counted it
+  in neither bucket and labelled the residual "inactive", so a draining pool
+  read as an accounting quirk right up until it hit zero. **The upstream fix is
+  in game_one, not here**: `PM_WORKER_KEY` must be per worker SLOT
+  (`worker-1`…`worker-N`), not per task — recycling is the safety net.
 
 **Escalation channel (Campaigns C1–C4)** — `roadmaps/*escalation*.md`. A
 bidirectional agent-to-agent cross-team channel replacing the human relay:
@@ -489,22 +510,23 @@ The MCP server exposes tools for:
 
 ## Environment Variables
 
-| Variable             | Default                 | Description                                                                                                                                                                                                                     |
-| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`           | (none)                  | Set to `production` for production mode                                                                                                                                                                                         |
-| `PM_PORT`            | `3000`                  | Server port                                                                                                                                                                                                                     |
-| `PM_HOST`            | `127.0.0.1`             | Bind address (`0.0.0.0` for LAN access)                                                                                                                                                                                         |
-| `PM_DB_PATH`         | `./data/pm.db`          | SQLite database file path                                                                                                                                                                                                       |
-| `PM_LOG_LEVEL`       | `info`                  | Logging verbosity                                                                                                                                                                                                               |
-| `PM_ALERT_SWEEP_SEC` | `300`                   | How often the server re-evaluates the `train.*` alerts for every active lane, so a wedged train alerts without anyone opening the dashboard. `0` disables (on-read evaluation only, the pre-2026-08-03 behavior). Min 30.       |
-| `PM_WEB_DIST_PATH`   | (auto-resolved)         | Override path to web dist directory                                                                                                                                                                                             |
-| `PM_POOL_SECRET`     | (none)                  | Agent-pool secret. Server: auto-creates the `default` pool on first claim. MCP server: auto-claims an agent identity from the pool (alternative to a static `PM_API_TOKEN`).                                                    |
-| `PM_POOL_NAME`       | `default`               | MCP server: name of the agent pool to claim from                                                                                                                                                                                |
-| `PM_LEASE_TTL_SEC`   | `1800`                  | Claim lease TTL (seconds) before a lease lapses. The lease engine is always active (no on/off/shadow switch): every claim creates a lease and a lapsed claim is always reclaimed.                                               |
-| `PM_LEASE_GRACE_SEC` | `86400`                 | Reclaim grace (seconds) beyond TTL before sweep                                                                                                                                                                                 |
-| `PM_API_URL`         | `http://localhost:3000` | MCP server: API base URL                                                                                                                                                                                                        |
-| `PM_API_TOKEN`       | (none)                  | MCP server: API authentication token                                                                                                                                                                                            |
-| `PM_WORKER_KEY`      | (none)                  | MCP server: stable per-worker identity key. With the pool secret, re-binds the SAME agent identity across reconnect/restart (no stranded claims). Must be DISTINCT per worker. Unset â‡’ legacy behavior (grab any free agent). |
+| Variable                  | Default                 | Description                                                                                                                                                                                                                                                                                                                            |
+| ------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                | (none)                  | Set to `production` for production mode                                                                                                                                                                                                                                                                                                |
+| `PM_PORT`                 | `3000`                  | Server port                                                                                                                                                                                                                                                                                                                            |
+| `PM_HOST`                 | `127.0.0.1`             | Bind address (`0.0.0.0` for LAN access)                                                                                                                                                                                                                                                                                                |
+| `PM_DB_PATH`              | `./data/pm.db`          | SQLite database file path                                                                                                                                                                                                                                                                                                              |
+| `PM_LOG_LEVEL`            | `info`                  | Logging verbosity                                                                                                                                                                                                                                                                                                                      |
+| `PM_ALERT_SWEEP_SEC`      | `300`                   | How often the server re-evaluates the `train.*` alerts for every active lane, so a wedged train alerts without anyone opening the dashboard. `0` disables (on-read evaluation only, the pre-2026-08-03 behavior). Min 30.                                                                                                              |
+| `PM_WEB_DIST_PATH`        | (auto-resolved)         | Override path to web dist directory                                                                                                                                                                                                                                                                                                    |
+| `PM_POOL_SECRET`          | (none)                  | Agent-pool secret. Server: auto-creates the `default` pool on first claim. MCP server: auto-claims an agent identity from the pool (alternative to a static `PM_API_TOKEN`).                                                                                                                                                           |
+| `PM_POOL_NAME`            | `default`               | MCP server: name of the agent pool to claim from                                                                                                                                                                                                                                                                                       |
+| `PM_LEASE_TTL_SEC`        | `1800`                  | Claim lease TTL (seconds) before a lease lapses. The lease engine is always active (no on/off/shadow switch): every claim creates a lease and a lapsed claim is always reclaimed.                                                                                                                                                      |
+| `PM_LEASE_GRACE_SEC`      | `86400`                 | Reclaim grace (seconds) beyond TTL before sweep                                                                                                                                                                                                                                                                                        |
+| `PM_AGENT_BIND_GRACE_SEC` | `86400`                 | How long a KEYED pool binding (`PM_WORKER_KEY`) stays reserved for its worker past its claim TTL before the identity may be recycled. Reclamation is LAZY — only when a claim would otherwise fail, coldest reservation first. `off` disables it (reserved forever, the pre-2026-09 behavior); `0` recycles the moment the TTL lapses. |
+| `PM_API_URL`              | `http://localhost:3000` | MCP server: API base URL                                                                                                                                                                                                                                                                                                               |
+| `PM_API_TOKEN`            | (none)                  | MCP server: API authentication token                                                                                                                                                                                                                                                                                                   |
+| `PM_WORKER_KEY`           | (none)                  | MCP server: stable per-worker identity key. With the pool secret, re-binds the SAME agent identity across reconnect/restart (no stranded claims). Must be DISTINCT per worker. Unset â‡’ legacy behavior (grab any free agent).                                                                                                        |
 
 There is no session-signing secret: sessions and API tokens are opaque random tokens stored
 bcrypt-hashed server-side (sessions ride an httpOnly `pm_session` cookie; API tokens go in the

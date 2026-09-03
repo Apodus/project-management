@@ -717,7 +717,7 @@ describe("Agent Pool", () => {
       expect(a.body.data.user.id).not.toBe(b.body.data.user.id);
     });
 
-    it("[correction 1] a keyed-bound agent is NOT grabbable by a keyless claim, even after its claim TTL expires", async () => {
+    it("[correction 1] a keyed-bound agent is NOT grabbable by a keyless claim, even after its claim TTL expires (within the reservation grace)", async () => {
       const pool = await createPoolViaAPI("bind-noshare-keyless", TEST_POOL_SECRET);
       // 2 agents total: one will be keyed-bound, one stays free.
       await createPoolAgentsViaAPI(pool.id, 2);
@@ -745,7 +745,7 @@ describe("Agent Pool", () => {
       expect(keyless2.status).toBe(503);
     });
 
-    it("[correction 1] a keyed-bound agent is NOT grabbable by another key's first-bind, even after expiry", async () => {
+    it("[correction 1] a keyed-bound agent is NOT grabbable by another key's first-bind, even after expiry (within the reservation grace)", async () => {
       const pool = await createPoolViaAPI("bind-noshare-keyed", TEST_POOL_SECRET);
       await createPoolAgentsViaAPI(pool.id, 2);
 
@@ -836,6 +836,316 @@ describe("Agent Pool", () => {
       expect(rowsB.length).toBe(1);
       expect(rowsB[0].workerKey).toBe("host-worker-b");
       expect(rowsB[0].workerKeyPoolId).toBe(pool.id);
+    });
+  });
+
+  // ── Reservation grace + lazy reclamation ─────────────────────────
+  //
+  // A keyed binding reserves its identity past its TTL (C1, above). Without a
+  // bound on that reservation, a deployment that mints a fresh worker key per
+  // task leaks one identity per session until the pool reads empty — which is
+  // exactly what drained a live 35-agent pool to zero over seven weeks.
+
+  describe("Reservation grace + reclamation", () => {
+    async function claim(
+      poolName: string,
+      poolSecret: string,
+      workerKey?: string,
+    ): Promise<{ status: number; body: any }> {
+      const res = await testApp.app.request("/api/v1/auth/agent-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ poolName, poolSecret, ...(workerKey ? { workerKey } : {}) }),
+      });
+      const body = await res.json().catch(() => ({}));
+      return { status: res.status, body };
+    }
+
+    /** Age a user's claim row so it lapsed `hoursAgo` hours ago. */
+    function lapseClaim(userId: string, hoursAgo: number) {
+      const past = new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString();
+      testApp.db
+        .update(agentClaims)
+        .set({ expiresAt: past, heartbeatAt: past, claimedAt: past })
+        .where(eq(agentClaims.userId, userId))
+        .run();
+    }
+
+    afterEach(() => {
+      delete process.env.PM_AGENT_BIND_GRACE_SEC;
+    });
+
+    it("recycles a beyond-grace reservation when the pool is otherwise exhausted", async () => {
+      const pool = await createPoolViaAPI("reclaim-basic", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 1);
+
+      const first = await claim("reclaim-basic", TEST_POOL_SECRET, "dead-worker");
+      expect(first.status).toBe(200);
+      const id = first.body.data.user.id;
+
+      // Two days dead, default grace is 24h.
+      lapseClaim(id, 48);
+
+      const second = await claim("reclaim-basic", TEST_POOL_SECRET, "fresh-worker");
+      expect(second.status).toBe(200);
+      expect(second.body.data.user.id).toBe(id);
+
+      // The reservation changed hands outright — exactly one binding row, and
+      // it belongs to the new key.
+      const rows = testApp.db.select().from(agentClaims).where(eq(agentClaims.userId, id)).all();
+      expect(rows.length).toBe(1);
+      expect(rows[0].workerKey).toBe("fresh-worker");
+    });
+
+    it("prefers a genuinely free agent over recycling, even when one is past the grace", async () => {
+      const pool = await createPoolViaAPI("reclaim-lazy", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 2);
+
+      const bound = await claim("reclaim-lazy", TEST_POOL_SECRET, "dead-worker");
+      const boundId = bound.body.data.user.id;
+      lapseClaim(boundId, 72);
+
+      // A free agent remains, so the cold reservation must be left alone.
+      const next = await claim("reclaim-lazy", TEST_POOL_SECRET, "new-worker");
+      expect(next.status).toBe(200);
+      expect(next.body.data.user.id).not.toBe(boundId);
+
+      const rows = testApp.db
+        .select()
+        .from(agentClaims)
+        .where(eq(agentClaims.userId, boundId))
+        .all();
+      expect(rows[0].workerKey).toBe("dead-worker");
+    });
+
+    it("recycles the COLDEST reservation first", async () => {
+      const pool = await createPoolViaAPI("reclaim-order", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 3);
+
+      const a = await claim("reclaim-order", TEST_POOL_SECRET, "worker-a");
+      const b = await claim("reclaim-order", TEST_POOL_SECRET, "worker-b");
+      const c = await claim("reclaim-order", TEST_POOL_SECRET, "worker-c");
+      lapseClaim(a.body.data.user.id, 30);
+      lapseClaim(b.body.data.user.id, 200); // coldest
+      lapseClaim(c.body.data.user.id, 50);
+
+      const fresh = await claim("reclaim-order", TEST_POOL_SECRET, "worker-d");
+      expect(fresh.status).toBe(200);
+      expect(fresh.body.data.user.id).toBe(b.body.data.user.id);
+    });
+
+    it("does not recycle a reservation still inside the grace", async () => {
+      const pool = await createPoolViaAPI("reclaim-within", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 1);
+
+      const bound = await claim("reclaim-within", TEST_POOL_SECRET, "recent-worker");
+      lapseClaim(bound.body.data.user.id, 2); // 2h dead, 24h grace
+
+      const other = await claim("reclaim-within", TEST_POOL_SECRET, "other-worker");
+      expect(other.status).toBe(503);
+    });
+
+    it("honours PM_AGENT_BIND_GRACE_SEC=off (reserved forever)", async () => {
+      process.env.PM_AGENT_BIND_GRACE_SEC = "off";
+      const pool = await createPoolViaAPI("reclaim-off", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 1);
+
+      const bound = await claim("reclaim-off", TEST_POOL_SECRET, "dead-worker");
+      lapseClaim(bound.body.data.user.id, 24 * 365);
+
+      const other = await claim("reclaim-off", TEST_POOL_SECRET, "other-worker");
+      expect(other.status).toBe(503);
+    });
+
+    it("honours a custom grace", async () => {
+      process.env.PM_AGENT_BIND_GRACE_SEC = "3600"; // 1h
+      const pool = await createPoolViaAPI("reclaim-custom", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 1);
+
+      const bound = await claim("reclaim-custom", TEST_POOL_SECRET, "dead-worker");
+      const id = bound.body.data.user.id;
+      lapseClaim(id, 2); // 2h dead > 1h grace
+
+      const other = await claim("reclaim-custom", TEST_POOL_SECRET, "other-worker");
+      expect(other.status).toBe(200);
+      expect(other.body.data.user.id).toBe(id);
+    });
+
+    it("invalidates the previous worker's token when its identity is recycled", async () => {
+      const pool = await createPoolViaAPI("reclaim-token", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 1);
+
+      const first = await claim("reclaim-token", TEST_POOL_SECRET, "dead-worker");
+      const oldToken = first.body.data.token;
+      lapseClaim(first.body.data.user.id, 48);
+
+      const second = await claim("reclaim-token", TEST_POOL_SECRET, "fresh-worker");
+      expect(second.body.data.token).not.toBe(oldToken);
+
+      // The displaced worker must not be able to keep acting as that identity —
+      // this is what makes recycling safe rather than identity-sharing.
+      const zombie = await testApp.app.request("/api/v1/projects", {
+        headers: { Authorization: `Bearer ${oldToken}` },
+      });
+      expect(zombie.status).toBe(401);
+    });
+
+    it("a keyless claim can also recycle a beyond-grace reservation", async () => {
+      const pool = await createPoolViaAPI("reclaim-keyless", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 1);
+
+      const bound = await claim("reclaim-keyless", TEST_POOL_SECRET, "dead-worker");
+      const id = bound.body.data.user.id;
+      lapseClaim(id, 48);
+
+      const keyless = await claim("reclaim-keyless", TEST_POOL_SECRET);
+      expect(keyless.status).toBe(200);
+      expect(keyless.body.data.user.id).toBe(id);
+    });
+
+    it("a returning worker inside the grace still gets its OWN identity back", async () => {
+      const pool = await createPoolViaAPI("reclaim-rebind", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 1);
+
+      const first = await claim("reclaim-rebind", TEST_POOL_SECRET, "worker-1");
+      const id = first.body.data.user.id;
+      lapseClaim(id, 200); // even far past the grace…
+
+      // …a rebind by the SAME key resolves before any reclamation is considered.
+      const again = await claim("reclaim-rebind", TEST_POOL_SECRET, "worker-1");
+      expect(again.status).toBe(200);
+      expect(again.body.data.user.id).toBe(id);
+    });
+  });
+
+  // ── Pool state accounting ────────────────────────────────────────
+
+  describe("Pool state accounting", () => {
+    async function claim(poolName: string, workerKey?: string) {
+      const res = await testApp.app.request("/api/v1/auth/agent-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          poolName,
+          poolSecret: TEST_POOL_SECRET,
+          ...(workerKey ? { workerKey } : {}),
+        }),
+      });
+      return await res.json();
+    }
+
+    it("reports a lapsed keyed binding as `reserved`, never `available`", async () => {
+      const pool = await createPoolViaAPI("state-reserved", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 2);
+
+      const bound = await claim("state-reserved", "worker-1");
+      const boundId = bound.data.user.id;
+      const past = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+      testApp.db
+        .update(agentClaims)
+        .set({ expiresAt: past, heartbeatAt: past, claimedAt: past })
+        .where(eq(agentClaims.userId, boundId))
+        .run();
+
+      const res = await authRequest(testApp.app, "GET", `/api/v1/auth/agent-pools/${pool.id}`);
+      const body = await res.json();
+      const row = body.data.agents.find((a: any) => a.user.id === boundId);
+
+      // The pre-2026-09 bug in one assertion: this row read `claimed: false`,
+      // and the UI had no third state, so it rendered a green "Available" badge
+      // for an identity nobody could claim.
+      expect(row.claimed).toBe(false);
+      expect(row.state).toBe("reserved");
+      expect(row.workerKey).toBe("worker-1");
+      expect(row.reclaimableAt).not.toBeNull();
+      // Lapsed 10h ago + 24h grace ⇒ recyclable ~14h from now, not yet.
+      expect(Date.parse(row.reclaimableAt)).toBeGreaterThan(Date.now());
+    });
+
+    it("surfaces the lapsed claim's timestamps on a reserved row", async () => {
+      const pool = await createPoolViaAPI("state-times", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 1);
+      const bound = await claim("state-times", "worker-1");
+      const past = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+      testApp.db
+        .update(agentClaims)
+        .set({ expiresAt: past, heartbeatAt: past, claimedAt: past })
+        .where(eq(agentClaims.userId, bound.data.user.id))
+        .run();
+
+      const res = await authRequest(testApp.app, "GET", `/api/v1/auth/agent-pools/${pool.id}`);
+      const body = await res.json();
+      // How long the reservation has been dead IS the finding; blanking these
+      // was half of why the state was invisible.
+      expect(body.data.agents[0].expiresAt).toBe(past);
+      expect(body.data.agents[0].heartbeatAt).toBe(past);
+    });
+
+    it("counts reserved / inactive as named buckets that sum to agentCount", async () => {
+      const pool = await createPoolViaAPI("state-counts", TEST_POOL_SECRET);
+      const agents = await createPoolAgentsViaAPI(pool.id, 5);
+
+      // 1 live claim, 2 reserved (one past grace, one within), 1 deactivated,
+      // 1 genuinely free.
+      await claim("state-counts", "live-worker");
+      const r1 = await claim("state-counts", "cold-worker");
+      const r2 = await claim("state-counts", "warm-worker");
+      const setLapse = (id: string, hours: number) => {
+        const past = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+        testApp.db
+          .update(agentClaims)
+          .set({ expiresAt: past, heartbeatAt: past, claimedAt: past })
+          .where(eq(agentClaims.userId, id))
+          .run();
+      };
+      setLapse(r1.data.user.id, 100); // past the 24h grace
+      setLapse(r2.data.user.id, 3); // within it
+
+      const spare = agents.find((a: any) => ![r1.data.user.id, r2.data.user.id].includes(a.id));
+      const toDeactivate = agents.filter(
+        (a: any) => ![r1.data.user.id, r2.data.user.id].includes(a.id),
+      )[0];
+      testApp.db.update(users).set({ isActive: false }).where(eq(users.id, toDeactivate.id)).run();
+      expect(spare).toBeDefined();
+
+      const res = await authRequest(testApp.app, "GET", "/api/v1/auth/agent-pools");
+      const body = await res.json();
+      const found = body.data.find((p: any) => p.id === pool.id);
+
+      expect(found.agentCount).toBe(5);
+      expect(found.reservedCount).toBe(2);
+      expect(found.reclaimableCount).toBe(1);
+      expect(found.inactiveCount).toBe(1);
+      // The buckets are disjoint and exhaustive — no residual left over to be
+      // mislabelled "inactive" by subtraction in the UI.
+      expect(
+        found.claimedCount + found.availableCount + found.reservedCount + found.inactiveCount,
+      ).toBe(found.agentCount);
+    });
+
+    it("names the reserved bucket in the 503 when a pool is drained", async () => {
+      const pool = await createPoolViaAPI("state-503", TEST_POOL_SECRET);
+      await createPoolAgentsViaAPI(pool.id, 1);
+      const bound = await claim("state-503", "worker-1");
+      const past = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      testApp.db
+        .update(agentClaims)
+        .set({ expiresAt: past, heartbeatAt: past, claimedAt: past })
+        .where(eq(agentClaims.userId, bound.data.user.id))
+        .run();
+
+      const res = await testApp.app.request("/api/v1/auth/agent-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          poolName: "state-503",
+          poolSecret: TEST_POOL_SECRET,
+          workerKey: "worker-2",
+        }),
+      });
+      expect(res.status).toBe(503);
+      const body = await res.json();
+      expect(body.error.message).toMatch(/reserved by a worker key/);
     });
   });
 

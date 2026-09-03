@@ -19,6 +19,9 @@ const poolSummarySchema = poolSchema.extend({
   agentCount: z.number(),
   claimedCount: z.number(),
   availableCount: z.number(),
+  reservedCount: z.number(),
+  reclaimableCount: z.number(),
+  inactiveCount: z.number(),
 });
 
 const claimResponseSchema = z.object({
@@ -45,9 +48,12 @@ const poolAgentStatusSchema = z.object({
     poolId: z.string().nullable(),
   }),
   claimed: z.boolean(),
+  state: z.enum(["inactive", "claimed", "reserved", "available"]),
   claimedAt: z.string().nullable(),
   expiresAt: z.string().nullable(),
   heartbeatAt: z.string().nullable(),
+  workerKey: z.string().nullable(),
+  reclaimableAt: z.string().nullable(),
 });
 
 const messageEnvelope = z.object({
@@ -623,12 +629,23 @@ export function createAgentPoolRoutes(): OpenAPIHono<{
     const result = await agentPoolService.claimAgent(poolName, poolSecret, workerKey);
 
     if (!result) {
+      // Name the actual buckets. The old text said "claimed or inactive", which
+      // hid the state that actually drains a pool: identities RESERVED by dead
+      // worker keys, held past their TTL and recycled only once past the grace.
+      const summary = agentPoolService.listPools().find((p) => p.name === poolName);
+      const detail = summary
+        ? ` Pool "${poolName}": ${summary.claimedCount} claimed, ${summary.reservedCount} reserved by a worker key` +
+          `${summary.reservedCount > 0 ? ` (${summary.reclaimableCount} already recyclable)` : ""}` +
+          `, ${summary.inactiveCount} deactivated, of ${summary.agentCount} total.` +
+          (summary.reservedCount > summary.reclaimableCount
+            ? " Reserved identities recycle automatically once past PM_AGENT_BIND_GRACE_SEC; add identities or release one to unblock sooner."
+            : " Add identities to the pool to unblock.")
+        : "";
       return c.json(
         {
           error: {
             code: "NO_AGENTS_AVAILABLE",
-            message:
-              "No AI agents are available in the pool. All agents are currently claimed or inactive.",
+            message: `No AI agent identity could be claimed from the pool.${detail}`,
           },
         },
         503,
