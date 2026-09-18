@@ -491,6 +491,7 @@ async function main(): Promise<void> {
       resource: cfg.resource,
       defaultVerifyCommand: cfg.verifyCommand,
       verifyTimeoutSec: cfg.verifyTimeoutSec,
+      verifySuccessSentinel: cfg.verifySuccessSentinel,
       // Campaign 2026-08-04 §P1: seconds → milliseconds, converted exactly once
       // here. `0` disables the cancellation watcher entirely.
       verifyCancelPollMs: cfg.verifyCancelPollSec * 1000,

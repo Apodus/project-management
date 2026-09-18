@@ -66,6 +66,12 @@ export interface RecoverOrphanedInnerDeps {
    *  4 we use defaultVerifyCommand). */
   defaultVerifyCommand: string;
   verifyTimeoutSec: number;
+  /**
+   * A verify that ABORTS must not be graded as a pass: when non-empty, a step
+   * passes only if it ALSO printed this string in the tail of its log. Empty
+   * or absent leaves grading byte-identical to before.
+   */
+  verifySuccessSentinel?: string;
   /** Path to the local inner clone/remote `O` is fetched FROM (§7.3 step 3). `O`
    *  is on inner main, so a fetch of the remote also suffices; we fetch from
    *  this path for parity with the inner clone the lane resolves against. When
@@ -275,6 +281,7 @@ async function rollforwardOne(
       gitOps: outerGit,
       cwd: outerWt.path,
       verifyTimeoutSec: deps.verifyTimeoutSec,
+      successSentinel: deps.verifySuccessSentinel,
       signal: undefined,
       logsDir: deps.outerLogsDir ?? ".",
       attemptId: `recovery-${incident.id}`,

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { copyFile, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
@@ -113,6 +113,14 @@ export interface VerifyResult {
    * `timedOut` is reported.
    */
   spawnError?: string;
+  /**
+   * Set ONLY by the verify-pipeline's success-sentinel check: the process exited
+   * 0, but its log never printed the string the lane configured as "this run
+   * reached its own end". The exit code above is left exactly as observed --
+   * this flag, not a fabricated non-zero, is what makes the step a failure, so
+   * the reported reason stays truthful about what the process actually returned.
+   */
+  sentinelMissing?: boolean;
 }
 
 export interface RunVerifyOptions {
@@ -273,6 +281,16 @@ export interface GitOps {
     innerWorktreePath?: string,
   ): Promise<void>;
   runVerify(command: string, timeoutMs: number, opts: RunVerifyOptions): Promise<VerifyResult>;
+  /**
+   * Read the LAST `maxBytes` of a verify log. `runVerify` caps the stdout/stderr
+   * it keeps in memory at the FIRST N bytes, so the in-memory capture cannot
+   * answer "did this run reach its own end" for any verify longer than the cap
+   * -- and a 14,000-line verify is much longer. The log file is the only place
+   * the tail exists. Missing/unreadable file resolves to "" (never throws): a
+   * sentinel that cannot be found is a FAIL, decided by the caller, not an
+   * exception thrown from inside the grader.
+   */
+  readLogTail(logPath: string, maxBytes: number): Promise<string>;
   /**
    * §7.4 RECONCILABLE ancestry check. Returns true iff `ancestor` is an ancestor
    * of `descendant` in THIS repo's history (i.e. `git merge-base --is-ancestor
@@ -1275,6 +1293,29 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     }
   }
 
+  /**
+   * Last `maxBytes` of a file as UTF-8, or "" when it cannot be read. Opens and
+   * seeks rather than reading the whole file: verify logs run to megabytes and
+   * only the end is ever asked about.
+   */
+  async function readLogTail(logPath: string, maxBytes: number): Promise<string> {
+    if (!logPath) return "";
+    let handle;
+    try {
+      handle = await open(logPath, "r");
+      const { size } = await handle.stat();
+      const length = Math.min(size, Math.max(0, maxBytes));
+      if (length === 0) return "";
+      const buf = Buffer.alloc(length);
+      await handle.read(buf, 0, length, size - length);
+      return buf.toString("utf8");
+    } catch {
+      return "";
+    } finally {
+      await handle?.close().catch(() => {});
+    }
+  }
+
   function runVerify(
     command: string,
     timeoutMs: number,
@@ -1606,6 +1647,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     readSubmoduleGitlink,
     materializeSubmoduleWorktree,
     runVerify,
+    readLogTail,
     isAncestor,
     treesIdentical,
     isPureGitlinkBump,

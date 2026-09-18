@@ -124,6 +124,10 @@ const integratorSettingsSchema = z
     // Campaign 2026-08-04 §P2 (mirrors the canonical @pm/shared schema): the
     // output-stall floor under verify_timeout_sec's ceiling. `0` disables.
     verify_stall_sec: z.number().int().min(0).default(0),
+    // A verify that ABORTS must not be graded as a pass (mirrors the canonical
+    // @pm/shared schema). When set, the verify command must also print this
+    // string in the tail of its log for the step to pass. Empty = off.
+    verify_success_sentinel: z.string().default(""),
     // Campaign 2026-08-15 §R3 (mirrors the canonical @pm/shared schema): raise
     // an escalation to the submitting worker on a REJECT so the wake daemon
     // delivers it into their session. Ships OFF.

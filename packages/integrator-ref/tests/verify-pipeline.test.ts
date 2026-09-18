@@ -758,3 +758,193 @@ describe("runPipeline — per-step wall clock (campaign 2026-08-03 §P2)", () =>
     expect(s.wallMs).toBeLessThan(1000);
   });
 });
+
+/**
+ * A verify that ABORTS must never be graded as a pass.
+ *
+ * `PASS` used to be `exitCode === 0 && !timedOut`, and that is exactly how the
+ * game_one merge train landed five candidates over verifies that stopped dead at
+ * a failing gate: `exit /b <nonzero>` inside a parenthesized cmd block returns 0
+ * to the parent whenever anything remains to run in that block or in any block
+ * enclosing it, so the integrator was handed a truthful 0 for a run that had
+ * built nothing and tested nothing.
+ *
+ * `successSentinel` adds the second half of the question. `PASS` asks the OS what
+ * the process returned; the sentinel asks the RUN whether it reached its own end.
+ */
+describe("runPipeline success sentinel", () => {
+  // A GitOps whose readLogTail serves canned tails per log path.
+  function gitOpsWithTails(
+    behaviors: Record<string, StepBehavior>,
+    calls: VerifyCall[],
+    tails: Record<string, string>,
+    onRead?: (logPath: string, maxBytes: number) => void,
+  ): GitOps {
+    const base = makeFakeGitOps(behaviors, calls);
+    return new Proxy(base, {
+      get(target, prop) {
+        if (prop === "readLogTail") {
+          return (logPath: string, maxBytes: number): Promise<string> => {
+            onRead?.(logPath, maxBytes);
+            return Promise.resolve(tails[logPath] ?? "");
+          };
+        }
+        return (target as unknown as Record<string, unknown>)[prop];
+      },
+    }) as GitOps;
+  }
+
+  it("fails a step that exited 0 but never printed the sentinel", async () => {
+    const calls: VerifyCall[] = [];
+    // The incident shape exactly: a clean exit code over a log that stops at the
+    // failing gate, thousands of lines before the verify's own last word.
+    const tails = {
+      "/logs/att-1.log":
+        "live-midi-reachability: FAIL - Release|x64 library 'livemidisynthinstrumentpack.lib' " +
+        "is not an AdditionalDependencies input of the shipping executable\n",
+    };
+    const gitOps = gitOpsWithTails(
+      { "./pm-verify.bat": { result: okResult("/logs/att-1.log") } },
+      calls,
+      tails,
+    );
+
+    const res = await runPipeline(
+      [step("verify", "./pm-verify.bat")],
+      ctxFor(gitOps, { successSentinel: "pm-verify: PASS" }),
+    );
+
+    expect(res.outcome).toBe("fail");
+    expect(res.failingStep?.stepId).toBe("verify");
+    // The observed exit code is reported as observed -- not a fabricated non-zero.
+    expect(res.failingStep?.verify.exitCode).toBe(0);
+    expect(res.failingStep?.verify.sentinelMissing).toBe(true);
+    expect(res.failingStep?.verify.stderr).toContain("pm-verify: PASS");
+    expect(res.failingStep?.verify.stderr).toContain("did not reach its own end");
+    // Never retried as transient: the run completed, it just stopped early.
+    expect(classifyVerifyFailure(res.failingStep!.verify)).not.toBe("transient");
+  });
+
+  it("passes a step whose log tail carries the sentinel", async () => {
+    const calls: VerifyCall[] = [];
+    const tails = { "/logs/att-1.log": "verify-tests: 21 suites OK\npm-verify: PASS\n" };
+    const gitOps = gitOpsWithTails(
+      { "./pm-verify.bat": { result: okResult("/logs/att-1.log") } },
+      calls,
+      tails,
+    );
+
+    const res = await runPipeline(
+      [step("verify", "./pm-verify.bat")],
+      ctxFor(gitOps, { successSentinel: "pm-verify: PASS" }),
+    );
+
+    expect(res.outcome).toBe("pass");
+    expect(res.steps[0].verify.sentinelMissing).toBeUndefined();
+  });
+
+  it("reads only the TAIL, so a sentinel printed early cannot satisfy it", async () => {
+    const calls: VerifyCall[] = [];
+    const reads: Array<{ logPath: string; maxBytes: number }> = [];
+    // The tail the reader returns is what the gate sees; a sentinel 14,000 lines
+    // back is not in it. This asserts the gate asked for a bounded tail at all --
+    // grading on the whole file would let an early mention pass a truncated run.
+    const tails = { "/logs/att-1.log": "still building...\n" };
+    const gitOps = gitOpsWithTails(
+      { "./pm-verify.bat": { result: okResult("/logs/att-1.log") } },
+      calls,
+      tails,
+      (logPath, maxBytes) => reads.push({ logPath, maxBytes }),
+    );
+
+    const res = await runPipeline(
+      [step("verify", "./pm-verify.bat")],
+      ctxFor(gitOps, { successSentinel: "pm-verify: PASS" }),
+    );
+
+    expect(res.outcome).toBe("fail");
+    expect(reads).toHaveLength(1);
+    expect(reads[0].logPath).toBe("/logs/att-1.log");
+    expect(reads[0].maxBytes).toBeGreaterThan(0);
+    expect(reads[0].maxBytes).toBeLessThanOrEqual(1024 * 1024);
+  });
+
+  it("leaves a genuine non-zero failure labelled as itself, not as a missing sentinel", async () => {
+    const calls: VerifyCall[] = [];
+    const tails = { "/logs/att-1.log": "boom\n" };
+    const gitOps = gitOpsWithTails(
+      { "./pm-verify.bat": { result: realFailResult("/logs/att-1.log") } },
+      calls,
+      tails,
+    );
+
+    const res = await runPipeline(
+      [step("verify", "./pm-verify.bat")],
+      ctxFor(gitOps, { successSentinel: "pm-verify: PASS" }),
+    );
+
+    expect(res.outcome).toBe("fail");
+    expect(res.failingStep?.verify.exitCode).toBe(1);
+    expect(res.failingStep?.verify.sentinelMissing).toBeUndefined();
+    expect(res.failingStep?.verify.stderr).toBe("boom");
+  });
+
+  it("is a true no-op when unset: no tail read at all", async () => {
+    const calls: VerifyCall[] = [];
+    let reads = 0;
+    const gitOps = gitOpsWithTails(
+      { "./pm-verify.bat": { result: okResult("/logs/att-1.log") } },
+      calls,
+      {},
+      () => {
+        reads += 1;
+      },
+    );
+
+    // No successSentinel -> the pre-change predicate, byte for byte.
+    const res = await runPipeline([step("verify", "./pm-verify.bat")], ctxFor(gitOps));
+
+    expect(res.outcome).toBe("pass");
+    expect(reads).toBe(0);
+  });
+
+  it("an empty sentinel is off, not a string every log trivially contains", async () => {
+    const calls: VerifyCall[] = [];
+    let reads = 0;
+    const gitOps = gitOpsWithTails(
+      { "./pm-verify.bat": { result: okResult("/logs/att-1.log") } },
+      calls,
+      {},
+      () => {
+        reads += 1;
+      },
+    );
+
+    const res = await runPipeline(
+      [step("verify", "./pm-verify.bat")],
+      ctxFor(gitOps, { successSentinel: "" }),
+    );
+
+    expect(res.outcome).toBe("pass");
+    expect(reads).toBe(0);
+  });
+
+  it('an unreadable log is a FAIL, not a pass: the seam resolves "" and the sentinel is absent', async () => {
+    const calls: VerifyCall[] = [];
+    // readLogTail contracts to resolve "" rather than throw; "" contains no
+    // sentinel, so the run that cannot prove it finished does not pass.
+    const gitOps = gitOpsWithTails(
+      { "./pm-verify.bat": { result: okResult("/logs/att-1.log") } },
+      calls,
+      {},
+    );
+
+    const res = await runPipeline(
+      [step("verify", "./pm-verify.bat")],
+      ctxFor(gitOps, { successSentinel: "pm-verify: PASS" }),
+    );
+
+    expect(res.outcome).toBe("fail");
+    expect(res.failingStep?.verify.sentinelMissing).toBe(true);
+  });
+});

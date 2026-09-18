@@ -60,6 +60,11 @@ export interface IntegratorSettings {
   verify_cancel_poll_sec?: number;
   /** Campaign 2026-08-04 §P2: output-silence kill threshold; 0 disables. */
   verify_stall_sec?: number;
+  /**
+   * A verify that ABORTS must not be graded as a pass: when set, the verify
+   * command must also print this string in the tail of its log. Empty = off.
+   */
+  verify_success_sentinel?: string;
   worktree_root?: string;
   git_remote?: string;
   git_main_branch?: string;

@@ -248,6 +248,23 @@ export const integratorSettingsSchema = z
     // it against their own lane: ~1200 on a lane whose timeout is measured in
     // hours. See the deployment guide.
     verify_stall_sec: z.number().int().min(0).default(0),
+    // A verify that ABORTS must never be graded as a pass. Exit code alone
+    // cannot carry that: on 2026-09-06/13/17/18 game_one's pm-verify.bat
+    // stopped at a failing gate and handed cmd.exe a 0, because `exit /b
+    // <nonzero>` inside a parenthesized cmd block returns 0 whenever anything
+    // remains to run in that block or in any block enclosing it. Five
+    // candidates landed built by nothing and tested by nothing, with the
+    // integrator faithfully recording the exit code it was given.
+    //
+    // When set, the verify command must ALSO print this string in the tail of
+    // its log for the step to pass. It is the run saying "I reached my own
+    // end", which an abort cannot forge and a truncated log cannot satisfy.
+    //
+    // Ships EMPTY = off, because the sentinel is a property of a specific
+    // verify command and a wrong one would reject every candidate. An operator
+    // sets it to whatever their verify prints last on success (game_one:
+    // "pm-verify: PASS").
+    verify_success_sentinel: z.string().default(""),
     // Campaign 2026-08-15 §R3: when a merge request is REJECTED, raise an
     // escalation addressed to the submitting worker so the existing wake daemon
     // delivers the outcome into that agent's session — instead of a human

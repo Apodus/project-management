@@ -247,6 +247,12 @@ export interface BatchDeps {
   resource: string;
   defaultVerifyCommand: string;
   verifyTimeoutSec: number;
+  /**
+   * A verify that ABORTS must not be graded as a pass: when non-empty, a step
+   * passes only if it ALSO printed this string in the tail of its log. Empty
+   * or absent leaves grading byte-identical to before.
+   */
+  verifySuccessSentinel?: string;
   gitRemote: string;
   gitMainBranch: string;
   /** Override the batch-id minter (tests). Defaults to a random UUID. */
@@ -2521,6 +2527,7 @@ async function runVerifyTask(
         gitOps,
         cwd: wt.path,
         verifyTimeoutSec: deps.verifyTimeoutSec,
+        successSentinel: deps.verifySuccessSentinel,
         // The member-level signal (NOT passed to runVerify directly): runPipeline
         // mints a FRESH per-pass child from it each iteration, so a transient
         // retry's runPipeline call RE-RUNS rather than seeing a fired controller.
@@ -2875,6 +2882,7 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
         gitMainBranch: deps.gitMainBranch,
         defaultVerifyCommand: deps.defaultVerifyCommand,
         verifyTimeoutSec: deps.verifyTimeoutSec,
+        verifySuccessSentinel: deps.verifySuccessSentinel,
         innerLogsDir: groupLane.innerLogsDir,
         outerLogsDir: groupLane.outerLogsDir,
       },
@@ -2907,6 +2915,7 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
         gitRemote: deps.gitRemote,
         defaultVerifyCommand: deps.defaultVerifyCommand,
         verifyTimeoutSec: deps.verifyTimeoutSec,
+        verifySuccessSentinel: deps.verifySuccessSentinel,
         // Campaign 2026-08-15 §S1: the same two kill-seam knobs the single-repo
         // lane reads. One setting per project drives both lanes — an operator
         // configuring `verify_cancel_poll_sec` should not have to know whether a

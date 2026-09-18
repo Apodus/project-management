@@ -111,6 +111,12 @@ export interface GroupIntegrationDeps {
   defaultVerifyCommand: string;
   verifyTimeoutSec: number;
   /**
+   * A verify that ABORTS must not be graded as a pass: when non-empty, a step
+   * passes only if it ALSO printed this string in the tail of its log. Empty
+   * or absent leaves grading byte-identical to before.
+   */
+  verifySuccessSentinel?: string;
+  /**
    * Campaign 2026-08-15 §S1: the two kill-seam arms, in MILLISECONDS, same
    * units and same meaning as `BatchDeps`. `0`/absent disables that arm.
    * Until this campaign the cross-repo lane had NEITHER — it passed
@@ -1403,6 +1409,7 @@ export async function runGroupIntegration(
       gitOps: asm.innerGitOps,
       cwd: asm.innerWt.path,
       verifyTimeoutSec: deps.verifyTimeoutSec,
+      successSentinel: deps.verifySuccessSentinel,
       signal: verifyAbort.signal,
       liveness: groupLiveness,
       logsDir: innerLogsDir,
@@ -1433,6 +1440,7 @@ export async function runGroupIntegration(
         gitOps: asm.outerGitOps,
         cwd: asm.outerWt.path,
         verifyTimeoutSec: deps.verifyTimeoutSec,
+        successSentinel: deps.verifySuccessSentinel,
         signal: verifyAbort.signal,
         liveness: groupLiveness,
         logsDir: outerLogsDir,

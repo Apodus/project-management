@@ -44,6 +44,14 @@ export interface IntegratorConfig {
    * this is opt-in per lane and generous when it is on.
    */
   verifyStallSec: number;
+  /**
+   * A verify that ABORTS must never be graded as a pass. The exit code alone
+   * cannot carry that: cmd.exe returns 0 from `exit /b <nonzero>` inside a
+   * parenthesized block, which is how five candidates landed on game_one over
+   * verifies that stopped at a failing gate. When non-empty, a step passes only
+   * if the verify ALSO printed this string in the tail of its log. Empty = off.
+   */
+  verifySuccessSentinel: string;
   worktreeRoot: string;
   worktreeName: string;
   gitRemote: string;
@@ -170,6 +178,7 @@ export async function loadConfig(
     // opted into per lane (see the shared schema for why 1200 is not a safe
     // default against a 600s default timeout).
     verifyStallSec: ic.verify_stall_sec ?? 0,
+    verifySuccessSentinel: ic.verify_success_sentinel ?? "",
     worktreeRoot: ic.worktree_root,
     worktreeName: ic.worktree_name ?? `${project.slug}-integrator`,
     gitRemote: ic.git_remote ?? "origin",

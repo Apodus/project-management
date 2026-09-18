@@ -156,6 +156,21 @@ export interface PipelineCtx {
    * Absent ⇒ the pre-P2 spawn.
    */
   liveness?: { lastOutputAt: number };
+  /**
+   * A verify that ABORTS must never be graded as a pass. When non-empty, a
+   * step passes only if its exit code is 0 AND this string appears in the tail
+   * of its log -- the run saying "I reached my own end".
+   *
+   * The exit code alone cannot carry that. On game_one, `exit /b <nonzero>`
+   * inside a parenthesized cmd block returns 0 to the parent whenever anything
+   * remains to run in that block or in any block enclosing it, so a verify that
+   * stopped dead at a failing gate reported success. Five candidates landed that
+   * way (2026-09-06, 09-13, and three on 09-17/18), built by nothing and tested
+   * by nothing, with the integrator faithfully recording the 0 it was handed.
+   *
+   * Empty/absent → byte-identical to before: no tail read, no extra verdict.
+   */
+  successSentinel?: string;
   /** STEP 6: the verify-cache seam (§5.3). Absent → off-path (byte-identical 5). */
   cache?: PipelineCacheCtx;
   /** STEP 6: best-effort cache-I/O failure logger (§11). Absent → silent. */
@@ -182,7 +197,15 @@ function logPathForStep(
   return path.join(logsDir, `${attemptId}-${stepId}.log`);
 }
 
-const PASS = (v: VerifyResult): boolean => v.exitCode === 0 && !v.timedOut;
+/**
+ * How much of the log tail is searched for the success sentinel. Generous enough
+ * that a verify printing a summary block after its sentinel still matches, small
+ * enough that it can never be satisfied by something 14,000 lines earlier.
+ */
+const SENTINEL_TAIL_BYTES = 64 * 1024;
+
+const PASS = (v: VerifyResult): boolean =>
+  v.exitCode === 0 && !v.timedOut && v.sentinelMissing !== true;
 
 /**
  * A SYNTHETIC real-fail step result for a defensive dependency-cycle escape
@@ -352,6 +375,39 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
     }
   };
 
+  /**
+   * The second half of the pass predicate. `PASS` asks the OS what the process
+   * returned; this asks the RUN whether it got to the end. Only a run that
+   * already looks like a pass is checked -- a failure stays the failure it is,
+   * with its own reason, and never gets relabelled as a missing sentinel.
+   *
+   * The observed exit code is left ALONE in the result. It is what the process
+   * really returned and downstream reads it; the honest report is "exited 0 but
+   * never printed <sentinel>", not a fabricated non-zero. `timedOut:false` and
+   * an unchanged `signal` keep `classifyVerifyFailure` on the "real" branch, so
+   * this never triggers the transient retry -- re-running a verify that ran to
+   * completion and stopped early would just burn the same 40 minutes again.
+   */
+  const enforceSuccessSentinel = async (v: VerifyResult): Promise<VerifyResult> => {
+    const sentinel = ctx.successSentinel ?? "";
+    if (sentinel === "" || !PASS(v)) return v;
+    const tail = await ctx.gitOps.readLogTail(v.logPath, SENTINEL_TAIL_BYTES);
+    if (tail.includes(sentinel)) return v;
+    const reason =
+      `verify-sentinel: the verify exited ${v.exitCode} but its log never printed ` +
+      `"${sentinel}", so the run did not reach its own end. Treating this as a FAILURE: ` +
+      `an aborted verify must not be graded as a pass. ` +
+      (v.logPath ? `Read the log at ${v.logPath} -- it stops at the step that failed.` : "");
+    return {
+      ...v,
+      sentinelMissing: true,
+      stderr: v.stderr
+        ? `${reason}
+${v.stderr}`
+        : reason,
+    };
+  };
+
   const runStep = async (step: VerifyStep, waveIndex: number): Promise<PipelineStepResult> => {
     const timeoutMs = (step.timeout_sec ?? ctx.verifyTimeoutSec) * 1000;
     const scSha = stepConfigSha(step);
@@ -362,13 +418,15 @@ export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promis
     const startedAtMs = Date.now();
     const wall = (): number => Date.now() - startedAtMs;
 
-    const runReal = (): Promise<VerifyResult> =>
-      ctx.gitOps.runVerify(step.command, timeoutMs, {
+    const runReal = async (): Promise<VerifyResult> => {
+      const v = await ctx.gitOps.runVerify(step.command, timeoutMs, {
         cwd: ctx.cwd,
         logPath,
         signal: passController.signal,
         liveness: ctx.liveness,
       });
+      return enforceSuccessSentinel(v);
+    };
 
     // ── off / disabled / no cache → BYTE-IDENTICAL Step 5 (no lookup, no record).
     if (!cache || !cache.enabled || cache.mode === "off") {
