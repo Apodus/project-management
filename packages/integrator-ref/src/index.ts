@@ -18,6 +18,7 @@ import { chaosFailOuterPushOnce } from "./chaos.js";
 import type { GitOps, PushResult } from "./git-ops.js";
 import { buildHeartbeat } from "./heartbeat.js";
 import { VERSION } from "./version.js";
+import { describeRunningBundle, versionWithBundle } from "./bundle-identity.js";
 
 async function main(): Promise<void> {
   const program = new Command()
@@ -36,7 +37,13 @@ async function main(): Promise<void> {
   // Phase 7.4 §3.2: the integrator's package version, reported on every
   // heartbeat. Sourced from the generated version.ts (single source of truth =
   // package.json), which is also what we pass to commander's .version() above.
-  const version = VERSION;
+  // Phase 7.4 reported the bare package version here. It was `0.1.0` on the
+  // bundle that graded five aborted verifies as passes and it is `0.1.0` now,
+  // so it could not answer the one question an operator asks after a restart:
+  // is this the code we just landed? The running bundle's identity is appended
+  // so the existing field carries the answer.
+  const bundle = describeRunningBundle(process.argv[1] ?? "");
+  const version = versionWithBundle(VERSION, bundle);
   // The file sink is wired HERE (the daemon entry), not inside createLogger, so
   // a library/test caller never drops a daemon.log next to its own entry point.
   // Without it the daemon's own account of what it was doing lives only in the
@@ -106,11 +113,20 @@ async function main(): Promise<void> {
       verifyCommand: cfg.verifyCommand,
       worktreeRoot: cfg.worktreeRoot,
       parallelism: cfg.parallelism,
+      // What this process is actually running. The hash says WHICH code; the
+      // mtime says whether the file has been replaced since it was loaded, so a
+      // daemon due for a restart says so itself instead of waiting to be checked.
+      bundlePath: bundle.path,
+      bundleSha256: bundle.sha256,
+      bundleMtime: bundle.mtime,
     },
     "Integrator ready",
   );
 
-  process.stdout.write(`Integrator ready for project ${cfg.projectId} resource ${cfg.resource}\n`);
+  process.stdout.write(
+    `Integrator ready for project ${cfg.projectId} resource ${cfg.resource} ` +
+      `(bundle ${bundle.shortSha ?? "unknown"}, mtime ${bundle.mtime ?? "unknown"})\n`,
+  );
 
   // ── Crash recovery: reclaim any stranded `integrating` requests. ──
   // N-tolerant: loops over EVERY `integrating` request in the lane and resets
