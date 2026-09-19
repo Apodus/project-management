@@ -19,6 +19,9 @@ playwright-report/
 test-results/
 distribute.bat
 distribute.config.json
+# Written beside the config by scripts/distribute.mjs: the sha256 of every
+# artifact it wrote, so the next run can refuse a destination that changed.
+distribute.receipt.json
 start_claude_code.bat
 recovery-*.log
 
