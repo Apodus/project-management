@@ -8,7 +8,30 @@ The PM MCP server (`project-management`) is the primary command-post interface. 
 
 The CLI is for interactive pair-programming and ad-hoc requests. The PM is for async directed work.
 
-Your PM identity is derived from your session (the pool claim — `PM_POOL_NAME` / `PM_POOL_SECRET`). You never pass an author/reporter/assignee id; the server derives it. **Caveat:** on an MCP reconnect your session may rebind to a different pool identity, which strands any claims you were holding under the old one (you'll hit `CLAIM_DENIED` on work you know is yours). The fix is `pm_force_claim_*` — see **Recovering stranded claims** below.
+The server derives your PM identity from the pool claim (`PM_POOL_NAME` /
+`PM_POOL_SECRET`); you do not supply an author/reporter identity. Follow your
+repository's identity policy (e.g. its `AGENTS.md`) where it has one:
+`PM_WORKER_KEY` identifies a durable, bounded **worker slot**, not a task,
+thread, campaign, branch, process, or session.
+
+- Reuse the exact launcher/host-assigned slot key across reconnects and future
+  tasks. Each concurrently active independent worker needs a distinct slot;
+  reusing one key concurrently is identity sharing, not pool conservation.
+- Never mint a key from a task name, timestamp, random suffix, or thread ID.
+  Do not rotate keys after a claim failure. Lazy reclamation is a safety net,
+  not permission to create a fresh permanent reservation for every session.
+- Subagents that do not need direct PM access report through their coordinator;
+  spawning a subagent does not require creating a PM worker key. An independent
+  PM client needs its own assigned slot, never the coordinator's active key.
+- Helpers must preserve a configured slot key. If none is configured, leave
+  `PM_WORKER_KEY` unset and use the client's keyless graceful claim/release
+  lifecycle; ask the operator for a stable slot assignment when durable
+  reconnect identity is needed. Close the MCP server gracefully so keyless
+  claims are released.
+
+A reconnect with the same stable key should retain the worker identity. If a
+claim unexpectedly belongs to another identity, investigate the configured key
+and current claim before taking it over; see **Recovering stranded claims**.
 
 ## Session startup protocol
 
@@ -68,7 +91,13 @@ Terminal transitions (proposal `completed`/`rejected`, etc.) clear the claim aut
 
 ### Recovering stranded claims (force-claim)
 
-When your session identity changes (most often an MCP reconnect rebinding you to a new pool identity), work you were holding stays claimed under the **old** identity. Re-claim and complete both fail with `CLAIM_DENIED` — "claimed by another agent" — even though that other agent is the previous you. To recover:
+Legacy/keyless sessions or an operator-directed slot migration can leave work
+claimed under an old identity. This is not the expected stable-key reconnect
+behavior, and `CLAIM_DENIED` alone does not prove the claim is stranded. First
+confirm the configured slot and that the old worker is no longer active. Prefer
+the stomp-safe `pm_request_takeover_task` / `pm_request_takeover_epic`: a live
+holder keeps its claim and is notified. Use a force-claim only for confirmed
+stranded work or an explicit authorized handoff:
 
 - `pm_force_claim_task(task_id, reason)` — take over the task's claim to **yourself**.
 - `pm_force_claim_epic(epic_id, reason)` — same for an epic.
@@ -166,7 +195,7 @@ The **client-side worker docs** ship in the game_one distribute bundle (a separa
 3. `pm_get_proposal(id)` — read the full context and any existing discussion.
 4. Investigate the codebase. Understand the scope, affected systems, risks, and design options.
 5. `pm_discuss_proposal(id, body)` — post your design analysis, plan, and any clarifying questions. Auto-transitions the proposal from "open" to "discussing" on first AI comment. This is your deliverable — make it thorough: problem summary, proposed approach, alternatives considered, risk assessment, estimated scope.
-6. **Stop and wait.** The human reviews and either accepts (`accepted`) or rejects (`rejected`). Do not implement until the proposal reaches `accepted`. Check via `pm_check_updates`.
+6. **Stop and wait.** The proposal is accepted (`accepted`) or rejected (`rejected`) by a human or by an agent assigned to triage the proposal queue. Do not implement until the proposal reaches `accepted`. Check via `pm_check_updates`.
 7. Once accepted: `pm_implement_proposal(id, epics, tasks)` creates the work items in one shot and transitions the proposal to `in_progress`. Or create epics incrementally with `pm_create_epic(project_id, name, proposal_id=...)` — just keep holding the claim.
 8. Claim the epic and start working through the tasks.
 
@@ -175,12 +204,18 @@ The **client-side worker docs** ship in the game_one distribute bundle (a separa
 ```
 open ──(claim, then comment or discuss)──▶ discussing
   │                                            │
-  │  ╭─(human accepts)─────────────────────────╯
+  │  ╭─(accept: human or claim-holding agent)──╯
   │  ▼
   ├──▶ accepted ──(implement / transition)──▶ in_progress ──▶ completed
   │
-  └──(human rejects)──▶ rejected
+  └──(reject: human or claim-holding agent)──▶ rejected
 ```
+
+**Triaging a proposal queue.** An agent may accept or reject a proposal itself
+with `pm_transition_proposal` — no human click is required. You must hold the
+claim, and the server records you as the resolver. Before rejecting, post the
+reason with `pm_discuss_proposal` so the decision can be understood later:
+`rejected` is terminal and cannot be reopened.
 
 Shortcut: from `open`/`discussing`, the AI agent (or human) can transition directly to `in_progress` if the work is trivially accepted. Use sparingly — most proposals benefit from the discussion gate.
 
@@ -350,4 +385,8 @@ The human sees "Active AI Agents" on the dashboard. You appear there ONLY when:
 - You have tasks with status `in_progress` assigned to you (claimed), **or**
 - You hold a claim on a proposal.
 
-If you start coding without `pm_start_task` (or a proposal claim), you are invisible — the human will think no one is working. If your work ever shows as held by "another agent" after a reconnect, you've been re-identified; `pm_force_claim_*` to take it back (see **Recovering stranded claims**).
+If you start coding without `pm_start_task` (or a proposal claim), you are
+invisible — the human will think no one is working. If work appears held by
+"another agent" after a reconnect, verify the slot identity and liveness before
+recovery; do not assume the other holder is a previous session of yours (see
+**Recovering stranded claims**).
