@@ -172,6 +172,10 @@ linked_repos` (`[]` = single-repo). Orphaned-inner → durable incident +
   fail-open; new `outer_gitlink_normalized` audit action; no migration but a
   PM-server redeploy is required (deployment guide §14.11 /
   `roadmaps/roadmap-20260713-xrepo-gitlink-umbrella-widening.md`).
+  The normalized squash commit **keeps provenance** (2026-09-26): the author's
+  subject/body plus `Original-Author`/`Source-Branch`/`Merge-Request`/
+  `Normalizes: <pre-land sha>` trailers, instead of a bare "assemble: normalize
+  outer source" that read as housekeeping on main (§14.11).
   **Verify contract:** the outer verify must NOT
   `submodule update --init` the gitlink path (see deployment guide §14.8).
 - **7.4 Observability + break-glass** — train dashboard / per-request timeline /

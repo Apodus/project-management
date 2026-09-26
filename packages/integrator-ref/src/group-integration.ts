@@ -1114,6 +1114,7 @@ export async function runGroupIntegration(
     // So a per-role assembly row names WHICH member's work it measured.
     innerRequestId: innerMember.id,
     outerRequestId: outerMember.id,
+    outerBranch: outerMember.branch ?? null,
   };
   const asm = await assembleGroup(asmDeps);
 

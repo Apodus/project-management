@@ -923,6 +923,19 @@ reject. The DB `synthetic` flag is **never** flipped — normalization is an int
 interpretation surfaced via a **best-effort** `outer_gitlink_normalized` audit row on the outer
 member's timeline (mirrors §14.10's `outer_converted`).
 
+**The squash keeps its provenance (2026-09-26).** A normalized outer member lands as ONE squash
+commit, which used to say only `assemble: normalize outer source (managed gitlink stripped)` — so
+every source-carrying cross-repo landing read as housekeeping on main, and every code comment
+citing a pre-land sha dangled (client proposal `01KZ5Y5M`). The squash commit now carries the
+author's subject (the latest source-touching commit), the author's body (or each commit's message
+oldest-first, when several commits are squashed), the `assemble:` line kept in the body, and trailers:
+`Original-Author:` (each distinct author), `Source-Branch:`, `Merge-Request:`, and one
+`Normalizes: <sha>` per pre-land commit. That means `git log --grep=<cited sha>` finds the landing.
+A single-author member keeps that author as the git author, with the integrator as committer.
+Reading provenance is fail-open: an unreadable log falls back to the old terse message and never
+fails a landing. Commits landed earlier are not rewritten. This is integrator-only (no migration,
+no PM-server change) and reaches a lane on a bundle redistribute + daemon restart.
+
 **Verify contract (unchanged).** The outer verify command **MUST NOT**
 `git submodule update --init` the gitlink path — see **§14.8**. Normalization is verify-equivalent
 to the shipped legacy path (the outer verify builds outer-source-against-`Ri` in every arm today),

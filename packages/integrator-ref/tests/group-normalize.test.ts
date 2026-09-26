@@ -29,7 +29,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
 import type { MergeAttemptView, MergeRequestView } from "@pm/shared";
-import { createGitOps } from "../src/git-ops.js";
+import {
+  buildNormalizeCommitMessage,
+  createGitOps,
+  NORMALIZE_ASSEMBLE_LINE,
+} from "../src/git-ops.js";
 import { createWorktreePool, type WorktreePool } from "../src/worktree-pool.js";
 import { createLogger } from "../src/logger.js";
 import { makePhaseProbe } from "./phase-probe.js";
@@ -788,6 +792,97 @@ describe.skipIf(!GIT_AVAILABLE)("applyExcludingGitlink (real git)", () => {
     }
     expect(await porcelain(git)).toBe("");
   }, 30_000);
+
+  it("the squash commit keeps the author's subject, body, identity and provenance trailers", async () => {
+    const { dir, git, oSha } = await initRepo();
+    await git.checkoutLocalBranch("codex/mech-locomotion");
+    writeFileSync(path.join(dir, "top.txt"), "muzzle geometry\n");
+    await git.add(["top.txt"]);
+    await git.raw(["update-index", "--add", "--cacheinfo", `160000,${FAKE_B},${GITLINK_PATH}`]);
+    // A `#` line must survive (markdown headings in bodies; default cleanup strips them).
+    await git.raw([
+      "-c",
+      "user.name=Ada Author",
+      "-c",
+      "user.email=ada@example.com",
+      "commit",
+      "-m",
+      "locomotion: contact-aware mech gait",
+      "-m",
+      "# Why\nFeet planted on contact.",
+    ]);
+    const featSha = (await git.revparse(["HEAD"])).trim();
+    await git.checkout(oSha);
+
+    const gitOps = createGitOps(git);
+    const res = await gitOps.applyExcludingGitlink(oSha, featSha, new Set([GITLINK_PATH]), {
+      sourceBranch: "codex/mech-locomotion",
+      mergeRequestId: "01MRTEST",
+    });
+    expect(res.ok).toBe(true);
+    const msg = (await git.raw(["log", "-1", "--format=%B"])).replace(/\r\n/g, "\n");
+    expect(msg.split("\n")[0]).toBe("locomotion: contact-aware mech gait");
+    expect(msg).toContain("# Why\nFeet planted on contact.");
+    expect(msg).toContain("assemble: normalize outer source (managed gitlink stripped)");
+    expect(msg).toContain("Original-Author: Ada Author <ada@example.com>");
+    expect(msg).toContain("Source-Branch: codex/mech-locomotion");
+    expect(msg).toContain("Merge-Request: 01MRTEST");
+    expect(msg).toContain(`Normalizes: ${featSha}`);
+    // A single author stays the git author; the integrator is only the committer.
+    expect((await git.raw(["log", "-1", "--format=%an <%ae>|%cn"])).trim()).toBe(
+      "Ada Author <ada@example.com>|PM Integrator",
+    );
+    // A dangling `// see <short sha>` citation is findable on main.
+    const found = await git.raw(["log", "--format=%H", `--grep=${featSha.slice(0, 9)}`]);
+    expect(found.trim()).toBe(res.ok ? res.committedSha : "");
+  }, 30_000);
+});
+
+describe("buildNormalizeCommitMessage", () => {
+  const A = "a".repeat(40);
+  const B = "b".repeat(40);
+  const C = "c".repeat(40);
+  const c = (sha: string, author: string, message: string) => ({ sha, author, message });
+
+  it("one source commit: author's subject + body, assemble line, trailers last", () => {
+    const one = c(A, "Ada <a@x>", "feat: thing\n\nWhy it matters.\n");
+    expect(buildNormalizeCommitMessage([one], [one], { sourceBranch: "b1", mergeRequestId: "MR1" }))
+      .toBe(`feat: thing
+
+Why it matters.
+
+${NORMALIZE_ASSEMBLE_LINE}
+
+Original-Author: Ada <a@x>
+Source-Branch: b1
+Merge-Request: MR1
+Normalizes: ${A}
+`);
+  });
+
+  it("several commits: tip subject, every message oldest-first, every sha (bump-only too) normalized", () => {
+    const s1 = c(A, "Ada <a@x>", "first: part one\n\nbody one");
+    const bump = c(B, "Ada <a@x>", "bump rynx");
+    const s2 = c(C, "Bo <b@x>", "second: part two");
+    const msg = buildNormalizeCommitMessage([s1, s2], [s1, bump, s2], { sourceBranch: "b1" });
+    expect(msg.split("\n")[0]).toBe("second: part two");
+    expect(msg).toContain("Squashed from 2 commits on b1:");
+    expect(msg.indexOf("aaaaaaaaaaaa first: part one\n\nbody one")).toBeLessThan(
+      msg.indexOf("cccccccccccc second: part two"),
+    );
+    expect(msg).not.toContain("bump rynx");
+    expect(
+      msg
+        .trimEnd()
+        .endsWith(
+          `Original-Author: Ada <a@x>\nOriginal-Author: Bo <b@x>\nSource-Branch: b1\nNormalizes: ${A}\nNormalizes: ${B}\nNormalizes: ${C}`,
+        ),
+    ).toBe(true);
+  });
+
+  it("no commit data (unreadable log): the old terse subject, nothing invented", () => {
+    expect(buildNormalizeCommitMessage([], [], {})).toBe(`${NORMALIZE_ASSEMBLE_LINE}\n`);
+  });
 });
 
 // Small file-head reader (avoids importing node:fs/promises just for one call).

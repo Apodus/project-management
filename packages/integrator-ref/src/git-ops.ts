@@ -65,6 +65,98 @@ export type ApplyExcludingGitlinkResult =
   | ApplyExcludingGitlinkConflict;
 
 /**
+ * Where a normalized outer member came from — threaded into the squash commit's
+ * message so the landing on main keeps its story. Both fields optional: a
+ * missing one simply omits its trailer.
+ */
+export interface NormalizeProvenance {
+  sourceBranch?: string | null;
+  mergeRequestId?: string | null;
+}
+
+/** One pre-land commit of the member, as read from `git log`. */
+export interface NormalizedSourceCommit {
+  sha: string;
+  author: string;
+  /** Full raw message (subject + body). */
+  message: string;
+}
+
+/** The subject the squash commit carried before provenance was kept. */
+export const NORMALIZE_ASSEMBLE_LINE =
+  "assemble: normalize outer source (managed gitlink stripped)";
+
+/**
+ * Build the message for `applyExcludingGitlink`'s squash commit.
+ *
+ * "The merge train may rewrite commits; it may not erase history." The squash
+ * used to carry only NORMALIZE_ASSEMBLE_LINE, so every source-carrying
+ * cross-repo landing read as housekeeping on main (43 of 43 by 2026-08-04, some
+ * shipping 6k-line features) and every `// see <sha>` citing a pre-land commit
+ * dangled forever. Now:
+ *   - the SUBJECT is the author's (the latest commit that touched source), so
+ *     `git log` says what the change was for;
+ *   - the BODY is the author's message (one commit) or each commit's message
+ *     oldest-first (several) — a squash-merge's usual shape;
+ *   - the ASSEMBLE line is kept in the body, so the rewrite still announces itself;
+ *   - TRAILERS: Original-Author (each distinct author), Source-Branch,
+ *     Merge-Request, and one `Normalizes: <sha>` per pre-land commit — so
+ *     `git log --grep=<cited sha>` finds the landing.
+ *
+ * `sourceCommits` = commits that touched non-gitlink paths (drive subject/body);
+ * `allCommits` = every commit in the range (drive Normalizes/Original-Author, so
+ * a cited bump-only sha is findable too). With no source commits (a defensive
+ * case — assembly only reaches the squash when source changed) the assemble
+ * line is the subject, as before, plus whatever trailers are known.
+ */
+export function buildNormalizeCommitMessage(
+  sourceCommits: readonly NormalizedSourceCommit[],
+  allCommits: readonly NormalizedSourceCommit[],
+  provenance: NormalizeProvenance = {},
+): string {
+  const split = (m: string) => {
+    const t = m.replace(/\r\n/g, "\n").trim();
+    const nl = t.indexOf("\n");
+    return nl === -1
+      ? { subject: t, body: "" }
+      : { subject: t.slice(0, nl).trim(), body: t.slice(nl + 1).trim() };
+  };
+
+  const paragraphs: string[] = [];
+  if (sourceCommits.length === 0) {
+    paragraphs.push(NORMALIZE_ASSEMBLE_LINE);
+  } else {
+    const tip = split(sourceCommits[sourceCommits.length - 1].message);
+    paragraphs.push(tip.subject || NORMALIZE_ASSEMBLE_LINE);
+    if (sourceCommits.length === 1) {
+      if (tip.body) paragraphs.push(tip.body);
+    } else {
+      const where = provenance.sourceBranch ? ` on ${provenance.sourceBranch}` : "";
+      paragraphs.push(`Squashed from ${sourceCommits.length} commits${where}:`);
+      for (const c of sourceCommits) {
+        const { subject, body } = split(c.message);
+        const head = `${c.sha.slice(0, 12)} ${subject}`;
+        paragraphs.push(body ? `${head}\n\n${body}` : head);
+      }
+    }
+    paragraphs.push(NORMALIZE_ASSEMBLE_LINE);
+  }
+
+  // Trailer block: one paragraph, no blank lines (git interpret-trailers shape).
+  const trailers: string[] = [];
+  const commits = allCommits.length > 0 ? allCommits : sourceCommits;
+  for (const a of [...new Set(commits.map((c) => c.author))]) {
+    trailers.push(`Original-Author: ${a}`);
+  }
+  if (provenance.sourceBranch) trailers.push(`Source-Branch: ${provenance.sourceBranch}`);
+  if (provenance.mergeRequestId) trailers.push(`Merge-Request: ${provenance.mergeRequestId}`);
+  for (const c of commits) trailers.push(`Normalizes: ${c.sha}`);
+  if (trailers.length > 0) paragraphs.push(trailers.join("\n"));
+
+  return paragraphs.join("\n\n") + "\n";
+}
+
+/**
  * Campaign A4 P2. The result of `git revert <sha>` on the current worktree. On
  * success the worktree HEAD is the revert commit (one new commit undoing `sha`);
  * on a textual conflict the revert is `--abort`ed (no partial state) and
@@ -384,12 +476,14 @@ export interface GitOps {
    * (the source net is empty — a pure bump reaching this path) returns HEAD
    * without an empty commit. A merge-base/diff INFRA failure THROWS (→
    * `assembleGroup`'s catch → `assembly_error`, the unclassified catch-all),
-   * never a false conflict.
+   * never a false conflict. The squash commit carries the member's own
+   * subject/body plus provenance trailers (see `buildNormalizeCommitMessage`).
    */
   applyExcludingGitlink(
     baseSha: string,
     outerRef: string,
     excludePaths: ReadonlySet<string>,
+    provenance?: NormalizeProvenance,
   ): Promise<ApplyExcludingGitlinkResult>;
   /**
    * campaign xrepo-gitlink-umbrella-widening (P1). Numeric-exit presence probe:
@@ -1542,6 +1636,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     baseSha: string,
     outerRef: string,
     excludePaths: ReadonlySet<string>,
+    provenance: NormalizeProvenance = {},
   ): Promise<ApplyExcludingGitlinkResult> {
     const topLevel = (await git.revparse(["--show-toplevel"])).trim();
 
@@ -1622,14 +1717,77 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     if (await runIndexMatchesHead(topLevel)) {
       return { ok: true, committedSha: (await git.revparse(["HEAD"])).trim() };
     }
-    await git.raw([
-      ...COMMIT_IDENTITY_ARGS,
-      "commit",
-      "-m",
-      "assemble: normalize outer source (managed gitlink stripped)",
-      "--no-verify",
-    ]);
+    // Provenance is never load-bearing: an unreadable log degrades to the old
+    // terse message, it never fails an otherwise-clean landing.
+    let sourceCommits: NormalizedSourceCommit[] = [];
+    let allCommits: NormalizedSourceCommit[] = [];
+    try {
+      allCommits = await readCommits(topLevel, mergeBase, outerRef, []);
+      sourceCommits = await readCommits(topLevel, mergeBase, outerRef, [".", ...excludeArgs]);
+    } catch {
+      sourceCommits = [];
+      allCommits = [];
+    }
+    const message = buildNormalizeCommitMessage(sourceCommits, allCommits, provenance);
+    // One distinct author => they stay the git author (blame names them, not the
+    // integrator); several => the integrator authors and each is a trailer.
+    const authors = [...new Set(allCommits.map((c) => c.author))];
+    const authorArgs = authors.length === 1 ? [`--author=${authors[0]}`] : [];
+    // `-F -` (stdin), not `-m`: a many-commit body can pass the Windows 32 KiB
+    // command-line limit. `--cleanup=whitespace` keeps `#` lines (markdown
+    // headings in authors' bodies), which the default `strip` would eat.
+    const committed = await runGitStdin(
+      [
+        ...COMMIT_IDENTITY_ARGS,
+        "commit",
+        "-F",
+        "-",
+        "--cleanup=whitespace",
+        "--no-verify",
+        ...authorArgs,
+      ],
+      topLevel,
+      Buffer.from(message, "utf8"),
+    );
+    if (committed.code !== 0) {
+      throw new Error(
+        `applyExcludingGitlink: commit failed (exit ${committed.code}): ${committed.stderr.trim()}`,
+      );
+    }
     return { ok: true, committedSha: (await git.revparse(["HEAD"])).trim() };
+  }
+
+  /** Non-merge commits in `from..to` (oldest first), optionally path-limited. */
+  async function readCommits(
+    cwd: string,
+    from: string,
+    to: string,
+    pathspec: string[],
+  ): Promise<NormalizedSourceCommit[]> {
+    const out = await runGitCaptureBuffer(
+      [
+        "log",
+        "--reverse",
+        "--no-merges",
+        "--format=%H%x1f%an <%ae>%x1f%B%x1e",
+        `${from}..${to}`,
+        ...(pathspec.length > 0 ? ["--", ...pathspec] : []),
+      ],
+      cwd,
+    );
+    if (out.code !== 0) {
+      throw new Error(`log ${from}..${to} failed (exit ${out.code}): ${out.stderr.trim()}`);
+    }
+    return out.stdout
+      .toString("utf8")
+      .split("\x1e")
+      .map((r) => r.replace(/^\s+/, ""))
+      .filter((r) => r.length > 0)
+      .map((r) => {
+        const [sha, author, ...rest] = r.split("\x1f");
+        return { sha: sha.trim(), author: (author ?? "").trim(), message: rest.join("\x1f") };
+      })
+      .filter((c) => /^[0-9a-f]{40}$/.test(c.sha));
   }
 
   return {

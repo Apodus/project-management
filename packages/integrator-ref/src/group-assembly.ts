@@ -260,6 +260,12 @@ export interface AssembleGroupDeps {
   /** Request ids so a per-role row names WHICH member's work it measured. */
   innerRequestId?: string;
   outerRequestId?: string;
+  /**
+   * The outer member's source branch, carried into a normalized outer squash
+   * commit's `Source-Branch:` trailer (with `outerRequestId` as
+   * `Merge-Request:`), so the landing on main keeps its provenance.
+   */
+  outerBranch?: string | null;
 }
 
 /** Resolve the outer detection ref to a concrete present commit, mirroring what
@@ -335,6 +341,10 @@ async function assembleGroupClassified(
   const phases = deps.phases ?? NOOP_PHASE_SPANS;
   const innerSpan = { requestId: deps.innerRequestId };
   const outerSpan = { requestId: deps.outerRequestId };
+  const outerProvenance = {
+    sourceBranch: deps.outerBranch ?? null,
+    mergeRequestId: deps.outerRequestId ?? null,
+  };
 
   // ── §5.1 correlated lease (fixed inner-before-outer; release-on-partial) ──
   //
@@ -600,7 +610,13 @@ async function assembleGroupClassified(
               conflicts: a && !a.ok ? a.conflictingFiles.length : 0,
             }),
           },
-          () => outerGitOps.applyExcludingGitlink(baseOuterSha, detectRef, managedPaths),
+          () =>
+            outerGitOps.applyExcludingGitlink(
+              baseOuterSha,
+              detectRef,
+              managedPaths,
+              outerProvenance,
+            ),
         );
         if (!applied.ok) {
           return {
@@ -698,7 +714,13 @@ async function assembleGroupClassified(
                 conflicts: a && !a.ok ? a.conflictingFiles.length : 0,
               }),
             },
-            () => outerGitOps.applyExcludingGitlink(baseOuterSha, detectRef, managedPaths),
+            () =>
+              outerGitOps.applyExcludingGitlink(
+                baseOuterSha,
+                detectRef,
+                managedPaths,
+                outerProvenance,
+              ),
           );
           if (!applied.ok) {
             return {
