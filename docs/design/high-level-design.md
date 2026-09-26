@@ -203,13 +203,13 @@ The **Proposal** is the primary entry point for all work in the system. Human di
 1. Human writes a proposal (vague idea, high-level description)
 2. AI agent engages via comments (clarifying questions, design approaches, tradeoffs)
 3. Human and AI iterate until the design is agreed upon
-4. Human explicitly moves proposal to `accepted` status (approval gate — AI cannot skip this)
+4. A human — or an AI agent holding the proposal's claim (e.g. a triage agent working the queue) — moves the proposal to `accepted` or `rejected`
 5. AI creates epics and/or tasks from the accepted proposal, linking them back
 6. Proposal status auto-transitions to `implemented` when work items are created
 
 **Key invariants:**
 - Only humans can create proposals
-- Only humans can transition a proposal to `accepted`
+- Humans and claim-holding AI agents can transition a proposal to `accepted` or `rejected` (`resolvedBy` records who decided; originally human-only, opened 2026-09-26 so triage agents can clear a queue without a per-proposal human click)
 - AI agents can transition proposals to `discussing` (by engaging) and to `implemented` (by creating work items from an `accepted` proposal)
 - A proposal can spawn 0..N epics and 0..N standalone tasks
 - A rejected proposal is preserved for historical context (never deleted)
@@ -303,9 +303,9 @@ The human director's primary interface for creating work. Intentionally lightwei
 **Status transitions:**
 ```
 open → discussing     (AI engages with the proposal)
-discussing → accepted (human approves the design — HUMAN ONLY)
-discussing → rejected (human rejects the idea — HUMAN ONLY)
-open → rejected       (human rejects without discussion — HUMAN ONLY)
+discussing → accepted (design approved — human or claim-holding AI)
+discussing → rejected (idea rejected — human or claim-holding AI)
+open → rejected       (rejected without discussion — human or claim-holding AI)
 accepted → implemented (AI creates work items from it)
 ```
 
@@ -563,7 +563,7 @@ Two auth mechanisms:
   "comment": "Design looks good, proceed with implementation"  // optional
 }
 ```
-Enforces role constraints: only humans can transition to `accepted` or `rejected`. AI can transition `open` → `discussing` and `accepted` → `implemented`.
+Enforces the lifecycle and claim ownership: humans and claim-holding AI agents can transition to `accepted` or `rejected`. AI can transition `open` → `discussing` and `accepted` → `implemented`.
 
 #### Epics
 | Method | Path | Description |

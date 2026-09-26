@@ -27,28 +27,28 @@ describe("PROPOSAL_TRANSITIONS", () => {
     expect(rule!.allowedBy).toContain("ai_agent");
   });
 
-  it("discussing -> accepted is allowed by human ONLY", () => {
+  it("discussing -> accepted is allowed by both human and ai_agent", () => {
     const rule = PROPOSAL_TRANSITION_MAP.get("discussing->accepted");
     expect(rule).toBeDefined();
-    expect(rule!.allowedBy).toEqual(["human"]);
+    expect(rule!.allowedBy).toEqual(["human", "ai_agent"]);
   });
 
-  it("open -> accepted is allowed by human ONLY (direct accept, no discussion)", () => {
+  it("open -> accepted is allowed by both human and ai_agent (direct accept, no discussion)", () => {
     const rule = PROPOSAL_TRANSITION_MAP.get("open->accepted");
     expect(rule).toBeDefined();
-    expect(rule!.allowedBy).toEqual(["human"]);
+    expect(rule!.allowedBy).toEqual(["human", "ai_agent"]);
   });
 
-  it("discussing -> rejected is allowed by human ONLY", () => {
+  it("discussing -> rejected is allowed by both human and ai_agent", () => {
     const rule = PROPOSAL_TRANSITION_MAP.get("discussing->rejected");
     expect(rule).toBeDefined();
-    expect(rule!.allowedBy).toEqual(["human"]);
+    expect(rule!.allowedBy).toEqual(["human", "ai_agent"]);
   });
 
-  it("open -> rejected is allowed by human ONLY", () => {
+  it("open -> rejected is allowed by both human and ai_agent", () => {
     const rule = PROPOSAL_TRANSITION_MAP.get("open->rejected");
     expect(rule).toBeDefined();
-    expect(rule!.allowedBy).toEqual(["human"]);
+    expect(rule!.allowedBy).toEqual(["human", "ai_agent"]);
   });
 
   it("accepted -> in_progress is allowed by both human and ai_agent", () => {
@@ -157,20 +157,20 @@ describe("isValidProposalTransition", () => {
     expect(isValidProposalTransition("open", "discussing", "human")).toBe(true);
   });
 
-  it("denies discussing -> accepted by ai_agent", () => {
-    expect(isValidProposalTransition("discussing", "accepted", "ai_agent")).toBe(false);
+  it("allows discussing -> accepted by ai_agent", () => {
+    expect(isValidProposalTransition("discussing", "accepted", "ai_agent")).toBe(true);
   });
 
   it("allows discussing -> accepted by human", () => {
     expect(isValidProposalTransition("discussing", "accepted", "human")).toBe(true);
   });
 
-  it("denies discussing -> rejected by ai_agent", () => {
-    expect(isValidProposalTransition("discussing", "rejected", "ai_agent")).toBe(false);
+  it("allows discussing -> rejected by ai_agent", () => {
+    expect(isValidProposalTransition("discussing", "rejected", "ai_agent")).toBe(true);
   });
 
-  it("denies open -> rejected by ai_agent", () => {
-    expect(isValidProposalTransition("open", "rejected", "ai_agent")).toBe(false);
+  it("allows open -> rejected by ai_agent", () => {
+    expect(isValidProposalTransition("open", "rejected", "ai_agent")).toBe(true);
   });
 
   it("allows accepted -> in_progress by human", () => {
@@ -216,11 +216,13 @@ describe("getValidProposalTargets", () => {
     expect(targets).toHaveLength(4);
   });
 
-  it("returns [discussing, in_progress] for open when actor is ai_agent", () => {
+  it("returns the same four targets for open when actor is ai_agent", () => {
     const targets = getValidProposalTargets("open", "ai_agent");
     expect(targets).toContain("discussing");
+    expect(targets).toContain("accepted");
+    expect(targets).toContain("rejected");
     expect(targets).toContain("in_progress");
-    expect(targets).toHaveLength(2);
+    expect(targets).toHaveLength(4);
   });
 
   it("returns [accepted, rejected, in_progress] for discussing (no actor filter)", () => {
@@ -231,8 +233,12 @@ describe("getValidProposalTargets", () => {
     expect(targets).toHaveLength(3);
   });
 
-  it("returns [in_progress] for discussing when actor is ai_agent", () => {
-    expect(getValidProposalTargets("discussing", "ai_agent")).toEqual(["in_progress"]);
+  it("returns [accepted, rejected, in_progress] for discussing when actor is ai_agent", () => {
+    const targets = getValidProposalTargets("discussing", "ai_agent");
+    expect(targets).toContain("accepted");
+    expect(targets).toContain("rejected");
+    expect(targets).toContain("in_progress");
+    expect(targets).toHaveLength(3);
   });
 
   it("returns [in_progress] for accepted", () => {

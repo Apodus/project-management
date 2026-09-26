@@ -10,13 +10,16 @@ export interface ProposalTransitionRule {
 
 export const PROPOSAL_TRANSITIONS: readonly ProposalTransitionRule[] = [
   { from: "open", to: "discussing", allowedBy: ["human", "ai_agent"] },
-  { from: "discussing", to: "accepted", allowedBy: ["human"] },
-  // A human may accept a proposal straight from "open" without a discussion
-  // round (the web Accept button is shown from "open"). AI agents still cannot
-  // accept — acceptance is a human decision.
-  { from: "open", to: "accepted", allowedBy: ["human"] },
-  { from: "discussing", to: "rejected", allowedBy: ["human"] },
-  { from: "open", to: "rejected", allowedBy: ["human"] },
+  // Accept/reject are open to AI agents as well as humans: a triage agent must
+  // be able to work a proposal queue end to end, and requiring a human click
+  // per rejection stalled exactly that. What protects the decision is not the
+  // role gate: an agent must hold the claim (assertClaimOk), `resolvedBy`
+  // records who decided, and the transition is on the activity feed.
+  // Accept is also allowed straight from "open" (no discussion round needed).
+  { from: "discussing", to: "accepted", allowedBy: ["human", "ai_agent"] },
+  { from: "open", to: "accepted", allowedBy: ["human", "ai_agent"] },
+  { from: "discussing", to: "rejected", allowedBy: ["human", "ai_agent"] },
+  { from: "open", to: "rejected", allowedBy: ["human", "ai_agent"] },
   { from: "accepted", to: "in_progress", allowedBy: ["human", "ai_agent"] },
   { from: "discussing", to: "in_progress", allowedBy: ["human", "ai_agent"] },
   { from: "open", to: "in_progress", allowedBy: ["human", "ai_agent"] },

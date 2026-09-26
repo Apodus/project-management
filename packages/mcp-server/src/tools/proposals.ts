@@ -301,7 +301,7 @@ export function registerProposalTools(server: McpServer): void {
 
   server.tool(
     "pm_transition_proposal",
-    "Change a proposal's status. You must hold the claim first (call pm_claim_proposal). The server enforces the valid lifecycle (open → discussing → accepted → in_progress → completed) and your role. The main use is completing a proposal once its work is done: transition 'in_progress' → 'completed'. Note that a proposal also auto-completes on its own once all of its linked epics complete — call this only when you need to flip it manually (e.g. work was tracked outside epics, or you want to close it early).",
+    "Change a proposal's status. You must hold the claim first (call pm_claim_proposal). The server enforces the valid lifecycle (open → discussing → accepted → in_progress → completed; open/discussing → rejected). AI agents may accept or reject a proposal themselves (e.g. when triaging a proposal queue) — before rejecting, record the rationale with pm_discuss_proposal so the decision is legible; 'rejected' is terminal. Another common use is completing a proposal once its work is done: transition 'in_progress' → 'completed'. Note that a proposal also auto-completes on its own once all of its linked epics complete — call this only when you need to flip it manually (e.g. work was tracked outside epics, or you want to close it early).",
     {
       proposal_id: z.string().describe("The proposal ID to transition"),
       to_status: z

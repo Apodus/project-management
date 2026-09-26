@@ -473,28 +473,6 @@ describe("Proposals API", () => {
       expect(body.data.status).toBe("accepted");
     });
 
-    it("should forbid open → accepted for an AI agent (acceptance is human-only)", async () => {
-      const aiAgent = createTestAiAgent(testApp.db);
-      const proposal = createTestProposal(testApp.db, {
-        status: "open",
-        createdBy: testApp.testUser.id,
-      });
-      await authRequest(testApp.app, "POST", `/api/v1/proposals/${proposal.id}/claim`, {
-        token: aiAgent.token,
-      });
-
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/transitions`,
-        {
-          token: aiAgent.token,
-          body: { toStatus: "accepted" },
-        },
-      );
-      expect(res.status).toBe(403);
-    });
-
     it("should transition open → in_progress (AI agent with claim)", async () => {
       const aiAgent = createTestAiAgent(testApp.db);
       const proposal = createTestProposal(testApp.db, {
@@ -609,49 +587,67 @@ describe("Proposals API", () => {
     });
 
     // ── Role enforcement ────────────────────────────────────────
-    it("should reject AI trying to accept a proposal (403)", async () => {
-      const aiAgent = createTestAiAgent(testApp.db);
-      const proposal = createTestProposal(testApp.db, {
-        status: "discussing",
-        createdBy: testApp.testUser.id,
+    // Accept/reject are open to AI agents (a triage agent works the proposal
+    // queue end to end). The claim gate still applies: an agent may only
+    // resolve a proposal it holds, and resolvedBy records who decided.
+    for (const [from, to] of [
+      ["discussing", "accepted"],
+      ["open", "accepted"],
+      ["discussing", "rejected"],
+      ["open", "rejected"],
+    ] as const) {
+      it(`should allow the AI claim holder to transition ${from} → ${to}`, async () => {
+        const aiAgent = createTestAiAgent(testApp.db);
+        const proposal = createTestProposal(testApp.db, {
+          status: from,
+          createdBy: testApp.testUser.id,
+        });
+        const claim = await authRequest(
+          testApp.app,
+          "POST",
+          `/api/v1/proposals/${proposal.id}/claim`,
+          { token: aiAgent.token },
+        );
+        expect(claim.status).toBe(200);
+
+        const res = await authRequest(
+          testApp.app,
+          "POST",
+          `/api/v1/proposals/${proposal.id}/transitions`,
+          {
+            token: aiAgent.token,
+            body: { toStatus: to },
+          },
+        );
+        expect(res.status).toBe(200);
+
+        const body = await res.json();
+        expect(body.data.status).toBe(to);
+        expect(body.data.resolvedBy).toBe(aiAgent.user.id);
       });
 
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/transitions`,
-        {
-          token: aiAgent.token,
-          body: { toStatus: "accepted" },
-        },
-      );
-      expect(res.status).toBe(403);
+      it(`should deny an AI without the claim ${from} → ${to} (409 CLAIM_DENIED)`, async () => {
+        const aiAgent = createTestAiAgent(testApp.db);
+        const proposal = createTestProposal(testApp.db, {
+          status: from,
+          createdBy: testApp.testUser.id,
+        });
 
-      const body = await res.json();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
+        const res = await authRequest(
+          testApp.app,
+          "POST",
+          `/api/v1/proposals/${proposal.id}/transitions`,
+          {
+            token: aiAgent.token,
+            body: { toStatus: to },
+          },
+        );
+        expect(res.status).toBe(409);
 
-    it("should reject AI trying to reject a proposal (403)", async () => {
-      const aiAgent = createTestAiAgent(testApp.db);
-      const proposal = createTestProposal(testApp.db, {
-        status: "discussing",
-        createdBy: testApp.testUser.id,
+        const body = await res.json();
+        expect(body.error.code).toBe("CLAIM_DENIED");
       });
-
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/transitions`,
-        {
-          token: aiAgent.token,
-          body: { toStatus: "rejected" },
-        },
-      );
-      expect(res.status).toBe(403);
-
-      const body = await res.json();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
+    }
 
     it("should allow human to transition accepted → in_progress (no claim required)", async () => {
       const proposal = createTestProposal(testApp.db, {
@@ -671,28 +667,6 @@ describe("Proposals API", () => {
 
       const body = await res.json();
       expect(body.data.status).toBe("in_progress");
-    });
-
-    it("should reject AI trying to reject from open (403)", async () => {
-      const aiAgent = createTestAiAgent(testApp.db);
-      const proposal = createTestProposal(testApp.db, {
-        status: "open",
-        createdBy: testApp.testUser.id,
-      });
-
-      const res = await authRequest(
-        testApp.app,
-        "POST",
-        `/api/v1/proposals/${proposal.id}/transitions`,
-        {
-          token: aiAgent.token,
-          body: { toStatus: "rejected" },
-        },
-      );
-      expect(res.status).toBe(403);
-
-      const body = await res.json();
-      expect(body.error.code).toBe("FORBIDDEN");
     });
 
     it("should return 404 for non-existent proposal", async () => {
