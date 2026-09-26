@@ -301,6 +301,10 @@
                     "minimum": 0,
                     "default": 0
                   },
+                  "verify_success_sentinel": {
+                    "type": "string",
+                    "default": ""
+                  },
                   "notify_author_on_reject": {
                     "type": "boolean",
                     "default": false
@@ -683,6 +687,10 @@
                     "type": "integer",
                     "minimum": 0,
                     "default": 0
+                  },
+                  "verify_success_sentinel": {
+                    "type": "string",
+                    "default": ""
                   },
                   "notify_author_on_reject": {
                     "type": "boolean",
