@@ -50,6 +50,12 @@ target_epic_id?, reason}` and `pm_transfer_task|epic|proposal`. The id, comments
   self-probes at startup, exit 2 on failure); dead holders are reclaimed and their recorded verify
   trees killed only on an identity re-read at kill time. Heartbeats carry `host_slots`.
   `--host-slots-probe` prints the queue. See `docs/integrator-deployment.md` sec. 11.2.
+- **integrator: `settings.integrator.reject_merge_commits` (C4-P3c, default `false`).** When `true`, a
+  single-repo request whose `<main tip>..<commit>` range holds a merge commit is rejected before the
+  rebase (category `other`, reason `merge-commit-in-range: <shas>. ...`; no verify, no resolution).
+  The rebase flattens merges, so after it no merge is left to detect and a trailer on a merge commit
+  never reaches main. New `rebaseOnto(base, ref, { rejectMergeCommits })` option; the result carries
+  `mergeCommits`. Off/absent is byte-identical. See `docs/integrator-deployment.md` §4.3.
 - **integrator: a slot holds no nested repository its `HEAD` does not declare (C4-P3).** After every
   reset, candidate checkout, verify-tree rebase and committed resolution the slot is swept of
   nested repositories (working-tree checkouts and `.git/modules/<name>` gitdirs) that `HEAD` does

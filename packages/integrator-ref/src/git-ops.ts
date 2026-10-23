@@ -39,9 +39,38 @@ export interface RebaseConflict {
    * observable was a diff-derived error message with no commit attached.
    */
   checkedOutSha?: string;
+  /**
+   * C4-P3c. Non-empty ONLY when `rebaseOnto` was called with
+   * `rejectMergeCommits` and refused the range BEFORE rebasing because
+   * `base..candidate` holds merge commits (full shas). `conflictingFiles` is
+   * empty then and the worktree is untouched beyond the candidate checkout.
+   * Callers that never pass the option never see it.
+   */
+  mergeCommits?: string[];
 }
 
 export type RebaseResult = RebaseSuccess | RebaseConflict;
+
+export interface RebaseOptions {
+  /** Refuse (do not rebase) a range containing merge commits. Default false. */
+  rejectMergeCommits?: boolean;
+}
+
+/** How many shas a merge-commit rejection names before summarising the rest. */
+const MERGE_COMMIT_REASON_SHAS = 5;
+
+/**
+ * The single wording of a merge-commit rejection (C4-P3c), shared by every
+ * caller that turns `RebaseConflict.mergeCommits` into a request rejection.
+ */
+export function mergeCommitRejectionReason(mergeCommits: readonly string[]): string {
+  const named = mergeCommits.slice(0, MERGE_COMMIT_REASON_SHAS).map((s) => s.slice(0, 12));
+  const more = mergeCommits.length - named.length;
+  return (
+    `merge-commit-in-range: ${named.join(", ")}${more > 0 ? ` (+${more} more)` : ""}. ` +
+    "The train's rebase flattens merges and drops their messages (trailers on a merge commit never reach main): rebase your branch."
+  );
+}
 
 /**
  * campaign xrepo-gitlink-umbrella-widening (P2). The result of applying an outer
@@ -265,7 +294,7 @@ export interface GitOps {
    */
   fetchFromPath(fromPath: string, sha: string): Promise<void>;
   checkout(ref: string): Promise<void>;
-  rebaseOnto(base: string, branch: string): Promise<RebaseResult>;
+  rebaseOnto(base: string, branch: string, opts?: RebaseOptions): Promise<RebaseResult>;
   /**
    * Campaign A4 P2 (fast revert). Run `git revert --no-edit <sha>` on the
    * CURRENT (reset-to-main) worktree, creating one commit that undoes `sha`.
@@ -1047,7 +1076,11 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     return (await git.revparse(["HEAD"])).trim();
   }
 
-  async function rebaseOnto(base: string, branch: string): Promise<RebaseResult> {
+  async function rebaseOnto(
+    base: string,
+    branch: string,
+    rebaseOpts: RebaseOptions = {},
+  ): Promise<RebaseResult> {
     // A merge-group member carrying commitSha is already an immutable checkout
     // subject. Do not send that 40-hex through `git checkout <arg>`'s DWIM path:
     // on the long-lived Windows daemon that path can consult an inherited/
@@ -1070,6 +1103,24 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       checkedOut = pinned;
     } else {
       checkedOut = await checkoutForReplay(branch);
+    }
+    if (rebaseOpts.rejectMergeCommits) {
+      // The rebase below flattens merges, so after it no merge commit is left to
+      // find: this is the only point the range can be judged. Judge the commit
+      // actually checked out (the sha this attempt reads), not the ref name.
+      const merges = (await git.raw(["rev-list", "--merges", `${base}..${checkedOut}`]))
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      if (merges.length > 0) {
+        return {
+          ok: false,
+          conflictingFiles: [],
+          stderr: mergeCommitRejectionReason(merges),
+          checkedOutSha: checkedOut,
+          mergeCommits: merges,
+        };
+      }
     }
     try {
       await git.raw([...COMMIT_IDENTITY_ARGS, "rebase", base]);

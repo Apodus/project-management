@@ -605,6 +605,26 @@ describe("projectSettingsSchema", () => {
     ).toThrow();
   });
 
+  // ── C4-P3c reject_merge_commits ──
+  it("defaults reject_merge_commits to false and round-trips true", () => {
+    const omitted = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: { enabled: false },
+    });
+    expect(omitted!.integrator!.reject_merge_commits).toBe(false);
+    const on = projectSettingsSchema.parse({
+      ...validSettings,
+      integrator: { enabled: false, reject_merge_commits: true },
+    });
+    expect(on!.integrator!.reject_merge_commits).toBe(true);
+    expect(() =>
+      projectSettingsSchema.parse({
+        ...validSettings,
+        integrator: { enabled: false, reject_merge_commits: "yes" },
+      }),
+    ).toThrow();
+  });
+
   // ── Phase 7.6 resolver config (design §3) ──
   it("accepts a valid resolver block (all 6 fields incl. prompt) and round-trips it", () => {
     const parsed = projectSettingsSchema.parse({

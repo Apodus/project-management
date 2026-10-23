@@ -619,6 +619,7 @@ async function main(): Promise<void> {
       resource: cfg.resource,
       defaultVerifyCommand: cfg.verifyCommand,
       verifyTimeoutSec: cfg.verifyTimeoutSec,
+      rejectMergeCommits: cfg.rejectMergeCommits,
       verifySuccessSentinel: cfg.verifySuccessSentinel,
       hostSlots,
       // Campaign 2026-08-04 §P1: seconds → milliseconds, converted exactly once

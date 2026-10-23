@@ -43,6 +43,8 @@ describe("loadConfig", () => {
     expect(config.linkedRepos).toEqual([]);
     // P1: clean_keep defaults to [] (plain git clean -fdx, pre-P1 behavior).
     expect(config.cleanKeep).toEqual([]);
+    // C4-P3c: merge commits are not rejected unless the project opts in.
+    expect(config.rejectMergeCommits).toBe(false);
     // Phase 7.4 §3.6: heartbeat cadence defaults to 30s when absent.
     expect(config.heartbeatIntervalSec).toBe(30);
   });
@@ -78,6 +80,24 @@ describe("loadConfig", () => {
       stubClient(withParallelism),
     );
     expect(config.parallelism).toBe(4);
+  });
+
+  it("reads reject_merge_commits from integrator settings (C4-P3c)", async () => {
+    const withKey: ProjectDetail = {
+      ...enabledProject,
+      settings: {
+        integrator: {
+          ...enabledProject.settings!.integrator!,
+          reject_merge_commits: true,
+        },
+      },
+    };
+    const config = await loadConfig(
+      { project: "p1" },
+      { PM_API_TOKEN: "t" } as never,
+      stubClient(withKey),
+    );
+    expect(config.rejectMergeCommits).toBe(true);
   });
 
   it("reads clean_keep override from integrator settings", async () => {

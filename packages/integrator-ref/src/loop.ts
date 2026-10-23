@@ -1,7 +1,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Logger } from "./logger.js";
-import type { GitOps } from "./git-ops.js";
+import { mergeCommitRejectionReason, type GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
 import { PmApiError, type PmClient } from "./pm-client.js";
 import { categorize, failureExcerpt } from "./categorize.js";
@@ -20,6 +20,11 @@ export interface RunOnceDeps {
   resource: string;
   defaultVerifyCommand: string;
   verifyTimeoutSec: number;
+  /**
+   * C4-P3c: reject a request whose range holds a merge commit before rebasing
+   * it (`settings.integrator.reject_merge_commits`). Absent/false: no check.
+   */
+  rejectMergeCommits?: boolean;
   gitRemote: string;
   gitMainBranch: string;
   /**
@@ -305,7 +310,29 @@ export async function runOnce(deps: RunOnceDeps): Promise<RunOnceOutcome> {
       return { kind: "rejected", requestId: request.id, category: "other" };
     }
 
-    const rebase = await gitOps.rebaseOnto(baseSha, ref);
+    const rebase = await gitOps.rebaseOnto(baseSha, ref, {
+      rejectMergeCommits: deps.rejectMergeCommits,
+    });
+    if (!rebase.ok && rebase.mergeCommits?.length) {
+      // C4-P3c: refused BEFORE the rebase. Nothing to resolve: a terminal "other",
+      // no resolution is opened.
+      const reason = mergeCommitRejectionReason(rebase.mergeCommits);
+      await pmClient.completeAttempt(attemptId, {
+        status: "failed",
+        failureCategory: "other",
+        failureReason: reason,
+        logExcerpt: rebase.stderr.slice(0, LOG_EXCERPT_CAP),
+        logUrl,
+      });
+      await pmClient.rejectMergeRequest(request.id, {
+        category: "other",
+        reason,
+        logExcerpt: rebase.stderr.slice(0, LOG_EXCERPT_CAP),
+        logUrl,
+      });
+      await releaseLock({ reason: "merge commit in range" });
+      return { kind: "rejected", requestId: request.id, category: "other" };
+    }
     if (!rebase.ok) {
       // Name the sha we judged (see the batch-path note on the same line).
       const at = rebase.checkedOutSha ? ` (at ${rebase.checkedOutSha.slice(0, 12)})` : "";

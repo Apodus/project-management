@@ -634,6 +634,24 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       await author.push(["-u", "origin", `feature/${name}`]);
     }
     await author.checkout("main");
+
+    // C4-P3c: branches whose `main..branch` range holds a MERGE commit (a side
+    // branch merged with --no-ff). One per test: the landing one is consumed.
+    for (const name of ["mergedreject", "mergedoff"]) {
+      await author.checkout("main");
+      await author.checkoutLocalBranch(`side/${name}`);
+      writeFileSync(path.join(authorClone, `${name}-side.txt`), "side\n");
+      await author.add([`${name}-side.txt`]);
+      await author.commit(`add ${name} side`);
+      await author.checkout("main");
+      await author.checkoutLocalBranch(`feature/${name}`);
+      writeFileSync(path.join(authorClone, `${name}.txt`), `${name}\n`);
+      await author.add([`${name}.txt`]);
+      await author.commit(`add ${name} feature`);
+      await author.raw(["merge", "--no-ff", "-m", `merge side/${name}`, `side/${name}`]);
+      await author.push(["-u", "origin", `feature/${name}`]);
+    }
+    await author.checkout("main");
   });
 
   afterAll(() => {
@@ -668,6 +686,8 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       verifySteps?: VerifyStep[];
       cacheEnabled?: boolean;
       cacheMode?: CacheMode;
+      /** C4-P3c: settings.integrator.reject_merge_commits. */
+      rejectMergeCommits?: boolean;
       /**
        * Phase 7.6: enable the conflict-resolution seam. When set, depsFor wires
        * a `resolver` handle whose openAndEnqueue calls the fake openResolution
@@ -760,6 +780,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       verifySteps: opts.verifySteps,
       cacheEnabled: opts.cacheEnabled,
       cacheMode: opts.cacheMode,
+      rejectMergeCommits: opts.rejectMergeCommits,
       resolver,
     };
   }
@@ -3700,6 +3721,60 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     // A successful land says so.
     expect(rows.find((r) => r.label === "push")!.detail).toMatchObject({ ok: true, reason: null });
   }, 20_000);
+
+  it("C4-P3c merge-commit: a branch with a merge commit is rejected before the rebase; nothing is verified", async () => {
+    const root = path.join(tmpRoot, "wt-mc-reject");
+    const req = makeRequest({
+      id: "req-mc-reject",
+      branch: "feature/mergedreject",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      phasePosts: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root, rejectMergeCommits: true });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("rejected");
+    expect(req.rejectCategory).toBe("other");
+    expect(req.rejectReason).toMatch(
+      /^merge-commit-in-range: [0-9a-f]{12}\. The train's rebase flattens merges and drops their messages \(trailers on a merge commit never reach main\): rebase your branch\.$/,
+    );
+    expect(state.calls).toContain("reject:other");
+    expect(state.calls).not.toContain("land");
+    // Refused at the rebase phase: no verify span, no land span.
+    expect(phaseLabels(state)).not.toContain("verify/verify");
+    expect(phaseLabels(state)).not.toContain("land/push");
+    expect(deps.pool.leasedCount).toBe(0);
+    expect(state.lockHeld).toBe(false);
+  }, 30_000);
+
+  it("C4-P3c merge-commit: the same shape lands when reject_merge_commits is off (default)", async () => {
+    const root = path.join(tmpRoot, "wt-mc-off");
+    const req = makeRequest({
+      id: "req-mc-off",
+      branch: "feature/mergedoff",
+      verifyCmd: "echo ok",
+    });
+    const state: FakeState = {
+      requests: [req],
+      attempts: [],
+      lockHeld: false,
+      calls: [],
+      phasePosts: [],
+    };
+    const deps = await depsFor(state, { worktreeRoot: root });
+    const outcome = await runBatchOnce(deps);
+
+    expect(outcome.kind).toBe("drained");
+    expect(req.status).toBe("landed");
+    expect(state.calls).not.toContain("reject:other");
+  }, 30_000);
 
   it("P2: a cache HIT reports THIS pass's wall clock, with the cached verdict's duration in detail", async () => {
     const root = path.join(tmpRoot, "wt-p2-cachehit");
