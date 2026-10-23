@@ -57,8 +57,18 @@ function render(view: IntegratorHealthView): string {
         : `${Math.round(view.staleness_ms / 1000)}s ago`;
   lines.push(`  Last heartbeat: ${age}`);
 
-  const laneStatus = view.status === "never_seen" ? "unknown" : view.status;
+  const phase = view.phase ?? view.status;
+  const laneStatus = phase === "never_seen" ? "unknown" : phase;
   lines.push(`  Lane status: ${laneStatus}`);
+  // C4-P2: where this lane's verifies stand in the HOST verify-slot queue.
+  for (const slot of view.host_slots ?? []) {
+    const waited = `${Math.round(slot.waited_ms / 1000)}s`;
+    lines.push(
+      slot.state === "held"
+        ? `  Host verify slot: HELD by ${slot.request_id} (waited ${waited} for it)`
+        : `  Host verify slot: ${slot.request_id} WAITING, ${slot.position} ahead; the slot is held by lane ${slot.holder_lane ?? "?"} (pid ${slot.holder_pid ?? "?"}); waited ${waited}`,
+    );
+  }
   lines.push(`  Version: ${view.version ?? "unknown"}`);
 
   if (view.pool_size !== null || view.pool_leased !== null) {
@@ -106,6 +116,13 @@ function render(view: IntegratorHealthView): string {
       "    The heartbeat is healthy and the lane will keep looking alive, but it can admit no",
     );
     lines.push("    work: the queue will not move until the daemon is restarted.");
+  } else if (tri === "alive" && phase === "waiting_host_slot") {
+    // C4-P2: integrating, but every verify of this lane is queued behind another
+    // lane's verify on the same host. Not slow, not wedged: its turn has not come.
+    lines.push("");
+    lines.push(
+      "  ✓ Heartbeat is live and the lane is WAITING FOR A HOST VERIFY SLOT — another lane's verify holds it. Wait; this is a queue, not a stall.",
+    );
   } else if (tri === "alive" && view.status === "integrating") {
     // The positive counterpart to the DOWN hint. A fresh heartbeat is the ONLY
     // evidence that distinguishes "slow verify" from "wedged" — elapsed time

@@ -593,11 +593,33 @@ function computeOldestQueuedAt(projectId: string, resource: string): string | nu
  * caller is responsible for the parallelism===1 + not-paused gates; this helper
  * only enforces the groupId/status/age predicate.
  */
+/**
+ * C4-P2 (Rev 2 #4): per request, how long the lane's latest heartbeat says it
+ * has queued for the HOST verify slot. Time waiting for another lane's verify
+ * to finish is not a stalled integration, so the stall check subtracts it. The
+ * held entry keeps its `waited_ms`, so the subtraction survives the acquire; a
+ * still-waiting entry keeps accruing from the beat. Only a HEALTHY beat counts:
+ * a dead daemon's last report must not excuse a stuck request forever.
+ */
+export function hostSlotWaitByRequest(
+  health: IntegratorHealthView,
+  now: string,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!health.healthy || !health.hostSlots || !health.lastSeenAt) return out;
+  const sinceBeat = Math.max(0, Date.parse(now) - Date.parse(health.lastSeenAt));
+  for (const s of health.hostSlots) {
+    out.set(s.request_id, s.waited_ms + (s.state === "waiting" ? sinceBeat : 0));
+  }
+  return out;
+}
+
 function computeOldestStalledIntegrating(
   projectId: string,
   resource: string,
   now: string,
   thresholdMs: number,
+  hostWaitMs: ReadonlyMap<string, number> = new Map(),
 ): { requestId: string; stalenessMs: number } | null {
   const db = getDb();
   const cutoffMs = Date.parse(now) - thresholdMs;
@@ -666,7 +688,8 @@ function computeOldestStalledIntegrating(
   let best: { requestId: string; stalenessMs: number } | null = null;
   const nowMs = Date.parse(now);
   for (const r of [...caseA, ...caseB]) {
-    const stalenessMs = nowMs - Date.parse(r.basis);
+    const stalenessMs = nowMs - Date.parse(r.basis) - (hostWaitMs.get(r.requestId) ?? 0);
+    if (stalenessMs < thresholdMs) continue; // its age past the cutoff was host-slot wait
     if (best === null || stalenessMs > best.stalenessMs) {
       best = { requestId: r.requestId, stalenessMs };
     }
@@ -1153,7 +1176,13 @@ function checkAlerts(
 
   const stalled =
     parallelism === 1 && row.state !== "paused"
-      ? computeOldestStalledIntegrating(projectId, resource, now, thresholdMs)
+      ? computeOldestStalledIntegrating(
+          projectId,
+          resource,
+          now,
+          thresholdMs,
+          hostSlotWaitByRequest(metrics.health, now),
+        )
       : null;
   const fireStalled = stalled !== null;
 

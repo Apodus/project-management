@@ -176,4 +176,56 @@ describe("health service", () => {
     svc.getHealth(project.id, "main", "2026-05-30T12:04:30.000Z");
     expect(calls).toHaveLength(2);
   });
+
+  // ── C4-P2: host verify slots ─────────────────────────────────────
+
+  it("host_slots is live state: a beat carries it, a beat without it clears it (not tri-state)", () => {
+    const project = createTestProject(testApp.db);
+    const agent = createTestAiAgent(testApp.db);
+    const slot = {
+      request_id: "req-1",
+      state: "waiting" as const,
+      seq: 3,
+      position: 1,
+      holder_lane: "rynx_engine",
+      holder_pid: 4242,
+      waited_ms: 61_000,
+    };
+    const v1 = svc.recordHeartbeat(
+      project.id,
+      "main",
+      agent.user.id,
+      makePayload({ status: "integrating", hostSlots: [slot] }),
+      "2026-05-30T12:00:00.000Z",
+    );
+    expect(v1.hostSlots).toEqual([slot]);
+    expect(v1.phase).toBe("waiting_host_slot");
+    const v2 = svc.recordHeartbeat(
+      project.id,
+      "main",
+      agent.user.id,
+      makePayload({ status: "integrating" }),
+      "2026-05-30T12:00:30.000Z",
+    );
+    expect(v2.hostSlots).toBeNull();
+    expect(v2.phase).toBe("integrating");
+  });
+
+  it("deriveLanePhase: waiting_host_slot only when integrating and every slot waits", () => {
+    const w = {
+      request_id: "a",
+      state: "waiting" as const,
+      seq: 1,
+      position: 1,
+      holder_lane: "x",
+      holder_pid: 1,
+      waited_ms: 0,
+    };
+    const h = { ...w, request_id: "b", state: "held" as const, position: 0 };
+    expect(svc.deriveLanePhase("integrating", [w])).toBe("waiting_host_slot");
+    expect(svc.deriveLanePhase("integrating", [w, h])).toBe("integrating");
+    expect(svc.deriveLanePhase("integrating", [])).toBe("integrating");
+    expect(svc.deriveLanePhase("integrating", null)).toBe("integrating");
+    expect(svc.deriveLanePhase("idle", [w])).toBe("idle");
+  });
 });

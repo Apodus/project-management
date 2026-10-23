@@ -3,6 +3,7 @@ import { createId } from "@pm/shared";
 import { getDb, integratorHealth, projects } from "../db/index.js";
 import { AppError } from "../types.js";
 import { EVENT_NAMES, getEventBus } from "../events/event-bus.js";
+import type { HostSlotViewWire } from "@pm/shared";
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -33,6 +34,29 @@ export interface HeartbeatPayload {
    * leave the stored value untouched; `null` → clear it; a value → set it.
    */
   lastReleaseFailure?: ReleaseFailure | null;
+  /**
+   * C4-P2: the lane's waiting/held host verify slots. NOT tri-state: absent
+   * (no host bound, or an old integrator) stores null -- it is live state.
+   */
+  hostSlots?: HostSlotViewWire[];
+}
+
+/**
+ * C4-P2: the lane's phase. `waiting_host_slot` when the lane is integrating but
+ * every one of its verifies is queued for the HOST (another lane holds the
+ * slot): "slow verify" and "waiting its turn" read differently to a person
+ * deciding whether to wait.
+ */
+export function deriveLanePhase(status: string, hostSlots: HostSlotViewWire[] | null): string {
+  if (
+    status === "integrating" &&
+    hostSlots &&
+    hostSlots.length > 0 &&
+    hostSlots.every((s) => s.state === "waiting")
+  ) {
+    return "waiting_host_slot";
+  }
+  return status;
 }
 
 /** The { at, message } shape stored in integrator_health.last_release_failure. */
@@ -61,6 +85,10 @@ export interface IntegratorHealthView {
   integratorId: string | null;
   /** C2: the lane's most recent failed lock release (null = none / cleared). */
   lastReleaseFailure: ReleaseFailure | null;
+  /** C4-P2: idle | integrating | waiting_host_slot | never_seen. */
+  phase: string;
+  /** C4-P2: the lane's host verify slots from the latest beat (null = none reported). */
+  hostSlots: HostSlotViewWire[] | null;
 }
 
 // ─── Internal row shape ───────────────────────────────────────────
@@ -80,6 +108,7 @@ interface IntegratorHealthRow {
   lastSeenAt: string;
   unhealthyNotified: boolean;
   lastReleaseFailure: ReleaseFailure | null;
+  hostSlots: HostSlotViewWire[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -123,6 +152,8 @@ function toView(row: IntegratorHealthRow, now: string): IntegratorHealthView {
     version: row.version,
     integratorId: row.integratorId,
     lastReleaseFailure: row.lastReleaseFailure,
+    phase: deriveLanePhase(row.status, row.hostSlots),
+    hostSlots: row.hostSlots,
   };
 }
 
@@ -145,6 +176,8 @@ function neverSeenView(resource: string): IntegratorHealthView {
     version: null,
     integratorId: null,
     lastReleaseFailure: null,
+    phase: "never_seen",
+    hostSlots: null,
   };
 }
 
@@ -191,6 +224,7 @@ export function recordHeartbeat(
           unhealthyNotified: false,
           // First beat: absent ≡ nothing recorded yet → null.
           lastReleaseFailure: payload.lastReleaseFailure ?? null,
+          hostSlots: payload.hostSlots ?? null,
           createdAt: now,
           updatedAt: now,
         })
@@ -216,6 +250,7 @@ export function recordHeartbeat(
           ...(payload.lastReleaseFailure === undefined
             ? {}
             : { lastReleaseFailure: payload.lastReleaseFailure }),
+          hostSlots: payload.hostSlots ?? null,
           updatedAt: now,
         })
         .where(
@@ -243,6 +278,7 @@ export function recordHeartbeat(
         ...(payload.lastReleaseFailure === undefined
           ? {}
           : { lastReleaseFailure: payload.lastReleaseFailure }),
+        hostSlots: payload.hostSlots ?? null,
         updatedAt: now,
       })
       .where(eq(integratorHealth.id, existing.id))

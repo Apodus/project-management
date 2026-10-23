@@ -1,0 +1,1 @@
+ALTER TABLE `integrator_health` ADD `host_slots` text;

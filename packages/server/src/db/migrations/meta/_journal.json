@@ -274,6 +274,13 @@
       "when": 1785741772030,
       "tag": "0038_silky_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1792722430094,
+      "tag": "0039_flawless_human_robot",
+      "breakpoints": true
     }
   ]
 }

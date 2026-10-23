@@ -86,6 +86,11 @@ export const integratorHealthView = z.object({
   // cleared by a subsequent successful release). Why a lane idles while work
   // queues — durable on integrator_health, surfaced on the dashboard.
   last_release_failure: releaseFailureSchema.nullable(),
+  // C4-P2: idle | integrating | waiting_host_slot | never_seen, and the lane's
+  // host verify slots from the latest beat (null = none reported).
+  // Optional: a client may read a server that predates C4-P2.
+  phase: z.string().optional(),
+  host_slots: z.array(hostSlotViewSchema).nullable().optional(),
 });
 export type IntegratorHealthView = z.infer<typeof integratorHealthView>;
 

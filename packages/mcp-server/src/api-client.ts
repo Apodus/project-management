@@ -1497,6 +1497,20 @@ export interface IntegratorHealthView {
   version: string | null;
   integrator_id: string | null;
   last_release_failure: { at: string; message: string } | null;
+  /** C4-P2 (absent from an older server): idle | integrating | waiting_host_slot | never_seen. */
+  phase?: string;
+  /** C4-P2: the lane's host verify slots from the latest beat (null = none reported). */
+  host_slots?: HostSlotView[] | null;
+}
+
+export interface HostSlotView {
+  request_id: string;
+  state: "waiting" | "held";
+  seq: number;
+  position: number;
+  holder_lane: string | null;
+  holder_pid: number | null;
+  waited_ms: number;
 }
 
 /**

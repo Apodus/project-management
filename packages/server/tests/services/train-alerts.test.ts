@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createId } from "@pm/shared";
-import { createTestApp, createTestProject, createTestUser, type TestApp } from "../utils.js";
+import {
+  createTestAiAgent,
+  createTestApp,
+  createTestProject,
+  createTestUser,
+  type TestApp,
+} from "../utils.js";
+import * as healthSvc from "../../src/services/health.service.js";
 import {
   mergeAttempts,
   mergeRequestGroups,
@@ -960,5 +967,119 @@ describe("webhook alert listener (Discord, §7.2)", () => {
     expect(bundle.queueDepth).toBe(1);
     await new Promise((r) => setImmediate(r));
     expect(fetchMock).toHaveBeenCalledTimes(1); // the stuck alert tried to POST
+  });
+});
+
+// ── C4-P2 (Rev 2 #4): time queued for the HOST verify slot is not a stall ──
+
+describe("train.integration_stalled subtracts host-slot wait (C4-P2)", () => {
+  let testApp: TestApp;
+
+  beforeEach(() => {
+    testApp = createTestApp();
+  });
+
+  afterEach(() => {
+    testApp.cleanup();
+  });
+
+  function strandedFor(minutes: number) {
+    const project = createTestProject(testApp.db);
+    const user = createTestUser(testApp.db);
+    const reqId = seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: user.id,
+      status: "integrating",
+      pickedUpAt: ago(minutes * MIN),
+    });
+    seedAttempt(testApp, {
+      requestId: reqId,
+      attemptNumber: 1,
+      status: "running",
+      startedAt: ago(minutes * MIN),
+    });
+    return { project, reqId };
+  }
+
+  function beat(
+    projectId: string,
+    reqId: string,
+    waitedMin: number,
+    state: "waiting" | "held",
+    at = NOW,
+  ) {
+    const agent = createTestAiAgent(testApp.db);
+    healthSvc.recordHeartbeat(
+      projectId,
+      "main",
+      agent.user.id,
+      {
+        status: "integrating",
+        poolSize: 1,
+        poolLeased: 1,
+        inFlightRequests: 1,
+        inFlightBatches: 1,
+        inFlightGroups: 0,
+        version: "0.0.0",
+        hostSlots: [
+          {
+            request_id: reqId,
+            state,
+            seq: 7,
+            position: state === "held" ? 0 : 1,
+            holder_lane: state === "held" ? null : "rynx_engine",
+            holder_pid: state === "held" ? null : 4242,
+            waited_ms: waitedMin * MIN,
+          },
+        ],
+      },
+      at,
+    );
+  }
+
+  const fired = (projectId: string) => {
+    const calls: { stalenessMs: number }[] = [];
+    getEventBus().on(EVENT_NAMES.TRAIN_INTEGRATION_STALLED, (p) =>
+      calls.push(p.entity as { stalenessMs: number }),
+    );
+    metrics.computeMetrics(projectId, "main", NOW);
+    return calls;
+  };
+
+  it("31 min integrating, 25 of them queued for the host (now HELD): does NOT fire", () => {
+    const { project, reqId } = strandedFor(31);
+    beat(project.id, reqId, 25, "held");
+    expect(fired(project.id)).toHaveLength(0);
+  });
+
+  it("31 min integrating, 5 of them queued: fires, with the wait subtracted", () => {
+    const { project, reqId } = strandedFor(31);
+    beat(project.id, reqId, 5, "held");
+    const calls = fired(project.id);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].stalenessMs).toBe(26 * MIN);
+  });
+
+  it("a still-WAITING entry keeps accruing from its beat", () => {
+    const { project, reqId } = strandedFor(31);
+    // Reported 10.8 min of waiting 30 s ago, still waiting: 11.3 min excused, 19.7 min
+    // left (< the 20 min threshold). Without the accrual it would be 20.2: a false alert.
+    beat(project.id, reqId, 10.8, "waiting", new Date(NOW_MS - 30_000).toISOString());
+    const calls = fired(project.id);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a STALE beat excuses nothing (a dead daemon's last report)", () => {
+    const { project, reqId } = strandedFor(31);
+    beat(project.id, reqId, 25, "held", new Date(NOW_MS - 10 * MIN).toISOString());
+    expect(fired(project.id)).toHaveLength(1);
+  });
+
+  it("phase reads waiting_host_slot only while every verify of the lane waits", () => {
+    const { project, reqId } = strandedFor(1);
+    beat(project.id, reqId, 1, "waiting");
+    expect(healthSvc.getHealth(project.id, "main", NOW).phase).toBe("waiting_host_slot");
+    beat(project.id, reqId, 1, "held");
+    expect(healthSvc.getHealth(project.id, "main", NOW).phase).toBe("integrating");
   });
 });

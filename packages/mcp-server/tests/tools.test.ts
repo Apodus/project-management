@@ -3589,6 +3589,50 @@ describe("MCP Tools", () => {
       expect(text).toContain("do not cancel or resubmit on elapsed time alone");
     });
 
+    it("C4-P2: a lane queued behind another lane's verify reads WAITING FOR A HOST VERIFY SLOT", async () => {
+      mockGetIntegratorHealth.mockResolvedValue({
+        ...baseHealth,
+        status: "integrating",
+        in_flight_requests: 1,
+        in_flight_batches: 1,
+        phase: "waiting_host_slot",
+        host_slots: [
+          {
+            request_id: "REQ1",
+            state: "waiting",
+            seq: 12,
+            position: 1,
+            holder_lane: "rynx_engine",
+            holder_pid: 4242,
+            waited_ms: 95_000,
+          },
+        ],
+      });
+      const result = await client.callTool({
+        name: "pm_get_integrator_health",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Lane status: waiting_host_slot");
+      expect(text).toContain(
+        "REQ1 WAITING, 1 ahead; the slot is held by lane rynx_engine (pid 4242); waited 95s",
+      );
+      expect(text).toContain("WAITING FOR A HOST VERIFY SLOT");
+      // Not the "verify is running" verdict: nothing of this lane is running.
+      expect(text).not.toContain("verify is running");
+    });
+
+    it("C4-P2: an older server (no phase field) renders exactly as before", async () => {
+      mockGetIntegratorHealth.mockResolvedValue({ ...baseHealth, status: "integrating" });
+      const result = await client.callTool({
+        name: "pm_get_integrator_health",
+        arguments: { project_id: "P1" },
+      });
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("Lane status: integrating");
+      expect(text).not.toContain("Host verify slot");
+    });
+
     it("omits the pool-zero explainer when no group is in flight", async () => {
       mockGetIntegratorHealth.mockResolvedValue({
         ...baseHealth,

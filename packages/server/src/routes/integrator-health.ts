@@ -34,6 +34,18 @@ const releaseFailureSchema = z.object({
   message: z.string(),
 });
 
+// C4-P2: one of the lane's verifies in the HOST verify-slot queue. Additive on
+// the heartbeat: an integrator with no host bound omits it.
+const hostSlotSchema = z.object({
+  request_id: z.string(),
+  state: z.enum(["waiting", "held"]),
+  seq: z.number().int(),
+  position: z.number().int(),
+  holder_lane: z.string().nullable(),
+  holder_pid: z.number().int().nullable(),
+  waited_ms: z.number().int().nonnegative(),
+});
+
 const heartbeatBody = z
   .object({
     resource: z.string().min(1).default("main"),
@@ -51,6 +63,7 @@ const heartbeatBody = z
       .default({ requests: 0, batches: 0, groups: 0 }),
     version: z.string().min(1),
     last_release_failure: releaseFailureSchema.nullable().optional(),
+    host_slots: z.array(hostSlotSchema).optional(),
   })
   .openapi("IntegratorHeartbeat");
 
@@ -71,6 +84,8 @@ const healthViewSchema = z
     version: z.string().nullable(),
     integrator_id: z.string().nullable(),
     last_release_failure: releaseFailureSchema.nullable(),
+    phase: z.string(),
+    host_slots: z.array(hostSlotSchema).nullable(),
   })
   .openapi("IntegratorHealth");
 
@@ -172,6 +187,8 @@ function toResponse(view: IntegratorHealthView): z.infer<typeof healthViewSchema
     version: view.version,
     integrator_id: view.integratorId,
     last_release_failure: view.lastReleaseFailure,
+    phase: view.phase,
+    host_slots: view.hostSlots,
   };
 }
 
@@ -212,6 +229,7 @@ export function createIntegratorHealthRoutes(): OpenAPIHono<{
         // integrator) must stay undefined so recordHeartbeat leaves the
         // stored value untouched; null clears; a value sets.
         lastReleaseFailure: body.last_release_failure,
+        hostSlots: body.host_slots,
       },
       now,
     );

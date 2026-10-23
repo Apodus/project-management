@@ -883,6 +883,20 @@ export const integratorHealth = sqliteTable(
       at: string;
       message: string;
     }>(),
+    // C4-P2: the lane's waiting/held HOST verify slots, from the latest beat
+    // (JSON array). Live state, not tri-state: a beat without it (no host bound
+    // configured, or an old integrator) stores null.
+    hostSlots: text("host_slots", { mode: "json" }).$type<
+      {
+        request_id: string;
+        state: "waiting" | "held";
+        seq: number;
+        position: number;
+        holder_lane: string | null;
+        holder_pid: number | null;
+        waited_ms: number;
+      }[]
+    >(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

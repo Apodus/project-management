@@ -17,6 +17,18 @@ import type {
 } from "../services/metrics.service.js";
 import * as claimsHealthService from "../services/claims-health.service.js";
 
+// C4-P2: one of the lane's verifies in the HOST verify-slot queue (mirrors
+// routes/integrator-health.ts; snake_case on the wire).
+const hostSlotViewSchema = z.object({
+  request_id: z.string(),
+  state: z.enum(["waiting", "held"]),
+  seq: z.number().int(),
+  position: z.number().int(),
+  holder_lane: z.string().nullable(),
+  holder_pid: z.number().int().nullable(),
+  waited_ms: z.number().int().nonnegative(),
+});
+
 // ─── Param + query schemas ────────────────────────────────────────
 
 const projectIdParam = z
@@ -241,6 +253,10 @@ const metricsBundleSchema = z
       integrator_id: z.string().nullable(),
       // C2: the lane's most recent failed lock release (null = none/cleared).
       last_release_failure: z.object({ at: z.string(), message: z.string() }).nullable(),
+      // C4-P2: idle | integrating | waiting_host_slot | never_seen, and the
+      // lane's host verify slots from the latest beat (null = none reported).
+      phase: z.string(),
+      host_slots: z.array(hostSlotViewSchema).nullable(),
     }),
     slo: z.object({
       p95_time_to_land: sloDimensionSchema.optional(),
@@ -857,6 +873,8 @@ function metricsToResponse(bundle: MetricsBundle): z.infer<typeof metricsBundleS
       version: bundle.health.version,
       integrator_id: bundle.health.integratorId,
       last_release_failure: bundle.health.lastReleaseFailure,
+      phase: bundle.health.phase,
+      host_slots: bundle.health.hostSlots,
     },
     slo: sloResponse,
     verify: {
