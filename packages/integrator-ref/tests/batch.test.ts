@@ -3691,6 +3691,10 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
     const rebaseRow = rows.find((r) => r.phase === "rebase")!;
     expect(rebaseRow.attemptId).toBe("att-1");
     expect(rows.find((r) => r.label === "reset")!.attemptId).toBeUndefined();
+    // C4-P3: the reset span carries what the nested-repo sweep did (nothing, on a clean slot) and its cost.
+    const resetRow = rows.find((r) => r.label === "reset")!;
+    expect(resetRow.detail).toMatchObject({ repaired: false, nestedReposRemoved: "" });
+    expect(typeof resetRow.detail!.nestedSweepMs).toBe("number");
     // A successful land says so.
     expect(rows.find((r) => r.label === "push")!.detail).toMatchObject({ ok: true, reason: null });
   }, 20_000);

@@ -2158,7 +2158,16 @@ async function admitAndRebase(
     // what `repaired` says. Recorded on the throw path too; the clock was spent.
     let repaired = false;
     await phases.time(
-      { phase: "assemble", label: "reset", detail: () => ({ repaired }) },
+      {
+        phase: "assemble",
+        label: "reset",
+        detail: () => ({
+          repaired,
+          // C4-P3: what the nested-repo sweep removed from the slot during this reset.
+          nestedReposRemoved: wt.lastNestedSweep?.removed.map((r) => r.path).join(",") ?? "",
+          nestedSweepMs: wt.lastNestedSweep?.walkMs ?? 0,
+        }),
+      },
       async () => {
         try {
           await wt.resetForAttempt();
