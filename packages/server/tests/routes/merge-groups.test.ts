@@ -4,10 +4,16 @@ import {
   authRequest,
   createTestAiAgent,
   createTestApp,
+  createTestLinkedProject,
   createTestProject,
   type TestApp,
 } from "../utils.js";
 import { mergeRequestGroups, mergeRequests } from "../../src/db/index.js";
+
+// linked_repos present (so the GROUPS_REQUIRE_LINKED_REPOS gate passes) but no outer: fails the topology check.
+const INNER_ONLY_SETTINGS = {
+  integrator: { linked_repos: [{ name: "rynx", path: "../rynx", role: "inner" }] },
+};
 
 describe("Merge Groups API", () => {
   let testApp: TestApp;
@@ -65,7 +71,7 @@ describe("Merge Groups API", () => {
   // ─── A. POST create ──────────────────────────────────────────────
   describe("POST /api/v1/projects/:projectId/merge-groups", () => {
     it("201 forming group with members claimed (worker)", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const a = await submitRequest(project.id, agent.token, { branch: "a" });
       const b = await submitRequest(project.id, agent.token, { branch: "b" });
@@ -88,7 +94,7 @@ describe("Merge Groups API", () => {
     });
 
     it("400 when fewer than 2 members", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const a = await submitRequest(project.id, agent.token);
 
@@ -102,7 +108,7 @@ describe("Merge Groups API", () => {
     });
 
     it("409 when a member is not queued", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const a = await submitRequest(project.id, agent.token);
       const b = await submitRequest(project.id, agent.token);
@@ -123,7 +129,7 @@ describe("Merge Groups API", () => {
     });
 
     it("409 when a member is already grouped", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { memberIds } = await createGroup(project.id, agent.token);
       const fresh = await submitRequest(project.id, agent.token);
@@ -141,7 +147,7 @@ describe("Merge Groups API", () => {
     });
 
     it("201 atomic members form → forming + members born group-bound + queued", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
 
       const res = await authRequest(
@@ -175,7 +181,7 @@ describe("Merge Groups API", () => {
     });
 
     it("400 atomic members form with a spec missing branch+commitSha", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const res = await authRequest(
         testApp.app,
@@ -193,7 +199,7 @@ describe("Merge Groups API", () => {
     });
 
     it("400 when BOTH memberRequestIds and members are provided", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const a = await submitRequest(project.id, agent.token, { branch: "a" });
       const b = await submitRequest(project.id, agent.token, { branch: "b" });
@@ -214,7 +220,7 @@ describe("Merge Groups API", () => {
     });
 
     it("400 when NEITHER memberRequestIds nor members are provided", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const res = await authRequest(
         testApp.app,
@@ -226,7 +232,7 @@ describe("Merge Groups API", () => {
     });
 
     it("400 atomic members form with fewer than 2 members", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const res = await authRequest(
         testApp.app,
@@ -241,7 +247,7 @@ describe("Merge Groups API", () => {
     });
 
     it("401 when unauthenticated", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const res = await testApp.app.request(`/api/v1/projects/${project.id}/merge-groups`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -363,8 +369,8 @@ describe("Merge Groups API", () => {
       );
     });
 
-    it("400 (service tier) when the project declares no inner/outer topology", async () => {
-      const project = createTestProject(testApp.db);
+    it("400 (service tier) when the project declares an incomplete inner/outer topology", async () => {
+      const project = createTestProject(testApp.db, { settings: INNER_ONLY_SETTINGS });
       const agent = createTestAiAgent(testApp.db);
       const res = await authRequest(
         testApp.app,
@@ -413,7 +419,7 @@ describe("Merge Groups API", () => {
     });
 
     it("legacy byte-identity seal: both legacy forms 201 with the pinned member key set + synthetic === false", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
 
       // The pre-campaign wire keys ∪ {"synthetic"} — pinned so an accidental
@@ -590,8 +596,8 @@ describe("Merge Groups API", () => {
       expect(await res.text()).toContain("mutually exclusive");
     });
 
-    it("400 (service tier) when the project declares no inner/outer topology", async () => {
-      const project = createTestProject(testApp.db);
+    it("400 (service tier) when the project declares an incomplete inner/outer topology", async () => {
+      const project = createTestProject(testApp.db, { settings: INNER_ONLY_SETTINGS });
       const agent = createTestAiAgent(testApp.db);
       const res = await authRequest(
         testApp.app,
@@ -613,10 +619,41 @@ describe("Merge Groups API", () => {
     });
   });
 
+  // ─── A2. C4-P3b: no group of ANY form without linked_repos ───────
+  describe("POST merge-groups on a project without linked_repos (C4-P3b)", () => {
+    const FORMS: Array<[string, (ids: string[]) => Record<string, unknown>]> = [
+      ["members[]", () => ({ members: [{ branch: "feat/a" }, { branch: "feat/b" }] })],
+      ["member_request_ids[]", (ids) => ({ memberRequestIds: ids })],
+      ["synthesize_outer", () => ({ members: [{ branch: "feat/inner" }], synthesizeOuter: true })],
+      ["synthesize_inner", () => ({ members: [{ branch: "feat/outer" }], synthesizeInner: true })],
+    ];
+
+    for (const [form, body] of FORMS) {
+      it(`${form} group is 400 GROUPS_REQUIRE_LINKED_REPOS with the per-repo guidance`, async () => {
+        const project = createTestProject(testApp.db);
+        const agent = createTestAiAgent(testApp.db);
+        const a = await submitRequest(project.id, agent.token, { branch: "a" });
+        const b = await submitRequest(project.id, agent.token, { branch: "b" });
+        const res = await authRequest(
+          testApp.app,
+          "POST",
+          `/api/v1/projects/${project.id}/merge-groups`,
+          { token: agent.token, body: { resource: "main", ...body([a, b]) } },
+        );
+        expect(res.status).toBe(400);
+        const json = await res.json();
+        expect(json.error.code).toBe("GROUPS_REQUIRE_LINKED_REPOS");
+        expect(json.error.message).toBe(
+          `project ${project.name} has no linked_repos; submit pm_request_merge per repo in its own project`,
+        );
+      });
+    }
+  });
+
   // ─── B. GET by id ────────────────────────────────────────────────
   describe("GET /api/v1/merge-groups/:id", () => {
     it("200 with members (worker)", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId } = await createGroup(project.id, agent.token);
 
@@ -644,7 +681,7 @@ describe("Merge Groups API", () => {
   // ─── C. GET list ─────────────────────────────────────────────────
   describe("GET /api/v1/projects/:projectId/merge-groups", () => {
     it("200 filtered by state + resource (worker)", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId } = await createGroup(project.id, agent.token);
 
@@ -673,7 +710,7 @@ describe("Merge Groups API", () => {
   // ─── D. Integrator ops — worker (human) 403, ai_agent 200 ────────
   describe("POST /api/v1/merge-groups/:id/pickup", () => {
     it("403 when human (admin) attempts pickup", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId } = await createGroup(project.id, agent.token);
 
@@ -684,7 +721,7 @@ describe("Merge Groups API", () => {
     });
 
     it("200 when ai_agent picks up a forming group", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId, memberIds } = await createGroup(project.id, agent.token);
 
@@ -706,7 +743,7 @@ describe("Merge Groups API", () => {
 
   describe("POST /api/v1/merge-groups/:id/land", () => {
     it("403 when human (admin) lands", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId, memberIds } = await createGroup(project.id, agent.token);
       await authRequest(testApp.app, "POST", `/api/v1/merge-groups/${groupId}/pickup`, {
@@ -723,7 +760,7 @@ describe("Merge Groups API", () => {
     });
 
     it("200 when ai_agent atomically lands the group", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId, memberIds } = await createGroup(project.id, agent.token);
       await authRequest(testApp.app, "POST", `/api/v1/merge-groups/${groupId}/pickup`, {
@@ -746,7 +783,7 @@ describe("Merge Groups API", () => {
   describe("POST /api/v1/merge-groups/:id/reject", () => {
     it("403 when a stranger ai_agent (non-submitter) rejects... actually allowed for integrator", async () => {
       // Integrator (any ai_agent) may reject — this asserts ai_agent → 200.
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestAiAgent(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const { groupId } = await createGroup(project.id, submitter.token);
@@ -761,7 +798,7 @@ describe("Merge Groups API", () => {
     });
 
     it("200 when the submitter rejects (forming → rejected)", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestAiAgent(testApp.db, { role: "member" });
       const { groupId } = await createGroup(project.id, submitter.token);
 
@@ -775,7 +812,7 @@ describe("Merge Groups API", () => {
     });
 
     it("200 when an admin rejects", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId } = await createGroup(project.id, agent.token);
 
@@ -791,7 +828,7 @@ describe("Merge Groups API", () => {
 
   describe("POST /api/v1/merge-groups/:id/partially-land", () => {
     it("403 when human (admin) marks partially landed", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId } = await createGroup(project.id, agent.token);
       await authRequest(testApp.app, "POST", `/api/v1/merge-groups/${groupId}/pickup`, {
@@ -808,7 +845,7 @@ describe("Merge Groups API", () => {
     });
 
     it("200 when ai_agent marks integrating group partially landed", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId } = await createGroup(project.id, agent.token);
       await authRequest(testApp.app, "POST", `/api/v1/merge-groups/${groupId}/pickup`, {
@@ -829,7 +866,7 @@ describe("Merge Groups API", () => {
 
   describe("POST /api/v1/merge-requests/:id/orphan", () => {
     it("403 when human (admin) orphans an inner member", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId, memberIds } = await createGroup(project.id, agent.token);
       await authRequest(testApp.app, "POST", `/api/v1/merge-groups/${groupId}/pickup`, {
@@ -846,7 +883,7 @@ describe("Merge Groups API", () => {
     });
 
     it("200 when ai_agent orphans an integrating member", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const { groupId, memberIds } = await createGroup(project.id, agent.token);
       await authRequest(testApp.app, "POST", `/api/v1/merge-groups/${groupId}/pickup`, {

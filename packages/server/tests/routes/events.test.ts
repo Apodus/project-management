@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   createTestApp,
+  createTestLinkedProject,
   createTestProject,
   createTestUser,
   createTestTask,
@@ -710,7 +711,7 @@ describe("SSE Events API", () => {
     }
 
     it("streams group started → member_landed → landed all tagged with group_id", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db).user;
       const actor = { id: integrator.id, role: "member", type: "ai_agent" };
@@ -763,7 +764,7 @@ describe("SSE Events API", () => {
     });
 
     it("streams merge.group.rejected tagged with group_id", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
 
       const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);
@@ -794,7 +795,7 @@ describe("SSE Events API", () => {
     });
 
     it("streams merge.incident.opened tagged with incident_id, orphaned_sha, group_id", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db).user;
       const actor = { id: integrator.id, role: "member", type: "ai_agent" };
@@ -838,7 +839,7 @@ describe("SSE Events API", () => {
 
     it("streams incident auto_resolved (ai) and human_resolved (admin) with incident_id/orphaned_sha/group_id", async () => {
       // ── auto_rollforward (integrator) ──
-      const projectA = createTestProject(testApp.db);
+      const projectA = createTestLinkedProject(testApp.db);
       const submitterA = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db).user;
       const aiActor = { id: integrator.id, role: "member", type: "ai_agent" };
@@ -892,7 +893,7 @@ describe("SSE Events API", () => {
       expect(autoData.group_id).toBe(groupIdA);
 
       // ── human (admin) ──
-      const projectB = createTestProject(testApp.db);
+      const projectB = createTestLinkedProject(testApp.db);
       const submitterB = createTestUser(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
       const adminActor = { id: admin.id, role: "admin", type: "human" };
@@ -943,7 +944,7 @@ describe("SSE Events API", () => {
     });
 
     it("backward-compat: a plain merge.request.queued frame carries no group_id/incident_id/orphaned_sha", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
 
       const res = await authRequest(testApp.app, "GET", `/api/v1/events?project_id=${project.id}`);

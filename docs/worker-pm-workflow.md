@@ -364,6 +364,7 @@ A bump-only outer branch in this form is now **tolerated**: the train auto-conve
 
 ### Both forms
 
+- **No linked repos, no group.** Every group form (`members`, `member_request_ids`, `synthesize_outer`, `synthesize_inner`) is refused with 400 `GROUPS_REQUIRE_LINKED_REPOS` on a project whose `settings.integrator.linked_repos` is absent or empty: submit `pm_request_merge` per repo in its own project instead.
 - `pm_request_merge_group(project_id, members[] | member_request_ids[], synthesize_outer?, resource?)` — **provide exactly one of `members` / `member_request_ids`**; `member_request_ids` cannot combine with `synthesize_outer`. Prefer `members` (each `{ branch and/or commit_sha, task_id?, verify_cmd? }`) — PM submits AND groups in a single call, race-free. The integrator lands the whole group atomically (inner first, then the outer gitlink) — **every member lands together or none does**.
 - `pm_get_merge_group(group_id)` — member statuses + whether the group has landed/rejected/is still forming.
 - **Per-member verify.** EVERY member's verify runs against the assembled state and ALL must pass. A member with no `verify_cmd` runs the project default in **its own repo's** worktree — so the default must exist in that repo (rynx now carries its own `pm-verify.bat`; before it did, every defaulted inner member failed instantly with `'pm-verify.bat' is not recognized`). Only pass `verify_cmd` for a deliberate one-off override.

@@ -4,7 +4,7 @@ import {
   authRequest,
   createTestAiAgent,
   createTestApp,
-  createTestProject,
+  createTestLinkedProject,
   createTestTask,
   createTestUser,
   type TestApp,
@@ -52,7 +52,7 @@ describe("Merge Incidents API", () => {
   // ─── A. POST open ────────────────────────────────────────────────
   describe("POST /api/v1/projects/:projectId/merge-incidents", () => {
     it("403 when non-ai_agent (human admin) opens", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const res = await authRequest(
         testApp.app,
         "POST",
@@ -66,7 +66,7 @@ describe("Merge Incidents API", () => {
     });
 
     it("201 when ai_agent opens + merge_incident comment when taskId set", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const reporter = createTestUser(testApp.db);
       const task = createTestTask(testApp.db, {
         projectId: project.id,
@@ -97,7 +97,7 @@ describe("Merge Incidents API", () => {
     });
 
     it("201 for a lane-scoped dangling_gitlink with every FK null", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
 
       const res = await authRequest(
@@ -125,7 +125,7 @@ describe("Merge Incidents API", () => {
     });
 
     it("idempotent open: 201 then 200, same row, created flips to false", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const body = {
         type: "dangling_gitlink",
@@ -161,7 +161,7 @@ describe("Merge Incidents API", () => {
   // ─── B. GET by id ────────────────────────────────────────────────
   describe("GET /api/v1/merge-incidents/:id", () => {
     it("200 (worker)", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const incidentId = await openIncident(project.id, agent.token);
 
@@ -189,7 +189,7 @@ describe("Merge Incidents API", () => {
   // ─── C. GET list ─────────────────────────────────────────────────
   describe("GET /api/v1/projects/:projectId/merge-incidents", () => {
     it("200 filtered by state/type/groupId (worker)", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       // groupId has a FK to merge_request_groups — bind a real group first.
       const a = await authRequest(
@@ -249,7 +249,7 @@ describe("Merge Incidents API", () => {
     });
 
     it("200 filtered by type=dangling_gitlink — the direction filter is real", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       await openIncident(project.id, agent.token);
       const danglingRes = await authRequest(
@@ -283,7 +283,7 @@ describe("Merge Incidents API", () => {
   // ─── D. POST resolve — authz SPLIT both directions ───────────────
   describe("POST /api/v1/merge-incidents/:id/resolve", () => {
     it("auto_rollforward: admin → 403, ai_agent → 200", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
 
       // admin CANNOT auto-resolve.
@@ -309,7 +309,7 @@ describe("Merge Incidents API", () => {
     });
 
     it("auto_observed: admin → 403, ai_agent → 200 (auto_resolved terminal)", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const incidentId = await openIncident(project.id, agent.token, {
         type: "dangling_gitlink",
@@ -336,7 +336,7 @@ describe("Merge Incidents API", () => {
     });
 
     it("human: ai_agent → 403, admin → 200", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const incidentId = await openIncident(project.id, agent.token);
 
@@ -364,7 +364,7 @@ describe("Merge Incidents API", () => {
 
   // ─── E. 401 ──────────────────────────────────────────────────────
   it("401 when unauthenticated", async () => {
-    const project = createTestProject(testApp.db);
+    const project = createTestLinkedProject(testApp.db);
     const res = await testApp.app.request(`/api/v1/projects/${project.id}/merge-incidents`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import {
   createTestAiAgent,
   createTestApp,
+  createTestLinkedProject,
   createTestProject,
   createTestTask,
   createTestUser,
@@ -52,7 +53,7 @@ describe("merge-group service", () => {
   // ─── createGroup ──────────────────────────────────────────────────
   describe("createGroup", () => {
     it("associates >=2 members; group forming, members still queued", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1, m2] = makeMembers(project, submitter, 2);
 
@@ -80,8 +81,8 @@ describe("merge-group service", () => {
     });
 
     it("cross-project member → 400 VALIDATION_ERROR", () => {
-      const projectA = createTestProject(testApp.db);
-      const projectB = createTestProject(testApp.db);
+      const projectA = createTestLinkedProject(testApp.db);
+      const projectB = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [a] = makeMembers(projectA, submitter, 1);
       const [b] = makeMembers(projectB, submitter, 1);
@@ -98,7 +99,7 @@ describe("merge-group service", () => {
     });
 
     it("mismatched resource → 400 VALIDATION_ERROR", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1] = makeMembers(project, submitter, 1);
       const [m2] = makeMembers(project, submitter, 1, { resource: "release" });
@@ -115,7 +116,7 @@ describe("merge-group service", () => {
     });
 
     it("non-queued member → 409 INVALID_TRANSITION", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const [m1, m2] = makeMembers(project, submitter, 2);
@@ -133,7 +134,7 @@ describe("merge-group service", () => {
     });
 
     it("already-grouped member → 409 ALREADY_GROUPED (and no partial writes)", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1, m2, m3] = makeMembers(project, submitter, 3);
       svc.createGroup(
@@ -169,7 +170,7 @@ describe("merge-group service", () => {
       // out-from-under us before the guarded UPDATE. We force this by stubbing
       // the read used in validation to report queued/ungrouped, while the DB
       // row is actually already grouped — the rowcount guard must catch it.
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1, m2] = makeMembers(project, submitter, 2);
       // Pre-grouped m1 directly in the DB so the WHERE guard (group_id IS NULL)
@@ -209,7 +210,7 @@ describe("merge-group service", () => {
     });
 
     it("<2 members → 400 VALIDATION_ERROR", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1] = makeMembers(project, submitter, 1);
       expect(() =>
@@ -225,7 +226,7 @@ describe("merge-group service", () => {
     });
 
     it("missing member → 404 NOT_FOUND", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1] = makeMembers(project, submitter, 1);
       expect(() =>
@@ -255,7 +256,7 @@ describe("merge-group service", () => {
     });
 
     it("emits no event on create", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1, m2] = makeMembers(project, submitter, 2);
       const listener = vi.fn();
@@ -275,7 +276,7 @@ describe("merge-group service", () => {
   // ─── createGroup (atomic submit-and-group arm) ────────────────────
   describe("createGroup (atomic members arm)", () => {
     it("atomic create → group forming, 2 members born group-bound + queued + branch persisted", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
 
       const g = svc.createGroup(
@@ -307,7 +308,7 @@ describe("merge-group service", () => {
     });
 
     it("a born-grouped member is NEVER single-repo-pickable (Part B guard → 409 GROUPED_MEMBER)", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
 
@@ -327,7 +328,7 @@ describe("merge-group service", () => {
     });
 
     it("emits NO MERGE_REQUEST_QUEUED per member during atomic create", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const queuedListener = vi.fn();
       const startedListener = vi.fn();
@@ -348,7 +349,7 @@ describe("merge-group service", () => {
     });
 
     it("persists taskId + verifyCmd from a spec", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const task = createTestTask(testApp.db, { projectId: project.id });
 
@@ -370,8 +371,8 @@ describe("merge-group service", () => {
     });
 
     it("a spec with a cross-project taskId → 400 VALIDATION_ERROR (no rows written)", () => {
-      const projectA = createTestProject(testApp.db);
-      const projectB = createTestProject(testApp.db);
+      const projectA = createTestLinkedProject(testApp.db);
+      const projectB = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const foreignTask = createTestTask(testApp.db, { projectId: projectB.id });
 
@@ -391,7 +392,7 @@ describe("merge-group service", () => {
     });
 
     it("a spec with a missing taskId → 404 NOT_FOUND", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       expect(() =>
         svc.createGroup(
@@ -409,7 +410,7 @@ describe("merge-group service", () => {
     });
 
     it("a spec with neither branch nor commitSha → 400 VALIDATION_ERROR", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       expect(() =>
         svc.createGroup(
@@ -424,7 +425,7 @@ describe("merge-group service", () => {
     });
 
     it("<2 members → 400 VALIDATION_ERROR", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       expect(() =>
         svc.createGroup(
@@ -439,7 +440,7 @@ describe("merge-group service", () => {
     });
 
     it("providing BOTH members and memberRequestIds → 400 VALIDATION_ERROR", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1, m2] = makeMembers(project, submitter, 2);
       expect(() =>
@@ -456,7 +457,7 @@ describe("merge-group service", () => {
     });
 
     it("providing NEITHER members nor memberRequestIds → 400 VALIDATION_ERROR", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       expect(() =>
         svc.createGroup({ projectId: project.id, submittedBy: submitter.id }, HUMAN(submitter.id)),
@@ -464,7 +465,7 @@ describe("merge-group service", () => {
     });
 
     it("a born-grouped member still lands via its group (back-compat with group land path)", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
 
@@ -668,27 +669,6 @@ describe("merge-group service", () => {
       expectNoRows(project.id);
     });
 
-    it("flag without linked_repos settings → 400 topology error; nothing written", () => {
-      const project = createTestProject(testApp.db);
-      const submitter = createTestUser(testApp.db);
-      expect(() =>
-        svc.createGroup({
-          projectId: project.id,
-          submittedBy: submitter.id,
-          members: [{ branch: "feat/inner" }],
-          synthesizeOuter: true,
-        }),
-      ).toThrowError(
-        expect.objectContaining({
-          statusCode: 400,
-          code: "VALIDATION_ERROR",
-          message:
-            "synthesizeOuter requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found 0 inner / 0 outer.",
-        }),
-      );
-      expectNoRows(project.id);
-    });
-
     it("flag with TWO inners declared → 400 topology error; nothing written", () => {
       const project = createTestProject(testApp.db, {
         settings: {
@@ -863,7 +843,7 @@ describe("merge-group service", () => {
     });
 
     it("legacy regression: both legacy arms produce synthetic:false members with the pinned view key set", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
 
       // Pinned member-view shape: the pre-campaign keys ∪ {"synthetic"}.
@@ -1092,8 +1072,14 @@ describe("merge-group service", () => {
       expectNoRows(project.id);
     });
 
-    it("flag without linked_repos settings → 400 topology error (synthesizeInner); nothing written", () => {
-      const project = createTestProject(testApp.db);
+    it("flag with NO inner declared → 400 topology error (synthesizeInner); nothing written", () => {
+      const project = createTestProject(testApp.db, {
+        settings: {
+          integrator: {
+            linked_repos: [{ name: "game", path: ".", role: "outer" }],
+          },
+        },
+      });
       const submitter = createTestUser(testApp.db);
       expect(() =>
         svc.createGroup({
@@ -1107,7 +1093,7 @@ describe("merge-group service", () => {
           statusCode: 400,
           code: "VALIDATION_ERROR",
           message:
-            "synthesizeInner requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found 0 inner / 0 outer.",
+            "synthesizeInner requires settings.integrator.linked_repos to declare exactly one inner and one outer repo; found 0 inner / 1 outer.",
         }),
       );
       expectNoRows(project.id);
@@ -1143,9 +1129,125 @@ describe("merge-group service", () => {
   });
 
   // ─── getById / list ───────────────────────────────────────────────
+  // ─── C4-P3b: no merge group of ANY form without linked_repos ─────────
+  describe("createGroup linked_repos gate (C4-P3b)", () => {
+    const REQUIRED = (name: string) =>
+      expect.objectContaining({
+        statusCode: 400,
+        code: "GROUPS_REQUIRE_LINKED_REPOS",
+        message: `project ${name} has no linked_repos; submit pm_request_merge per repo in its own project`,
+      });
+
+    function noRowsFor(projectId: string) {
+      expect(
+        testApp.db.select().from(mergeRequestGroups).where(eq(mergeRequestGroups.projectId, projectId)).all(),
+      ).toEqual([]);
+      expect(
+        testApp.db.select().from(mergeRequests).where(eq(mergeRequests.projectId, projectId)).all(),
+      ).toEqual([]);
+    }
+
+    // settings: absent (null), {} and an explicit empty list all mean "no linked_repos".
+    const UNLINKED = {
+      "absent settings": undefined,
+      "empty settings": {},
+      "empty linked_repos": { integrator: { linked_repos: [] } },
+    } as const;
+
+    for (const [label, settings] of Object.entries(UNLINKED)) {
+      describe(`project with ${label}`, () => {
+        it("members[] group on a project without linked_repos is 400", () => {
+          const project = createTestProject(testApp.db, { settings });
+          const submitter = createTestUser(testApp.db);
+          expect(() =>
+            svc.createGroup({
+              projectId: project.id,
+              submittedBy: submitter.id,
+              members: [{ branch: "feat/a" }, { branch: "feat/b" }],
+            }),
+          ).toThrowError(REQUIRED(project.name));
+          noRowsFor(project.id);
+        });
+
+        it("member_request_ids[] group on a project without linked_repos is 400", () => {
+          const project = createTestProject(testApp.db, { settings });
+          const submitter = createTestUser(testApp.db);
+          const ids = makeMembers(project, submitter, 2).map((m) => m.id);
+          expect(() =>
+            svc.createGroup({ projectId: project.id, submittedBy: submitter.id, memberRequestIds: ids }),
+          ).toThrowError(REQUIRED(project.name));
+          expect(
+            testApp.db.select().from(mergeRequestGroups).where(eq(mergeRequestGroups.projectId, project.id)).all(),
+          ).toEqual([]);
+        });
+
+        it("synthesize_outer group on a project without linked_repos is 400", () => {
+          const project = createTestProject(testApp.db, { settings });
+          const submitter = createTestUser(testApp.db);
+          expect(() =>
+            svc.createGroup({
+              projectId: project.id,
+              submittedBy: submitter.id,
+              members: [{ branch: "feat/inner" }],
+              synthesizeOuter: true,
+            }),
+          ).toThrowError(REQUIRED(project.name));
+          noRowsFor(project.id);
+        });
+
+        it("synthesize_inner group on a project without linked_repos is 400", () => {
+          const project = createTestProject(testApp.db, { settings });
+          const submitter = createTestUser(testApp.db);
+          expect(() =>
+            svc.createGroup({
+              projectId: project.id,
+              submittedBy: submitter.id,
+              members: [{ branch: "feat/outer" }],
+              synthesizeInner: true,
+            }),
+          ).toThrowError(REQUIRED(project.name));
+          noRowsFor(project.id);
+        });
+      });
+    }
+
+    it("a project WITH linked_repos still forms the members[] and member_request_ids[] groups", () => {
+      const project = createTestLinkedProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      const atomic = svc.createGroup({
+        projectId: project.id,
+        submittedBy: submitter.id,
+        members: [{ branch: "feat/a" }, { branch: "feat/b" }],
+      });
+      expect(atomic.state).toBe("forming");
+      const ids = makeMembers(project, submitter, 2).map((m) => m.id);
+      const bound = svc.createGroup({ projectId: project.id, submittedBy: submitter.id, memberRequestIds: ids });
+      expect(bound.state).toBe("forming");
+    });
+
+    it("an unknown project is still 404, not the linked_repos error", () => {
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({
+          projectId: "no-such-project",
+          submittedBy: submitter.id,
+          members: [{ branch: "feat/a" }, { branch: "feat/b" }],
+        }),
+      ).toThrowError(expect.objectContaining({ statusCode: 404, code: "NOT_FOUND" }));
+    });
+
+    it("a malformed request is still the form error, not the linked_repos error", () => {
+      const project = createTestProject(testApp.db);
+      const submitter = createTestUser(testApp.db);
+      expect(() =>
+        svc.createGroup({ projectId: project.id, submittedBy: submitter.id, members: [{ branch: "feat/a" }] }),
+      ).toThrowError(expect.objectContaining({ code: "VALIDATION_ERROR" }));
+    });
+  });
+
   describe("getById / list", () => {
     it("getById returns members ordered by enqueuedAt asc; 404 for missing", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1, m2] = makeMembers(project, submitter, 2);
       const g = svc.createGroup(
@@ -1164,7 +1266,7 @@ describe("merge-group service", () => {
     });
 
     it("list filters by state and orders by createdAt asc; 404 for missing project", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const g1 = svc.createGroup(
         {
@@ -1189,7 +1291,7 @@ describe("merge-group service", () => {
   // ─── G1 guard ─────────────────────────────────────────────────────
   describe("assertMemberLandableViaGroup (G1)", () => {
     it("throws 409 GROUPED_MEMBER for a grouped member, passes for an ungrouped one", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const [m1, m2] = makeMembers(project, submitter, 2);
       const ungrouped = makeMembers(project, submitter, 1)[0];
@@ -1211,7 +1313,7 @@ describe("merge-group service", () => {
   // ─── markIntegrating ──────────────────────────────────────────────
   describe("markIntegrating", () => {
     function setupForming(opts: { withTasks?: boolean } = {}) {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const members = makeMembers(project, submitter, 2, opts);
@@ -1281,7 +1383,7 @@ describe("merge-group service", () => {
   // ─── landGroup ────────────────────────────────────────────────────
   describe("landGroup", () => {
     function setupIntegrating(opts: { withTasks?: boolean } = {}) {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const members = makeMembers(project, submitter, 2, opts);
@@ -1395,7 +1497,7 @@ describe("merge-group service", () => {
     });
 
     it("from forming → 409 INVALID_TRANSITION", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const members = makeMembers(project, submitter, 2);
@@ -1443,7 +1545,7 @@ describe("merge-group service", () => {
   // ─── rejectGroup ──────────────────────────────────────────────────
   describe("rejectGroup", () => {
     function setupForming() {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db, { role: "member" });
       const integrator = createTestAiAgent(testApp.db);
       const members = makeMembers(project, submitter, 2);
@@ -1518,7 +1620,7 @@ describe("merge-group service", () => {
   // ─── markInnerOrphaned + markPartiallyLanded ──────────────────────
   describe("markInnerOrphaned + markPartiallyLanded", () => {
     function setupIntegrating() {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const members = makeMembers(project, submitter, 2);
@@ -1547,7 +1649,7 @@ describe("merge-group service", () => {
     });
 
     it("markInnerOrphaned on ungrouped request → 409 INVALID_TRANSITION", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const r = mrSvc.submit({ projectId: project.id, submittedBy: submitter.id });
@@ -1611,7 +1713,7 @@ describe("merge-group service", () => {
   // ─── resetGroup (stranded-group recovery, §9 finding 2 / §6.4) ────
   describe("resetGroup", () => {
     function setupIntegrating(opts: { withTasks?: boolean } = {}) {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const members = makeMembers(project, submitter, 2, opts);

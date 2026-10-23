@@ -4,6 +4,7 @@ import {
   authRequest,
   createTestAiAgent,
   createTestApp,
+  createTestLinkedProject,
   createTestProject,
   createTestTask,
   createTestUser,
@@ -592,7 +593,7 @@ describe("Merge Requests API", () => {
     });
 
     it("409 GROUPED_MEMBER when cancelling a grouped member independently", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const a = await submitRequest(project.id, agent.token, { branch: "a" });
       const b = await submitRequest(project.id, agent.token, { branch: "b" });
@@ -985,7 +986,7 @@ describe("Merge Requests API", () => {
 
     // ── G1 guard: a grouped member cannot land independently ──────────
     it("409 GROUPED_MEMBER when landing a grouped member independently", async () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const agent = createTestAiAgent(testApp.db);
       const a = await submitRequest(project.id, agent.token, { branch: "a" });
       const b = await submitRequest(project.id, agent.token, { branch: "b" });
