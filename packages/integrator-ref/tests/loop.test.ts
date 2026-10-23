@@ -402,6 +402,47 @@ describe.skipIf(!GIT_AVAILABLE)("runOnce (real git + fake PM)", () => {
     await author.pull("origin", "main");
   });
 
+  it("C4-P3c merge-commit: a branch with a merge commit is rejected as other before the rebase; no resolution, lock released", async () => {
+    const wt = await setupWorktree("merge-commit");
+    const author = simpleGit(authorClone);
+    await author.checkout("main");
+    await author.pull("origin", "main");
+    await author.checkoutLocalBranch("side/mc");
+    writeFileSync(path.join(authorClone, "mc-side.txt"), "side\n");
+    await author.add(["mc-side.txt"]);
+    await author.commit("add mc side");
+    await author.checkout("main");
+    await author.checkoutLocalBranch("feature/mc");
+    writeFileSync(path.join(authorClone, "mc.txt"), "mc\n");
+    await author.add(["mc.txt"]);
+    await author.commit("add mc feature");
+    await author.raw(["merge", "--no-ff", "-m", "merge side/mc", "side/mc"]);
+    await author.push(["-u", "origin", "feature/mc"]);
+    await author.checkout("main");
+
+    const req = makeRequest({ id: "req-mc", branch: "feature/mc", verifyCmd: "echo ok" });
+    const state: FakeState = { requests: [req], attempts: [], lockHeld: false, calls: [] };
+    const outcome = await runOnce({ ...depsFor(state, wt), rejectMergeCommits: true });
+
+    expect(outcome.kind).toBe("rejected");
+    if (outcome.kind === "rejected") expect(outcome.category).toBe("other");
+    expect(req.status).toBe("rejected");
+    expect(req.rejectReason).toMatch(/^merge-commit-in-range: [0-9a-f]{12}\. /);
+    expect(state.calls).toContain("reject:other");
+    expect(state.calls).not.toContain("land");
+    expect(state.lockHeld).toBe(false);
+
+    // The same branch is rebased (flattened) and lands when the key is off.
+    const wt2 = await setupWorktree("merge-commit-off");
+    const req2 = makeRequest({ id: "req-mc-off", branch: "feature/mc", verifyCmd: "echo ok" });
+    const state2: FakeState = { requests: [req2], attempts: [], lockHeld: false, calls: [] };
+    const outcome2 = await runOnce(depsFor(state2, wt2));
+    expect(outcome2.kind).toBe("landed");
+
+    await author.checkout("main");
+    await author.pull("origin", "main");
+  });
+
   it("transition_lost + releases lock when pickup races to 409", async () => {
     const wt = await setupWorktree("lost");
     const req = makeRequest({ id: "req-lost", branch: "feature/clean" });

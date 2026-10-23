@@ -436,6 +436,10 @@
                     },
                     "default": []
                   },
+                  "reject_merge_commits": {
+                    "type": "boolean",
+                    "default": false
+                  },
                   "slo": {
                     "type": "object",
                     "properties": {
@@ -822,6 +826,10 @@
                       "minLength": 1
                     },
                     "default": []
+                  },
+                  "reject_merge_commits": {
+                    "type": "boolean",
+                    "default": false
                   },
                   "slo": {
                     "type": "object",

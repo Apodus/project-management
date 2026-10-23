@@ -84,6 +84,8 @@ export interface IntegratorSettings {
   cache_mode?: CacheMode;
   /** P1: untracked paths preserved across the per-attempt git clean (default []). */
   clean_keep?: string[];
+  /** C4-P3c: reject a request whose range holds a merge commit, before the rebase (default false). */
+  reject_merge_commits?: boolean;
   linked_repos?: {
     name: string;
     path: string;

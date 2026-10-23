@@ -65,6 +65,12 @@ export interface IntegratorConfig {
    */
   cleanKeep: string[];
   /**
+   * C4-P3c: reject a request whose `base..ref` range contains a merge commit,
+   * BEFORE the rebase (which flattens merges and drops their messages, so a
+   * trailer on a merge commit never reaches main). Default false.
+   */
+  rejectMergeCommits: boolean;
+  /**
    * Phase 7.4 §3.6: heartbeat cadence in seconds. The integrator POSTs a health
    * heartbeat every `heartbeatIntervalSec` seconds (plus one boot beat). Default
    * 30s — PM's 90s HEALTH_STALE_MS (§3.4) gives two missed beats of slack.
@@ -186,6 +192,7 @@ export async function loadConfig(
     gitRepoUrl,
     parallelism: ic.parallelism ?? 1,
     cleanKeep: ic.clean_keep ?? [],
+    rejectMergeCommits: ic.reject_merge_commits ?? false,
     heartbeatIntervalSec: ic.heartbeat_interval_sec ?? 30,
     linkedRepos: (ic.linked_repos ?? []).map((r) => ({
       name: r.name,

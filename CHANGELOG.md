@@ -27,6 +27,12 @@ resource?, pmUrl?, env? }]`); every target with an `integratorDest` gets the sam
 
 ### Added
 
+- **integrator: `settings.integrator.reject_merge_commits` (C4-P3c, default `false`).** When `true`, a
+  single-repo request whose `<main tip>..<commit>` range holds a merge commit is rejected before the
+  rebase (category `other`, reason `merge-commit-in-range: <shas>. ...`; no verify, no resolution).
+  The rebase flattens merges, so after it no merge is left to detect and a trailer on a merge commit
+  never reaches main. New `rebaseOnto(base, ref, { rejectMergeCommits })` option; the result carries
+  `mergeCommits`. Off/absent is byte-identical. See `docs/integrator-deployment.md` §4.3.
 - **integrator: a slot holds no nested repository its `HEAD` does not declare (C4-P3).** After every
   reset, candidate checkout, verify-tree rebase and committed resolution the slot is swept of
   nested repositories (working-tree checkouts and `.git/modules/<name>` gitdirs) that `HEAD` does

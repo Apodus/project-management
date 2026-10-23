@@ -980,6 +980,31 @@ describe("Projects API", () => {
       expect(body.data.settings.integrator.clean_keep).toEqual(["node_modules", ".cache"]);
     });
 
+    it("defaults reject_merge_commits to false and round-trips true (C4-P3c)", async () => {
+      const project = createTestProject(testApp.db);
+      const patch = async (integrator: Record<string, unknown>) =>
+        authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {
+          body: { settings: { ...validBaseSettings, integrator } },
+        });
+      const read = async () => {
+        const get = await authRequest(testApp.app, "GET", `/api/v1/projects/${project.id}`);
+        return (await get.json()).data.settings.integrator.reject_merge_commits;
+      };
+      expect((await patch({ enabled: true, verify_command: "pnpm test", worktree_root: "/tmp/wt" })).status).toBe(200);
+      expect(await read()).toBe(false);
+      expect(
+        (
+          await patch({
+            enabled: true,
+            verify_command: "pnpm test",
+            worktree_root: "/tmp/wt",
+            reject_merge_commits: true,
+          })
+        ).status,
+      ).toBe(200);
+      expect(await read()).toBe(true);
+    });
+
     it("rejects linked_repos with an invalid role", async () => {
       const project = createTestProject(testApp.db);
       const res = await authRequest(testApp.app, "PATCH", `/api/v1/projects/${project.id}`, {

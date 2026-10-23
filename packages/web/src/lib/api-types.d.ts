@@ -15206,6 +15206,8 @@ export interface components {
           }[];
           /** @default [] */
           clean_keep: string[];
+          /** @default false */
+          reject_merge_commits: boolean;
           slo?: {
             target_p95_time_to_land_sec?: number;
             target_verify_success_rate?: number;
@@ -15329,6 +15331,8 @@ export interface components {
           }[];
           /** @default [] */
           clean_keep: string[];
+          /** @default false */
+          reject_merge_commits: boolean;
           slo?: {
             target_p95_time_to_land_sec?: number;
             target_verify_success_rate?: number;

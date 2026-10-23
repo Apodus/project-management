@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Logger } from "./logger.js";
-import type { GitOps } from "./git-ops.js";
+import { mergeCommitRejectionReason, type GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
 import type {
   CacheMode,
@@ -247,6 +247,11 @@ export interface BatchDeps {
   resource: string;
   defaultVerifyCommand: string;
   verifyTimeoutSec: number;
+  /**
+   * C4-P3c: reject a request whose range holds a merge commit before rebasing
+   * it (`settings.integrator.reject_merge_commits`). Absent/false: no check.
+   */
+  rejectMergeCommits?: boolean;
   /**
    * A verify that ABORTS must not be graded as a pass: when non-empty, a step
    * passes only if it ALSO printed this string in the tail of its log. Empty
@@ -2327,7 +2332,7 @@ async function admitAndRebase(
             conflicts: r && !r.ok ? r.conflictingFiles.length : 0,
           }),
         },
-        () => gitOps.rebaseOnto(baseSha, rebaseRef),
+        () => gitOps.rebaseOnto(baseSha, rebaseRef, { rejectMergeCommits: deps.rejectMergeCommits }),
       );
     }
   } catch (err) {
@@ -2391,6 +2396,19 @@ async function admitAndRebase(
     return member;
   }
   // `ref` is truthy here (the `!ref` branch returned above), so the rebase ran.
+  if (rebase && !rebase.ok && rebase.mergeCommits?.length) {
+    // C4-P3c: refused BEFORE the rebase; nothing to resolve, so a terminal "other"
+    // (like any request the train cannot process), never a conflict.
+    const res = await onMemberFailed(
+      member,
+      batch,
+      deps,
+      { kind: "push_other", reason: mergeCommitRejectionReason(rebase.mergeCommits), stderr: rebase.stderr },
+      ctx,
+    );
+    if (res.outcome === "rejected") ctx.rejected.push(req.id);
+    return member;
+  }
   if (!rebase || !rebase.ok) {
     const res = await onMemberFailed(
       member,
