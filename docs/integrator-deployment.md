@@ -114,6 +114,7 @@ The integrator is configured from three places: CLI args (per process), environm
 | `--token <envVar>`          | `PM_API_TOKEN`                              | **Names the environment variable** that holds the API token. The token is never passed on the command line (it would leak to `ps`). The process reads `process.env[<envVar>]`. |
 | `--log-level <level>`       | `info` (else `PM_LOG_LEVEL`)                | pino level: `trace` / `debug` / `info` / `warn` / `error` / `fatal`.                                                                                                           |
 | `--poll-interval-sec <sec>` | `30`                                        | Polling interval. This is the **correctness floor** — the integrator always finds work by polling DB truth. SSE is only a latency hint that lets it poll sooner.               |
+| `--stop-file <path>`        | (none)                                      | Stop gracefully — exactly as on `SIGTERM` (finish the current loop iteration, exit 0) — once this file exists. The daemon never deletes it: the supervisor's post-exit check does, and that is how it tells a stop from a crash. The generated supervisor passes `lanes/<lane>/stop.flag` (§11.1). |
 
 A CLI flag always wins over the corresponding environment variable.
 
@@ -126,7 +127,7 @@ A CLI flag always wins over the corresponding environment variable.
 | `PM_API_TOKEN`           | The default token env var (overridable by `--token <envVar>`).               |
 | (var named by `--token`) | If you pass `--token MY_TOKEN`, the integrator reads `process.env.MY_TOKEN`. |
 | `PM_LOG_LEVEL`           | Fallback for `--log-level`.                                                  |
-| `PM_INTEGRATOR_LOG_FILE` | Path for the daemon's own log file (default `daemon.log` beside the bundle; empty string = stdout only). See §14.15. |
+| `PM_INTEGRATOR_LOG_FILE` | Path for the daemon's own log file (default `daemon.log` beside the bundle; empty string = stdout only). See §14.15. The generated supervisor sets it to `lanes/<lane>/daemon.log`, so lanes sharing one bundle never share a log. |
 
 ### 4.3 Per-project `settings.integrator` fields
 
@@ -391,7 +392,7 @@ startup (`gc`, §5). **Single-repo (no `linked_repos`)** collapses to just the b
 crash-swept even when `linked_repos` is set; group integration uses the inner/outer pools, the base
 pool serves any single-repo (`group_id` null) requests on the same lane (§14, §13.1).
 
-Adding a second lane later means a second root (e.g. `/srv/game_one/integrators/<resource>/`), a second process, and its own pool of slots — never a shared directory.
+Adding a second lane later means a second root (e.g. `/srv/game_one/integrators/<resource>/`), a second process, and its own pool of slots — never a shared directory. On a host that runs the vendored bundle, every lane is one entry in the distribute config's top-level `lanes` and is started by the ONE generated supervisor (§11.1); each lane's token, `stop.flag` and logs live in `lanes/<lane>/`, never beside the bundle.
 
 **The lane-ownership lock (Phase 7.2).** Within a lane, the integrator acquires the `(project, resource)` merge lock **once per batch** (not once per request), heartbeats while the batch is in flight, and releases it when the lane drains. The lock means "exactly one integrator owns this lane." If you accidentally start a **second** integrator for the same `(project, resource)`, it requests the lock, gets a `queued` (not-granted) result, and **idles** — it never reaches the land path, so there is no double-push to `main`. This is the structural guard against two integrators racing `main`. (Still: run exactly one process per lane; a second one is wasted, not dangerous.)
 
@@ -450,6 +451,41 @@ docker run -d \
   <image> \
   node packages/integrator-ref/dist/index.js --resource main
 ```
+
+### 11.1 Several lanes on one host: the generated supervisor
+
+`scripts/distribute.mjs` generates the supervisor for a vendored bundle. Lanes are a **host property**, declared once at the top level of the (gitignored) `distribute.config.json`; every target that receives the integrator bundle gets the same `lanes.json` and ONE supervisor next to it:
+
+```jsonc
+{
+  "lanes": [
+    { "name": "game_one", "projectId": "01KSMSZVN87QWZZBY7AR7QV149", "env": { "GAMEONE_ENGINE_PRUNE_FORCE": "1" } },
+    { "name": "rynx_engine", "projectId": "01...", "resource": "main" }
+  ],
+  "targets": [
+    { "name": "game_one", "mcpDest": "...", "integratorDest": "D:/code/game_one/tools/pm-integrator/pm-integrator.mjs", "docsDest": "...", "workerDocDest": "..." },
+    { "name": "integrator-deploy", "integratorDest": "D:/pm-integrator-deploy/pm-integrator.mjs" }
+  ]
+}
+```
+
+- **Lane** = one `(project, resource)` train. `name` matches `^[a-z][a-z0-9_-]{0,31}$` and is unique; `(projectId, resource)` is unique (the supervisor's mutex is keyed by it); `resource` defaults to `main`, `pmUrl` to `http://localhost:3000`. `env` is extra environment for that lane's daemon — and so for its verify children: names `^[A-Z][A-Z0-9_]*$`, string values; `PM_API_TOKEN` and `PM_INTEGRATOR_LOG_FILE` are refused because the supervisor owns them. `lanes.json` holds no secret and may be committed.
+- **Targets** take any subset of `mcpDest`, `integratorDest`, `docsDest`, `workerDocDest`; unknown keys are refused (a typo must not silently drop an artifact). A deploy directory outside every repo — so the daemon does not run from a checkout that moves under it — needs only `integratorDest`. Two targets may not share a destination or a launcher directory.
+- **Legacy:** a target `projectId` (+ `resource`/`pmUrl`) is one lane named `default` for that target. It cannot be combined with top-level `lanes`, and its token now lives in `lanes/default/pm_token.txt`.
+- **Generated, receipt-guarded** like the bundles: `lanes.json`, `run_daemon.bat`, `run_daemon_supervised.ps1`, `run_daemon.sh`, `pm_token.txt.template`. No launcher contains a project id.
+
+Run a lane: `run_daemon.bat <lane>` (or `run_daemon_supervised.ps1 -Lane <lane>`, `./run_daemon.sh <lane>`). With exactly one lane the name may be omitted; with more there is no default (exit 2, the valid lanes listed). Everything that belongs to a lane is in `lanes/<lane>/`:
+
+| File | Purpose |
+| --- | --- |
+| `pm_token.txt` | The lane's PM API token. You create it; the supervisor never prints it and never writes it. Missing → exit 2. |
+| `stop.flag` | `New-Item -ItemType File lanes\<lane>\stop.flag` stops **that lane only**: the daemon sees it via `--stop-file`, finishes its current loop iteration and exits 0; the supervisor deletes the flag and exits 0. |
+| `supervisor.log` | The supervisor's own log (restarts, backoff, the lane's env KEYS — never values or the token). |
+| `daemon.log` | The daemon's JSONL log (`PM_INTEGRATOR_LOG_FILE`). |
+
+The lane directory is also the daemon's working directory. `lanes.json` is re-read before every daemon start, so an `env` change reaches the next start; a change of the lane's `projectId`/`resource` under a running supervisor is refused (exit 2) instead of adopted. Exit codes: 0 clean stop, 1 unexpected or a duplicate supervisor for the same train, 2 configuration (lane, `lanes.json`, token).
+
+**The supervisor and the bundle are deployed together.** `--stop-file` is new: an older bundle rejects the flag and the supervisor would crash-loop on it. A daemon started by an OLDER supervisor (one `stop.flag` beside the bundle, read only between daemon runs) cannot be stopped by that flag while it runs — stop it with Ctrl+C in its console, or end its process by PID while the lane is idle.
 
 ### Graceful shutdown
 
@@ -2296,6 +2332,8 @@ An **empty/absent** array is valid — it falls back to a single synthetic `veri
 5. **Keep `cache_enabled` as the kill-switch.** If a correctness concern ever surfaces in production, set `cache_enabled: false` for an instant, zero-risk revert (the integrator re-reads settings on its next pass and the cache goes inert).
 
 > **The honest limitation — read this before trusting `on`.** In `cache_mode: on`, the cache is _exactly as correct as the operator's declared `cache_key_inputs`._ The `tree_sha` captures every in-tree dependency, and `step_config_sha` captures every input you **declared** — but a step whose verdict depends on an **undeclared** out-of-tree input (a global env var, an installed binary, an ambient service version you did not list) **can false-pass on a stale cache.** There is no way for the system to know about an undeclared dependency — that knowledge lives only in your head. The system does **not** claim to be structurally safe under arbitrary undeclared inputs. Its answer is the shadow mode: **run in shadow first, and any undeclared-input gap manifests as a `verify.cache_mismatch` before you flip to `on`.** Declare your inputs, prove it with shadow, then trust. Honest declaration is the part the system cannot do for you.
+
+> **game_one: an input `tree_sha` cannot capture — commit HISTORY.** The evidence-size gate (`tools/check_blob_budget.py`, both `pm-verify.bat` files, A3 AM6) grades every commit in `merge-base(base, HEAD)..HEAD`, so its verdict depends on the commit range and on the live base ref, not on the tree: a candidate that adds a 70 KB blob and deletes it again has the same tree as one that never added it. No `cache_key_inputs` value can declare that. State as of 2026-10-03: `cache_enabled: false`, `cache_mode: "off"`, `verify_steps: []` (single `verify_command`), so nothing is cached and the gate always runs. `verify_steps` has no per-step cache opt-out; before enabling the cache, split the gate into its own step and keep that step out of `on` (shadow cannot reveal this gap — the same tree yields the same verdict until a range differs).
 
 ### 16.3 Reading the new observability
 

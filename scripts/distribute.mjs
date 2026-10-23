@@ -2,8 +2,8 @@
 /**
  * Cross-platform, parameterized successor to packages/mcp-server/distribute.bat.
  *
- * Builds the MCP + integrator bundles and copies the four vendored artifacts
- * (MCP bundle, integrator daemon, operator guide, worker workflow doc) to every
+ * Builds the MCP + integrator bundles and copies the vendored artifacts (MCP
+ * bundle, integrator daemon, operator guide, worker workflow doc) to every
  * target declared in a gitignored `distribute.config.json`. Mirrors the .bat's
  * behavior exactly — including renaming worker-pm-workflow.md to whatever the
  * target's `workerDocDest` names it (pm-workflow.md by convention).
@@ -12,11 +12,22 @@
  *   node scripts/distribute.mjs [--config <path>] [--dry-run]
  *                               [--accept-existing] [--force]
  *
+ * LANES. A host runs one integrator daemon per lane -- a (project, resource)
+ * train -- and every lane on the host is declared ONCE, at the top level of the
+ * config (`lanes`). Every target that receives the integrator bundle also gets a
+ * generated `lanes.json` and ONE supervisor (`run_daemon.bat <lane>`) that serves
+ * all of them, with each lane's state (token, stop.flag, logs, cwd) in
+ * `lanes/<lane>/` beside it. Lanes are a host property, not a target property:
+ * two targets on one host (a client repo's vendored copy and a deploy directory)
+ * can therefore never disagree about them. A legacy target `projectId` is one
+ * lane named `default` for that target only, and cannot be mixed with `lanes`.
+ *
  * WRITE RECEIPTS. Every artifact this script writes is recorded -- destination
  * path -> sha256 of the exact bytes written -- in a `distribute.receipt.json`
  * beside the config. On the next run each destination is compared against that
  * record, and a destination that no longer matches what we last wrote is
- * REFUSED rather than overwritten.
+ * REFUSED rather than overwritten. Generated launchers and `lanes.json` go
+ * through the same guard as the bundles.
  *
  * This exists because the overwrite is one-way and silent, and a destination
  * can be AHEAD of its source. On 2026-09-19 game_one's docs/pm-workflow.md held
@@ -30,8 +41,9 @@
  * `--force` overwrites a destination that HAS diverged -- it discards downstream
  * edits, so it is never the right reflex; check the diff and decide.
  *
- * The exported helpers (parseArgs, loadConfig, resolveSources, distribute) are
- * pure and unit-tested; only `main()` runs when invoked directly.
+ * The exported helpers (parseArgs, loadConfig, validateConfig, lanesFor,
+ * resolveSources, distribute) are pure and unit-tested; only `main()` runs when
+ * invoked directly.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -75,7 +87,196 @@ export function parseArgs(argv) {
   return args;
 }
 
-const REQUIRED_TARGET_FIELDS = ["mcpDest", "integratorDest", "docsDest", "workerDocDest"];
+/** The vendored artifacts, by the target field that names each one's destination. */
+const ARTIFACT_FIELDS = ["mcpDest", "integratorDest", "docsDest", "workerDocDest"];
+/** Legacy single-lane launcher fields (one lane named "default" for that target). */
+const LEGACY_LANE_FIELDS = ["projectId", "resource", "pmUrl"];
+const TARGET_KEYS = new Set(["name", ...ARTIFACT_FIELDS, ...LEGACY_LANE_FIELDS]);
+const LANE_KEYS = new Set(["name", "projectId", "resource", "pmUrl", "env"]);
+const TOP_LEVEL_KEYS = new Set(["targets", "lanes"]);
+
+/** A lane name is a directory name, a scheduled-task suffix and a CLI argument. */
+export const LANE_NAME_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
+export const LANE_ENV_KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+/**
+ * Set by the supervisor itself, per lane, AFTER the lane's env, so no lane can
+ * shadow them -- and refused in a lane's env so nobody believes they can.
+ * (`lanes.json` is committed in client repos: a token there would be published.)
+ */
+export const SUPERVISOR_OWNED_ENV = ["PM_API_TOKEN", "PM_INTEGRATOR_LOG_FILE"];
+/** The bundle basename is spliced into generated scripts; keep it a plain file name. */
+const BUNDLE_NAME_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+const DEFAULT_RESOURCE = "main";
+const DEFAULT_PM_URL = "http://localhost:3000";
+const DEFAULT_LANE_NAME = "default";
+const TOKEN_TEMPLATE_CONTENT = "paste-your-pm-api-token-here\n";
+
+/** Keys beginning with `_` are comments, accepted anywhere (`_comment`, ...). */
+function assertKnownKeys(obj, allowed, where, hint = () => "") {
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith("_") || allowed.has(key)) continue;
+    throw new Error(
+      `${where} has an unknown key "${key}"${hint(key)} (allowed: ${[...allowed].join(", ")})`,
+    );
+  }
+}
+
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.trim() !== "";
+}
+
+function isPlainObject(v) {
+  return Boolean(v) && typeof v === "object" && !Array.isArray(v);
+}
+
+/** Same-file identity on this OS: Windows paths are case-insensitive. */
+function pathKey(p) {
+  const abs = resolve(p);
+  return process.platform === "win32" ? abs.toLowerCase() : abs;
+}
+
+function validateLane(lane, idx) {
+  if (!isPlainObject(lane)) throw new Error(`Config lane #${idx} must be an object`);
+  const where = `Config lane "${lane.name ?? `#${idx}`}"`;
+  assertKnownKeys(lane, LANE_KEYS, where);
+  if (typeof lane.name !== "string" || !LANE_NAME_PATTERN.test(lane.name)) {
+    throw new Error(
+      `${where}: "name" must match ${LANE_NAME_PATTERN} (lowercase, starts with a letter, at most 32 characters)`,
+    );
+  }
+  if (!isNonEmptyString(lane.projectId)) {
+    throw new Error(`${where} is missing a non-empty string "projectId"`);
+  }
+  for (const field of ["resource", "pmUrl"]) {
+    if (lane[field] !== undefined && !isNonEmptyString(lane[field])) {
+      throw new Error(
+        `${where} has an invalid "${field}" (must be a non-empty string when present)`,
+      );
+    }
+  }
+  if (lane.env !== undefined) {
+    if (!isPlainObject(lane.env)) throw new Error(`${where}: "env" must be an object of strings`);
+    for (const [key, value] of Object.entries(lane.env)) {
+      if (!LANE_ENV_KEY_PATTERN.test(key)) {
+        throw new Error(`${where}: env key "${key}" must match ${LANE_ENV_KEY_PATTERN}`);
+      }
+      if (SUPERVISOR_OWNED_ENV.includes(key)) {
+        throw new Error(
+          `${where}: env key "${key}" is set by the supervisor itself (the token lives in lanes/<lane>/pm_token.txt, the log in lanes/<lane>/daemon.log)`,
+        );
+      }
+      if (typeof value !== "string") {
+        throw new Error(`${where}: env "${key}" must be a string (got ${typeof value})`);
+      }
+    }
+  }
+}
+
+function validateTarget(target, idx, hasTopLevelLanes) {
+  if (!isPlainObject(target)) throw new Error(`Config target #${idx} must be an object`);
+  if (!isNonEmptyString(target.name)) {
+    throw new Error(`Config target #${idx} is missing a non-empty "name"`);
+  }
+  const where = `Config target "${target.name}"`;
+  assertKnownKeys(target, TARGET_KEYS, where, (key) =>
+    key === "lanes"
+      ? " -- lanes are a HOST property: declare them once at the top level of the config, and every integrator target gets them"
+      : "",
+  );
+  const artifacts = ARTIFACT_FIELDS.filter((f) => target[f] !== undefined);
+  if (artifacts.length === 0) {
+    throw new Error(`${where} names no artifact (one or more of: ${ARTIFACT_FIELDS.join(", ")})`);
+  }
+  for (const field of [...artifacts, ...LEGACY_LANE_FIELDS]) {
+    if (target[field] !== undefined && !isNonEmptyString(target[field])) {
+      throw new Error(
+        `${where} has an invalid "${field}" (must be a non-empty string when present)`,
+      );
+    }
+  }
+  if (
+    target.integratorDest !== undefined &&
+    !BUNDLE_NAME_PATTERN.test(basename(target.integratorDest))
+  ) {
+    throw new Error(`${where}: the integrator bundle file name must match ${BUNDLE_NAME_PATTERN}`);
+  }
+  if (target.projectId !== undefined) {
+    if (hasTopLevelLanes) {
+      throw new Error(
+        `${where} has a legacy "projectId" AND the config declares top-level "lanes": declare this target's lane in "lanes" instead (one way to say it, not two)`,
+      );
+    }
+    if (target.integratorDest === undefined) {
+      throw new Error(`${where} has "projectId" but no "integratorDest" for its launcher to run`);
+    }
+  } else if (target.resource !== undefined || target.pmUrl !== undefined) {
+    throw new Error(
+      `${where} has "resource"/"pmUrl" without "projectId" (they would configure nothing)`,
+    );
+  }
+}
+
+/**
+ * Structural validation of a whole config. Throws on the first defect; returns
+ * the config unchanged. Called by loadConfig AND by distribute, so no caller can
+ * reach a write with an unchecked config.
+ */
+export function validateConfig(config, where = "Config") {
+  if (!isPlainObject(config)) throw new Error(`${where} must be a JSON object`);
+  assertKnownKeys(config, TOP_LEVEL_KEYS, where);
+  if (!Array.isArray(config.targets) || config.targets.length === 0) {
+    throw new Error(`${where} must contain a non-empty "targets" array`);
+  }
+
+  const hasLanes = config.lanes !== undefined;
+  if (hasLanes) {
+    if (!Array.isArray(config.lanes) || config.lanes.length === 0) {
+      throw new Error(`${where}: "lanes" must be a non-empty array when present`);
+    }
+    config.lanes.forEach(validateLane);
+    const names = new Set();
+    const identities = new Map();
+    for (const lane of config.lanes) {
+      if (names.has(lane.name))
+        throw new Error(`${where}: lane name "${lane.name}" is declared twice`);
+      names.add(lane.name);
+      // One daemon per (project, resource): the supervisor's mutex is keyed by it.
+      const identity = `${lane.projectId}/${lane.resource ?? DEFAULT_RESOURCE}`;
+      if (identities.has(identity)) {
+        throw new Error(
+          `${where}: lanes "${identities.get(identity)}" and "${lane.name}" are the same train (${identity})`,
+        );
+      }
+      identities.set(identity, lane.name);
+    }
+  }
+
+  config.targets.forEach((t, idx) => validateTarget(t, idx, hasLanes));
+  if (hasLanes && !config.targets.some((t) => t.integratorDest !== undefined)) {
+    throw new Error(
+      `${where} declares "lanes" but no target receives the integrator ("integratorDest")`,
+    );
+  }
+
+  // Every destination -- artifact AND generated launcher file -- belongs to
+  // exactly one target. Two targets sharing a launcher directory would overwrite
+  // each other's supervisor and share one lanes/ state tree.
+  const owner = new Map();
+  for (const target of config.targets) {
+    for (const dest of plannedDestinations(config, target)) {
+      const key = pathKey(dest);
+      const prev = owner.get(key);
+      if (prev !== undefined) {
+        throw new Error(
+          `${where}: targets "${prev}" and "${target.name}" both write ${dest} -- a destination (and a launcher directory with its lanes/ state) belongs to one target`,
+        );
+      }
+      owner.set(key, target.name);
+    }
+  }
+  return config;
+}
 
 /**
  * Load + validate a distribute config from disk. Throws clear, actionable
@@ -104,264 +305,421 @@ export function loadConfig(configPath) {
     throw new Error(`Config at ${configPath} is not valid JSON: ${err.message}`);
   }
 
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`Config at ${configPath} must be a JSON object`);
-  }
-  if (!Array.isArray(parsed.targets) || parsed.targets.length === 0) {
-    throw new Error(`Config at ${configPath} must contain a non-empty "targets" array`);
-  }
-
-  parsed.targets.forEach((target, idx) => {
-    if (!target || typeof target !== "object" || Array.isArray(target)) {
-      throw new Error(`Config target #${idx} must be an object`);
-    }
-    if (typeof target.name !== "string" || target.name.trim() === "") {
-      throw new Error(`Config target #${idx} is missing a non-empty "name"`);
-    }
-    for (const field of REQUIRED_TARGET_FIELDS) {
-      if (typeof target[field] !== "string" || target[field].trim() === "") {
-        throw new Error(`Config target "${target.name}" is missing a non-empty string "${field}"`);
-      }
-    }
-    // Optional launcher fields: present ⇒ must be a non-empty string. `projectId`
-    // is the gate — a target that declares one also gets a generated daemon
-    // launcher (run_daemon.bat/.sh + pm_token.txt.template) next to its bundle.
-    for (const optField of OPTIONAL_TARGET_FIELDS) {
-      if (
-        target[optField] !== undefined &&
-        (typeof target[optField] !== "string" || target[optField].trim() === "")
-      ) {
-        throw new Error(
-          `Config target "${target.name}" has an invalid "${optField}" (must be a non-empty string when present)`,
-        );
-      }
-    }
-  });
-
-  return parsed;
+  return validateConfig(parsed, `Config at ${configPath}`);
 }
 
-const OPTIONAL_TARGET_FIELDS = ["projectId", "resource", "pmUrl"];
-
-const DEFAULT_RESOURCE = "main";
-const DEFAULT_PM_URL = "http://localhost:3000";
-const TOKEN_TEMPLATE_CONTENT = "paste-your-pm-api-token-here\n";
+function normalizeLane(lane) {
+  return {
+    name: lane.name,
+    projectId: lane.projectId,
+    resource: lane.resource ?? DEFAULT_RESOURCE,
+    pmUrl: lane.pmUrl ?? DEFAULT_PM_URL,
+    env: { ...(lane.env ?? {}) },
+  };
+}
 
 /**
- * Render a self-contained daemon launcher that runs the vendored bundle sitting
- * next to it (`bundleName`), loading the PM token from a gitignored `pm_token.txt`
- * in the same directory. `kind` is "bat" (Windows, CRLF) or "sh" (POSIX, LF).
- * This is what makes a target self-contained — no reference to the dev monorepo.
+ * The lanes a target's launcher serves: the host's top-level lanes for every
+ * integrator target, or the legacy single `default` lane of a target that sets
+ * `projectId`, or none.
  */
-export function renderDaemonLauncher(
-  kind,
-  { bundleName, projectId, resource = DEFAULT_RESOURCE, pmUrl = DEFAULT_PM_URL },
-) {
+export function lanesFor(config, target) {
+  if (target.integratorDest === undefined) return [];
+  if (config.lanes !== undefined) return config.lanes.map(normalizeLane);
+  if (target.projectId !== undefined) {
+    return [
+      normalizeLane({
+        name: DEFAULT_LANE_NAME,
+        projectId: target.projectId,
+        resource: target.resource,
+        pmUrl: target.pmUrl,
+      }),
+    ];
+  }
+  return [];
+}
+
+const LAUNCHER_FILES = [
+  "run_daemon.bat",
+  "run_daemon_supervised.ps1",
+  "run_daemon.sh",
+  "lanes.json",
+  "pm_token.txt.template",
+];
+
+function plannedDestinations(config, target) {
+  const dests = ARTIFACT_FIELDS.filter((f) => target[f] !== undefined).map((f) => target[f]);
+  if (lanesFor(config, target).length > 0) {
+    const dir = dirname(target.integratorDest);
+    for (const name of LAUNCHER_FILES) dests.push(join(dir, name));
+  }
+  return dests;
+}
+
+/**
+ * The data file the supervisor reads: the host's lanes, nothing else. It holds
+ * no secret (tokens live in lanes/<lane>/pm_token.txt) and is safe to commit.
+ */
+export function renderLanesJson(lanes) {
+  const doc = {
+    _generated:
+      "GENERATED by scripts/distribute.mjs from the distribute config's top-level `lanes` -- edits here are overwritten, and are refused until you pass --force.",
+    schema: 1,
+    lanes: lanes.map(normalizeLane),
+  };
+  return JSON.stringify(doc, null, 2) + "\n";
+}
+
+// The Windows supervisor. ONE script for every lane in lanes.json. Written as a
+// raw block (no `${`, no backticks) so it reads as the PowerShell it is; the
+// only substitution is the bundle file name.
+const SUPERVISOR_PS1 = String.raw`# PM merge-train integrator daemon SUPERVISOR (generated by scripts/distribute.mjs; do not edit).
+# ONE supervisor for every lane declared in lanes.json next to this script. A lane is one
+# (project, resource) train. Usage:
+#   run_daemon.bat <lane> [extra daemon args]        (or: run_daemon_supervised.ps1 -Lane <lane>)
+# A lane's state lives in lanes\<lane>\ and nowhere else:
+#   pm_token.txt    the lane's PM API token (you create it; never generated, never printed)
+#   stop.flag       New-Item -ItemType File lanes\<lane>\stop.flag stops THAT lane only: the daemon
+#                   finishes its current loop iteration (--stop-file), then this supervisor exits 0
+#   supervisor.log  this script's log
+#   daemon.log      the daemon's own JSONL log (PM_INTEGRATOR_LOG_FILE)
+# and the directory is the daemon's working directory. lanes.json is re-read before every daemon
+# start, so a lane's env reaches the next start; its project/resource may not change under a running
+# supervisor. Single instance per (project, resource) via a named mutex; crash-loop backoff.
+# Exit codes: 0 clean stop, 1 unexpected or duplicate, 2 configuration (lane, lanes.json, token).
+$ErrorActionPreference = 'Stop'
+$HERE = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+$BundleName = '@@BUNDLE_NAME@@'
+$bundle    = Join-Path $HERE $BundleName
+$lanesFile = Join-Path $HERE 'lanes.json'
+$MinHealthySeconds = 60
+$BackoffSeconds = @(5, 15, 45, 120, 300)
+$LoudAfter = 5
+
+function Stop-Config($m) { [Console]::Error.WriteLine("ERROR: $m"); exit 2 }
+
+function Read-Lanes {
+  if (-not (Test-Path -LiteralPath $lanesFile)) { Stop-Config "$lanesFile not found (scripts/distribute.mjs writes it next to this script)." }
+  try { $doc = [IO.File]::ReadAllText($lanesFile) | ConvertFrom-Json } catch { Stop-Config "$lanesFile is not valid JSON: $($_.Exception.Message)" }
+  $all = @($doc.lanes)
+  if ($all.Count -eq 0) { Stop-Config "$lanesFile declares no lanes." }
+  return ,$all
+}
+
+function Find-Lane($all, $name) {
+  $hit = @($all | Where-Object { [string]$_.name -ceq $name })
+  if ($hit.Count -ne 1) { Stop-Config ("unknown lane '{0}'. Lanes in {1}: {2}" -f $name, $lanesFile, ((@($all | ForEach-Object { $_.name })) -join ', ')) }
+  return $hit[0]
+}
+
+# Lane: the first argument, or -Lane <name>. Everything else goes to the daemon.
+$laneName = $null
+$passThrough = New-Object System.Collections.Generic.List[string]
+for ($i = 0; $i -lt $args.Count; $i++) {
+  $a = [string]$args[$i]
+  if ($null -eq $laneName -and $a -eq '-Lane') {
+    if ($i + 1 -ge $args.Count) { Stop-Config '-Lane needs a lane name.' }
+    $laneName = [string]$args[$i + 1]; $i++; continue
+  }
+  if ($null -eq $laneName -and $i -eq 0 -and -not $a.StartsWith('-')) { $laneName = $a; continue }
+  $passThrough.Add($a)
+}
+
+$lanes = Read-Lanes
+if ($null -eq $laneName) {
+  if ($lanes.Count -ne 1) { Stop-Config ("{0} declares {1} lanes; name one: run_daemon.bat <lane>. Lanes: {2}" -f $lanesFile, $lanes.Count, ((@($lanes | ForEach-Object { $_.name })) -join ', ')) }
+  $laneName = [string]$lanes[0].name
+}
+$lane = Find-Lane $lanes $laneName
+# The name becomes a directory: never trust a hand-edited lanes.json with a path.
+if ($laneName -cnotmatch '^[a-z][a-z0-9_-]{0,31}$') { Stop-Config "lane name '$laneName' is not a valid lane name." }
+$ProjectId = [string]$lane.projectId
+$Resource  = [string]$lane.resource
+
+$laneDir   = Join-Path (Join-Path $HERE 'lanes') $laneName
+New-Item -ItemType Directory -Force -Path $laneDir | Out-Null
+$tokenFile = Join-Path $laneDir 'pm_token.txt'
+$stopFlag  = Join-Path $laneDir 'stop.flag'
+$logFile   = Join-Path $laneDir 'supervisor.log'
+$daemonLog = Join-Path $laneDir 'daemon.log'
+
+function Write-SupLog($m) { $line = '[{0}] [{1}] {2}' -f (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'), $laneName, $m; Write-Host $line; Add-Content -Path $logFile -Value $line }
+
+if (-not (Test-Path -LiteralPath $tokenFile)) { Stop-Config "$tokenFile not found. Put lane $laneName's PM API token in it (see pm_token.txt.template)." }
+
+# Single-instance guard per (project, resource): a named mutex the OS releases if this process dies.
+$mutex = New-Object System.Threading.Mutex($false, "Global\pm-integrator-$ProjectId-$Resource")
+try { $owned = $mutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $owned = $true }
+if (-not $owned) {
+  Write-Host "A pm-integrator supervisor for [$ProjectId / $Resource] (lane $laneName) is already running. Refusing to start a duplicate."
+  exit 1
+}
+
+if (Test-Path -LiteralPath $stopFlag) { Remove-Item -LiteralPath $stopFlag -Force }
+$script:child = $null
+$exitCode = 0
+$cleanup = {
+  if ($script:child -and -not $script:child.HasExited) {
+    try { Start-Process taskkill -ArgumentList '/PID', $script:child.Id, '/T', '/F' -NoNewWindow -Wait } catch {}
+  }
+}
+try {
+  Write-SupLog "supervisor started (bundle=$BundleName project=$ProjectId resource=$Resource)"
+  $rapid = 0
+  while ($true) {
+    if (Test-Path -LiteralPath $stopFlag) { Write-SupLog 'stop.flag present - clean shutdown.'; Remove-Item -LiteralPath $stopFlag -Force; break }
+    $now = Find-Lane (Read-Lanes) $laneName
+    if ([string]$now.projectId -cne $ProjectId -or [string]$now.resource -cne $Resource) {
+      Write-SupLog "lanes.json now names a different project/resource for lane $laneName; restart the supervisor."
+      $exitCode = 2
+      break
+    }
+    if (-not (Test-Path -LiteralPath $tokenFile)) { Write-SupLog "$tokenFile disappeared."; $exitCode = 2; break }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'node'
+    $psi.Arguments = '"{0}" --project {1} --resource {2} --pm-url {3} --stop-file "{4}"' -f $bundle, $ProjectId, $Resource, [string]$now.pmUrl, $stopFlag
+    if ($passThrough.Count -gt 0) { $psi.Arguments += ' ' + ($passThrough -join ' ') }
+    $psi.UseShellExecute = $false
+    $psi.WorkingDirectory = $laneDir
+    $envNames = @()
+    if ($null -ne $now.env) {
+      foreach ($p in $now.env.PSObject.Properties) { $psi.EnvironmentVariables[$p.Name] = [string]$p.Value; $envNames += $p.Name }
+    }
+    # Supervisor-owned, set AFTER the lane's env so no lane entry can shadow them.
+    $psi.EnvironmentVariables['PM_API_TOKEN'] = ([IO.File]::ReadAllText($tokenFile)).Trim()
+    $psi.EnvironmentVariables['PM_INTEGRATOR_LOG_FILE'] = $daemonLog
+    # The daemon's verify children resolve a bare 'pm-verify.bat'; a Claude-spawned shell sets
+    # NoDefaultCurrentDirectoryInExePath, which breaks that. Clear it for a clean-launch match.
+    [void]$psi.EnvironmentVariables.Remove('NoDefaultCurrentDirectoryInExePath')
+    $envText = if ($envNames.Count -gt 0) { $envNames -join ', ' } else { 'none' }
+    Write-SupLog "starting integrator daemon (lane env: $envText)"
+    $t0 = Get-Date
+    $script:child = [System.Diagnostics.Process]::Start($psi)
+    $script:child.WaitForExit()
+    $code = $script:child.ExitCode
+    $up = [int]((Get-Date) - $t0).TotalSeconds
+    $script:child = $null
+    if (Test-Path -LiteralPath $stopFlag) { Write-SupLog "daemon exited (code $code); stop.flag set - clean shutdown."; Remove-Item -LiteralPath $stopFlag -Force; break }
+    if ($up -ge $MinHealthySeconds) { $rapid = 0; Write-SupLog "daemon exited after $($up)s (code $code) - restarting."; continue }
+    $rapid++
+    $delay = $BackoffSeconds[[Math]::Min($rapid - 1, $BackoffSeconds.Count - 1)]
+    if ($rapid -ge $LoudAfter) { Write-SupLog "!! daemon crashed $rapid times fast (last $($up)s, code $code) - likely a bad pm_token.txt or the PM server is down. Still retrying every $($delay)s; check supervisor.log + the PM server." }
+    else { Write-SupLog "daemon crashed after $($up)s (code $code) - backoff $($delay)s (#$rapid)." }
+    Start-Sleep -Seconds $delay
+  }
+}
+finally {
+  & $cleanup
+  try { $mutex.ReleaseMutex() } catch {}
+  $mutex.Dispose()
+  Write-SupLog 'supervisor exited.'
+}
+exit $exitCode
+`;
+
+// The POSIX supervisor: same contract as the .ps1. node (already required to
+// run the daemon) reads lanes.json, so there is no jq/grep JSON parsing.
+const SUPERVISOR_SH =
+  String.raw`#!/usr/bin/env bash
+# PM merge-train integrator daemon SUPERVISOR (generated by scripts/distribute.mjs; do not edit).
+# ONE supervisor for every lane declared in lanes.json next to this script. Usage:
+#   ./run_daemon.sh <lane> [extra daemon args]
+# A lane's state lives in lanes/<lane>/: pm_token.txt (you create it), stop.flag (touch it to stop
+# THAT lane; the daemon finishes its loop iteration via --stop-file), supervisor.log, daemon.log,
+# supervisor.lock, and it is the daemon's working directory. lanes.json is re-read before every
+# daemon start. Exit codes: 0 clean stop, 1 unexpected or duplicate, 2 configuration.
+set -uo pipefail
+DIR="$(cd "$(dirname "$` +
+  "{BASH_SOURCE[0]}" +
+  String.raw`")" && pwd)"
+BUNDLE="$DIR/@@BUNDLE_NAME@@"
+LANES="$DIR/lanes.json"
+MIN_HEALTHY=60
+BACKOFFS=(5 15 45 120 300)
+LOUD_AFTER=5
+
+die_config() { echo "ERROR: $1" >&2; exit 2; }
+
+# lane_query <lane> <field|names|env>: one field of a lane, every lane name, or the lane's env as
+# NUL-separated KEY=VALUE pairs. Exit 3 = unreadable lanes.json, 4 = no such lane.
+lane_query() {
+  node -e '
+const fs = require("fs");
+const [file, lane, what] = process.argv.slice(1);
+let doc;
+try { doc = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { console.error(e.message); process.exit(3); }
+const lanes = Array.isArray(doc.lanes) ? doc.lanes : [];
+if (what === "names") { process.stdout.write(lanes.map((l) => l.name).join(" ")); process.exit(0); }
+const hit = lanes.filter((l) => l.name === lane);
+if (hit.length !== 1) process.exit(4);
+if (what === "env") {
+  for (const [k, v] of Object.entries(hit[0].env || {})) process.stdout.write(k + "=" + v + String.fromCharCode(0));
+} else {
+  process.stdout.write(String(hit[0][what]));
+}
+' "$LANES" "$1" "$2"
+}
+
+[ -f "$LANES" ] || die_config "$LANES not found (scripts/distribute.mjs writes it next to this script)."
+NAMES="$(lane_query "" names)" || die_config "$LANES is not valid JSON."
+read -r -a NAME_LIST <<< "$NAMES"
+
+LANE=""
+if [ "$#" -ge 2 ] && [ "$1" = "-Lane" ]; then LANE="$2"; shift 2
+elif [ "$#" -ge 1 ] && [ "$` +
+  "{1#-}" +
+  String.raw`" = "$1" ]; then LANE="$1"; shift
+fi
+if [ -z "$LANE" ]; then
+  [ "$` +
+  "{#NAME_LIST[@]}" +
+  String.raw`" -eq 1 ] || die_config "$LANES declares $` +
+  "{#NAME_LIST[@]}" +
+  String.raw` lanes; name one: run_daemon.sh <lane>. Lanes: $NAMES"
+  LANE="$` +
+  "{NAME_LIST[0]}" +
+  String.raw`"
+fi
+[[ "$LANE" =~ ^[a-z][a-z0-9_-]{0,31}$ ]] || die_config "unknown lane '$LANE'. Lanes: $NAMES"
+PROJECT="$(lane_query "$LANE" projectId)" || die_config "unknown lane '$LANE'. Lanes: $NAMES"
+RESOURCE="$(lane_query "$LANE" resource)"
+
+LANE_DIR="$DIR/lanes/$LANE"
+mkdir -p "$LANE_DIR"
+TOKEN="$LANE_DIR/pm_token.txt"
+STOPFLAG="$LANE_DIR/stop.flag"
+LOG="$LANE_DIR/supervisor.log"
+LOCK="$LANE_DIR/supervisor.lock"
+
+log() { local m="[$(date '+%Y-%m-%d %H:%M:%S')] [$LANE] $1"; echo "$m"; echo "$m" >> "$LOG"; }
+
+[ -f "$TOKEN" ] || die_config "$TOKEN not found. Put lane $LANE's PM API token in it (see pm_token.txt.template)."
+
+# Single-instance guard: flock on an fd held for the process lifetime (auto-released on death).
+# Lane names map 1:1 to (project, resource), so one lock per lane directory is one per train.
+exec 9>"$LOCK"
+if ! flock -n 9; then
+  echo "A pm-integrator supervisor for lane $LANE is already running (lock $LOCK). Refusing to start a duplicate." >&2
+  exit 1
+fi
+
+child=""
+cleanup() { if [ -n "$child" ] && kill -0 "$child" 2>/dev/null; then kill -TERM "$child" 2>/dev/null; fi; }
+trap 'cleanup; exit 0' INT TERM
+
+[ -f "$STOPFLAG" ] && rm -f "$STOPFLAG"
+rapid=0
+exit_code=0
+log "supervisor started (bundle=$(basename "$BUNDLE") project=$PROJECT resource=$RESOURCE)"
+while true; do
+  [ -f "$STOPFLAG" ] && { log "stop.flag present - clean shutdown."; rm -f "$STOPFLAG"; break; }
+  now_project="$(lane_query "$LANE" projectId)" || { log "lane $LANE vanished from lanes.json."; exit_code=2; break; }
+  now_resource="$(lane_query "$LANE" resource)"
+  if [ "$now_project" != "$PROJECT" ] || [ "$now_resource" != "$RESOURCE" ]; then
+    log "lanes.json now names a different project/resource for lane $LANE; restart the supervisor."; exit_code=2; break
+  fi
+  pm_url="$(lane_query "$LANE" pmUrl)"
+  t0=$SECONDS
+  log "starting integrator daemon..."
+  (
+    while IFS= read -r -d '' kv; do export "$kv"; done < <(lane_query "$LANE" env)
+    # Supervisor-owned, set AFTER the lane's env so no lane entry can shadow them.
+    PM_API_TOKEN="$(cat "$TOKEN")"; export PM_API_TOKEN
+    export PM_INTEGRATOR_LOG_FILE="$LANE_DIR/daemon.log"
+    cd "$LANE_DIR" || exit 1
+    exec node "$BUNDLE" --project "$PROJECT" --resource "$RESOURCE" --pm-url "$pm_url" --stop-file "$STOPFLAG" "$@"
+  ) &
+  child=$!
+  wait "$child"; code=$?
+  child=""
+  up=$((SECONDS - t0))
+  [ -f "$STOPFLAG" ] && { log "daemon exited (code $code); stop.flag set - clean shutdown."; rm -f "$STOPFLAG"; break; }
+  if [ "$up" -ge "$MIN_HEALTHY" ]; then rapid=0; log "daemon exited after $` +
+  "{up}" +
+  String.raw`s (code $code) - restarting."; continue; fi
+  rapid=$((rapid + 1))
+  idx=$((rapid - 1)); [ "$idx" -ge "$` +
+  "{#BACKOFFS[@]}" +
+  String.raw`" ] && idx=$(( $` +
+  "{#BACKOFFS[@]}" +
+  String.raw` - 1 ))
+  delay="$` +
+  "{BACKOFFS[$idx]}" +
+  String.raw`"
+  if [ "$rapid" -ge "$LOUD_AFTER" ]; then log "!! daemon crashed $` +
+  "{rapid}" +
+  String.raw`x fast (last $` +
+  "{up}" +
+  String.raw`s, code $code) - likely a bad pm_token.txt or the PM server is down. Retrying in $` +
+  "{delay}" +
+  String.raw`s."; else log "daemon crashed after $` +
+  "{up}" +
+  String.raw`s (code $code) - backoff $` +
+  "{delay}" +
+  String.raw`s (#$` +
+  "{rapid}" +
+  String.raw`)."; fi
+  sleep "$delay"
+done
+exit "$exit_code"
+`;
+
+/**
+ * Render one generated launcher. `kind` is "bat" (Windows, CRLF), "ps1" (the
+ * Windows supervisor, CRLF) or "sh" (POSIX supervisor, LF). The only input is
+ * the bundle's file name: lanes (project ids, resources, env) are DATA in
+ * lanes.json, never code, so no launcher carries a project id.
+ */
+export function renderDaemonLauncher(kind, { bundleName }) {
+  if (!BUNDLE_NAME_PATTERN.test(bundleName)) {
+    throw new Error(`bundle name "${bundleName}" must match ${BUNDLE_NAME_PATTERN}`);
+  }
   if (kind === "bat") {
-    // Thin invoker: the supervision (auto-restart + single-instance mutex + backoff)
-    // lives in run_daemon_supervised.ps1 next to this file, so `run_daemon.bat` stays
-    // the one command an operator runs.
+    // Thin invoker: the supervision lives in run_daemon_supervised.ps1 next to this file, so
+    // `run_daemon.bat <lane>` stays the one command an operator runs.
     return [
       "@echo off",
       "rem PM merge-train integrator daemon launcher (generated by scripts/distribute.mjs).",
-      "rem SUPERVISED: run_daemon_supervised.ps1 (next to this file) auto-restarts the daemon",
-      "rem on crash with backoff, refuses a duplicate via a named mutex, and stops cleanly on a",
-      "rem stop.flag or Ctrl+C. This .bat just launches it.",
-      "rem First-time setup: copy pm_token.txt.template -> pm_token.txt and paste your PM API token.",
+      "rem Usage: run_daemon.bat <lane> [extra daemon args]   -- lanes are declared in lanes.json here.",
+      "rem SUPERVISED: run_daemon_supervised.ps1 (next to this file) restarts the daemon on crash with",
+      "rem backoff, refuses a duplicate via a named mutex, and stops the lane cleanly on",
+      "rem lanes\\<lane>\\stop.flag or Ctrl+C. Put each lane's PM API token in lanes\\<lane>\\pm_token.txt.",
       'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_daemon_supervised.ps1" %*',
       "",
     ].join("\r\n");
   }
   if (kind === "ps1") {
-    // The Windows supervisor. Single-instance via a named mutex (self-healing: the OS
-    // releases it if this process dies), crash-loop backoff, clean stop via a stop.flag.
-    // Launches the daemon via System.Diagnostics.Process so the exit code is reliable on
-    // Windows PowerShell 5.1 (Start-Process -PassThru drops it) and the console is inherited.
-    const nodeArgs = `--project ${projectId} --resource ${resource} --pm-url ${pmUrl}`;
-    return [
-      "# PM merge-train integrator daemon SUPERVISOR (generated by scripts/distribute.mjs).",
-      "# Auto-restarts the daemon on crash with backoff; single-instance via a named mutex",
-      "# (self-healing: the OS releases it if this process dies); clean stop via a stop.flag",
-      "# next to this script (New-Item -ItemType File .\\stop.flag) or Ctrl+C. Launched by run_daemon.bat.",
-      "$ErrorActionPreference = 'Stop'",
-      "$HERE = Split-Path -Parent $MyInvocation.MyCommand.Path",
-      "",
-      `$BundleName = '${bundleName}'`,
-      `$ProjectId  = '${projectId}'`,
-      `$Resource   = '${resource}'`,
-      "$MinHealthySeconds = 60",
-      "$BackoffSeconds = @(5, 15, 45, 120, 300)",
-      "$LoudAfter = 5",
-      "",
-      "$tokenFile = Join-Path $HERE 'pm_token.txt'",
-      "$stopFlag  = Join-Path $HERE 'stop.flag'",
-      "$logFile   = Join-Path $HERE 'supervisor.log'",
-      "$bundle    = Join-Path $HERE $BundleName",
-      "",
-      "function Write-SupLog($m) { $line = '[{0}] {1}' -f (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'), $m; Write-Host $line; Add-Content -Path $logFile -Value $line }",
-      "",
-      "if (-not (Test-Path $tokenFile)) {",
-      '  Write-Host "ERROR: $tokenFile not found. Copy pm_token.txt.template -> pm_token.txt and paste your PM API token into it."',
-      "  exit 1",
-      "}",
-      "$env:PM_API_TOKEN = (Get-Content -Raw $tokenFile).Trim()",
-      "# The daemon's verify children resolve a bare 'pm-verify.bat'; a Claude-spawned shell sets",
-      "# NoDefaultCurrentDirectoryInExePath which breaks that. Clear it for a clean-launch match.",
-      "$env:NoDefaultCurrentDirectoryInExePath = $null",
-      "",
-      "# Single-instance guard: a named mutex, auto-released by the OS if this process dies.",
-      '$mutex = New-Object System.Threading.Mutex($false, "Global\\pm-integrator-$ProjectId-$Resource")',
-      "if (-not $mutex.WaitOne(0)) {",
-      '  Write-Host "A pm-integrator supervisor for [$ProjectId / $Resource] is already running. Refusing to start a duplicate."',
-      "  exit 1",
-      "}",
-      "",
-      "if (Test-Path $stopFlag) { Remove-Item $stopFlag -Force }",
-      "$script:child = $null",
-      "$cleanup = {",
-      "  if ($script:child -and -not $script:child.HasExited) {",
-      "    try { Start-Process taskkill -ArgumentList '/PID', $script:child.Id, '/T', '/F' -NoNewWindow -Wait } catch {}",
-      "  }",
-      "}",
-      "try {",
-      '  Write-SupLog "supervisor started (bundle=$BundleName project=$ProjectId resource=$Resource)"',
-      "  $rapid = 0",
-      "  while ($true) {",
-      "    if (Test-Path $stopFlag) { Write-SupLog 'stop.flag present - clean shutdown.'; Remove-Item $stopFlag -Force; break }",
-      "    $t0 = Get-Date",
-      "    Write-SupLog 'starting integrator daemon...'",
-      "    $psi = New-Object System.Diagnostics.ProcessStartInfo",
-      "    $psi.FileName = 'node'",
-      `    $psi.Arguments = '\"' + $bundle + '\" ${nodeArgs}'`,
-      "    if ($args.Count -gt 0) { $psi.Arguments += ' ' + ($args -join ' ') }",
-      "    $psi.UseShellExecute = $false",
-      "    $psi.WorkingDirectory = $HERE",
-      "    $script:child = [System.Diagnostics.Process]::Start($psi)",
-      "    $script:child.WaitForExit()",
-      "    $code = $script:child.ExitCode",
-      "    $up = [int]((Get-Date) - $t0).TotalSeconds",
-      "    $script:child = $null",
-      "    if (Test-Path $stopFlag) { Write-SupLog 'daemon exited; stop.flag set - clean shutdown.'; Remove-Item $stopFlag -Force; break }",
-      '    if ($up -ge $MinHealthySeconds) { $rapid = 0; Write-SupLog "daemon exited after ${up}s (code $code) - restarting."; continue }',
-      "    $rapid++",
-      "    $delay = $BackoffSeconds[[Math]::Min($rapid - 1, $BackoffSeconds.Count - 1)]",
-      '    if ($rapid -ge $LoudAfter) { Write-SupLog "!! daemon crashed $rapid times fast (last ${up}s, code $code) - likely a bad pm_token.txt or the PM server is down. Still retrying every ${delay}s; check supervisor.log + the PM server." }',
-      '    else { Write-SupLog "daemon crashed after ${up}s (code $code) - backoff ${delay}s (#$rapid)." }',
-      "    Start-Sleep -Seconds $delay",
-      "  }",
-      "}",
-      "finally {",
-      "  & $cleanup",
-      "  try { $mutex.ReleaseMutex() } catch {}",
-      "  $mutex.Dispose()",
-      "  Write-SupLog 'supervisor exited.'",
-      "}",
-      "",
-    ].join("\r\n");
+    return SUPERVISOR_PS1.replace("@@BUNDLE_NAME@@", bundleName).replace(/\r?\n/g, "\r\n");
   }
   if (kind === "sh") {
-    // Self-contained POSIX supervisor: single-instance via flock (self-healing — released
-    // when this process dies), crash-loop backoff, clean stop via a stop.flag or Ctrl+C.
-    return [
-      "#!/usr/bin/env bash",
-      "# PM merge-train integrator daemon SUPERVISOR (generated by scripts/distribute.mjs).",
-      "# Auto-restarts the daemon on crash with backoff; single-instance via flock; clean stop",
-      "# via a stop.flag next to this script (touch stop.flag) or Ctrl+C.",
-      "# First-time setup: copy pm_token.txt.template -> pm_token.txt and paste your PM API token.",
-      "set -uo pipefail",
-      'DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
-      `BUNDLE="$DIR/${bundleName}"`,
-      'STOPFLAG="$DIR/stop.flag"',
-      'LOG="$DIR/supervisor.log"',
-      'LOCK="$DIR/supervisor.lock"',
-      "MIN_HEALTHY=60",
-      "BACKOFFS=(5 15 45 120 300)",
-      "LOUD_AFTER=5",
-      "",
-      'log() { local m="[$(date \'+%Y-%m-%d %H:%M:%S\')] $1"; echo "$m"; echo "$m" >> "$LOG"; }',
-      "",
-      'if [ ! -f "$DIR/pm_token.txt" ]; then',
-      '  echo "ERROR: $DIR/pm_token.txt not found. Copy pm_token.txt.template -> pm_token.txt and paste your PM API token." >&2',
-      "  exit 1",
-      "fi",
-      'export PM_API_TOKEN="$(cat "$DIR/pm_token.txt")"',
-      "",
-      "# Single-instance guard: flock on an fd held for the process lifetime (auto-released on death).",
-      'exec 9>"$LOCK"',
-      "if ! flock -n 9; then",
-      '  echo "A pm-integrator supervisor is already running (lock $LOCK). Refusing to start a duplicate." >&2',
-      "  exit 1",
-      "fi",
-      "",
-      'child=""',
-      'cleanup() { if [ -n "$child" ] && kill -0 "$child" 2>/dev/null; then kill -TERM "$child" 2>/dev/null; fi; }',
-      "trap 'cleanup; exit 0' INT TERM",
-      "",
-      '[ -f "$STOPFLAG" ] && rm -f "$STOPFLAG"',
-      "rapid=0",
-      `log "supervisor started (bundle=${bundleName} resource=${resource})"`,
-      "while true; do",
-      '  [ -f "$STOPFLAG" ] && { log "stop.flag present - clean shutdown."; rm -f "$STOPFLAG"; break; }',
-      "  t0=$SECONDS",
-      '  log "starting integrator daemon..."',
-      `  node "$BUNDLE" --project ${projectId} --resource ${resource} --pm-url ${pmUrl} "$@" &`,
-      "  child=$!",
-      '  wait "$child"; code=$?',
-      '  child=""',
-      "  up=$((SECONDS - t0))",
-      '  [ -f "$STOPFLAG" ] && { log "daemon exited; stop.flag set - clean shutdown."; rm -f "$STOPFLAG"; break; }',
-      '  if [ "$up" -ge "$MIN_HEALTHY" ]; then rapid=0; log "daemon exited after ${up}s (code $code) - restarting."; continue; fi',
-      "  rapid=$((rapid + 1))",
-      '  idx=$((rapid - 1)); [ "$idx" -ge "${#BACKOFFS[@]}" ] && idx=$(( ${#BACKOFFS[@]} - 1 ))',
-      '  delay="${BACKOFFS[$idx]}"',
-      '  if [ "$rapid" -ge "$LOUD_AFTER" ]; then log "!! daemon crashed ${rapid}x fast (last ${up}s, code $code) - likely a bad pm_token.txt or the PM server is down. Retrying in ${delay}s."; else log "daemon crashed after ${up}s (code $code) - backoff ${delay}s (#${rapid})."; fi',
-      '  sleep "$delay"',
-      "done",
-      "",
-    ].join("\n");
+    return SUPERVISOR_SH.replace("@@BUNDLE_NAME@@", bundleName);
   }
   throw new Error(`Unknown launcher kind: "${kind}" (expected "bat", "ps1", or "sh")`);
 }
 
 /**
- * Emit the daemon launcher trio (run_daemon.bat, run_daemon.sh,
- * pm_token.txt.template) next to a target's integrator bundle — but ONLY when the
- * target declares a `projectId` (a launcher needs one to be runnable). The
- * launchers reference the bundle by its actual basename, so the target is fully
- * self-contained. `pm_token.txt` (the real secret) is never written or touched.
- * Returns the list of files written (empty when no launcher was emitted).
+ * The generated files next to a target's integrator bundle: the supervisor
+ * trio, `lanes.json` and `pm_token.txt.template` -- or nothing, for a target
+ * with no lanes. `pm_token.txt` (the real secret) is never written or touched.
  */
-export function writeLaunchers(target, dryRun) {
-  if (!target.projectId) return [];
-
+export function launcherArtifacts(config, target) {
+  const lanes = lanesFor(config, target);
+  if (lanes.length === 0) return [];
   const dir = dirname(target.integratorDest);
   const bundleName = basename(target.integratorDest);
-  const opts = {
-    bundleName,
-    projectId: target.projectId,
-    resource: target.resource ?? DEFAULT_RESOURCE,
-    pmUrl: target.pmUrl ?? DEFAULT_PM_URL,
+  const contents = {
+    "run_daemon.bat": renderDaemonLauncher("bat", { bundleName }),
+    "run_daemon_supervised.ps1": renderDaemonLauncher("ps1", { bundleName }),
+    "run_daemon.sh": renderDaemonLauncher("sh", { bundleName }),
+    "lanes.json": renderLanesJson(lanes),
+    "pm_token.txt.template": TOKEN_TEMPLATE_CONTENT,
   };
-  const files = [
-    ["run_daemon.bat", renderDaemonLauncher("bat", opts)],
-    ["run_daemon_supervised.ps1", renderDaemonLauncher("ps1", opts)],
-    ["run_daemon.sh", renderDaemonLauncher("sh", opts)],
-    ["pm_token.txt.template", TOKEN_TEMPLATE_CONTENT],
-  ];
-
-  const written = [];
-  for (const [name, content] of files) {
-    const dest = join(dir, name);
-    if (dryRun) {
-      console.log(`  [dry-run] would write ${dest}`);
-      continue;
-    }
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(dest, content);
-    console.log(`  wrote ${dest}`);
-    written.push(dest);
-  }
-  return written;
+  return LAUNCHER_FILES.map((name) => ({
+    dest: join(dir, name),
+    payload: Buffer.from(contents[name], "utf8"),
+    label: name === "lanes.json" ? "the distribute config's lanes" : "scripts/distribute.mjs",
+  }));
 }
 
 /**
@@ -516,12 +874,11 @@ export function applyBanner(contents, destPath, sourceLabel) {
  * no record" is exactly the state in which the 2026-09-19 revert would have gone
  * through unremarked.
  */
-function writeArtifact(src, dest, opts) {
+function writeArtifact(payload, dest, opts) {
   const { dryRun, receipt, acceptExisting, force, sourceLabel, quiet = false, guard = true } = opts;
   const say = (msg) => {
     if (!quiet) console.log(msg);
   };
-  const payload = applyBanner(readFileSync(src), dest, sourceLabel);
   const next = sha256(payload);
   const recorded = receipt[dest];
   const present = existsSync(dest);
@@ -570,13 +927,34 @@ function writeArtifact(src, dest, opts) {
   }
 
   if (dryRun) {
-    say(`  [dry-run] would write ${src} -> ${dest}`);
+    say(`  [dry-run] would write ${dest} (from ${sourceLabel})`);
     return next;
   }
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, payload);
-  say(`  wrote ${src} -> ${dest}`);
+  say(`  wrote ${dest} (from ${sourceLabel})`);
   return next;
+}
+
+/** Every artifact one target receives: {dest, payload, label}, in write order. */
+function plannedArtifacts(config, target, sources) {
+  const vendored = [
+    ["mcpDest", sources.mcpBundle, "packages/mcp-server/dist/bundle/pm-mcp-server.mjs"],
+    [
+      "integratorDest",
+      sources.integratorBundle,
+      "packages/integrator-ref/dist/bundle/pm-integrator.mjs",
+    ],
+    ["docsDest", sources.docs, "docs/integrator-deployment.md"],
+    ["workerDocDest", sources.workerDoc, "docs/worker-pm-workflow.md"],
+  ]
+    .filter(([field]) => target[field] !== undefined)
+    .map(([field, src, label]) => ({
+      dest: target[field],
+      payload: applyBanner(readFileSync(src), target[field], label),
+      label,
+    }));
+  return [...vendored, ...launcherArtifacts(config, target)];
 }
 
 /**
@@ -593,6 +971,7 @@ export function distribute({
   acceptExisting = false,
   force = false,
 }) {
+  validateConfig(config);
   if (build && !dryRun) {
     runBuild(root);
   } else if (dryRun) {
@@ -602,67 +981,48 @@ export function distribute({
   const sources = resolveSources(root);
   const receipt = receiptPath ? loadReceipt(receiptPath) : {};
   const written = { ...receipt };
+  const guardOpts = { receipt, acceptExisting, force, guard: Boolean(receiptPath) };
 
-  for (const target of config.targets) {
+  const plans = config.targets.map((target) => ({
+    target,
+    artifacts: plannedArtifacts(config, target, sources),
+  }));
+
+  // Every destination of EVERY target is checked before any of them is written,
+  // so a refusal on the last file cannot leave the others already replaced. A
+  // half-applied distribution is its own silent-divergence source.
+  for (const { artifacts } of plans) {
+    for (const { dest, payload, label } of artifacts) {
+      writeArtifact(payload, dest, { ...guardOpts, dryRun: true, sourceLabel: label, quiet: true });
+    }
+  }
+
+  for (const { target, artifacts } of plans) {
     console.log(`\nTarget: ${target.name}`);
-    // Every destination is CHECKED before any of them is WRITTEN, so a refusal
-    // on the fourth file cannot leave the first three already replaced. A
-    // half-applied distribution is its own silent-divergence source.
-    const planned = [
-      [sources.mcpBundle, target.mcpDest, "packages/mcp-server/dist/bundle/pm-mcp-server.mjs"],
-      [
-        sources.integratorBundle,
-        target.integratorDest,
-        "packages/integrator-ref/dist/bundle/pm-integrator.mjs",
-      ],
-      [sources.docs, target.docsDest, "docs/integrator-deployment.md"],
-      [sources.workerDoc, target.workerDocDest, "docs/worker-pm-workflow.md"],
-    ];
-    for (const [src, dest, label] of planned) {
-      writeArtifact(src, dest, {
-        dryRun: true,
-        receipt,
-        acceptExisting,
-        force,
-        sourceLabel: label,
-        quiet: true,
-        guard: Boolean(receiptPath),
-      });
+    for (const { dest, payload, label } of artifacts) {
+      written[dest] = writeArtifact(payload, dest, { ...guardOpts, dryRun, sourceLabel: label });
     }
-    for (const [src, dest, label] of planned) {
-      written[dest] = writeArtifact(src, dest, {
-        dryRun,
-        receipt,
-        acceptExisting,
-        force,
-        sourceLabel: label,
-        guard: Boolean(receiptPath),
-      });
-    }
-    const launchers = writeLaunchers(target, dryRun);
 
     if (!dryRun) {
       console.log(`Distributed to "${target.name}":`);
-      console.log(`  MCP bundle        -> ${target.mcpDest}`);
-      console.log(`  Integrator daemon -> ${target.integratorDest}`);
-      console.log(`  Operator guide    -> ${target.docsDest}`);
-      console.log(`  Worker workflow   -> ${target.workerDocDest}`);
-      console.log(
-        "  Restart any running Claude Code session in this target to pick up the new MCP bundle.",
-      );
-      if (launchers.length > 0) {
+      for (const field of ARTIFACT_FIELDS) {
+        if (target[field] !== undefined) console.log(`  ${field.padEnd(16)} -> ${target[field]}`);
+      }
+      const lanes = lanesFor(config, target);
+      if (lanes.length > 0) {
         const launcherDir = dirname(target.integratorDest);
-        console.log(`  Daemon launcher   -> ${join(launcherDir, "run_daemon.bat")} (+ .sh)`);
         console.log(
-          "  First run: copy pm_token.txt.template -> pm_token.txt, paste the daemon's PM API token,",
+          `  Supervisor         -> ${join(launcherDir, "run_daemon.bat")} <lane> (+ .ps1, .sh, lanes.json)`,
         );
-        console.log(`  then run:  "${join(launcherDir, "run_daemon.bat")}"`);
-      } else {
+        for (const lane of lanes) {
+          console.log(
+            `  lane ${lane.name}: project ${lane.projectId} resource ${lane.resource}; token -> ${join(launcherDir, "lanes", lane.name, "pm_token.txt")}`,
+          );
+        }
+      }
+      if (target.mcpDest !== undefined) {
         console.log(
-          `  Run the integrator with:  node "${target.integratorDest}" --project <id> --resource main --pm-url http://localhost:3000`,
-        );
-        console.log(
-          '  (Add "projectId" to this target in the config to auto-generate a run_daemon launcher.)',
+          "  Restart any running Claude Code session in this target to pick up the new MCP bundle.",
         );
       }
     }

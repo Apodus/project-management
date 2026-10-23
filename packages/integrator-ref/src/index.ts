@@ -19,6 +19,7 @@ import type { GitOps, PushResult } from "./git-ops.js";
 import { buildHeartbeat } from "./heartbeat.js";
 import { VERSION } from "./version.js";
 import { describeRunningBundle, versionWithBundle } from "./bundle-identity.js";
+import { watchStopFile } from "./stop-file.js";
 
 async function main(): Promise<void> {
   const program = new Command()
@@ -31,9 +32,13 @@ async function main(): Promise<void> {
     .option("--token <envVar>", "Env var containing PM API token", "PM_API_TOKEN")
     .option("--log-level <level>", "pino log level (trace|debug|info|warn|error|fatal)")
     .option("--poll-interval-sec <sec>", "Polling interval in seconds", "30")
+    .option(
+      "--stop-file <path>",
+      "Stop gracefully (as on SIGTERM) once this file exists; the file is left for the supervisor",
+    )
     .parse(process.argv);
 
-  const args = program.opts() as CliArgs & { pollIntervalSec?: string };
+  const args = program.opts() as CliArgs & { pollIntervalSec?: string; stopFile?: string };
   // Phase 7.4 §3.2: the integrator's package version, reported on every
   // heartbeat. Sourced from the generated version.ts (single source of truth =
   // package.json), which is also what we pass to commander's .version() above.
@@ -486,14 +491,18 @@ async function main(): Promise<void> {
 
   // ── Shutdown handling. ──
   let stopRequested = false;
-  const requestStop = (signal: NodeJS.Signals): void => {
-    logger.info({ signal }, "Integrator shutting down");
+  const requestStop = (signal: NodeJS.Signals | "stop-file"): void => {
+    logger.info({ signal, stopFile: args.stopFile }, "Integrator shutting down");
     stopRequested = true;
     // Wake the loop if it's parked waiting for work.
     sub.wakeup.resolve();
   };
   process.on("SIGTERM", () => requestStop("SIGTERM"));
   process.on("SIGINT", () => requestStop("SIGINT"));
+  // The supervisor's per-lane stop.flag: the only graceful stop a Windows lane has.
+  const disposeStopWatch = args.stopFile
+    ? watchStopFile(args.stopFile, () => requestStop("stop-file"))
+    : null;
 
   const pollIntervalMs = Math.max(1, Number(args.pollIntervalSec ?? "30") || 30) * 1000;
 
@@ -613,6 +622,7 @@ async function main(): Promise<void> {
   );
 
   sub.stop();
+  disposeStopWatch?.();
   clearInterval(heartbeatTimer); // Phase 7.4 §3.6: no leaked heartbeat timer.
   logger.info("Integrator stopped cleanly");
   process.exit(0);

@@ -1,16 +1,27 @@
 {
   "_comment": "Copy to distribute.config.json (gitignored), set absolute dest paths, run: node scripts/distribute.mjs",
-  "_launcher_comment": "Add projectId (and optional resource/pmUrl) to a target to auto-generate a self-contained run_daemon.bat/.sh + pm_token.txt.template next to the integrator bundle. resource defaults to 'main', pmUrl to 'http://localhost:3000'.",
+  "_lanes_comment": "Lanes are a HOST property: every integrator lane this host runs, declared once. Each target with an integratorDest gets lanes.json + ONE supervisor (run_daemon.bat <lane>) beside its bundle; each lane's token/stop.flag/logs live in lanes/<lane>/. name: ^[a-z][a-z0-9_-]{0,31}$; resource defaults to 'main', pmUrl to 'http://localhost:3000'; env: extra variables for that lane's daemon (and so its verify children), never PM_API_TOKEN or PM_INTEGRATOR_LOG_FILE.",
+  "_targets_comment": "A target receives any subset of mcpDest, integratorDest, docsDest, workerDocDest. A deploy directory outside every repo needs only integratorDest.",
+  "lanes": [
+    {
+      "name": "game_one",
+      "projectId": "01KSMSZVN87QWZZBY7AR7QV149",
+      "resource": "main",
+      "pmUrl": "http://localhost:3000",
+      "env": {}
+    }
+  ],
   "targets": [
     {
       "name": "game_one",
       "mcpDest": "D:/code/game_one/tools/pm-mcp-server/pm-mcp-server.mjs",
       "integratorDest": "D:/code/game_one/tools/pm-integrator/pm-integrator.mjs",
       "docsDest": "D:/code/game_one/docs/integrator-deployment.md",
-      "workerDocDest": "D:/code/game_one/docs/pm-workflow.md",
-      "projectId": "01KSMSZVN87QWZZBY7AR7QV149",
-      "resource": "main",
-      "pmUrl": "http://localhost:3000"
+      "workerDocDest": "D:/code/game_one/docs/pm-workflow.md"
+    },
+    {
+      "name": "integrator-deploy",
+      "integratorDest": "D:/pm-integrator-deploy/pm-integrator.mjs"
     }
   ]
 }

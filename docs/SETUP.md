@@ -139,7 +139,9 @@ from public npm at run time.
 
   `distribute.config.json` is **gitignored** (it holds machine-specific absolute paths). Each
   target's `docsDest`/`workerDocDest` are full **file** paths; the worker workflow doc is copied
-  **as** `pm-workflow.md` at the dest. Operators who prefer a one-word local command may keep a
+  **as** `pm-workflow.md` at the dest. Declare the host's integrator lanes once in a top-level
+  `lanes` array and every target with an `integratorDest` also gets `lanes.json` plus one
+  supervisor, `run_daemon.bat <lane>` (operator guide §11.1). Operators who prefer a one-word local command may keep a
   small `distribute.bat` (or shell) wrapper that simply calls `node scripts/distribute.mjs` — the
   wrapper is local/gitignored; the script is the reproducible path.
 

@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Versioning is **lockstep** across the monorepo: every package shares one
 release line, so a client can cite a single version for the system they run.
 
+## [Unreleased]
+
+### Changed
+
+- **distribute: N integrator lanes on one host from ONE generated supervisor.** Lanes are a host
+  property, declared once at the top level of `distribute.config.json` (`lanes: [{ name, projectId,
+resource?, pmUrl?, env? }]`); every target with an `integratorDest` gets the same generated
+  `lanes.json` and one `run_daemon_supervised.ps1` / `run_daemon.bat <lane>` / `run_daemon.sh
+<lane>`. Each lane's token, `stop.flag`, `supervisor.log`, `daemon.log` and working directory live
+  in `lanes/<lane>/`; no launcher contains a project id; `lanes.json` is re-read before every daemon
+  start, so a lane's `env` reaches the next start. Launchers and `lanes.json` now go through the
+  write-receipt guard, and every target is checked before any is written. Targets take any subset
+  of the four artifacts (a deploy directory needs only `integratorDest`); unknown keys and shared
+  destinations are refused. **Breaking for launcher users:** a legacy target `projectId` is now one
+  lane named `default`, whose token moves to `lanes/default/pm_token.txt`; it cannot be combined
+  with top-level `lanes`. See `docs/integrator-deployment.md` §11.1.
+
+### Added
+
+- **integrator: `--stop-file <path>`.** The daemon stops gracefully (as on SIGTERM) once the file
+  exists and leaves it for the supervisor. The generated supervisor passes the lane's
+  `lanes/<lane>/stop.flag`, so a stop flag stops a RUNNING daemon -- before, it was read only
+  between daemon runs and a healthy Windows daemon could not be stopped gracefully at all. Deploy
+  the supervisor and the bundle together (an older bundle rejects the flag).
+
 ## [0.1.0] - 2026-06-02
 
 First versioned release. Everything prior shipped under `0.0.0`; this cut draws
