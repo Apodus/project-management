@@ -102,6 +102,8 @@ export const AUDIT_ACTION_KIND: Record<AuditAction, TrainTraceKind | null> = {
   claim_reclaimed: null,
   outer_converted: "outer_converted",
   outer_gitlink_normalized: "outer_gitlink_normalized",
+  // Not a train event: a work item moved to another project (C4-P4).
+  transfer: null,
 };
 
 /**

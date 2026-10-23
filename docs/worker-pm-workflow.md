@@ -110,6 +110,10 @@ stranded work or an explicit authorized handoff:
 
 Force-claim is a deliberate, audited override — use it to recover genuinely stranded work or for an explicit handoff, not to grab a claim another live agent is actively using.
 
+### Moving work to another project (transfer)
+
+Work that belongs to another project of the same workspace is MOVED, not re-created: `pm_transfer_task(task_id, target_project_id, reason, target_epic_id?)`, `pm_transfer_epic(epic_id, target_project_id, reason)` (the epic and ALL its tasks, atomically), `pm_transfer_proposal(proposal_id, target_project_id, reason)`. The id, comments, git refs, your claim and task dependencies follow; project-scoped labels, an epic's milestone and a task's old epic do not (the result lists what was dropped). You must hold the claim (a human may move anything). It is refused while a moving task has a queued/integrating merge request or a forming group — let it land or cancel it first, because it lands in the OLD project's lane — and when a parent/subtask or an epic dependency would be split across projects. A task dependency MAY point into another project (e.g. a game task blocked by an engine task); epic dependencies may not.
+
 ## Subsystem awareness
 
 Before starting work in a subsystem — and again when you cross into a new area mid-task — check who else is in flight there:

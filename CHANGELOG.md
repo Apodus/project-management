@@ -27,6 +27,15 @@ resource?, pmUrl?, env? }]`); every target with an `integratorDest` gets the sam
 
 ### Added
 
+- **Transfer a task, an epic (with all its tasks) or a proposal to another project** of the same
+  workspace: `POST /api/v1/{tasks|epics|proposals}/{id}/transfer` `{target_project_id,
+target_epic_id?, reason}` and `pm_transfer_task|epic|proposal`. The id, comments, git refs, claim
+  and task dependencies follow; project-scoped labels (dropped and listed), an epic's milestone and
+  a task's old epic do not. Refused (409) while a moving task has a queued/integrating merge
+  request or a forming/integrating group, a held or queued merge lock or an open incident, when a
+  parent/subtask would be split, and for an epic with any epic dependency. Claim holder or human
+  only; audited (`transfer`) in the source project, activity `transferred` in both. Cross-project
+  task dependencies are now an explicit, tested contract.
 - **integrator: the host verify semaphore (`hostSlots`).** Declared once per host at the top level
   of the distribute config, emitted into `lanes.json`, passed by the supervisor as
   `--host-slots-file`. Every verify pipeline (single-repo, group, orphan recovery) takes a slot

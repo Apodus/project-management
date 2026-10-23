@@ -54,6 +54,7 @@ vi.mock("../src/api-client.js", () => ({
   forceClaimEpic: vi.fn(),
   forceClaimProposal: vi.fn(),
   releaseTaskTo: vi.fn(),
+  transferWorkItem: vi.fn(),
   releaseEpicTo: vi.fn(),
   releaseProposalTo: vi.fn(),
   requestTakeoverTask: vi.fn(),
@@ -134,6 +135,7 @@ const mockForceClaimTask = vi.mocked(apiClient.forceClaimTask);
 const mockForceClaimEpic = vi.mocked(apiClient.forceClaimEpic);
 const mockForceClaimProposal = vi.mocked(apiClient.forceClaimProposal);
 const mockReleaseTaskTo = vi.mocked(apiClient.releaseTaskTo);
+const mockTransferWorkItem = vi.mocked(apiClient.transferWorkItem);
 const mockReleaseEpicTo = vi.mocked(apiClient.releaseEpicTo);
 const mockReleaseProposalTo = vi.mocked(apiClient.releaseProposalTo);
 const mockRequestTakeoverTask = vi.mocked(apiClient.requestTakeoverTask);
@@ -844,6 +846,67 @@ describe("MCP Tools", () => {
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("Force-claimed");
       expect(text).not.toContain("user_secret_A");
+    });
+  });
+
+  // ── Transfer between projects (C4-P4) ─────────────────────────────
+  describe("pm_transfer_* (C4-P4)", () => {
+    it("pm_transfer_task passes the target epic and renders what could not follow", async () => {
+      mockTransferWorkItem.mockResolvedValue({
+        entity_type: "task",
+        entity_id: "task_001",
+        from_project_id: "P_GAME",
+        to_project_id: "P_ENGINE",
+        moved_task_ids: ["task_001"],
+        dropped_labels: ["task_001: physics"],
+        dropped_milestone_id: null,
+        audit_id: "AUD1",
+      });
+      const result = await client.callTool({
+        name: "pm_transfer_task",
+        arguments: {
+          task_id: "task_001",
+          target_project_id: "P_ENGINE",
+          target_epic_id: "E9",
+          reason: "engine work",
+        },
+      });
+      expect(mockTransferWorkItem).toHaveBeenCalledWith("task", "task_001", {
+        target_project_id: "P_ENGINE",
+        target_epic_id: "E9",
+        reason: "engine work",
+      });
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Transferred task task_001: project P_GAME -> P_ENGINE.");
+      expect(text).toContain("Labels dropped (project-scoped): task_001: physics");
+    });
+
+    it("pm_transfer_epic lists the tasks that moved with it; pm_transfer_proposal exists", async () => {
+      mockTransferWorkItem.mockResolvedValue({
+        entity_type: "epic",
+        entity_id: "E1",
+        from_project_id: "P_GAME",
+        to_project_id: "P_ENGINE",
+        moved_task_ids: ["t1", "t2"],
+        dropped_labels: [],
+        dropped_milestone_id: "M1",
+        audit_id: "AUD2",
+      });
+      const result = await client.callTool({
+        name: "pm_transfer_epic",
+        arguments: { epic_id: "E1", target_project_id: "P_ENGINE", reason: "r" },
+      });
+      expect(mockTransferWorkItem).toHaveBeenCalledWith("epic", "E1", {
+        target_project_id: "P_ENGINE",
+        reason: "r",
+      });
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Tasks moved with it (2): t1, t2");
+      expect(text).toContain("Milestone cleared: M1");
+      const tools = await client.listTools();
+      expect(tools.tools.map((x) => x.name)).toEqual(
+        expect.arrayContaining(["pm_transfer_task", "pm_transfer_epic", "pm_transfer_proposal"]),
+      );
     });
   });
 

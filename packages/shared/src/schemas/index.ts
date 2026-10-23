@@ -31,3 +31,4 @@ export * from "./observability.js";
 export * from "./verify.js";
 export * from "./merge-phase.js";
 export * from "./train-trace.js";
+export * from "./transfer.js";

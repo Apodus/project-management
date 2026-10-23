@@ -33,7 +33,11 @@ export function addDependency(taskId: string, dependsOnTaskId: string, type: str
     throw new AppError(400, "SELF_DEPENDENCY", "A task cannot depend on itself");
   }
 
-  // Verify both tasks exist
+  // Verify both tasks exist. Their PROJECTS are deliberately not compared: a
+  // task dependency may cross projects BY CONTRACT (engine independence C4-P4 --
+  // a game task blocked by the engine upgrade task in rynx-engine, and tasks
+  // keep their dependencies when transferred). Epic dependencies are the
+  // opposite and stay same-project (epic-graph.service.ts, CROSS_PROJECT).
   const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
   if (!task) {
     throw new AppError(404, "NOT_FOUND", `Task not found: ${taskId}`);

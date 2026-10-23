@@ -12,11 +12,66 @@ import {
   createTask,
   getTask,
   removeEpicDependency,
+  transferWorkItem,
   updateTask,
 } from "../api-client.js";
 import { claimDeniedText } from "./claim-display.js";
 
 export function registerWriteTools(server: McpServer): void {
+  // ---- pm_transfer_task / pm_transfer_epic / pm_transfer_proposal (C4-P4) ----
+  // One tool per kind over one endpoint shape and one server implementation.
+  const transferKinds = [
+    {
+      kind: "task" as const,
+      what: "a task. Its comments, git refs, claim and task dependencies follow; its epic is cleared unless target_epic_id names an epic of the target project.",
+    },
+    {
+      kind: "epic" as const,
+      what: "an epic together with ALL of its tasks, atomically. Its milestone is cleared; an epic with any epic dependency is refused (epic links never cross projects).",
+    },
+    { kind: "proposal" as const, what: "a proposal. Its comments follow." },
+  ];
+  for (const { kind, what } of transferKinds) {
+    server.tool(
+      `pm_transfer_${kind}`,
+      `Move ${what} The target is another project of the same workspace; the id stays. Project-scoped labels are dropped and listed. Refused while a moving task has a queued/integrating merge request or a forming group, a merge lock or an open incident, or when a parent/subtask would stay behind. Only the claim holder (or a human) may transfer. Audited with your reason.`,
+      {
+        [`${kind}_id`]: z.string().describe(`The ${kind} ID to move`),
+        target_project_id: z.string().describe("The project to move it to"),
+        ...(kind === "task"
+          ? {
+              target_epic_id: z
+                .string()
+                .optional()
+                .describe("Optional: an epic of the TARGET project to file the task under"),
+            }
+          : {}),
+        reason: z.string().describe("Why it moves (required, recorded in the audit log)"),
+      },
+      async (args: Record<string, string | undefined>) => {
+        const res = await transferWorkItem(kind, args[`${kind}_id`] as string, {
+          target_project_id: args.target_project_id as string,
+          ...(args.target_epic_id ? { target_epic_id: args.target_epic_id } : {}),
+          reason: args.reason as string,
+        });
+        const lines = [
+          `Transferred ${kind} ${res.entity_id}: project ${res.from_project_id} -> ${res.to_project_id}.`,
+        ];
+        if (res.moved_task_ids.length > 0 && kind !== "task") {
+          lines.push(
+            `Tasks moved with it (${res.moved_task_ids.length}): ${res.moved_task_ids.join(", ")}`,
+          );
+        }
+        if (res.dropped_labels.length > 0) {
+          lines.push(`Labels dropped (project-scoped): ${res.dropped_labels.join("; ")}`);
+        }
+        if (res.dropped_milestone_id) lines.push(`Milestone cleared: ${res.dropped_milestone_id}`);
+        lines.push(`Audit: ${res.audit_id}`);
+        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+      },
+    );
+  }
+
   // ---- pm_create_proposal ----
 
   server.tool(

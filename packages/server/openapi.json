@@ -4353,6 +4353,79 @@
           "total"
         ]
       },
+      "TransferResult": {
+        "type": "object",
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "task",
+              "epic",
+              "proposal"
+            ]
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "from_project_id": {
+            "type": "string"
+          },
+          "to_project_id": {
+            "type": "string"
+          },
+          "moved_task_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dropped_labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dropped_milestone_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "audit_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_type",
+          "entity_id",
+          "from_project_id",
+          "to_project_id",
+          "moved_task_ids",
+          "dropped_labels",
+          "dropped_milestone_id",
+          "audit_id"
+        ]
+      },
+      "TransferBody": {
+        "type": "object",
+        "properties": {
+          "target_project_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target_epic_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          }
+        },
+        "required": [
+          "target_project_id",
+          "reason"
+        ]
+      },
       "TaskComment": {
         "type": "object",
         "properties": {
@@ -21106,6 +21179,519 @@
         }
       }
     },
+    "/api/v1/tasks/{id}/transfer": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Transfer task to another project",
+        "description": "Move a task (its comments, git refs, claim and dependencies follow; its epic is cleared unless target_epic_id names one of the target project) to another project of the same workspace, keeping its id. Project-scoped labels are dropped and listed. Refused (409) while a moving task has a queued/integrating merge request, a forming/integrating group, a held or queued merge lock or an open merge incident, or when a parent/subtask would stay behind. The claim holder or a human only. Audited (action \"transfer\") in the source project; an activity row \"transferred\" lands in both projects.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transferred",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TransferResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not the claim holder (agents)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity or project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refused: work in flight, a split subtree, an epic dependency, another workspace, an archived target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/epics/{id}/transfer": {
+      "post": {
+        "tags": [
+          "Epics"
+        ],
+        "summary": "Transfer epic to another project",
+        "description": "Move an epic together with ALL of its tasks, atomically (its milestone is cleared; an epic with any epic dependency is refused) to another project of the same workspace, keeping its id. Project-scoped labels are dropped and listed. Refused (409) while a moving task has a queued/integrating merge request, a forming/integrating group, a held or queued merge lock or an open merge incident, or when a parent/subtask would stay behind. The claim holder or a human only. Audited (action \"transfer\") in the source project; an activity row \"transferred\" lands in both projects.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transferred",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TransferResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not the claim holder (agents)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity or project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refused: work in flight, a split subtree, an epic dependency, another workspace, an archived target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/proposals/{id}/transfer": {
+      "post": {
+        "tags": [
+          "Proposals"
+        ],
+        "summary": "Transfer proposal to another project",
+        "description": "Move a proposal (its comments follow) to another project of the same workspace, keeping its id. Project-scoped labels are dropped and listed. Refused (409) while a moving task has a queued/integrating merge request, a forming/integrating group, a held or queued merge lock or an open merge incident, or when a parent/subtask would stay behind. The claim holder or a human only. Audited (action \"transfer\") in the source project; an activity row \"transferred\" lands in both projects.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "01HXYZ1234567890ABCDEFGHIJ"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transferred",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TransferResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not the claim holder (agents)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity or project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refused: work in flight, a split subtree, an epic dependency, another workspace, an archived target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tasks/{taskId}/comments": {
       "get": {
         "tags": [
@@ -34126,7 +34712,8 @@
                 "force_claim",
                 "claim_reclaimed",
                 "outer_converted",
-                "outer_gitlink_normalized"
+                "outer_gitlink_normalized",
+                "transfer"
               ]
             },
             "required": false,

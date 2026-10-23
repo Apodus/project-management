@@ -23,6 +23,7 @@ describe("AUDIT_ACTIONS", () => {
       "claim_reclaimed",
       "outer_converted",
       "outer_gitlink_normalized",
+      "transfer",
     ]);
   });
 

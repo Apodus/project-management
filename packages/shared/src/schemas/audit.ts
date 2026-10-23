@@ -50,6 +50,11 @@ export const AUDIT_ACTIONS = [
   // Ri). Like `outer_converted`, this is an integration-time interpretation —
   // NOT a status transition and NEVER a mutation of the DB `synthetic` flag.
   "outer_gitlink_normalized",
+  // ── Transfer between projects (engine independence C4-P4) ──
+  // A task, epic (with its tasks) or proposal moved to another project of the
+  // same workspace; recorded in the SOURCE project with the reason, before/after
+  // project and the labels that could not follow.
+  "transfer",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

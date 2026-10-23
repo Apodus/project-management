@@ -1149,6 +1149,19 @@ export async function releaseTaskTo(
   );
 }
 
+/**
+ * Engine-independence C4-P4: move a task, an epic (with all its tasks) or a
+ * proposal to another project of the same workspace.
+ */
+export async function transferWorkItem(
+  kind: TransferEntityType,
+  id: string,
+  body: TransferBody,
+): Promise<TransferResult> {
+  const path = kind === "task" ? "tasks" : kind === "epic" ? "epics" : "proposals";
+  return apiRequest<TransferResult>("POST", `/${path}/${encodeURIComponent(id)}/transfer`, body);
+}
+
 export async function requestTakeoverTask(
   taskId: string,
   reason: string,
@@ -1330,6 +1343,9 @@ import type {
   CreateEscalationMessage,
   ListEscalationsQuery,
   UndeliveredEscalation,
+  TransferBody,
+  TransferEntityType,
+  TransferResult,
 } from "@pm/shared";
 
 // Re-export so MCP tool files can pull types from one place.
