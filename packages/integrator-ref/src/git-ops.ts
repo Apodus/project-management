@@ -241,6 +241,13 @@ export interface RunVerifyOptions {
    * if ANY of its concurrent steps is still talking.
    */
   liveness?: { lastOutputAt: number };
+  /**
+   * C4-P2: told the verify shell's pid the moment it exists, so the host verify
+   * slot can record it in its ticket. If this daemon dies mid-verify, the next
+   * contender reclaims the dead ticket and kills that tree (identity-checked)
+   * before the slot is reused, so two verifies never run on one slot.
+   */
+  onSpawn?: (pid: number) => void;
 }
 
 export interface GitOps {
@@ -1428,6 +1435,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env },
       });
+      if (child.pid !== undefined) runOpts.onSpawn?.(child.pid);
 
       let stdoutBuf = "";
       let stderrBuf = "";

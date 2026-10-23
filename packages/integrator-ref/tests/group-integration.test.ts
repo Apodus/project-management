@@ -13,6 +13,7 @@
  * post-pickup → integrating-reject after pickup); FIX 4 the all-pass test
  * releases the held slots (no leak).
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -419,6 +420,7 @@ describe.skipIf(!GIT_AVAILABLE)("runGroupIntegration (real two-repo)", () => {
       outerLane: outerLane(),
       gitRemote: "origin",
       defaultVerifyCommand: "echo verify-ok",
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       verifyTimeoutSec: 30,
       ...over,
     };

@@ -23,6 +23,7 @@
  * incident; (d) drift — neither push attempted, group RE-QUEUED (campaign
  * 2026-08-15 §R1: main moving is not a verdict on the change), no incident.
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -535,6 +536,7 @@ describe.skipIf(!GIT_AVAILABLE)("landAssembledGroup (real two-repo)", () => {
       outerLane: outerLane(),
       gitRemote: GIT_REMOTE,
       defaultVerifyCommand: "echo verify-ok",
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       verifyTimeoutSec: 30,
       ...over,
     };

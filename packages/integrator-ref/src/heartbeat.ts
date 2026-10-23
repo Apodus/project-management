@@ -8,6 +8,7 @@
  * shape is snake_case to match `integratorHeartbeatSchema`.
  */
 import type { IntegratorHeartbeat } from "@pm/shared";
+import type { HostSlotView } from "./host-slot.js";
 
 export interface InFlightCounters {
   requests: number;
@@ -49,6 +50,8 @@ export function buildHeartbeat(args: {
   inFlight: InFlightCounters;
   version: string;
   laneHealth?: LaneHealthState;
+  /** C4-P2: this daemon's waiting/held host verify slots; absent = no bound configured. */
+  hostSlots?: HostSlotView[];
 }): IntegratorHeartbeat {
   return {
     resource: args.resource,
@@ -66,5 +69,6 @@ export function buildHeartbeat(args: {
     ...(args.laneHealth === undefined
       ? {}
       : { last_release_failure: args.laneHealth.lastReleaseFailure }),
+    ...(args.hostSlots === undefined ? {} : { host_slots: args.hostSlots }),
   };
 }

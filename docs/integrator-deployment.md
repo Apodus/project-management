@@ -485,7 +485,29 @@ Run a lane: `run_daemon.bat <lane>` (or `run_daemon_supervised.ps1 -Lane <lane>`
 
 The lane directory is also the daemon's working directory. `lanes.json` is re-read before every daemon start, so an `env` change reaches the next start; a change of the lane's `projectId`/`resource` under a running supervisor is refused (exit 2) instead of adopted. Exit codes: 0 clean stop, 1 unexpected or a duplicate supervisor for the same train, 2 configuration (lane, `lanes.json`, token).
 
-**The supervisor and the bundle are deployed together.** `--stop-file` is new: an older bundle rejects the flag and the supervisor would crash-loop on it. A daemon started by an OLDER supervisor (one `stop.flag` beside the bundle, read only between daemon runs) cannot be stopped by that flag while it runs — stop it with Ctrl+C in its console, or end its process by PID while the lane is idle.
+**The supervisor and the bundle are deployed together.** `--stop-file`, `--lane` and `--host-slots-file` are new: an older bundle rejects them and the supervisor would crash-loop. A daemon started by an OLDER supervisor (one `stop.flag` beside the bundle, read only between daemon runs) cannot be stopped by that flag while it runs — stop it with Ctrl+C in its console, or end its process by PID while the lane is idle.
+
+### 11.2 The host verify semaphore (`hostSlots`)
+
+Two lanes on one machine are two concurrent verifies unless something bounds the HOST. Declare it once, at the top level of the distribute config beside `lanes` (a lane cannot carry its own — two lanes could then disagree and hold two semaphores):
+
+```jsonc
+"hostSlots": {
+  "dir": "D:\\pm-host-slots",          // ABSOLUTE; every lane (and the engine canary) on the host uses this one
+  "count": 1,                           // concurrent verifies the host allows
+  "identityCommand": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "<checkout>\\tools\\host\\process_identity.ps1"]
+}
+```
+
+It is emitted into `lanes.json`; the supervisor passes `--lane <name> --host-slots-file <lanes.json>`, and a `lanes.json` with no `hostSlots` means unbounded (today's behaviour). Every verify pipeline — single-repo, cross-repo group (one ticket for both repos), orphan recovery — acquires a slot before its first step and releases it in a `finally`; waiting never counts against `verify_timeout_sec` (a step's clock starts at spawn), stamps the stall watchdog's liveness box, and honours cancellation. With `count: 1` a lane with `parallelism > 1` verifies its speculative batch one member at a time.
+
+- **Queue:** `<dir>/queue/<seq:12>.ticket`, one JSON file per verify `{lane, pid, startTicks, requestId, state, children[]}`. A ticket holds a slot iff it is `active` and among the first `count` LIVE active tickets in seq order (never mtime). Allocation is lock-free: `max(seq)+1`, published by an exclusive link, so a seq is never issued twice and a newcomer never sorts ahead of an existing ticket. Release/reclaim rewrite the state in place; the pruner removes ended tickets only far below the high-water mark and older than a day.
+- **Identity** is pid + process start time, obtained ONLY from `identityCommand` (`-Pid <a,b,...>` appended; one line `pid=<n> alive=<0|1> ticks=<n|unreadable>` per pid). The daemon probes ITSELF at startup and exits 2 if the command cannot read a start time — otherwise every holder would read "unreadable = live" and the first dead one would wedge the host. A recycled pid (alive, different ticks) is dead; an unreadable identity is live.
+- **Reclaim:** any contender reclaims a dead holder's ticket. The verify shells the holder recorded are killed (`taskkill /T /F`) only if each one's identity, re-read immediately before the kill, still matches the recorded one.
+- **Heartbeat:** `host_slots: [{request_id, state: waiting|held, seq, position, holder_lane, holder_pid, waited_ms}]`; `waited_ms` stays on the held entry so the server's stall check can subtract the wait.
+- **Inspect:** `node pm-integrator.mjs --host-slots-probe --host-slots-file <lanes.json>` prints every ticket and its liveness as the daemon reads it, then exits.
+
+Not covered: the Phase 7.6 resolver agent runs builds of its own inside its session (resolver is off by default), and the legacy `runOnce` loop (`loop.ts`) is not reachable from the daemon entry.
 
 ### Graceful shutdown
 

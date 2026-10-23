@@ -34,6 +34,7 @@
  * (escalate / defer / auto-resolve / throw). The detection loop never leaks a
  * lease.
  */
+import type { HostSlots } from "./host-slot.js";
 import type { Logger } from "./logger.js";
 import type { PmClient } from "./pm-client.js";
 import type { RepoLane } from "./group-integration.js";
@@ -72,6 +73,11 @@ export interface RecoverOrphanedInnerDeps {
    * or absent leaves grading byte-identical to before.
    */
   verifySuccessSentinel?: string;
+  /**
+   * C4-P2: the host verify semaphore every verify of this lane runs under
+   * (`UNBOUNDED_HOST_SLOTS` when lanes.json declares no `hostSlots`).
+   */
+  hostSlots: HostSlots;
   /** Path to the local inner clone/remote `O` is fetched FROM (§7.3 step 3). `O`
    *  is on inner main, so a fetch of the remote also suffices; we fetch from
    *  this path for parity with the inner clone the lane resolves against. When
@@ -282,6 +288,7 @@ async function rollforwardOne(
       cwd: outerWt.path,
       verifyTimeoutSec: deps.verifyTimeoutSec,
       successSentinel: deps.verifySuccessSentinel,
+      hostSlot: deps.hostSlots.lease(`recovery-${incident.id}`),
       signal: undefined,
       logsDir: deps.outerLogsDir ?? ".",
       attemptId: `recovery-${incident.id}`,

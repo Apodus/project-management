@@ -30,6 +30,7 @@
  * — a converted+landed group calls noteOuterConverted with the exact reason
  * (invariant 5).
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -416,6 +417,7 @@ function depsFor(w: World, state: FakePm): GroupIntegrationDeps {
     outerLane: outerLane(w),
     gitRemote: GIT_REMOTE,
     defaultVerifyCommand: "echo verify-ok",
+    hostSlots: UNBOUNDED_HOST_SLOTS,
     verifyTimeoutSec: 30,
   };
 }

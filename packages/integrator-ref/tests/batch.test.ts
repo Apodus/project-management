@@ -10,6 +10,7 @@
  * Step 4 is single-member-at-a-time: this file deliberately does NOT test
  * multi-member concurrent batches (Step 5 behavior).
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -746,6 +747,7 @@ describe.skipIf(!GIT_AVAILABLE)("runBatchOnce (real git + fake PM)", () => {
       projectId: "proj-1",
       resource: "main",
       defaultVerifyCommand: opts.defaultVerifyCommand ?? "echo verify-ok",
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       verifyTimeoutSec: opts.verifyTimeoutSec ?? 30,
       gitRemote: "origin",
       gitMainBranch: "main",

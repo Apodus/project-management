@@ -26,6 +26,7 @@
  *      recoverOrphanedInner returns empty outcomes, does NOTHING.
  *  (g) isAncestor git-ops unit (§1): linear + divergent + bad-object cases.
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -394,6 +395,7 @@ describe.skipIf(!GIT_AVAILABLE)("recoverOrphanedInner (real two-repo)", () => {
       gitRemote: GIT_REMOTE,
       gitMainBranch: GIT_MAIN,
       defaultVerifyCommand: "echo recovery-verify-ok",
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       verifyTimeoutSec: 30,
       innerRemotePath: innerBare,
       ...over,

@@ -22,6 +22,7 @@
  * (v) source-only member unchanged (legacy rebase; not converted, not
  * normalized). Plus an applyExcludingGitlink unit describe.
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -418,6 +419,7 @@ function depsFor(
     outerLane: outerLane(w),
     gitRemote: GIT_REMOTE,
     defaultVerifyCommand: "echo verify-ok",
+    hostSlots: UNBOUNDED_HOST_SLOTS,
     verifyTimeoutSec: 30,
     ...over,
   };

@@ -10,6 +10,7 @@
  * with real git behavior. The spawned-process integration.test.ts is the
  * end-to-end regression net against a real PM server.
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -268,6 +269,7 @@ describe.skipIf(!GIT_AVAILABLE)("runOnce (real git + fake PM)", () => {
       projectId: "proj-1",
       resource: "main",
       defaultVerifyCommand: "echo verify-ok",
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       verifyTimeoutSec: 30,
       gitRemote: "origin",
       gitMainBranch: "main",

@@ -33,6 +33,7 @@
  * (batch.ts), exactly as runBatchOnce wraps its drain — this function assumes
  * the lock is already held and never touches it.
  */
+import type { HostSlots } from "./host-slot.js";
 import type { Logger } from "./logger.js";
 import type { GitOps } from "./git-ops.js";
 import type { Worktree } from "./worktree.js";
@@ -116,6 +117,11 @@ export interface GroupIntegrationDeps {
    * or absent leaves grading byte-identical to before.
    */
   verifySuccessSentinel?: string;
+  /**
+   * C4-P2: the host verify semaphore every verify of this lane runs under
+   * (`UNBOUNDED_HOST_SLOTS` when lanes.json declares no `hostSlots`).
+   */
+  hostSlots: HostSlots;
   /**
    * Campaign 2026-08-15 §S1: the two kill-seam arms, in MILLISECONDS, same
    * units and same meaning as `BatchDeps`. `0`/absent disables that arm.
@@ -1400,6 +1406,8 @@ export async function runGroupIntegration(
   //    every group during assembly. ──
   const verifyAbort = new AbortController();
   const groupLiveness = { lastOutputAt: Date.now() };
+  // ONE host slot for the atom: both pipelines share the group's ticket.
+  const groupSlot = deps.hostSlots.lease(group.id);
   const abortState: GroupAbortState = { reason: null, detail: "" };
 
   const runInnerPipeline = (): Promise<PipelineResult> => {
@@ -1413,6 +1421,7 @@ export async function runGroupIntegration(
       successSentinel: deps.verifySuccessSentinel,
       signal: verifyAbort.signal,
       liveness: groupLiveness,
+      hostSlot: groupSlot,
       logsDir: innerLogsDir,
       attemptId: innerAttempt.id,
       cache: innerCache,
@@ -1444,6 +1453,7 @@ export async function runGroupIntegration(
         successSentinel: deps.verifySuccessSentinel,
         signal: verifyAbort.signal,
         liveness: groupLiveness,
+        hostSlot: groupSlot,
         logsDir: outerLogsDir,
         attemptId: outerAttempt.id,
         cache: outerCache,

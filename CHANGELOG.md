@@ -27,6 +27,14 @@ resource?, pmUrl?, env? }]`); every target with an `integratorDest` gets the sam
 
 ### Added
 
+- **integrator: the host verify semaphore (`hostSlots`).** Declared once per host at the top level
+  of the distribute config, emitted into `lanes.json`, passed by the supervisor as
+  `--host-slots-file`. Every verify pipeline (single-repo, group, orphan recovery) takes a slot
+  from a FIFO ticket queue in an absolute directory before its first step and releases it in a
+  `finally`; holder liveness is pid + start time read only through `identityCommand` (the daemon
+  self-probes at startup, exit 2 on failure); dead holders are reclaimed and their recorded verify
+  trees killed only on an identity re-read at kill time. Heartbeats carry `host_slots`.
+  `--host-slots-probe` prints the queue. See `docs/integrator-deployment.md` sec. 11.2.
 - **integrator: `--stop-file <path>`.** The daemon stops gracefully (as on SIGTERM) once the file
   exists and leaves it for the supervisor. The generated supervisor passes the lane's
   `lanes/<lane>/stop.flag`, so a stop flag stops a RUNNING daemon -- before, it was read only

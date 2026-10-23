@@ -545,6 +545,10 @@ describe.skipIf(process.platform !== "win32")("supervisor on Windows (real Power
     expect(argAt(sb.argv, "--project")).toBe(`01TESTB${unique}`);
     expect(argAt(sa.argv, "--resource")).toBe("main");
     expect(argAt(sa.argv, "--stop-file")).toBe(join(laneDir("a"), "stop.flag"));
+    // C4-P2: every lane names itself and its host-slot file to the daemon.
+    expect(argAt(sa.argv, "--lane")).toBe("a");
+    expect(argAt(sb.argv, "--lane")).toBe("b");
+    expect(argAt(sa.argv, "--host-slots-file")).toBe(join(hereDir, "lanes.json"));
 
     // Mutation (4): a flag in lanes/a stops a, and only a.
     writeFileSync(join(laneDir("a"), "stop.flag"), "");

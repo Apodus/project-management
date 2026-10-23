@@ -29,6 +29,20 @@ export const releaseFailureSchema = z.object({
 });
 export type ReleaseFailure = z.infer<typeof releaseFailureSchema>;
 
+// ─── C4-P2: one integrator verify's place in the HOST verify-slot queue ─────
+// `waited_ms` stays on the held entry until release, so a stall check can
+// subtract the wait (time queued for the host is not a stalled integration).
+export const hostSlotViewSchema = z.object({
+  request_id: z.string(),
+  state: z.enum(["waiting", "held"]),
+  seq: z.number().int(),
+  position: z.number().int(),
+  holder_lane: z.string().nullable(),
+  holder_pid: z.number().int().nullable(),
+  waited_ms: z.number().int().nonnegative(),
+});
+export type HostSlotViewWire = z.infer<typeof hostSlotViewSchema>;
+
 export const integratorHeartbeatSchema = z.object({
   resource: z.string().min(1).default("main"),
   status: z.enum(["idle", "integrating"]),
@@ -45,6 +59,9 @@ export const integratorHeartbeatSchema = z.object({
     .default({ requests: 0, batches: 0, groups: 0 }),
   version: z.string().min(1),
   last_release_failure: releaseFailureSchema.nullable().optional(),
+  // C4-P2: the lane's waiting/held host verify slots (absent = no host bound
+  // configured on that integrator). Additive: an older server strips it.
+  host_slots: z.array(hostSlotViewSchema).optional(),
 });
 export type IntegratorHeartbeat = z.infer<typeof integratorHeartbeatSchema>;
 

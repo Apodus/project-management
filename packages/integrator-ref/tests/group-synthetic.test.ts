@@ -33,6 +33,7 @@
  * convert+LANDS, present-but-not-ancestor → gitlink_diverged, absent-after-
  * fetch → gitlink_unreachable (both Tier-2 legible rejects on the real outer).
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -510,6 +511,7 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer groups (real two-repo)", () => 
       outerLane: outerLane(),
       gitRemote: GIT_REMOTE,
       defaultVerifyCommand: "echo verify-ok",
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       verifyTimeoutSec: 30,
       ...over,
     };
@@ -891,6 +893,7 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer conflict-immunity (own fixture)
       },
       gitRemote: GIT_REMOTE,
       defaultVerifyCommand: "echo verify-ok",
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       verifyTimeoutSec: 30,
     };
 
@@ -1080,6 +1083,7 @@ describe.skipIf(!GIT_AVAILABLE)("synthetic-outer no-op land (own fixture)", () =
       },
       gitRemote: GIT_REMOTE,
       defaultVerifyCommand: "echo verify-ok",
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       verifyTimeoutSec: 30,
     };
 
@@ -1344,6 +1348,7 @@ describe.skipIf(!GIT_AVAILABLE)("outer-only (synthetic-inner) groups (own fixtur
       },
       gitRemote: GIT_REMOTE,
       defaultVerifyCommand: "echo verify-ok",
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       verifyTimeoutSec: 30,
     };
   }

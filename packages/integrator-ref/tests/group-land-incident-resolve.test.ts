@@ -20,6 +20,7 @@
  * clones, and a FakePm with an incident STORE so open/list/resolve is a state
  * machine rather than three unrelated spies.
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -454,6 +455,7 @@ function depsFor(
     projectId: PROJECT_ID,
     resource: RESOURCE,
     defaultVerifyCommand: "echo verify-ok",
+    hostSlots: UNBOUNDED_HOST_SLOTS,
     verifyTimeoutSec: 60,
     gitRemote: GIT_REMOTE,
     gitMainBranch: GIT_MAIN,

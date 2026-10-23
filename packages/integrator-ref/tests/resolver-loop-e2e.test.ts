@@ -21,6 +21,7 @@
  * reclaim-resolutions.test.ts (P4); case 3 here is a deliberate cross-check of
  * the reclaim direction, not a re-derivation.
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock the worktree module so the pool builds fake worktrees (no real git
@@ -173,6 +174,7 @@ async function runOneJob(args: {
     gitOps: () => makePoolGitOps() as unknown as GitOps,
     verifySteps: [],
     defaultVerifyCommand: "pnpm verify",
+    hostSlots: UNBOUNDED_HOST_SLOTS,
     runner: args.runner,
     timeBudgetSec: 3600,
     onOutcome: args.onOutcome,

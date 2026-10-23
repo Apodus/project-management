@@ -19,6 +19,7 @@
  *    onOutcome).
  *  - drain reentrancy: one slot, two jobs → both processed, none lost.
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -187,6 +188,7 @@ describe.skipIf(!GIT_AVAILABLE)("resolver worker (real git, fake runner)", () =>
       gitOps: (p) => createGitOps(simpleGit(p)),
       verifySteps: [],
       defaultVerifyCommand: args.verifyCommand,
+      hostSlots: UNBOUNDED_HOST_SLOTS,
       runner: args.runner,
       timeBudgetSec: 60,
       onOutcome: args.onOutcome,

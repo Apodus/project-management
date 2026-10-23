@@ -35,6 +35,7 @@ import type { CacheMode, VerifyStep, VerifyStepResult } from "@pm/shared";
 import type { PmClient } from "./pm-client.js";
 import { stepConfigSha } from "./step-config-sha.js";
 import { classifyVerifyFailure, failureExcerpt } from "./categorize.js";
+import { HostSlotAbortedError, type HostSlotLease } from "./host-slot.js";
 
 /** The synthetic single-step id the caller uses for the legacy verify_command. */
 const SYNTHETIC_STEP_ID = "verify";
@@ -175,6 +176,14 @@ export interface PipelineCtx {
   cache?: PipelineCacheCtx;
   /** STEP 6: best-effort cache-I/O failure logger (§11). Absent → silent. */
   logger?: { warn?: (msg: string) => void };
+  /**
+   * C4-P2: the HOST verify slot this pass runs under. REQUIRED, so no caller can
+   * run a verify outside the host bound: the pass acquires it before its first
+   * step (waiting does not count against any step's timeout, which starts at
+   * spawn), records every spawned shell in the ticket, and releases it in a
+   * `finally`. `UNBOUNDED_HOST_SLOTS` is the explicit "no bound configured".
+   */
+  hostSlot: HostSlotLease;
 }
 
 /** The exact today log path for a single-command verify (matches batch.ts:339). */
@@ -281,7 +290,57 @@ function logExcerptOf(v: VerifyResult): string {
  * Run the verify DAG. Assumes `steps` is NON-EMPTY (the caller always supplies
  * at least the synthetic single step). Returns a `PipelineResult`.
  */
+/**
+ * A pass aborted while it waited for the host slot. Shaped like a verify killed
+ * by the same abort (no exit code of its own, a signal, not timed out), so every
+ * caller's killed-verify handling applies unchanged.
+ */
+function abortedWhileWaitingStep(): PipelineStepResult {
+  const verify: VerifyResult = {
+    exitCode: 1,
+    signal: "SIGTERM",
+    stdout: "",
+    stderr:
+      "host-slot: the verify was cancelled while it waited for a host verify slot; nothing ran",
+    durationMs: 0,
+    timedOut: false,
+    logPath: "",
+  };
+  return {
+    stepId: SYNTHETIC_STEP_ID,
+    outcome: "fail",
+    durationMs: 0,
+    startedAtMs: Date.now(),
+    wallMs: 0,
+    waveIndex: 0,
+    cached: false,
+    treeSha: "",
+    stepConfigSha: "",
+    verify,
+  };
+}
+
 export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promise<PipelineResult> {
+  let hold;
+  try {
+    hold = await ctx.hostSlot.acquire({ signal: ctx.signal, liveness: ctx.liveness });
+  } catch (err) {
+    if (!(err instanceof HostSlotAbortedError)) throw err;
+    const step = abortedWhileWaitingStep();
+    return { outcome: "fail", failingStep: step, steps: [step] };
+  }
+  try {
+    return await runPipelineHeld(steps, ctx, (pid) => hold.trackChild(pid));
+  } finally {
+    hold.release();
+  }
+}
+
+async function runPipelineHeld(
+  steps: VerifyStep[],
+  ctx: PipelineCtx,
+  onSpawn: (pid: number) => void,
+): Promise<PipelineResult> {
   const isSyntheticSingle = steps.length === 1 && steps[0].id === SYNTHETIC_STEP_ID;
 
   const byId = new Map<string, VerifyStep>();
@@ -424,6 +483,7 @@ ${v.stderr}`
         logPath,
         signal: passController.signal,
         liveness: ctx.liveness,
+        onSpawn,
       });
       return enforceSuccessSentinel(v);
     };

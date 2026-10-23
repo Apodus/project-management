@@ -15,6 +15,7 @@
  * incident STORE, so open/list/resolve is a state machine rather than three
  * unrelated spies.
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -497,6 +498,7 @@ function depsFor(
     },
     gitRemote: GIT_REMOTE,
     defaultVerifyCommand: "echo verify-ok",
+    hostSlots: UNBOUNDED_HOST_SLOTS,
     verifyTimeoutSec: 30,
     // The observation site is guarded on projectId — an unconfigured caller
     // observes nothing at all.

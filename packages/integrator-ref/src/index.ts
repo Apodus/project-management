@@ -20,6 +20,14 @@ import { buildHeartbeat } from "./heartbeat.js";
 import { VERSION } from "./version.js";
 import { describeRunningBundle, versionWithBundle } from "./bundle-identity.js";
 import { watchStopFile } from "./stop-file.js";
+import {
+  commandIdentityProbe,
+  createHostSlots,
+  describeQueue,
+  readHostSlotsFile,
+  UNBOUNDED_HOST_SLOTS,
+  type HostSlots,
+} from "./host-slot.js";
 
 async function main(): Promise<void> {
   const program = new Command()
@@ -36,9 +44,44 @@ async function main(): Promise<void> {
       "--stop-file <path>",
       "Stop gracefully (as on SIGTERM) once this file exists; the file is left for the supervisor",
     )
+    .option("--lane <name>", "This lane's name on the host (labels its host-slot tickets)")
+    .option(
+      "--host-slots-file <path>",
+      "lanes.json whose `hostSlots` bounds concurrent verifies on this host (absent block = unbounded)",
+    )
+    .option(
+      "--host-slots-probe",
+      "Print the host-slot queue as this implementation reads it (liveness included) and exit",
+    )
     .parse(process.argv);
 
-  const args = program.opts() as CliArgs & { pollIntervalSec?: string; stopFile?: string };
+  const args = program.opts() as CliArgs & {
+    pollIntervalSec?: string;
+    stopFile?: string;
+    lane?: string;
+    hostSlotsFile?: string;
+    hostSlotsProbe?: boolean;
+  };
+
+  // Read-only queue dump (game_one's cross-implementation identity test drives
+  // this): no token, no PM, no side effects.
+  if (args.hostSlotsProbe) {
+    try {
+      if (!args.hostSlotsFile) throw new Error("--host-slots-probe needs --host-slots-file");
+      const hsc = readHostSlotsFile(args.hostSlotsFile);
+      if (!hsc) throw new Error(`${args.hostSlotsFile} declares no hostSlots`);
+      for (const line of await describeQueue(hsc, commandIdentityProbe(hsc.identityCommand))) {
+        process.stdout.write(`${line}\n`);
+      }
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(
+        `host-slots-probe: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(2);
+    }
+    return;
+  }
   // Phase 7.4 §3.2: the integrator's package version, reported on every
   // heartbeat. Sourced from the generated version.ts (single source of truth =
   // package.json), which is also what we pass to commander's .version() above.
@@ -140,6 +183,51 @@ async function main(): Promise<void> {
   const reclaim = await reclaimStrandedRequests(pmClient, cfg.projectId, cfg.resource, logger);
   if (reclaim.scanned > 0) {
     logger.info(reclaim, "Crash-recovery sweep complete");
+  }
+
+  // ── C4-P2: the host verify semaphore. ──
+  // Bounded only when the supervisor's lanes.json declares `hostSlots`. The
+  // identity probe is checked on THIS process first: a probe that cannot read a
+  // start time would make every holder "unreadable = live", and the first dead
+  // holder would then wedge every verify on the host, silently. Fail at boot.
+  let hostSlots: HostSlots = UNBOUNDED_HOST_SLOTS;
+  if (args.hostSlotsFile) {
+    try {
+      const hsc = readHostSlotsFile(args.hostSlotsFile);
+      if (hsc) {
+        const probe = commandIdentityProbe(hsc.identityCommand);
+        const selfId = (await probe([process.pid])).get(process.pid);
+        if (!selfId || !selfId.alive || selfId.ticks === null) {
+          throw new Error(
+            `hostSlots.identityCommand (${hsc.identityCommand.join(" ")}) cannot read this process's start time ` +
+              `(got ${JSON.stringify(selfId ?? null)}); without it a dead holder could never be told from a live one`,
+          );
+        }
+        hostSlots = createHostSlots({
+          config: hsc,
+          lane: args.lane ?? cfg.resource,
+          logger,
+          probe,
+          self: { pid: process.pid, startTicks: selfId.ticks },
+        });
+        logger.info(
+          { dir: hsc.dir, count: hsc.count, lane: args.lane ?? cfg.resource },
+          "host verify slots bound",
+        );
+      } else {
+        logger.info(
+          { file: args.hostSlotsFile },
+          "host verify slots: unbounded (no hostSlots declared)",
+        );
+      }
+    } catch (err) {
+      logger.fatal(
+        { err: err instanceof Error ? err.message : String(err) },
+        "Host slot configuration invalid",
+      );
+      process.exit(2);
+      return;
+    }
   }
 
   // ── Worktree pool + git-ops factory (phase 7.2). ──
@@ -472,7 +560,14 @@ async function main(): Promise<void> {
     pmClient
       .postHeartbeat(
         cfg.projectId,
-        buildHeartbeat({ resource: cfg.resource, pool, inFlight, version, laneHealth }),
+        buildHeartbeat({
+          resource: cfg.resource,
+          pool,
+          inFlight,
+          version,
+          laneHealth,
+          ...(hostSlots.bounded ? { hostSlots: hostSlots.snapshot() } : {}),
+        }),
       )
       .catch((e) => logger.warn(`heartbeat post failed: ${String(e)}`));
   };
@@ -517,6 +612,7 @@ async function main(): Promise<void> {
       defaultVerifyCommand: cfg.verifyCommand,
       verifyTimeoutSec: cfg.verifyTimeoutSec,
       verifySuccessSentinel: cfg.verifySuccessSentinel,
+      hostSlots,
       // Campaign 2026-08-04 §P1: seconds → milliseconds, converted exactly once
       // here. `0` disables the cancellation watcher entirely.
       verifyCancelPollMs: cfg.verifyCancelPollSec * 1000,

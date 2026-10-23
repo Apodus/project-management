@@ -11,6 +11,7 @@
  *
  * fileParallelism:false is already configured for this package.
  */
+import { UNBOUNDED_HOST_SLOTS } from "../src/host-slot.js";
 import { describe, expect, it } from "vitest";
 import type { GitOps, VerifyResult, RunVerifyOptions } from "../src/git-ops.js";
 import { runPipeline, type PipelineCtx } from "../src/verify-pipeline.js";
@@ -148,6 +149,7 @@ function ctxFor(gitOps: GitOps, overrides: Partial<PipelineCtx> = {}): PipelineC
     verifyTimeoutSec: 600,
     logsDir: "/logs",
     attemptId: "att-1",
+    hostSlot: UNBOUNDED_HOST_SLOTS.lease("req-test"),
     ...overrides,
   };
 }

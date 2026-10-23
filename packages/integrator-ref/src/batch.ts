@@ -15,6 +15,7 @@
  * paths the single-member case needs — no `verifyHandle`/`retryCount` (Step 5/8)
  * and no multi-member concurrency.
  */
+import type { HostSlots } from "./host-slot.js";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -253,6 +254,11 @@ export interface BatchDeps {
    * or absent leaves grading byte-identical to before.
    */
   verifySuccessSentinel?: string;
+  /**
+   * C4-P2: the host verify semaphore every verify of this lane runs under
+   * (`UNBOUNDED_HOST_SLOTS` when lanes.json declares no `hostSlots`).
+   */
+  hostSlots: HostSlots;
   gitRemote: string;
   gitMainBranch: string;
   /** Override the batch-id minter (tests). Defaults to a random UUID. */
@@ -2528,6 +2534,7 @@ async function runVerifyTask(
         cwd: wt.path,
         verifyTimeoutSec: deps.verifyTimeoutSec,
         successSentinel: deps.verifySuccessSentinel,
+        hostSlot: deps.hostSlots.lease(member.request.id),
         // The member-level signal (NOT passed to runVerify directly): runPipeline
         // mints a FRESH per-pass child from it each iteration, so a transient
         // retry's runPipeline call RE-RUNS rather than seeing a fired controller.
@@ -2883,6 +2890,7 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
         defaultVerifyCommand: deps.defaultVerifyCommand,
         verifyTimeoutSec: deps.verifyTimeoutSec,
         verifySuccessSentinel: deps.verifySuccessSentinel,
+        hostSlots: deps.hostSlots,
         innerLogsDir: groupLane.innerLogsDir,
         outerLogsDir: groupLane.outerLogsDir,
       },
@@ -2916,6 +2924,7 @@ export async function runGroupLaneOnce(deps: RunBatchLoopDeps): Promise<RunGroup
         defaultVerifyCommand: deps.defaultVerifyCommand,
         verifyTimeoutSec: deps.verifyTimeoutSec,
         verifySuccessSentinel: deps.verifySuccessSentinel,
+        hostSlots: deps.hostSlots,
         // Campaign 2026-08-15 §S1: the same two kill-seam knobs the single-repo
         // lane reads. One setting per project drives both lanes — an operator
         // configuring `verify_cancel_poll_sec` should not have to know whether a
