@@ -44,6 +44,13 @@ target_epic_id?, reason}` and `pm_transfer_task|epic|proposal`. The id, comments
   self-probes at startup, exit 2 on failure); dead holders are reclaimed and their recorded verify
   trees killed only on an identity re-read at kill time. Heartbeats carry `host_slots`.
   `--host-slots-probe` prints the queue. See `docs/integrator-deployment.md` sec. 11.2.
+- **integrator: a slot holds no nested repository its `HEAD` does not declare (C4-P3).** After every
+  reset, candidate checkout, verify-tree rebase and committed resolution the slot is swept of
+  nested repositories (working-tree checkouts and `.git/modules/<name>` gitdirs) that `HEAD` does
+  not declare as a gitlink, so a submodule retired by the candidate itself no longer survives into
+  its own verify. State-based, no exemption list, directory-entry walk with build trees pruned by
+  name; removals log `nested_repo_removed`, and `clean_keep` entries that went with a removed parent
+  are named. See `docs/integrator-deployment.md` §4.5.
 - **integrator: `--stop-file <path>`.** The daemon stops gracefully (as on SIGTERM) once the file
   exists and leaves it for the supervisor. The generated supervisor passes the lane's
   `lanes/<lane>/stop.flag`, so a stop flag stops a RUNNING daemon -- before, it was read only

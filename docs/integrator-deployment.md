@@ -190,6 +190,18 @@ Between every attempt the integrator wipes the worktree to a pristine state, inc
 
 **Host-side alternative (often better).** For a fixed input the verify build needs but that is not part of the repo — e.g. a `libclang.dll` a Rust build links against — the cleaner option is to place that artifact **outside every worktree** and reference it by absolute path or via `PATH`. Because it never lives inside a worktree, `git clean -fdx` can never touch it and you don't need a `clean_keep` entry at all. Use `clean_keep` when the artifact _must_ sit inside the tree; use the host-side/PATH approach when it can live anywhere.
 
+### 4.5 Nested repositories the commit does not declare (the sweep)
+
+A pooled slot outlives the commits it verifies. When a candidate retires a submodule (the engine-independence cutover deletes the `rynx` and `tools/rynx-treegen` gitlinks in the candidate itself), the slot still holds that submodule's checkout and its `.git/modules/<name>` gitdir: `reset --hard` and `clean -fdx` leave a nested repository alone, and a `clean_keep` entry under it (`rynx/build`) keeps the directory alive. Verify would then build against a tree the commit no longer contains.
+
+The integrator therefore sweeps the **state**, not a transition: after every reset (`resetForAttempt`), after every checkout of a candidate, after the rebase that produces the tree to verify, and after a committed conflict resolution, every nested repository on disk that `HEAD` does not declare (no `160000` entry, and no `.gitmodules` name mapping to one) is removed. A verify is never swept: what it creates for itself stays.
+
+- A **declared** submodule is never touched. A found repository over **tracked** files loses only its `.git`.
+- There is no exemption list: a repository under `engines/` or any other name is removed like the rest.
+- The walk reads directory entries only and does not enter `build`, `build_temp`, `prof`, `logs`, `external`, `node_modules` or `generate/build`; a repository inside one of those is not found (documented limit).
+- Each removal logs `nested_repo_removed` (`path`, `kind`, `reason`, `headSha`); a `clean_keep` entry that went with a removed parent logs `clean_keep entry '<p>' dropped: parent nested repo '<parent>' undeclared at HEAD`. A sweep over 5 s logs `nested_repo_sweep_slow`.
+- Uncertainty removes nothing (not a git repository, unborn `HEAD`); a failed removal throws so the attempt does not verify a retired tree.
+
 ---
 
 ## 5. Worktree setup (the pool)
