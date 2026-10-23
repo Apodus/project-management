@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  assertQueueWritable,
   commandIdentityProbe,
   createHostSlots,
   describeQueue,
@@ -237,9 +238,31 @@ describe("host slots: liveness and reclaim", () => {
       ],
     });
     const killed: number[] = [];
-    const hs = slots(100, table, 1, (pid) => killed.push(pid));
+    const hs = slots(100, table, 1, async (pid) => {
+      killed.push(pid);
+      table.delete(pid); // the kill worked: the process is gone
+    });
     (await hs.lease("r").acquire()).release();
     expect(killed).toEqual([501]);
+    expect(ticketDocs()[0].state).toBe("reclaimed");
+  });
+
+  it("an orphan tree that SURVIVES its kill keeps the slot: no second verify starts beside it", async () => {
+    const table = new Map<number, ProcessIdentity>([[501, { alive: true, ticks: "5010" }]]);
+    plantTicket(1, { pid: 42, children: [{ pid: 501, startTicks: "5010" }] });
+    const killed: number[] = [];
+    const hs = slots(100, table, 1, async (pid) => {
+      killed.push(pid); // taskkill ran, but the process is still the same one
+    });
+    const p = hs.lease("r").acquire();
+    expect(await settled(p)).toBe(false);
+    expect(killed.length).toBeGreaterThan(0);
+    expect(ticketDocs()[0].state).toBe("active");
+    expect(hs.snapshot()[0]).toMatchObject({ state: "waiting", position: 1, holder_pid: 42 });
+    // Once it is really gone, the next poll reclaims and acquires.
+    table.delete(501);
+    (await p).release();
+    expect(ticketDocs()[0].state).toBe("reclaimed");
   });
 
   it("a child recorded with an unreadable identity is never killed", async () => {
@@ -368,6 +391,46 @@ describe("runPipeline under the host slot", () => {
     expect(ticketDocs()[0].state).toBe("released");
   });
 
+  it("a queue that cannot be written is INFRA: a spawn-failure-shaped (transient) result, nothing ran", async () => {
+    const blocker = path.join(dir, "not-a-dir");
+    writeFileSync(blocker, "");
+    const table = new Map<number, ProcessIdentity>();
+    table.set(100, { alive: true, ticks: "100000" });
+    const hs = createHostSlots({
+      config: { dir: path.join(blocker, "slots"), count: 1, identityCommand: ["unused"] },
+      lane: "lane-100",
+      logger: quiet,
+      probe: stubProbe(table),
+      pollMs: 10,
+      self: { pid: 100, startTicks: "100000" },
+    });
+    let ran = false;
+    const gitOps = {
+      runVerify: async () => {
+        ran = true;
+        return {
+          exitCode: 0,
+          signal: null,
+          stdout: "",
+          stderr: "",
+          durationMs: 1,
+          timedOut: false,
+          logPath: "",
+        };
+      },
+      readLogTail: async () => "",
+    } as unknown as GitOps;
+    const res = await runPipeline(steps, {
+      ...ctxBase,
+      logsDir: dir,
+      gitOps,
+      hostSlot: hs.lease("r"),
+    });
+    expect(ran).toBe(false);
+    expect(res.outcome).toBe("fail");
+    expect(res.failingStep?.verify.spawnError).toMatch(/host verify-slot queue failed/);
+  });
+
   it("a pass cancelled while waiting runs NOTHING and reads as a killed verify", async () => {
     const table = new Map<number, ProcessIdentity>([[42, { alive: true, ticks: "1" }]]);
     plantTicket(1, { pid: 42 });
@@ -407,6 +470,14 @@ describe("runPipeline under the host slot", () => {
 });
 
 describe("host slots: config and the identity probe", () => {
+  it("assertQueueWritable: the boot check creates the queue and refuses an unusable dir", () => {
+    assertQueueWritable(dir);
+    expect(readdirSync(path.join(dir, "queue"))).toEqual([]);
+    const blocker = path.join(dir, "file");
+    writeFileSync(blocker, "");
+    expect(() => assertQueueWritable(path.join(blocker, "x"))).toThrow();
+  });
+
   it("parseHostSlotConfig refuses what would silently give two lanes two semaphores", () => {
     const ok = {
       dir: "D:\\pm-host-slots",

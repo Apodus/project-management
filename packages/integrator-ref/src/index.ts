@@ -24,6 +24,7 @@ import {
   commandIdentityProbe,
   createHostSlots,
   describeQueue,
+  assertQueueWritable,
   readHostSlotsFile,
   UNBOUNDED_HOST_SLOTS,
   type HostSlots,
@@ -203,6 +204,7 @@ async function main(): Promise<void> {
               `(got ${JSON.stringify(selfId ?? null)}); without it a dead holder could never be told from a live one`,
           );
         }
+        assertQueueWritable(hsc.dir);
         hostSlots = createHostSlots({
           config: hsc,
           lane: args.lane ?? cfg.resource,

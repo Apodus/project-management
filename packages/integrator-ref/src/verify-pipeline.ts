@@ -320,13 +320,25 @@ function abortedWhileWaitingStep(): PipelineStepResult {
   };
 }
 
+/** The host-slot queue could not be used (disk, permissions): infra, retried like a spawn failure. */
+function hostSlotInfraStep(err: unknown): PipelineStepResult {
+  const message = `host-slot: the host verify-slot queue failed: ${err instanceof Error ? err.message : String(err)}`;
+  const step = abortedWhileWaitingStep();
+  return {
+    ...step,
+    verify: { ...step.verify, exitCode: 127, signal: null, stderr: message, spawnError: message },
+  };
+}
+
 export async function runPipeline(steps: VerifyStep[], ctx: PipelineCtx): Promise<PipelineResult> {
   let hold;
   try {
     hold = await ctx.hostSlot.acquire({ signal: ctx.signal, liveness: ctx.liveness });
   } catch (err) {
-    if (!(err instanceof HostSlotAbortedError)) throw err;
-    const step = abortedWhileWaitingStep();
+    // An I/O failure of the queue itself is INFRA, never the request's fault:
+    // shaped as a spawn failure, which the retry classifier treats as transient.
+    const step =
+      err instanceof HostSlotAbortedError ? abortedWhileWaitingStep() : hostSlotInfraStep(err);
     return { outcome: "fail", failingStep: step, steps: [step] };
   }
   try {

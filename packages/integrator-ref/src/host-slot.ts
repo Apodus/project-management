@@ -354,6 +354,26 @@ export class TicketStore {
   }
 }
 
+/** `taskkill /T /F` (POSIX: SIGKILL to the group), resolved when the kill has run. */
+export function killTreeAndWait(pid: number): Promise<void> {
+  if (process.platform !== "win32") {
+    killTree(pid, "SIGKILL");
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, () => resolve());
+  });
+}
+
+/** Boot check: the queue directory exists and takes a write. Throws with the reason. */
+export function assertQueueWritable(dir: string): void {
+  const queue = path.join(dir, "queue");
+  mkdirSync(queue, { recursive: true });
+  const probeFile = path.join(queue, `.boot-${process.pid}-${Date.now()}.tmp`);
+  writeFileSync(probeFile, "");
+  unlinkSync(probeFile);
+}
+
 // ── The semaphore ─────────────────────────────────────────────────────────
 
 export interface CreateHostSlotsOptions {
@@ -364,8 +384,8 @@ export interface CreateHostSlotsOptions {
   pollMs?: number;
   /** This process's identity (from the probe at startup). */
   self: { pid: number; startTicks: string | null };
-  /** Kill seam (tests); default taskkill /T /F via killTree. */
-  kill?: (pid: number) => void;
+  /** Kill seam (tests); default: `taskkill /T /F`, AWAITED (killTreeAndWait). */
+  kill?: (pid: number) => Promise<void>;
 }
 
 interface Waiter {
@@ -417,13 +437,21 @@ export function createHostSlots(opts: CreateHostSlotsOptions): HostSlots {
   const { config, lane, logger, self } = opts;
   const probe = opts.probe ?? commandIdentityProbe(config.identityCommand);
   const pollMs = opts.pollMs ?? DEFAULT_POLL_MS;
-  const kill = opts.kill ?? ((pid: number) => killTree(pid, "SIGKILL"));
+  const kill = opts.kill ?? killTreeAndWait;
+  const warnedUnparsable = new Set<number>();
   const store = new TicketStore(config.dir);
   const waiters = new Map<string, Waiter>();
 
-  const reclaim = async (e: TicketEntry): Promise<void> => {
+  /**
+   * Reclaim a dead holder's ticket. Returns false -- the ticket stays ACTIVE and
+   * keeps counting as ahead -- while any recorded verify shell is still the same
+   * live process after its kill: the slot is never handed on while the old build
+   * can still be running. Two verifies never overlap, not even for a moment.
+   */
+  const reclaim = async (e: TicketEntry): Promise<boolean> => {
     const doc = e.doc;
-    if (!doc) return;
+    if (!doc) return false;
+    const killed: { pid: number; startTicks: string }[] = [];
     for (const child of doc.children) {
       // Re-read the identity NOW, immediately before the kill: the pid may have
       // been recycled since the ticket was written. Only an exact match dies.
@@ -439,7 +467,8 @@ export function createHostSlots(opts: CreateHostSlotsOptions): HostSlots {
           { seq: e.seq, lane: doc.lane, childPid: child.pid },
           "host-slot: killing the orphaned verify tree of a dead holder",
         );
-        kill(child.pid);
+        await kill(child.pid);
+        killed.push({ pid: child.pid, startTicks: child.startTicks });
       } else {
         logger.info(
           {
@@ -453,8 +482,22 @@ export function createHostSlots(opts: CreateHostSlotsOptions): HostSlots {
         );
       }
     }
+    if (killed.length > 0) {
+      const after = await probe(killed.map((k) => k.pid));
+      const survivors = killed.filter((k) => {
+        const id = after.get(k.pid);
+        return !id || (id.alive && (id.ticks === null || id.ticks === k.startTicks));
+      });
+      if (survivors.length > 0) {
+        logger.warn(
+          { seq: e.seq, lane: doc.lane, survivors: survivors.map((k) => k.pid) },
+          "host-slot: an orphaned verify tree survived its kill; the dead holder keeps the slot until it is gone",
+        );
+        return false;
+      }
+    }
     const fresh = store.list().find((x) => x.seq === e.seq);
-    if (!fresh?.doc || fresh.doc.state !== "active") return; // another contender reclaimed it first
+    if (!fresh?.doc || fresh.doc.state !== "active") return true; // another contender reclaimed it first
     store.update(fresh, {
       ...fresh.doc,
       state: "reclaimed",
@@ -465,6 +508,7 @@ export function createHostSlots(opts: CreateHostSlotsOptions): HostSlots {
       { seq: e.seq, lane: doc.lane, pid: doc.pid, requestId: doc.requestId },
       "host-slot: reclaimed the ticket of a dead holder (pid gone or recycled)",
     );
+    return true;
   };
 
   const releaseEntry = (entry: TicketEntry, requestId: string): void => {
@@ -516,7 +560,16 @@ export function createHostSlots(opts: CreateHostSlotsOptions): HostSlots {
       for (;;) {
         if (signal.aborted) throw new HostSlotAbortedError();
         const { entries, live, dead } = await readQueue(store, probe, entry.seq, self.pid);
-        for (const d of dead) await reclaim(d);
+        for (const d of dead) if (!(await reclaim(d))) live.add(d.seq);
+        for (const e of entries) {
+          if (e.doc === null && e.seq < entry.seq && !warnedUnparsable.has(e.seq)) {
+            warnedUnparsable.add(e.seq);
+            logger.error(
+              { seq: e.seq, file: e.file },
+              "host-slot: an UNPARSABLE ticket counts as a live holder forever; inspect and remove it by hand",
+            );
+          }
+        }
         const ahead = entries.filter((e) => e.seq < entry.seq && live.has(e.seq));
         w.position = ahead.length;
         w.holderLane = ahead[0]?.doc?.lane ?? null;
@@ -557,7 +610,8 @@ export function createHostSlots(opts: CreateHostSlotsOptions): HostSlots {
         position: w.position,
         holder_lane: w.state === "waiting" ? w.holderLane : null,
         holder_pid: w.state === "waiting" ? w.holderPid : null,
-        waited_ms: (w.heldAt ?? Date.now()) - w.startedAt,
+        // Clamped: a wall-clock step backwards must not produce a negative wait.
+        waited_ms: Math.max(0, (w.heldAt ?? Date.now()) - w.startedAt),
       })),
     lease(requestId: string): HostSlotLease {
       // Acquirers of one lease (a group's inner + outer pipelines) share ONE
