@@ -12,6 +12,12 @@ release line, so a client can cite a single version for the system they run.
 
 ### Changed
 
+- **server: no merge group of any form without `linked_repos` (C4-P3b).** Creating a group by
+  `members[]`, `member_request_ids[]`, `synthesize_outer` or `synthesize_inner` on a project whose
+  `settings.integrator.linked_repos` is absent or empty is now 400 `GROUPS_REQUIRE_LINKED_REPOS`
+  ("project <name> has no linked_repos; submit pm_request_merge per repo in its own project"),
+  from one gate in front of the form switch. Previously only the synthesize forms were refused.
+  **Breaking** for any project that grouped requests without declaring linked repos.
 - **distribute: N integrator lanes on one host from ONE generated supervisor.** Lanes are a host
   property, declared once at the top level of `distribute.config.json` (`lanes: [{ name, projectId,
 resource?, pmUrl?, env? }]`); every target with an `integratorDest` gets the same generated

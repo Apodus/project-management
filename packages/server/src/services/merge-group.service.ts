@@ -441,6 +441,9 @@ export function classifyCreateForm(params: CreateGroupParams): CreateForm {
  */
 export function createGroup(params: CreateGroupParams): GroupWithMembers {
   const form = classifyCreateForm(params);
+  // C4-P3b: ONE gate in front of every form, so a form added to the switch below
+  // cannot skip it.
+  assertProjectHasLinkedRepos(params.projectId);
   switch (form.kind) {
     case "bind":
       return createGroupFromIds(params);
@@ -680,26 +683,56 @@ function createGroupOuterOnly(
 }
 
 /**
- * Topology gate for the synthesize forms (inner-only and outer-only): the
- * project must declare EXACTLY one inner and one outer repo in
- * settings.integrator.linked_repos, else the integrator cannot know which
- * gitlink to bump. Settings are read tolerantly
- * as plain JSON (the metrics.service idiom) — a missing/odd shape counts as
- * zero declared repos, never a crash.
+ * A project's declared `settings.integrator.linked_repos`, read tolerantly as
+ * plain JSON (the metrics.service idiom) — a missing/odd shape counts as zero
+ * declared repos, never a crash. Also returns the project name for messages.
  */
-function assertInnerOuterTopology(projectId: string, formName: string): void {
+function readLinkedRepos(projectId: string): {
+  projectName: string;
+  linkedRepos: Array<{ role?: unknown }>;
+} {
   const db = getDb();
   const row = db
-    .select({ settings: projects.settings })
+    .select({ name: projects.name, settings: projects.settings })
     .from(projects)
     .where(eq(projects.id, projectId))
     .get();
-  const settings = (row?.settings ?? null) as {
+  if (!row) throw new AppError(404, "NOT_FOUND", `Project not found: ${projectId}`);
+  const settings = (row.settings ?? null) as {
     integrator?: { linked_repos?: unknown };
   } | null;
   const linkedRepos = Array.isArray(settings?.integrator?.linked_repos)
     ? (settings!.integrator!.linked_repos as Array<{ role?: unknown }>)
     : [];
+  return { projectName: row.name, linkedRepos };
+}
+
+/**
+ * C4-P3b — no merge group of ANY form on a project that declares no
+ * `settings.integrator.linked_repos`. A group exists to land one change across
+ * the repos the project links; with none linked a group has nothing to bind and
+ * the per-repo path (`pm_request_merge` in the repo's own project) is the only
+ * correct one. Called once from `createGroup`, before the form switch.
+ */
+function assertProjectHasLinkedRepos(projectId: string): void {
+  const { projectName, linkedRepos } = readLinkedRepos(projectId);
+  if (linkedRepos.length === 0) {
+    throw new AppError(
+      400,
+      "GROUPS_REQUIRE_LINKED_REPOS",
+      `project ${projectName} has no linked_repos; submit pm_request_merge per repo in its own project`,
+    );
+  }
+}
+
+/**
+ * Topology gate for the synthesize forms (inner-only and outer-only): the
+ * project must declare EXACTLY one inner and one outer repo in
+ * settings.integrator.linked_repos, else the integrator cannot know which
+ * gitlink to bump.
+ */
+function assertInnerOuterTopology(projectId: string, formName: string): void {
+  const { linkedRepos } = readLinkedRepos(projectId);
   const innerCount = linkedRepos.filter((r) => r?.role === "inner").length;
   const outerCount = linkedRepos.filter((r) => r?.role === "outer").length;
   if (innerCount !== 1 || outerCount !== 1) {

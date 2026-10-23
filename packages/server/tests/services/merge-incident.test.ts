@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import {
   createTestAiAgent,
   createTestApp,
-  createTestProject,
+  createTestLinkedProject,
   createTestTask,
   createTestUser,
   type TestApp,
@@ -83,7 +83,7 @@ describe("merge-incident service", () => {
   // ─── openIncident ─────────────────────────────────────────────────
   describe("openIncident", () => {
     it("inserts an open incident row with all columns set", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const { groupId, innerRequestId } = makeGroup(project, submitter);
@@ -113,7 +113,7 @@ describe("merge-incident service", () => {
     });
 
     it("posts a merge_incident comment on taskId (same txn) with metadata", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const task = createTestTask(testApp.db, { projectId: project.id });
@@ -146,7 +146,7 @@ describe("merge-incident service", () => {
     });
 
     it("emits MERGE_INCIDENT_OPENED exactly once", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_OPENED, listener);
@@ -161,7 +161,7 @@ describe("merge-incident service", () => {
     });
 
     it("creates the row + emits but posts NO comment when taskId is null", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const listener = vi.fn();
       getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_OPENED, listener);
@@ -175,7 +175,7 @@ describe("merge-incident service", () => {
     });
 
     it("non-ai_agent → 403 FORBIDDEN", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
       expect(() => openInc(baseParams(project.id), HUMAN(admin.id, "admin"))).toThrowError(
         expect.objectContaining({ statusCode: 403, code: "FORBIDDEN" }),
@@ -190,7 +190,7 @@ describe("merge-incident service", () => {
     });
 
     it("emit-after-commit: listener reads the persisted open incident", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       let observedState: string | undefined;
       getEventBus().on(EVENT_NAMES.MERGE_INCIDENT_OPENED, (p) => {
@@ -204,7 +204,7 @@ describe("merge-incident service", () => {
   // ─── openIncident — idempotency (a blocked lane re-gates every pass) ─
   describe("openIncident dedup", () => {
     it("reuses the OPEN row: one row, created=false, one event, one comment", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const task = createTestTask(testApp.db, { projectId: project.id });
       const listener = vi.fn();
@@ -227,7 +227,7 @@ describe("merge-incident service", () => {
     });
 
     it("dedups two lane-scoped opens with groupId null (the shape a gate uses)", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const params = baseParams(project.id, { type: "dangling_gitlink", groupId: null });
       svc.openIncident(params, AGENT(integrator.user.id));
@@ -236,7 +236,7 @@ describe("merge-incident service", () => {
     });
 
     it("does NOT dedup across groupId — two groups orphaning one SHA stay two", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const gA = makeGroup(project, submitter).groupId;
@@ -247,7 +247,7 @@ describe("merge-incident service", () => {
     });
 
     it("does NOT dedup across orphanedSha or across type", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       openInc(baseParams(project.id, { orphanedSha: "Ri1" }), AGENT(integrator.user.id));
       openInc(baseParams(project.id, { orphanedSha: "Ri2" }), AGENT(integrator.user.id));
@@ -259,7 +259,7 @@ describe("merge-incident service", () => {
     });
 
     it("dedup is OPEN-only: a recurrence after a cure opens a FRESH incident", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const params = baseParams(project.id, { type: "dangling_gitlink" });
       const first = svc.openIncident(params, AGENT(integrator.user.id));
@@ -272,7 +272,7 @@ describe("merge-incident service", () => {
     });
 
     it("a dangling_gitlink comment states the outer→inner direction, not the orphan one", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const task = createTestTask(testApp.db, { projectId: project.id });
 
@@ -300,7 +300,7 @@ describe("merge-incident service", () => {
   // ─── getById ──────────────────────────────────────────────────────
   describe("getById", () => {
     it("returns the view incl resolution null while open; 404 for missing", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const out = openInc(baseParams(project.id), AGENT(integrator.user.id));
       const got = svc.getById(out.id);
@@ -316,7 +316,7 @@ describe("merge-incident service", () => {
   // ─── list ─────────────────────────────────────────────────────────
   describe("list", () => {
     it("recovery query: state=open + type=orphaned_inner, oldest first", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
 
       // Distinct SHAs: identical params would be DEDUPED into one open row.
@@ -343,7 +343,7 @@ describe("merge-incident service", () => {
     });
 
     it("orders >=2 open incidents by openedAt asc", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const ids: string[] = [];
       for (let i = 0; i < 3; i++) {
@@ -364,7 +364,7 @@ describe("merge-incident service", () => {
     });
 
     it("filters by groupId", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const gA = makeGroup(project, submitter).groupId;
@@ -376,7 +376,7 @@ describe("merge-incident service", () => {
     });
 
     it("filters by state=auto_resolved", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const a = openInc(
         baseParams(project.id, { orphanedSha: "Ri201" }),
@@ -402,7 +402,7 @@ describe("merge-incident service", () => {
   // ─── resolve (auto) ───────────────────────────────────────────────
   describe("resolve auto_rollforward", () => {
     it("open → auto_resolved; resolution recorded; emits AUTO_RESOLVED; ai_agent allowed", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const groupId = makeGroup(project, submitter).groupId;
@@ -434,7 +434,7 @@ describe("merge-incident service", () => {
     });
 
     it("emit-after-commit: listener reads the persisted auto_resolved state", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const inc = openInc(baseParams(project.id), AGENT(integrator.user.id));
       let observed: string | undefined;
@@ -467,7 +467,7 @@ describe("merge-incident service", () => {
     }
 
     it("terminates at auto_resolved, ai_agent allowed, note recorded, emits AUTO_RESOLVED", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const inc = openDangling(project, integrator.user.id, null);
       const listener = vi.fn();
@@ -489,7 +489,7 @@ describe("merge-incident service", () => {
     });
 
     it("a human admin CANNOT auto_observed-resolve → 403 (same gate as rollforward)", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
       const inc = openDangling(project, integrator.user.id, null);
@@ -499,7 +499,7 @@ describe("merge-incident service", () => {
     });
 
     it("second auto_observed is an idempotent noop; a later human resolve still 409s", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
       const inc = openDangling(project, integrator.user.id, null);
@@ -521,7 +521,7 @@ describe("merge-incident service", () => {
     });
 
     it("the resolve comment names the incident and does NOT claim a gitlink was moved", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const task = createTestTask(testApp.db, { projectId: project.id });
       const inc = openDangling(project, integrator.user.id, task.id);
@@ -546,7 +546,7 @@ describe("merge-incident service", () => {
   // ─── resolve (human) ──────────────────────────────────────────────
   describe("resolve human", () => {
     it("open → human_resolved; resolution recorded; emits HUMAN_RESOLVED; admin allowed", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const submitter = createTestUser(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
@@ -574,7 +574,7 @@ describe("merge-incident service", () => {
   // ─── illegal / idempotent ─────────────────────────────────────────
   describe("transitions: idempotency + cross-terminal", () => {
     it("second resolve(auto) on auto_resolved → idempotent noop, no 2nd event", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const inc = openInc(baseParams(project.id), AGENT(integrator.user.id));
       svc.resolve(
@@ -596,7 +596,7 @@ describe("merge-incident service", () => {
     });
 
     it("resolve(human) on auto_resolved → 409 INVALID_TRANSITION (cross-terminal)", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
       const inc = openInc(baseParams(project.id), AGENT(integrator.user.id));
@@ -614,7 +614,7 @@ describe("merge-incident service", () => {
   // ─── authz split ──────────────────────────────────────────────────
   describe("resolve authz split (auto=ai_agent, human=admin)", () => {
     it("human admin CANNOT auto-resolve → 403", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const admin = createTestUser(testApp.db, { role: "admin" });
       const inc = openInc(baseParams(project.id), AGENT(integrator.user.id));
@@ -628,7 +628,7 @@ describe("merge-incident service", () => {
     });
 
     it("ai_agent CANNOT human-resolve → 403", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const inc = openInc(baseParams(project.id), AGENT(integrator.user.id));
       expect(() =>
@@ -637,7 +637,7 @@ describe("merge-incident service", () => {
     });
 
     it("plain member CANNOT human-resolve → 403", () => {
-      const project = createTestProject(testApp.db);
+      const project = createTestLinkedProject(testApp.db);
       const integrator = createTestAiAgent(testApp.db);
       const member = createTestUser(testApp.db, { role: "member" });
       const inc = openInc(baseParams(project.id), AGENT(integrator.user.id));

@@ -239,6 +239,28 @@ export function createTestProject(
   };
 }
 
+/**
+ * The minimal valid cross-repo topology: exactly one inner + one outer repo.
+ * Merge groups of ANY form are refused (400 GROUPS_REQUIRE_LINKED_REPOS) on a
+ * project without linked_repos, so every test that creates a group needs it.
+ */
+export const LINKED_REPOS_SETTINGS = {
+  integrator: {
+    linked_repos: [
+      { name: "rynx", path: "../rynx", role: "inner" },
+      { name: "game", path: ".", role: "outer", gitlink_path: "rynx" },
+    ],
+  },
+};
+
+/** A project that declares {@link LINKED_REPOS_SETTINGS} unless `settings` is overridden. */
+export function createTestLinkedProject(
+  db: AppDatabase,
+  overrides: Parameters<typeof createTestProject>[1] = {},
+): TestProject {
+  return createTestProject(db, { settings: LINKED_REPOS_SETTINGS, ...overrides });
+}
+
 export function createTestProposal(
   db: AppDatabase,
   overrides: Partial<{
