@@ -3,6 +3,7 @@ import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
 import { applyGitLocalPolicy } from "./git-policy.js";
 import type { Logger } from "./logger.js";
+import { sweepUndeclaredNestedRepos, type NestedRepoSweepResult } from "./nested-repo-sweep.js";
 
 export interface Worktree {
   readonly path: string;
@@ -10,6 +11,8 @@ export interface Worktree {
   readonly git: SimpleGit;
   ensureExists(): Promise<void>;
   resetForAttempt(): Promise<void>;
+  /** The sweep the last resetForAttempt ran (C4-P3), for the attempt's phase detail. Absent before the first reset. */
+  readonly lastNestedSweep?: NestedRepoSweepResult | null;
   detectCorruption(): Promise<boolean>;
   repair(): Promise<void>;
 }
@@ -112,6 +115,7 @@ export function createWorktree(opts: WorktreeOptions): Worktree {
   // after the path exists (post-clone). Until then, callers must not touch
   // `git`; the public flow always calls ensureExists() first.
   let git: SimpleGit | null = null;
+  let lastNestedSweep: NestedRepoSweepResult | null = null;
 
   function rebind(): void {
     git = simpleGit(path.normalize(wtPath));
@@ -179,6 +183,14 @@ export function createWorktree(opts: WorktreeOptions): Worktree {
     for (const p of opts.gitlinkPurgePaths ?? []) {
       await purgeStaleGitlinkOverlay(g, wtPath, p);
     }
+    // C4-P3. Nothing above removes a nested repository HEAD does not declare: a
+    // retired submodule's checkout survives `reset --hard` and `clean -fdx`, and
+    // every `clean_keep` entry under it keeps the directory alive. Sweep the STATE.
+    lastNestedSweep = await sweepUndeclaredNestedRepos({
+      git: g,
+      cleanKeep: opts.cleanKeep,
+      logger: opts.logger?.child({ worktree: wtPath }),
+    });
   }
 
   async function detectCorruption(): Promise<boolean> {
@@ -207,6 +219,9 @@ export function createWorktree(opts: WorktreeOptions): Worktree {
     },
     ensureExists,
     resetForAttempt,
+    get lastNestedSweep(): NestedRepoSweepResult | null {
+      return lastNestedSweep;
+    },
     detectCorruption,
     repair,
   };

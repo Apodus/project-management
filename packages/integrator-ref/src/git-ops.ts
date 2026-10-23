@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
 import { killTree } from "./kill-tree.js";
+import type { Logger } from "./logger.js";
+import { sweepUndeclaredNestedRepos } from "./nested-repo-sweep.js";
 
 async function pathExistsLocal(p: string): Promise<boolean> {
   try {
@@ -558,6 +560,16 @@ export interface GitOpsOptions {
    * bare name is not safe in a long-lived pool clone. Defaults to "origin".
    */
   gitRemote?: string;
+  /**
+   * C4-P3. After every operation that moves the slot's HEAD to a candidate
+   * (checkout, the rebase that produces the tree to verify, a committed
+   * resolution) the slot is swept of nested repositories HEAD does not declare
+   * (nested-repo-sweep.ts). `cleanKeep` only feeds the "clean_keep entry dropped"
+   * log line; `logger` receives `nested_repo_removed`. Both optional: absent, the
+   * sweep still runs and removes, it just says nothing.
+   */
+  logger?: Logger;
+  cleanKeep?: readonly string[];
 }
 
 const DEFAULT_MAX_BUFFER = 1024 * 1024; // 1 MiB
@@ -969,8 +981,18 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     await git.raw(["fetch", fromPath, sha]);
   }
 
+  /**
+   * C4-P3. Remove every nested repository the slot holds that its HEAD does not
+   * declare. Called AFTER each operation that settles HEAD on a tree a verify may
+   * follow, never inside a verify: a verify may legitimately create what it needs.
+   */
+  async function sweepNestedRepos(): Promise<void> {
+    await sweepUndeclaredNestedRepos({ git, cleanKeep: opts.cleanKeep, logger: opts.logger });
+  }
+
   async function checkout(ref: string): Promise<void> {
     await git.checkout(ref);
+    await sweepNestedRepos();
   }
 
   /**
@@ -1045,6 +1067,8 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
     try {
       await git.raw([...COMMIT_IDENTITY_ARGS, "rebase", base]);
       const treeSha = (await git.revparse(["HEAD"])).trim();
+      // The tree a verify will follow: the retired submodule may only now stop being declared.
+      await sweepNestedRepos();
       return { ok: true, treeSha, checkedOutSha: checkedOut };
     } catch (err) {
       let conflictingFiles: string[] = [];
@@ -1062,6 +1086,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       } catch {
         /* ignore — abort may itself fail on a corrupt state */
       }
+      await sweepNestedRepos();
       return { ok: false, conflictingFiles, stderr: errText(err), checkedOutSha: checkedOut };
     }
   }
@@ -1127,6 +1152,7 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
       await git.raw([...COMMIT_IDENTITY_ARGS, "rebase", baseSha]);
       // No conflict on replay (main moved so the collision is gone). The rebase
       // already completed; report an empty conflict set.
+      await sweepNestedRepos();
       return { conflictingFiles: [] };
     } catch {
       // Expected path: the rebase halted on a textual conflict. The markers +
@@ -1168,6 +1194,8 @@ export function createGitOps(git: SimpleGit, opts: GitOpsOptions = {}): GitOps {
         { ...process.env, GIT_EDITOR: "true" },
       );
     }
+    // The resolved tree is what a verify follows next.
+    await sweepNestedRepos();
     return (await git.revparse(["HEAD"])).trim();
   }
 
