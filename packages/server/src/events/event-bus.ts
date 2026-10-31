@@ -155,6 +155,13 @@ export const EVENT_NAMES = {
   MERGE_GROUP_MEMBER_LANDED: "merge.group.member_landed",
   MERGE_GROUP_LANDED: "merge.group.landed",
   MERGE_GROUP_REJECTED: "merge.group.rejected",
+  // A whole-group re-queue (integrating → forming) emitted by resetGroup: a
+  // land-time drift / inner push race / integrator-restart reclaim. Distinct
+  // from MERGE_GROUP_STARTED so the SECOND "Integrating group" line for the same
+  // group id is explained rather than looking like a duplicate. The group-level
+  // sibling of MERGE_REQUEST_REQUEUED. Carries `reason` + `memberCount`.
+  // onAll auto-forwards it to the SSE stream.
+  MERGE_GROUP_REQUEUED: "merge.group.requeued",
 
   // Merge incident events (Phase 7.3 — PM-owned, emitted by merge-incident.service)
   MERGE_INCIDENT_OPENED: "merge.incident.opened",

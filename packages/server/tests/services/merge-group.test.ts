@@ -1769,6 +1769,38 @@ describe("merge-group service", () => {
       expect(out.state).toBe("forming");
     });
 
+    it("emits MERGE_GROUP_REQUEUED with the reason — so the second pickup is explained", () => {
+      const { g, integrator } = setupIntegrating();
+      const listener = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_GROUP_REQUEUED, listener);
+
+      svc.resetGroup(g.id, AGENT(integrator.user.id), {
+        reason: "live main drifted before land; re-integrating against the new main",
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      const p = listener.mock.calls[0]![0];
+      expect(p.entityType).toBe("merge_group");
+      expect(p.entityId).toBe(g.id);
+      expect(p.entity.groupId).toBe(g.id);
+      expect(p.entity.reason).toBe(
+        "live main drifted before land; re-integrating against the new main",
+      );
+      expect(p.entity.memberCount).toBe(2);
+      expect(p.entity.state).toBe("forming");
+    });
+
+    it("a no-op reset (already forming) emits nothing — no phantom re-queue line", () => {
+      const { g, integrator } = setupIntegrating();
+      svc.resetGroup(g.id, AGENT(integrator.user.id));
+      const listener = vi.fn();
+      getEventBus().on(EVENT_NAMES.MERGE_GROUP_REQUEUED, listener);
+
+      svc.resetGroup(g.id, AGENT(integrator.user.id));
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
     it("CORRUPTION FENCE: partially_landed group → 409 INVALID_TRANSITION (a real orphan, not stranded)", () => {
       const { g, integrator } = setupIntegrating();
       svc.markPartiallyLanded(g.id, { reason: "outer push failed" }, AGENT(integrator.user.id));

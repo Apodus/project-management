@@ -5,7 +5,10 @@ import { createTestApp, createTestProject, createTestUser, type TestApp } from "
 import { mergePhaseTimings, mergeRequestGroups, mergeRequests, tasks } from "../../src/db/index.js";
 import { EVENT_NAMES, getEventBus, type EventPayload } from "../../src/events/event-bus.js";
 import { postDiscord } from "../../src/events/alerts-listener.js";
-import { formatTrainFeedEvent } from "../../src/events/train-feed-listener.js";
+import {
+  formatTrainFeedEvent,
+  GROUP_REJECT_SETTLE_MS,
+} from "../../src/events/train-feed-listener.js";
 import { formatPhaseLine } from "../../src/events/phase-line.js";
 import * as mergeRequestService from "../../src/services/merge-request.service.js";
 
@@ -368,6 +371,145 @@ describe("Discord merge-train event feed", () => {
     });
     expect(partial).toContain("PARTIALLY landed");
     expect(partial).toContain("outer push failed after inner landed");
+  });
+
+  it("a group reject says how long the trip ran before it failed, and breaks it down", () => {
+    const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+    const worker = createTestUser(testApp.db);
+    const groupId = seedGroup(testApp, project.id, worker.id);
+    seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: worker.id,
+      status: "rejected",
+      branch: "fix/inner",
+      groupId,
+      pickedUpAt: ago(14 * MIN),
+    });
+    seedPhase(testApp, {
+      projectId: project.id,
+      groupId,
+      phase: "assemble",
+      startedAt: ago(14 * MIN),
+      durationMs: 3 * MIN,
+    });
+    seedPhase(testApp, {
+      projectId: project.id,
+      groupId,
+      phase: "verify",
+      startedAt: ago(11 * MIN),
+      durationMs: 11 * MIN,
+    });
+
+    const rejected = formatTrainFeedEvent(EVENT_NAMES.MERGE_GROUP_REJECTED, {
+      ...payload(project.id, groupId, { outcome: "rejected", reason: "outer verify exit 1" }),
+      entityType: "merge_group",
+    })!;
+    expect(rejected).toContain("Group rejected");
+    expect(rejected).toContain("14m since pickup");
+    expect(rejected).toContain(":stopwatch:");
+    expect(rejected).toContain("assemble 3m");
+    expect(rejected).toContain("verify 11m");
+  });
+
+  it("a group rejected straight from forming (never picked up) claims no pickup time", () => {
+    const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+    const worker = createTestUser(testApp.db);
+    const groupId = seedGroup(testApp, project.id, worker.id);
+    seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: worker.id,
+      status: "rejected",
+      branch: "fix/inner",
+      groupId,
+    });
+
+    const rejected = formatTrainFeedEvent(EVENT_NAMES.MERGE_GROUP_REJECTED, {
+      ...payload(project.id, groupId, { outcome: "rejected", reason: "ambiguous binding" }),
+      entityType: "merge_group",
+    })!;
+    expect(rejected).toContain("Group rejected");
+    expect(rejected).not.toContain("since pickup");
+  });
+
+  it("a group re-queue is narrated as a re-queue with its reason — not a rejection", () => {
+    const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+    const worker = createTestUser(testApp.db);
+    const groupId = seedGroup(testApp, project.id, worker.id);
+    const taskId = seedTask(testApp, project.id, worker.id, "Grass shader UBO fix");
+    seedRequest(testApp, {
+      projectId: project.id,
+      submittedBy: worker.id,
+      status: "queued",
+      taskId,
+      branch: "fix/grass-inner",
+      groupId,
+    });
+
+    const content = formatTrainFeedEvent(EVENT_NAMES.MERGE_GROUP_REQUEUED, {
+      ...payload(project.id, groupId, {
+        reason: "live main drifted before land; re-integrating against the new main",
+      }),
+      entityType: "merge_group",
+    })!;
+    expect(content).toContain("Group re-queued");
+    expect(content).toContain("Grass shader UBO fix");
+    expect(content).toContain("live main drifted before land");
+    expect(content).toContain("not a rejection");
+    expect(content).toContain(groupId);
+    expect(content).not.toContain("Group rejected");
+  });
+
+  // The reject is sent to PM from INSIDE runGroupIntegration, a beat before the
+  // integrator flushes its phase rows. The formatter was always correct; it was
+  // being asked too early. This pins the settle window, with the rows arriving
+  // AFTER the event — the real ordering.
+  it("a group reject waits for the phase rows that arrive just after it", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const project = createTestProject(testApp.db, PROJECT_WITH_WEBHOOK);
+      const worker = createTestUser(testApp.db);
+      const groupId = seedGroup(testApp, project.id, worker.id);
+      seedRequest(testApp, {
+        projectId: project.id,
+        submittedBy: worker.id,
+        status: "rejected",
+        branch: "fix/inner",
+        groupId,
+        pickedUpAt: ago(12 * MIN),
+      });
+
+      getEventBus().emit(EVENT_NAMES.MERGE_GROUP_REJECTED, {
+        ...payload(project.id, groupId, { outcome: "rejected", reason: "outer verify exit 1" }),
+        entityType: "merge_group",
+      });
+
+      // Nothing is POSTed yet, and there are no rows yet — the old behaviour
+      // would have formatted, and shipped, a line with no stopwatch right here.
+      await vi.advanceTimersByTimeAsync(GROUP_REJECT_SETTLE_MS - 1);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // The integrator's flush lands inside the window.
+      seedPhase(testApp, {
+        projectId: project.id,
+        groupId,
+        phase: "verify",
+        startedAt: ago(11 * MIN),
+        durationMs: 10 * MIN,
+      });
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
+      expect(body.content).toContain("Group rejected");
+      expect(body.content).toContain("12m since pickup");
+      expect(body.content).toContain(":stopwatch:");
+      expect(body.content).toContain("verify 10m");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // ── 5b. Incidents narrate their DIRECTION ─────────────────────────

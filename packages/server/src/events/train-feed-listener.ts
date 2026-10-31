@@ -19,7 +19,12 @@ import { humanDuration, phaseLineForGroup, phaseLineForRequest } from "./phase-l
 // second POST. Pickup does not carry it (the line already says "waited 12m in
 // queue"), requeue does not (the trip is not over — its minutes are accounted
 // once, at the terminal event), abandon does not (no integration happened), and
-// incident/pause/resume do not (no single subject to time).
+// incident/pause/resume do not (no single subject to time). A GROUP re-queue
+// (merge.group.requeued) is narrated so the second "Integrating group" line for
+// the same group id is explained, but carries no stopwatch for the same reason
+// a request re-queue does. A group REJECT is delivered after a short settle
+// delay (GROUP_REJECT_SETTLE_MS) so its stopwatch can see the phase rows the
+// integrator ships just after it.
 //
 // Deliberately NOT narrated (noise, no decision value): queue/submit
 // (merge.request.queued), per-attempt start/complete, the Phase-7.2 batch
@@ -309,6 +314,11 @@ export function formatTrainFeedEvent(event: EventName, payload: EventPayload): s
     case EVENT_NAMES.MERGE_GROUP_REJECTED: {
       const members = readGroupMembers(payload.entityId);
       const label = labelGroup(payload.entityId, members);
+      // The same "how long did it take" headline a group LAND carries — a reject
+      // is exactly when an operator asks how long the lane was held before it
+      // failed. Absent for a reject straight from `forming` (no member was ever
+      // picked up), where there is no trip to time.
+      const took = ageSince(groupPickedUpAt(members), at);
       // markPartiallyLanded reuses this event with an outcome discriminator
       // (§10.2) — the inner landed and the outer did NOT, which is an incident,
       // not an ordinary reject.
@@ -317,17 +327,39 @@ export function formatTrainFeedEvent(event: EventName, payload: EventPayload): s
           [
             `:rotating_light: **Group PARTIALLY landed** on ${lane} — ${label}`,
             `inner landed, outer did NOT: ${reason(e.reason ?? e.resolutionReason)}`,
+            took ? `${took} since pickup` : null,
             `group \`${payload.entityId}\``,
-          ].join(" · ") + phaseLineForGroup(payload.entityId)
+          ]
+            .filter(Boolean)
+            .join(" · ") + phaseLineForGroup(payload.entityId)
         );
       }
       return (
         [
           `:x: **Group rejected** on ${lane} — ${label}`,
           reason(e.reason ?? e.resolutionReason),
+          took ? `${took} since pickup` : null,
           `group \`${payload.entityId}\``,
-        ].join(" · ") + phaseLineForGroup(payload.entityId)
+        ]
+          .filter(Boolean)
+          .join(" · ") + phaseLineForGroup(payload.entityId)
       );
+    }
+
+    // The group-level sibling of MERGE_REQUEST_REQUEUED. Without this line the
+    // feed shows `Integrating group` twice for one group id with nothing between
+    // them, which reads as a duplicate (or a bug) rather than "the train lost a
+    // race / restarted and is trying again". Deliberately says what it is NOT:
+    // a rejection (nothing was judged wrong with the change) and a resolver run
+    // (that mints a NEW group id with its own merge_resolution comment).
+    case EVENT_NAMES.MERGE_GROUP_REQUEUED: {
+      const members = readGroupMembers(payload.entityId);
+      return [
+        `:arrows_counterclockwise: **Group re-queued** on ${lane} — ${labelGroup(payload.entityId, members)}`,
+        reason(e.reason),
+        "not a rejection — it will be integrated again automatically",
+        `group \`${payload.entityId}\``,
+      ].join(" · ");
     }
 
     case EVENT_NAMES.MERGE_REQUEST_ABANDONED: {
@@ -447,6 +479,7 @@ const FEED_EVENTS: EventName[] = [
   EVENT_NAMES.MERGE_REQUEST_ABANDONED,
   EVENT_NAMES.MERGE_GROUP_LANDED,
   EVENT_NAMES.MERGE_GROUP_REJECTED,
+  EVENT_NAMES.MERGE_GROUP_REQUEUED,
   EVENT_NAMES.MERGE_INCIDENT_OPENED,
   EVENT_NAMES.MERGE_INCIDENT_AUTO_RESOLVED,
   EVENT_NAMES.MERGE_INCIDENT_HUMAN_RESOLVED,
@@ -455,16 +488,38 @@ const FEED_EVENTS: EventName[] = [
 ];
 
 /**
+ * How long a group REJECT waits before it is formatted, so the stopwatch line
+ * can read the phase rows the integrator has not shipped yet.
+ *
+ * Why a group reject needs it and nothing else does: the integrator buffers its
+ * phase spans and flushes them from the pass owner (`runGroupLaneOnce`), and the
+ * only flush on the cross-repo path sits AFTER `runGroupIntegration` returns —
+ * but a verify/assembly reject is sent to PM from INSIDE it (`rejectGroupLegibly`).
+ * So PM emitted `merge.group.rejected` before a single assemble/verify row had
+ * arrived, and the formatter (which was correct) found nothing to render. The
+ * flush follows within milliseconds (worktree release is the only work between
+ * the two), so a few seconds of grace is enough. It is paid here, not in the
+ * integrator, because `flush()` is un-awaitable BY TYPE (design lock 1) — the
+ * daemon cannot be made to wait for PM, and a reject POST racing a flush POST on
+ * two connections is not an ordering anyone can promise.
+ *
+ * The cost is a reject line that arrives this many seconds later; a reject is
+ * terminal, so nothing narrated in between depends on its order.
+ */
+export const GROUP_REJECT_SETTLE_MS = 5_000;
+
+/**
  * Register the outbound Discord train event feed. Mirrors
  * registerWebhookAlertListener's resilience contract exactly: the whole sync
  * path (enrichment reads + formatting) is guarded, and the POST is an
  * un-awaited promise with a .catch — a Discord outage, a misshapen settings
  * row, or a deleted task can never break a land, a reject, or a pickup.
  */
-export function registerTrainFeedListener(): void {
+export function registerTrainFeedListener(opts: { groupRejectSettleMs?: number } = {}): void {
   const bus = getEventBus();
+  const settleMs = opts.groupRejectSettleMs ?? GROUP_REJECT_SETTLE_MS;
 
-  const handler = (event: EventName, payload: EventPayload): void => {
+  const deliver = (event: EventName, payload: EventPayload): void => {
     try {
       const content = formatTrainFeedEvent(event, payload);
       if (content === null) return;
@@ -474,6 +529,18 @@ export function registerTrainFeedListener(): void {
     } catch (err) {
       console.warn(`[train-feed] handler error: ${err}`);
     }
+  };
+
+  const handler = (event: EventName, payload: EventPayload): void => {
+    if (event === EVENT_NAMES.MERGE_GROUP_REJECTED && settleMs > 0) {
+      // Formatting happens INSIDE the timer, so the enrichment reads (members,
+      // phase rows) see everything that arrived during the grace window. The
+      // timer is unref'd: a shutdown must not wait on a Discord line.
+      const timer = setTimeout(() => deliver(event, payload), settleMs);
+      timer.unref?.();
+      return;
+    }
+    deliver(event, payload);
   };
 
   for (const event of FEED_EVENTS) {

@@ -953,9 +953,11 @@ export function markIntegrating(
  * calls this for integrating groups it has confirmed have no open incident; this
  * server guard is the defense-in-depth backstop.
  *
- * LEAN: no SSE event — the reset is an internal recovery action, not a
- * lifecycle transition observers track. (A dedicated MERGE_GROUP_RESET could be
- * emitted, but the design pins "no new event" as the default.)
+ * Emits MERGE_GROUP_REQUEUED (with `reason`) after commit. It used to emit
+ * nothing — "an internal recovery action" — but a re-queue is invisible only
+ * until the group is picked up again: the train feed then printed a second
+ * "Integrating group" line for the same group id with nothing between the two,
+ * which reads as a duplicate/bug. A no-op reset (already forming) emits nothing.
  */
 export function resetGroup(
   id: string,
@@ -1024,7 +1026,14 @@ export function resetGroup(
       .run();
   });
 
-  return withMembers(readGroupOrThrow(id));
+  const updatedRow = readGroupOrThrow(id);
+  const updated = withMembers(updatedRow);
+  emit(EVENT_NAMES.MERGE_GROUP_REQUEUED, updatedRow, actor.id, {
+    groupId: id,
+    reason: opts.reason ?? null,
+    memberCount: updated.members.length,
+  });
+  return updated;
 }
 
 /**

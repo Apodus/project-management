@@ -314,6 +314,9 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       "merge.group.started",
       "merge.group.landed",
       "merge.group.rejected",
+      // A whole-group re-queue (drift / push race / restart reclaim) moves the
+      // group back from in-flight to forming — refresh the train view.
+      "merge.group.requeued",
       "merge.incident.opened",
       // Phase timings (campaign 2026-08-03 §P5) — the ONLY event that fires
       // while a request is still integrating, and so the only thing that can
