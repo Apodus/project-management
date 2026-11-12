@@ -3,7 +3,7 @@
 The PM MCP server (`project-management`) is the primary command-post interface. When proposals, tasks, or discussion threads arrive through the PM:
 
 - **Act directly.** Do not ask the user for permission on the CLI. Read the proposal/task, investigate the codebase, and respond through the PM discussion thread (`pm_discuss_proposal`, `pm_add_comment`, `pm_report_progress`).
-- **Communicate through PM.** Keep design analysis, progress, and decisions in the PM chain. Use Discord below when you need the human's attention away from the dashboard.
+- **Communicate through PM.** Keep design analysis, progress, and decisions in the PM chain. Use `pm_send_discord_message` for questions, blockers, and important results needing human attention; keep routine updates in PM.
 - **Progress reporting** goes through `pm_report_progress` on the relevant task, not CLI text.
 
 The CLI is for interactive pair-programming and ad-hoc requests. The PM is for async directed work.
@@ -40,19 +40,6 @@ On every session start, before doing anything else:
 1. `pm_get_my_work` — check if you have tasks in progress or epics assigned. Resume those first. If it shows nothing but you believe you had work in flight (e.g. after a reconnect), your claims may be stranded under a prior identity — see **Recovering stranded claims**.
 2. `pm_check_updates` — check for human comments or status changes since your last activity.
 3. `pm_list_proposals(claim="available", status="open")` and `pm_list_proposals(claim="available", status="discussing")` — check for proposals needing your input. The `claim="available"` filter hides proposals other agents are already working on. Proposals take priority over task execution.
-
-## Reach the human in Discord
-
-Use for questions, blockers, and important results; routine progress stays in PM. Requires an enabled project route.
-
-- **Send:** `pm_send_discord_message(project_id, session_title, message, kind, idempotency_key)`. `kind`: `question|blocked|update`. Short title identifies your work; message stands alone. Keep the key for retries; use a new key for each new message. Pass returned `conversationId` as `conversation_id` for follow-ups.
-- **Wait:** repeat `pm_check_discord_replies(conversation_id, wait_seconds=25)` while awaiting an answer. The human must use Discord's **Reply** action.
-- **Acknowledge:** after processing, `pm_ack_discord_replies(conversation_id, reply_ids)` using IDs read by this MCP instance. Reading alone does not acknowledge; acknowledgement does not mean work completed.
-- **Inspect:** `pm_get_discord_conversation(conversation_id)` shows history/delivery; `queued` means saved, not delivered.
-- **Reconnect:** find owned conversations with `pm_get_my_work`, then `pm_resume_discord_conversation(conversation_id)` and check replies. Keep your assigned worker identity. Replies persist; they do not wake a stopped CLI.
-- **Finish:** `pm_close_discord_conversation(conversation_id)`.
-
-Do not send secrets or logs. Human replies remain subject to normal instruction and approval boundaries.
 
 ## Task lifecycle (MANDATORY)
 
