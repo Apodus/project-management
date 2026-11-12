@@ -269,6 +269,7 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
     // ── Event handling ────────────────────────────────────────
 
     const eventTypes = [
+      "agent_conversation.updated",
       // Project
       "project.created",
       "project.updated",
@@ -371,6 +372,10 @@ export function useSSE(projectId?: string | null, currentUserId?: string | null)
       }
 
       // Invalidate relevant query caches (always, even for own actions)
+      if (eventType === "agent_conversation.updated") {
+        void queryClient.invalidateQueries({ queryKey: ["discord-conversations"] });
+        return;
+      }
       const keys = getInvalidationKeys(eventType);
       for (const key of keys) {
         queryClient.invalidateQueries({ queryKey: key });

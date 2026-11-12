@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EVENT_NAMES } from "../../src/events/event-bus.js";
+import { EVENT_NAMES, PRIVATE_EVENT_NAMES } from "../../src/events/event-bus.js";
 
 // ══════════════════════════════════════════════════════════════════
 // SSE SUBSCRIPTION PARITY — kills a whole bug class, permanently.
@@ -45,7 +45,10 @@ function subscribedEventNames(): string[] {
 
 describe("SSE subscription parity", () => {
   it("every name the web client subscribes to is a name the server can emit", () => {
-    const emitted = new Set<string>(Object.values(EVENT_NAMES));
+    const emitted = new Set<string>([
+      ...Object.values(EVENT_NAMES),
+      ...Object.values(PRIVATE_EVENT_NAMES),
+    ]);
     const dead = subscribedEventNames().filter((name) => !emitted.has(name));
     expect(dead, "these subscriptions can never fire — no emitter uses these names").toEqual([]);
   });

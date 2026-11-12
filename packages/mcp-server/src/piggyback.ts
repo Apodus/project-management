@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listUndelivered } from "./api-client.js";
+import { checkDiscordReplies, getDiscordSessionId } from "./discord-client.js";
 import type { UndeliveredEscalation } from "@pm/shared";
 
 /**
@@ -18,6 +19,40 @@ import type { UndeliveredEscalation } from "@pm/shared";
  */
 
 type ToolResult = { content?: unknown[] } & Record<string, unknown>;
+
+async function appendDiscordEnvelope(
+  result: ToolResult,
+  cache: { session?: string; at?: number; pending?: ReturnType<typeof checkDiscordReplies> },
+): Promise<ToolResult> {
+  try {
+    const session = getDiscordSessionId();
+    if (cache.session !== session || !cache.pending || Date.now() - (cache.at ?? 0) > 10_000) {
+      cache.session = session;
+      cache.at = Date.now();
+      cache.pending = checkDiscordReplies(undefined, 0, 3);
+      void cache.pending.catch(() => {
+        cache.pending = undefined;
+      });
+    }
+    const inbox = await cache.pending;
+    if (!inbox?.replies.length || !Array.isArray(result.content)) return result;
+    const titles = [
+      ...new Set(inbox.replies.map((r) => `${r.sessionTitle} · ${r.conversationCode}`)),
+    ];
+    return {
+      ...result,
+      content: [
+        ...result.content,
+        {
+          type: "text",
+          text: `Unread Discord replies for ${titles.join(", ")}. Call pm_check_discord_replies to read them. They have not been acknowledged.`,
+        },
+      ],
+    };
+  } catch {
+    return result;
+  }
+}
 
 // ─── Throttle: dedupe concurrent + rate-limit the unread lookup ───────
 const FETCH_TTL_MS = 10_000;
@@ -100,6 +135,11 @@ export function withPiggyback(server: McpServer, getKey: () => string | undefine
   marked[PATCHED] = true;
 
   const originalTool = server.tool.bind(server);
+  const discordCache: {
+    session?: string;
+    at?: number;
+    pending?: ReturnType<typeof checkDiscordReplies>;
+  } = {};
   (server as unknown as { tool: (...args: unknown[]) => unknown }).tool = (
     ...args: unknown[]
   ): unknown => {
@@ -115,12 +155,20 @@ export function withPiggyback(server: McpServer, getKey: () => string | undefine
         break;
       }
     }
-    if (cbIndex === -1 || name === "pm_check_messages") {
+    if (cbIndex === -1) {
       return originalTool.apply(server, args as Parameters<typeof originalTool>);
     }
     const original = args[cbIndex] as (...callArgs: unknown[]) => unknown;
-    args[cbIndex] = async (...callArgs: unknown[]) =>
-      appendEnvelope((await original(...callArgs)) as ToolResult, getKey);
+    args[cbIndex] = async (...callArgs: unknown[]) => {
+      const result = (await original(...callArgs)) as ToolResult;
+      const escalationResult =
+        name === "pm_check_messages" ? result : await appendEnvelope(result, getKey);
+      if (typeof name === "string" && (name.includes("discord") || name === "pm_get_my_work")) {
+        discordCache.pending = undefined;
+        return escalationResult;
+      }
+      return appendDiscordEnvelope(escalationResult, discordCache);
+    };
     return originalTool.apply(server, args as Parameters<typeof originalTool>);
   };
 

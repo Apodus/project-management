@@ -24,6 +24,11 @@ describe("AUDIT_ACTIONS", () => {
       "outer_converted",
       "outer_gitlink_normalized",
       "transfer",
+      "discord_route_updated",
+      "discord_session_resumed",
+      "discord_conversation_reassigned",
+      "discord_delivery_attempt",
+      "discord_delivery_retried",
     ]);
   });
 
@@ -54,6 +59,9 @@ describe("AUDIT_TARGET_TYPES", () => {
       "task",
       "epic",
       "proposal",
+      "agent_conversation",
+      "discord_route",
+      "discord_delivery",
     ]);
   });
 

@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useProject, useUpdateProject } from "@/hooks/use-projects";
 import { ApiError, type UpdateProject } from "@/lib/api";
 import { useProjectStore } from "@/stores/project-store";
+import { DiscordConversationsSettings } from "@/components/discord-conversations-settings";
 
 // The project `settings` blob is typed as `unknown` on the Project response
 // (the server stores it as opaque JSON). We only touch the `webhooks` sub-block
@@ -149,6 +150,7 @@ export function NotificationsPage() {
       )}
 
       {/* Form */}
+      {!isLoading && !error && project && <DiscordConversationsSettings projectId={projectId} />}
       {!isLoading && !error && project && (
         <Card>
           <CardHeader>

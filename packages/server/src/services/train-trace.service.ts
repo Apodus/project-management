@@ -104,6 +104,11 @@ export const AUDIT_ACTION_KIND: Record<AuditAction, TrainTraceKind | null> = {
   outer_gitlink_normalized: "outer_gitlink_normalized",
   // Not a train event: a work item moved to another project (C4-P4).
   transfer: null,
+  discord_route_updated: null,
+  discord_session_resumed: null,
+  discord_conversation_reassigned: null,
+  discord_delivery_attempt: null,
+  discord_delivery_retried: null,
 };
 
 /**

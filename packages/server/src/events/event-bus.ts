@@ -1,5 +1,11 @@
 import { EventEmitter } from "node:events";
 
+// These are emitted directly to authorized SSE subscribers, never through the
+// global activity bus (which broadcasts to every project reader).
+export const PRIVATE_EVENT_NAMES = {
+  AGENT_CONVERSATION_UPDATED: "agent_conversation.updated",
+} as const;
+
 // ─── Event names ─────────────────────────────────────────────────
 
 export const EVENT_NAMES = {

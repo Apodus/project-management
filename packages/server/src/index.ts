@@ -6,6 +6,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { initializeDatabase, closeDb } from "./db/index.js";
 import { createApp } from "./app.js";
 import { startAlertSweep } from "./services/alert-sweep.service.js";
+import { startDiscordBridge } from "./services/discord-bridge.service.js";
 
 // ── Configuration ─────────────────────────────────────────────────
 const port = parseInt(process.env.PM_PORT || "3000", 10);
@@ -100,6 +101,7 @@ const server = serve({
 // 2026-08-02 nine-hour stall this closes). Started HERE, not in createApp() —
 // tests build apps by the hundred and must not spawn timers.
 const stopAlertSweep = startAlertSweep();
+const stopDiscordBridge = startDiscordBridge();
 
 server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {
@@ -120,9 +122,10 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────
-function shutdown() {
+async function shutdown() {
   console.log("Shutting down...");
   stopAlertSweep();
+  await stopDiscordBridge();
   closeDb();
   process.exit(0);
 }

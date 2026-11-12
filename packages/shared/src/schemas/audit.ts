@@ -55,6 +55,11 @@ export const AUDIT_ACTIONS = [
   // same workspace; recorded in the SOURCE project with the reason, before/after
   // project and the labels that could not follow.
   "transfer",
+  "discord_route_updated",
+  "discord_session_resumed",
+  "discord_conversation_reassigned",
+  "discord_delivery_attempt",
+  "discord_delivery_retried",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -69,6 +74,9 @@ export const AUDIT_TARGET_TYPES = [
   "task",
   "epic",
   "proposal",
+  "agent_conversation",
+  "discord_route",
+  "discord_delivery",
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 

@@ -42,6 +42,7 @@ import { createVerifyCacheRoutes } from "./routes/verify-cache.js";
 import { createMergePhaseRoutes } from "./routes/merge-phases.js";
 import { createAuditRoutes } from "./routes/audit.js";
 import { createClaimRoutes } from "./routes/claims.js";
+import { createAgentConversationRoutes } from "./routes/agent-conversations.js";
 import { initializeEventListeners } from "./events/index.js";
 import type { AppVariables } from "./types.js";
 
@@ -82,7 +83,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
         "http://127.0.0.1:3000",
       ],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
+      allowHeaders: ["Content-Type", "Authorization", "X-Request-Id", "X-PM-Session-Id"],
       exposeHeaders: ["X-Request-Id"],
       credentials: true,
       maxAge: 86400,
@@ -134,6 +135,7 @@ export function createApp(): OpenAPIHono<{ Variables: AppVariables }> {
   app.route("/", createMergePhaseRoutes());
   app.route("/", createAuditRoutes());
   app.route("/", createClaimRoutes());
+  app.route("/", createAgentConversationRoutes());
 
   // ── Health endpoint ───────────────────────────────────────────────
   const healthRoute = createRoute({

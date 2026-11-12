@@ -47,6 +47,7 @@ export default defineConfig({
     },
   ],
   webServer: {
+    env: { PM_DISCORD_AGENT_MESSAGING_ENABLED: "false", PM_DISCORD_BOT_TOKEN: "" },
     // PM_LEASE_TTL_SEC=1 PM_LEASE_GRACE_SEC=1 (Campaign C3 claims-surface E2E):
     // lets spec 07 drive a claim to STALE inside a test budget. Verified safe:
     // specs 01-06 contain zero claim calls; "yours" derives before liveness so a

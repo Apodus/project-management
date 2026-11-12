@@ -17,6 +17,7 @@ import { registerIntegratorHealthTools } from "./integrator-health.js";
 import { registerNoteTools } from "./notes.js";
 import { registerEscalationTools } from "./escalations.js";
 import { registerCheckMessagesTool } from "./check-messages.js";
+import { registerDiscordTools } from "./discord.js";
 
 /**
  * Register all MCP tools on the server.
@@ -40,4 +41,5 @@ export function registerAllTools(server: McpServer): void {
   registerNoteTools(server);
   registerEscalationTools(server);
   registerCheckMessagesTool(server);
+  registerDiscordTools(server);
 }

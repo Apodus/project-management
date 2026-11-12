@@ -1,8 +1,18 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { AppVariables } from "../types.js";
-import { getEventBus, type EventName, type EventPayload } from "../events/event-bus.js";
+import {
+  getEventBus,
+  PRIVATE_EVENT_NAMES,
+  type EventName,
+  type EventPayload,
+} from "../events/event-bus.js";
 import * as userService from "../services/user.service.js";
+import {
+  discordEvents,
+  conversationRow,
+  canReadConversation,
+} from "../services/agent-conversation.service.js";
 
 // ─── SSE event route ─────────────────────────────────────────────
 
@@ -42,6 +52,29 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
 
       // Register event bus listener
       const bus = getEventBus();
+      const onDiscordChange = (id: string) => {
+        try {
+          const conversation = conversationRow(id);
+          if (
+            (projectIdFilter && conversation.projectId !== projectIdFilter) ||
+            !canReadConversation(conversation, currentUser)
+          )
+            return;
+          void stream
+            .writeSSE({
+              event: PRIVATE_EVENT_NAMES.AGENT_CONVERSATION_UPDATED,
+              data: JSON.stringify({
+                entity_type: "agent_conversation",
+                entity_id: id,
+                project_id: conversation.projectId,
+              }),
+            })
+            .catch(() => {});
+        } catch {
+          /* Deleted conversations and closed streams need no event. */
+        }
+      };
+      discordEvents.on("changed", onDiscordChange);
       const removeListener = bus.onAll((event: EventName, payload: EventPayload) => {
         // Apply project_id filter
         if (projectIdFilter && payload.projectId !== projectIdFilter) {
@@ -232,6 +265,7 @@ export function createEventStreamRoutes(): Hono<{ Variables: AppVariables }> {
       stream.onAbort(() => {
         clearInterval(heartbeatInterval);
         removeListener();
+        discordEvents.off("changed", onDiscordChange);
       });
 
       // Keep the stream open by awaiting a promise that never resolves

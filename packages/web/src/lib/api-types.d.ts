@@ -7021,6 +7021,315 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/tasks/{id}/transfer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Transfer task to another project
+     * @description Move a task (its comments, git refs, claim and dependencies follow; its epic is cleared unless target_epic_id names one of the target project) to another project of the same workspace, keeping its id. Project-scoped labels are dropped and listed. Refused (409) while a moving task has a queued/integrating merge request, a forming/integrating group, a held or queued merge lock or an open merge incident, or when a parent/subtask would stay behind. The claim holder or a human only. Audited (action "transfer") in the source project; an activity row "transferred" lands in both projects.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["TransferBody"];
+        };
+      };
+      responses: {
+        /** @description Transferred */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TransferResult"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Not the claim holder (agents) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Entity or project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Refused: work in flight, a split subtree, an epic dependency, another workspace, an archived target */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/epics/{id}/transfer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Transfer epic to another project
+     * @description Move an epic together with ALL of its tasks, atomically (its milestone is cleared; an epic with any epic dependency is refused) to another project of the same workspace, keeping its id. Project-scoped labels are dropped and listed. Refused (409) while a moving task has a queued/integrating merge request, a forming/integrating group, a held or queued merge lock or an open merge incident, or when a parent/subtask would stay behind. The claim holder or a human only. Audited (action "transfer") in the source project; an activity row "transferred" lands in both projects.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["TransferBody"];
+        };
+      };
+      responses: {
+        /** @description Transferred */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TransferResult"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Not the claim holder (agents) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Entity or project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Refused: work in flight, a split subtree, an epic dependency, another workspace, an archived target */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/proposals/{id}/transfer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Transfer proposal to another project
+     * @description Move a proposal (its comments follow) to another project of the same workspace, keeping its id. Project-scoped labels are dropped and listed. Refused (409) while a moving task has a queued/integrating merge request, a forming/integrating group, a held or queued merge lock or an open merge incident, or when a parent/subtask would stay behind. The claim holder or a human only. Audited (action "transfer") in the source project; an activity row "transferred" lands in both projects.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["TransferBody"];
+        };
+      };
+      responses: {
+        /** @description Transferred */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["TransferResult"];
+            };
+          };
+        };
+        /** @description Validation error */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Not the claim holder (agents) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Entity or project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Refused: work in flight, a split subtree, an epic dependency, another workspace, an archived target */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/tasks/{taskId}/comments": {
     parameters: {
       query?: never;
@@ -14888,7 +15197,13 @@ export interface paths {
             | "force_claim"
             | "claim_reclaimed"
             | "outer_converted"
-            | "outer_gitlink_normalized";
+            | "outer_gitlink_normalized"
+            | "transfer"
+            | "discord_route_updated"
+            | "discord_session_resumed"
+            | "discord_conversation_reassigned"
+            | "discord_delivery_attempt"
+            | "discord_delivery_retried";
           targetType?:
             | "merge_request"
             | "merge_group"
@@ -14896,7 +15211,10 @@ export interface paths {
             | "train"
             | "task"
             | "epic"
-            | "proposal";
+            | "proposal"
+            | "agent_conversation"
+            | "discord_route"
+            | "discord_delivery";
           targetId?: string;
           from?: string;
           to?: string;
@@ -15043,6 +15361,1400 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{projectId}/discord-agent-route": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordRouteView"];
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DiscordRouteInput"];
+        };
+      };
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordRouteView"];
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/discord-agent-route/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            idempotencyKey: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Success */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordSendResult"];
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/agent-conversations/messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header: {
+          "x-pm-session-id": string;
+        };
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DiscordSendInput"];
+        };
+      };
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordSendResult"];
+            };
+          };
+        };
+        /** @description Success */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordSendResult"];
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/agent-conversations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          cursor?: string;
+          limit?: number;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                conversations: components["schemas"]["DiscordConversationSummary"][];
+                nextCursor: string | null;
+              };
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/agent-conversations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          cursor?: string;
+          limit?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                conversations: components["schemas"]["DiscordConversationSummary"][];
+                nextCursor: string | null;
+              };
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/agent-conversations/replies": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          conversationId?: string;
+          waitSeconds?: number | null;
+          limit?: number;
+        };
+        header: {
+          "x-pm-session-id": string;
+        };
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordReplyInbox"];
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/agent-conversations/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          beforeSeq?: number;
+          limit?: number;
+        };
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordConversationDetail"];
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/agent-conversations/{id}/ack": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header: {
+          "x-pm-session-id": string;
+        };
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            replyIds: string[];
+            consumerGeneration: number;
+          };
+        };
+      };
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                acknowledgedIds: string[];
+              };
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/agent-conversations/{id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header: {
+          "x-pm-session-id": string;
+        };
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordConversationDetail"];
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/agent-conversations/{id}/close": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordConversationSummary"];
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/agent-conversations/{id}/reassign": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            ownerUserId: string;
+            sessionId: string;
+            reason: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Success */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["DiscordConversationSummary"];
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/agent-conversations/{id}/messages/{messageId}/retry": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+          messageId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            idempotencyKey: string;
+            reason: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Success */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: {
+                jobId: string;
+                /** @enum {string} */
+                status:
+                  | "queued"
+                  | "sending"
+                  | "retry_wait"
+                  | "delivered"
+                  | "failed"
+                  | "expired"
+                  | "cancelled";
+              };
+            };
+          };
+        };
+        /** @description Request failed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+        /** @description Request failed */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DiscordError"];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/health": {
     parameters: {
       query?: never;
@@ -15166,6 +16878,8 @@ export interface components {
           verify_cancel_poll_sec: number;
           /** @default 0 */
           verify_stall_sec: number;
+          /** @default  */
+          verify_success_sentinel: string;
           /** @default false */
           notify_author_on_reject: boolean;
           worktree_root?: string;
@@ -15291,6 +17005,8 @@ export interface components {
           verify_cancel_poll_sec: number;
           /** @default 0 */
           verify_stall_sec: number;
+          /** @default  */
+          verify_success_sentinel: string;
           /** @default false */
           notify_author_on_reject: boolean;
           worktree_root?: string;
@@ -16213,6 +17929,22 @@ export interface components {
       }[];
       total: number;
     };
+    TransferResult: {
+      /** @enum {string} */
+      entity_type: "task" | "epic" | "proposal";
+      entity_id: string;
+      from_project_id: string;
+      to_project_id: string;
+      moved_task_ids: string[];
+      dropped_labels: string[];
+      dropped_milestone_id: string | null;
+      audit_id: string;
+    };
+    TransferBody: {
+      target_project_id: string;
+      target_epic_id?: string;
+      reason: string;
+    };
     TaskComment: {
       id: string;
       taskId: string | null;
@@ -17024,6 +18756,19 @@ export interface components {
         at: string;
         message: string;
       } | null;
+      phase: string;
+      host_slots:
+        | {
+            request_id: string;
+            /** @enum {string} */
+            state: "waiting" | "held";
+            seq: number;
+            position: number;
+            holder_lane: string | null;
+            holder_pid: number | null;
+            waited_ms: number;
+          }[]
+        | null;
     };
     IntegratorHeartbeat: {
       /** @default main */
@@ -17054,6 +18799,16 @@ export interface components {
         at: string;
         message: string;
       } | null;
+      host_slots?: {
+        request_id: string;
+        /** @enum {string} */
+        state: "waiting" | "held";
+        seq: number;
+        position: number;
+        holder_lane: string | null;
+        holder_pid: number | null;
+        waited_ms: number;
+      }[];
     };
     TrainState: {
       id: string;
@@ -17159,6 +18914,19 @@ export interface components {
           at: string;
           message: string;
         } | null;
+        phase: string;
+        host_slots:
+          | {
+              request_id: string;
+              /** @enum {string} */
+              state: "waiting" | "held";
+              seq: number;
+              position: number;
+              holder_lane: string | null;
+              holder_pid: number | null;
+              waited_ms: number;
+            }[]
+          | null;
       };
       slo: {
         p95_time_to_land?: {
@@ -17583,6 +19351,140 @@ export interface components {
         updatedAt: string;
       }[];
       total: number;
+    };
+    DiscordRouteView: {
+      route: {
+        guildId: string;
+        channelId: string;
+        recipientUserId: string;
+        recipientDiscordId: string;
+        enabled: boolean;
+        generation: number;
+        channelName: string;
+        verifiedAt: string;
+        testUntil: string | null;
+      } | null;
+      bridge: {
+        enabled: boolean;
+        tokenPresent: boolean;
+        connected: boolean;
+        botId: string | null;
+        botName: string | null;
+        errorCode: string | null;
+      };
+      pendingSends: number;
+      unreadReplies: number;
+      oldestPendingAt: string | null;
+      lastSentAt: string | null;
+      lastReplyAt: string | null;
+      lastHistorySyncAt: string | null;
+      historyError: string | null;
+      recentFailures: {
+        messageId: string;
+        code: string | null;
+        uncertain: boolean;
+      }[];
+    };
+    DiscordError: {
+      error: {
+        code: string;
+        message: string;
+        retry_after_seconds?: number;
+      };
+    };
+    DiscordRouteInput: {
+      guildId: string;
+      channelId: string;
+      recipientUserId: string;
+      recipientDiscordId: string;
+      enabled: boolean;
+      generation: number;
+    };
+    DiscordSendResult: {
+      conversationId: string;
+      conversationCode: string;
+      messageId: string;
+      consumerGeneration: number;
+      /** @enum {string} */
+      deliveryStatus:
+        | "queued"
+        | "sending"
+        | "retry_wait"
+        | "delivered"
+        | "failed"
+        | "expired"
+        | "cancelled";
+      duplicate: boolean;
+      replyRequested: boolean;
+    };
+    DiscordSendInput: {
+      sessionTitle: string;
+      message: string;
+      idempotencyKey: string;
+      /**
+       * @default update
+       * @enum {string}
+       */
+      kind: "question" | "blocked" | "update";
+      conversationId?: string;
+    };
+    DiscordConversationSummary: {
+      id: string;
+      code: string;
+      projectId: string;
+      sessionTitle: string;
+      ownerUserId: string;
+      sessionId: string;
+      consumerGeneration: number;
+      /** @enum {string} */
+      status: "open" | "closed";
+      suspended: boolean;
+      isTest: boolean;
+      unreadCount: number;
+      createdAt: string;
+      lastCheckedAt: string | null;
+    };
+    DiscordReplyInbox: {
+      replies: {
+        id: string;
+        conversationId: string;
+        conversationCode: string;
+        sessionTitle: string;
+        consumerGeneration: number;
+        body: string;
+        authorLabel: string;
+        createdAt: string;
+        conversationClosed: boolean;
+      }[];
+      hasMore: boolean;
+    };
+    DiscordConversationDetail: {
+      conversation: components["schemas"]["DiscordConversationSummary"];
+      messages: components["schemas"]["DiscordMessage"][];
+      nextBeforeSeq: number | null;
+    };
+    DiscordMessage: {
+      id: string;
+      seq: number;
+      /** @enum {string} */
+      direction: "agent" | "human" | "system";
+      body: string;
+      authorLabel: string;
+      createdAt: string;
+      acknowledgedAt: string | null;
+      /** @enum {string|null} */
+      deliveryStatus:
+        | "queued"
+        | "sending"
+        | "retry_wait"
+        | "delivered"
+        | "failed"
+        | "expired"
+        | "cancelled"
+        | null;
+      deliveryUncertain: boolean;
+      errorCode: string | null;
+      discordMessageId: string | null;
     };
   };
   responses: never;

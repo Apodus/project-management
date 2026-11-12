@@ -45,11 +45,13 @@ export interface ApiErrorEnvelope {
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly code: string;
+  public readonly retryAfterSeconds?: number;
 
-  constructor(statusCode: number, code: string, message: string) {
+  constructor(statusCode: number, code: string, message: string, retryAfterSeconds?: number) {
     super(message);
     this.name = "AppError";
     this.statusCode = statusCode;
     this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }

@@ -12,8 +12,17 @@ import { AppError } from "../types.js";
 export function errorHandler(err: Error, c: Context): Response {
   // Known application errors (thrown by services/handlers)
   if (err instanceof AppError) {
+    if (err.retryAfterSeconds !== undefined) c.header("Retry-After", String(err.retryAfterSeconds));
     return c.json(
-      { error: { code: err.code, message: err.message } },
+      {
+        error: {
+          code: err.code,
+          message: err.message,
+          ...(err.retryAfterSeconds !== undefined
+            ? { retry_after_seconds: err.retryAfterSeconds }
+            : {}),
+        },
+      },
       err.statusCode as ContentfulStatusCode,
     );
   }

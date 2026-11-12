@@ -93,6 +93,186 @@ export const projects = sqliteTable(
   (table) => [uniqueIndex("idx_projects_workspace_slug").on(table.workspaceId, table.slug)],
 );
 
+// Discord agent conversations: independent of the train webhook and settings JSON.
+export const discordAgentRoutes = sqliteTable("discord_agent_routes", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  channelName: text("channel_name").notNull(),
+  recipientUserId: text("recipient_user_id")
+    .notNull()
+    .references(() => users.id),
+  recipientDiscordId: text("recipient_discord_id").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  generation: integer("generation").notNull(),
+  activatedAt: text("activated_at").notNull(),
+  verifiedAt: text("verified_at").notNull(),
+  testUntil: text("test_until"),
+  errorCode: text("error_code"),
+  updatedBy: text("updated_by")
+    .notNull()
+    .references(() => users.id),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const agentConversations = sqliteTable(
+  "agent_conversations",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull().unique(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    routeGeneration: integer("route_generation").notNull(),
+    guildId: text("guild_id").notNull(),
+    channelId: text("channel_id").notNull(),
+    recipientUserId: text("recipient_user_id")
+      .notNull()
+      .references(() => users.id),
+    recipientDiscordId: text("recipient_discord_id").notNull(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => users.id),
+    sessionId: text("session_id").notNull(),
+    consumerGeneration: integer("consumer_generation").notNull().default(1),
+    sessionTitle: text("session_title").notNull(),
+    status: text("status", { enum: ["open", "closed"] })
+      .notNull()
+      .default("open"),
+    isTest: integer("is_test", { mode: "boolean" }).notNull().default(false),
+    lastCheckedAt: text("last_checked_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("idx_agent_conversation_owner_session").on(t.ownerUserId, t.sessionId)],
+);
+
+export const agentConversationMessages = sqliteTable(
+  "agent_conversation_messages",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => agentConversations.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    direction: text("direction", { enum: ["agent", "human", "system"] }).notNull(),
+    kind: text("kind", { enum: ["question", "blocked", "update"] })
+      .notNull()
+      .default("update"),
+    body: text("body").notNull(),
+    authorLabel: text("author_label").notNull(),
+    replyToId: text("reply_to_id"),
+    discordMessageId: text("discord_message_id"),
+    createdAt: text("created_at").notNull(),
+    providerCreatedAt: text("provider_created_at"),
+    acknowledgedAt: text("acknowledged_at"),
+    acknowledgedGeneration: integer("acknowledged_generation"),
+  },
+  (t) => [
+    uniqueIndex("idx_agent_message_sequence").on(t.conversationId, t.seq),
+    index("idx_agent_message_unread").on(t.conversationId, t.direction, t.acknowledgedAt),
+  ],
+);
+
+export const discordDeliveryJobs = sqliteTable(
+  "discord_delivery_jobs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => agentConversations.id, { onDelete: "cascade" }),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => agentConversationMessages.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => users.id),
+    operation: text("operation", { enum: ["send", "receipt_create", "receipt_edit"] }).notNull(),
+    operationKey: text("operation_key").notNull().unique(),
+    idempotencyKey: text("idempotency_key"),
+    requestHash: text("request_hash"),
+    content: text("content").notNull(),
+    reference: text("reference").notNull().unique(),
+    nonce: text("nonce").notNull().unique(),
+    routeGeneration: integer("route_generation").notNull(),
+    status: text("status", {
+      enum: ["queued", "sending", "retry_wait", "delivered", "failed", "expired", "cancelled"],
+    })
+      .notNull()
+      .default("queued"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    leaseUntil: text("lease_until"),
+    fence: integer("fence").notNull().default(0),
+    discordMessageId: text("discord_message_id"),
+    deliveredAt: text("delivered_at"),
+    errorCode: text("error_code"),
+    uncertain: integer("uncertain", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("idx_discord_send_idempotency").on(t.projectId, t.ownerUserId, t.idempotencyKey),
+    index("idx_discord_job_due").on(t.status, t.nextAttemptAt),
+  ],
+);
+
+export const discordMessageLinks = sqliteTable(
+  "discord_message_links",
+  {
+    channelId: text("channel_id").notNull(),
+    discordMessageId: text("discord_message_id").notNull(),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => agentConversationMessages.id, { onDelete: "cascade" }),
+    jobId: text("job_id").references(() => discordDeliveryJobs.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.channelId, t.discordMessageId] })],
+);
+
+export const discordInboundEvents = sqliteTable(
+  "discord_inbound_events",
+  {
+    discordMessageId: text("discord_message_id").primaryKey(),
+    guildId: text("guild_id").notNull(),
+    channelId: text("channel_id").notNull(),
+    authorId: text("author_id").notNull(),
+    referenceId: text("reference_id"),
+    body: text("body").notNull(),
+    hasAttachments: integer("has_attachments", { mode: "boolean" }).notNull(),
+    providerCreatedAt: text("provider_created_at").notNull(),
+    status: text("status", { enum: ["pending", "accepted", "rejected"] })
+      .notNull()
+      .default("pending"),
+    errorCode: text("error_code"),
+    messageId: text("message_id").references(() => agentConversationMessages.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [index("idx_discord_inbound_pending").on(t.channelId, t.status)],
+);
+
+export const discordChannelState = sqliteTable("discord_channel_state", {
+  channelId: text("channel_id").primaryKey(),
+  watermark: text("watermark").notNull(),
+  scanUpper: text("scan_upper"),
+  scanBefore: text("scan_before"),
+  lastSyncedAt: text("last_synced_at"),
+  errorCode: text("error_code"),
+  cooldownUntil: text("cooldown_until"),
+  lastHintAt: text("last_hint_at"),
+});
+export const discordBridgeLease = sqliteTable("discord_bridge_lease", {
+  id: text("id").primaryKey(),
+  holder: text("holder").notNull(),
+  fence: integer("fence").notNull(),
+  leaseUntil: text("lease_until").notNull(),
+});
+
 // ─── milestones ────────────────────────────────────────────────────
 export const milestones = sqliteTable("milestones", {
   id: text("id").primaryKey(),

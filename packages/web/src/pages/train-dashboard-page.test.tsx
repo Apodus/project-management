@@ -94,6 +94,8 @@ function seededMetrics(): TrainMetrics {
       version: "1.0.0",
       integrator_id: "int-1",
       last_release_failure: null,
+      phase: "idle",
+      host_slots: null,
     },
     slo: {
       p95_time_to_land: { compliant: true },
@@ -233,6 +235,8 @@ function nullMetrics(): TrainMetrics {
       version: null,
       integrator_id: null,
       last_release_failure: null,
+      phase: "idle",
+      host_slots: null,
     },
     slo: { overall_compliant: null },
     verify: {

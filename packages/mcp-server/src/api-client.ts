@@ -116,6 +116,7 @@ export async function apiRequest<T>(
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
   body?: unknown,
+  extraHeaders?: Record<string, string>,
 ): Promise<T> {
   const url = `${getBaseUrl()}/api/v1${path}`;
   const token = getToken();
@@ -123,6 +124,7 @@ export async function apiRequest<T>(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
+    ...extraHeaders,
   };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";

@@ -55,7 +55,7 @@ describe("Database schema", () => {
 
   // ── Table existence ──────────────────────────────────────────────
   describe("table existence", () => {
-    it("should create all 39 tables", () => {
+    it("should create all 47 tables", () => {
       const db = setupDb();
       const tableNames = db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' AND name NOT LIKE '%_fts%' ORDER BY name`,
@@ -67,12 +67,20 @@ describe("Database schema", () => {
       const expected = [
         "activity_log",
         "agent_claims",
+        "agent_conversation_messages",
+        "agent_conversations",
         "agent_pools",
         "audit_log",
         "automation_rules",
         "claim_leases",
         "claims_alert_state",
         "comments",
+        "discord_agent_routes",
+        "discord_bridge_lease",
+        "discord_channel_state",
+        "discord_delivery_jobs",
+        "discord_inbound_events",
+        "discord_message_links",
         "epic_dependencies",
         "epics",
         "escalation_alert_state",

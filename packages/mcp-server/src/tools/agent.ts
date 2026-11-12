@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getAgentIdentity, listProposals, listTasks } from "../api-client.js";
 import { claimStateLabel, nameWithId } from "./claim-display.js";
+import { listOwnDiscordConversations } from "../discord-client.js";
 
 export function registerAgentTools(server: McpServer): void {
   // ---- pm_get_my_work ----
@@ -65,6 +66,25 @@ export function registerAgentTools(server: McpServer): void {
         sections.push("");
       } else {
         sections.push("## Open Proposals: None", "");
+      }
+
+      // Summary line
+      try {
+        const inbox = await listOwnDiscordConversations();
+        const active = inbox.conversations.filter((c) => c.status === "open" || c.unreadCount > 0);
+        if (active.length) {
+          sections.push(
+            "## Discord conversations",
+            ...active.map(
+              (c) =>
+                `- ${c.sessionTitle} · ${c.code} (${c.id}) — ${c.unreadCount} unread replies${c.suspended ? "; route suspended" : ""}`,
+            ),
+            "Use pm_resume_discord_conversation to explicitly resume a conversation from another session.",
+            "",
+          );
+        }
+      } catch {
+        /* Older PM servers do not expose this additive discovery surface. */
       }
 
       // Summary line

@@ -26,6 +26,7 @@
     "@scalar/hono-api-reference": "^0.10.19",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
+    "discord.js": "14.25.1",
     "drizzle-orm": "^0.45.2",
     "hono": "^4"
   },
