@@ -72,4 +72,10 @@ echo  Press Ctrl+C to stop.
 echo.
 
 set NODE_ENV=production
-node packages\server\dist\index.js
+REM Preserve the opt-in Discord bot configuration on ordinary local restarts.
+REM The ignored file contains the server-only bot token, never client credentials.
+if exist ".env.discord.local" (
+    node --env-file=.env.discord.local packages\server\dist\index.js
+) else (
+    node packages\server\dist\index.js
+)

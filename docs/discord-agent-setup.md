@@ -22,7 +22,7 @@ PM_DISCORD_AGENT_MESSAGING_ENABLED=true
 PM_DISCORD_BOT_TOKEN=<your-private-bot-token>
 ```
 
-PM does not automatically load `.env` files. Supply variables through your existing launcher/service, or use Node's `--env-file` option with an ignored local file such as `.env.discord.local`. Preserve your existing database path, host, port and other server settings. Never start two different databases with the same bot and channel.
+PM does not automatically load arbitrary `.env` files. The local Windows `run.bat` launcher loads `.env.discord.local` when it exists, so the bot configuration survives ordinary restarts. For other launchers/services, supply variables explicitly or use Node's `--env-file` option with that ignored local file. Preserve your existing database path, host, port and other server settings. Never start two different databases with the same bot and channel.
 
 For a local build, after stopping the existing PM server:
 
